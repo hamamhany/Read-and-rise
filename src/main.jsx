@@ -13,6 +13,9 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
+// معرّف ثابت وموحد للمعلم والصف الواحد لضمان عدم التداخل والخلط
+const SINGLE_TEACHER_ID = "00000000-0000-0000-0000-000000000000"
+
 // ========== 2. هوك مخصص لتغيير ألوان الخلفية تلقائياً وحركة الشعار الخلفي ==========
 const useDynamicBackground = () => {
   useEffect(() => {
@@ -54,7 +57,7 @@ const useDynamicBackground = () => {
   }, []);
 };
 
-// ========== 3. مكون العداد التنازلي مترجم بدون إيموجي ==========
+// ========== 3. مكون العداد التنازلي للحصة (مربعات زجاجية) ==========
 const CountdownTimer = ({ targetDate }) => {
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
 
@@ -96,7 +99,46 @@ const CountdownTimer = ({ targetDate }) => {
   )
 }
 
-// ========== 4. مكون تسجيل الدخول مع رفع الشعار المائي للأعلى ==========
+// ========== 4. مكون العداد النصي الصافي البسيط للواجب ==========
+const HomeworkTextCountdown = ({ targetDate }) => {
+  const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
+  const [isPast, setIsPast] = useState(false)
+
+  useEffect(() => {
+    const calculate = () => {
+      const distance = new Date(targetDate).getTime() - new Date().getTime()
+      if (distance <= 0) {
+        setIsPast(true)
+        return true
+      }
+      setIsPast(false)
+      setTimeLeft({
+        days: Math.floor(distance / (1000 * 60 * 60 * 24)),
+        hours: Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+        minutes: Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60)),
+        seconds: Math.floor((distance % (1000 * 60)) / 1000)
+      })
+      return false
+    }
+
+    calculate()
+    const interval = setInterval(() => {
+      const ended = calculate()
+      if (ended) clearInterval(interval)
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [targetDate])
+
+  if (isPast) return null
+
+  return (
+    <div className="text-sm font-semibold text-pink-300 mt-2 tracking-wide bg-pink-950/30 px-4 py-2 rounded-xl inline-block border border-pink-500/20">
+      متبقي على إظهار الواجب : {timeLeft.days} يوم :{timeLeft.hours} ساعة :{timeLeft.minutes} دقائق :{timeLeft.seconds} ثواني
+    </div>
+  )
+}
+
+// ========== 5. مكون تسجيل الدخول ==========
 const Login = ({ onLogin }) => {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -125,11 +167,21 @@ const Login = ({ onLogin }) => {
           .insert([{ id: user.id, email, role }])
         if (profileError) console.warn('profile insert error:', profileError)
 
-        if (role === 'teacher') {
-          const { error: teacherError } = await supabase
+        // إذا سجل طالب جديد، نقوم تلقائياً بإضافته إلى مصفوفة الطلاب في الصف الواحد
+        if (role === 'student') {
+          const { data: currentClass } = await supabase
             .from('teachers')
-            .insert([{ id: user.id, students: [] }])
-          if (teacherError) console.warn('teacher insert error:', teacherError)
+            .select('students')
+            .eq('id', SINGLE_TEACHER_ID)
+            .single()
+          
+          if (currentClass) {
+            const updatedStudents = currentClass.students ? [...currentClass.students, user.id] : [user.id]
+            await supabase
+              .from('teachers')
+              .update({ students: updatedStudents })
+              .eq('id', SINGLE_TEACHER_ID)
+          }
         }
 
         onLogin({ id: user.id, email: user.email, role })
@@ -174,7 +226,6 @@ const Login = ({ onLogin }) => {
       <div className="relative z-10 w-full max-w-md px-4">
         <div className="glass p-6 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl flex flex-col items-center relative overflow-hidden min-h-[480px] justify-center">
           
-          {/* تم تعديل التموضع هنا (items-start pt-6) ليرتفع الشعار للأعلى خلف العناوين ولا تحجبه الأزرار */}
           <div className="absolute inset-0 flex items-start justify-center pt-6 pointer-events-none z-0 overflow-hidden">
             <img 
               src="/images/logo.png" 
@@ -274,12 +325,16 @@ const Login = ({ onLogin }) => {
   )
 }
 
-// ========== 5. لوحة المعلم بدون إيموجي ==========
+// ========== 6. لوحة المعلم (مرتبطة بالمعرّف الثابت للموقع والصف الواحد) ==========
 const TeacherPanel = ({ user }) => {
   const [lessonTime, setLessonTime] = useState('')
+  const [homeworkText, setHomeworkText] = useState('')
+  const [homeworkRevealTime, setHomeworkRevealTime] = useState('')
   const [students, setStudents] = useState([])
   const [loading, setLoading] = useState(true)
   const [newLessonTime, setNewLessonTime] = useState('')
+  const [newHomeworkText, setNewHomeworkText] = useState('')
+  const [newHomeworkRevealTime, setNewHomeworkRevealTime] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
 
   const fetchTeacherData = async () => {
@@ -288,23 +343,27 @@ const TeacherPanel = ({ user }) => {
     try {
       const { data, error } = await supabase
         .from('teachers')
-        .select('lesson_time, students')
-        .eq('id', user.id)
+        .select('lesson_time, students, homework_text, homework_reveal_time')
+        .eq('id', SINGLE_TEACHER_ID)
         .single()
       
       if (error) {
         if (error.code === 'PGRST116') {
-          const { error: insertError } = await supabase
+          await supabase
             .from('teachers')
-            .insert([{ id: user.id, students: [] }])
-          if (insertError) throw insertError
+            .insert([{ id: SINGLE_TEACHER_ID, students: [], homework_text: '', homework_reveal_time: '' }])
           setLessonTime('')
+          setHomeworkText('')
+          setHomeworkRevealTime('')
           setStudents([])
         } else {
           throw error
         }
       } else {
         setLessonTime(data.lesson_time || '')
+        setHomeworkText(data.homework_text || '')
+        setHomeworkRevealTime(data.homework_reveal_time || '')
+        
         if (data.students && data.students.length > 0) {
           const { data: profilesData } = await supabase
             .from('profiles')
@@ -331,7 +390,7 @@ const TeacherPanel = ({ user }) => {
       const { error } = await supabase
         .from('teachers')
         .update({ lesson_time: newLessonTime })
-        .eq('id', user.id)
+        .eq('id', SINGLE_TEACHER_ID)
       if (error) throw error
       setLessonTime(newLessonTime)
       setNewLessonTime('')
@@ -341,11 +400,35 @@ const TeacherPanel = ({ user }) => {
     }
   }
 
+  const saveHomework = async () => {
+    if (!newHomeworkText || !newHomeworkRevealTime) {
+      alert('يرجى كتابة نص الواجب وتحديد موعد إظهاره أولاً.')
+      return
+    }
+    try {
+      const { error } = await supabase
+        .from('teachers')
+        .update({ 
+          homework_text: newHomeworkText, 
+          homework_reveal_time: newHomeworkRevealTime 
+        })
+        .eq('id', SINGLE_TEACHER_ID)
+      if (error) throw error
+      setHomeworkText(newHomeworkText)
+      setHomeworkRevealTime(newHomeworkRevealTime)
+      setNewHomeworkText('')
+      setNewHomeworkRevealTime('')
+      alert('تم حفظ الواجب وجدولة موعد الإظهار بنجاح')
+    } catch (err) {
+      alert('فشل الحفظ: ' + err.message)
+    }
+  }
+
   const handleLogout = async () => { await supabase.auth.signOut() }
 
   return (
     <div className="container-center min-h-screen p-4 relative" dir="rtl">
-      <div className="glass p-8 max-w-4xl w-full space-y-8 z-10 border border-white/10">
+      <div className="glass p-8 max-w-4xl w-full space-y-6 z-10 border border-white/10">
         <div className="flex justify-between items-center flex-wrap gap-4 border-b border-white/10 pb-4">
           <div>
             <h2 className="text-3xl font-bold text-purple-300">لوحة تحكم المعلم</h2>
@@ -365,17 +448,49 @@ const TeacherPanel = ({ user }) => {
 
         <div className="glass p-6 rounded-2xl border border-white/5 space-y-4">
           <h3 className="text-xl font-semibold text-purple-200">جدولة موعد حصة جديد</h3>
-          <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center">
+          <div className="flex flex-col sm:flex-row gap-4 items-stretch">
             <input 
               type="datetime-local" 
               className="input-glass flex-1 text-right" 
               value={newLessonTime} 
               onChange={(e) => setNewLessonTime(e.target.value)} 
             />
-            <button onClick={updateLessonTime} className="btn-primary py-3 px-6 h-full">
-              حفظ وتحديث التوقيت
+            <button onClick={updateLessonTime} className="btn-primary py-3 px-6">
+              حفظ الحصة
             </button>
           </div>
+        </div>
+
+        <div className="glass p-6 rounded-2xl border border-white/5 space-y-4">
+          <h3 className="text-xl font-semibold text-pink-300">قسم إدارة الواجبات المجدولة</h3>
+          <div className="space-y-3">
+            <textarea 
+              placeholder="اكتب تفاصيل ونص الواجب المدرسي هنا..."
+              className="input-glass w-full h-24 text-right resize-none"
+              value={newHomeworkText}
+              onChange={(e) => setNewHomeworkText(e.target.value)}
+            />
+            <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center">
+              <div className="flex-1 flex flex-col gap-1">
+                <span className="text-xs text-gray-400 mr-2">تاريخ ووقت إظهار الواجب تلقائياً للطلاب:</span>
+                <input 
+                  type="datetime-local" 
+                  className="input-glass text-right" 
+                  value={newHomeworkRevealTime} 
+                  onChange={(e) => setNewHomeworkRevealTime(e.target.value)} 
+                />
+              </div>
+              <button onClick={saveHomework} className="btn-primary bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 py-3.5 px-6 self-end sm:self-auto">
+                نشر وجدولة الواجب
+              </button>
+            </div>
+          </div>
+          {homeworkText && (
+            <div className="mt-2 p-3 bg-white/5 rounded-xl border border-white/10 text-xs text-gray-300">
+              <strong>الواجب النشط الحالي:</strong> {homeworkText} <br/>
+              <strong>موعد الإظهار المتفق عليه:</strong> {new Date(homeworkRevealTime).toLocaleString('ar-EG')}
+            </div>
+          )}
         </div>
 
         <div className="glass p-6 rounded-2xl border border-white/5">
@@ -383,9 +498,9 @@ const TeacherPanel = ({ user }) => {
           {loading ? (
             <p className="text-gray-400 text-center py-4">جاري تحميل الطلاب...</p>
           ) : students.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-60 overflow-y-auto pr-1">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-40 overflow-y-auto pr-1">
               {students.map(s => (
-                <div key={s.id} className="bg-white/5 p-4 rounded-xl border border-white/5 flex justify-between items-center">
+                <div key={s.id} className="bg-white/5 p-3 rounded-xl border border-white/5 flex justify-between items-center">
                   <span className="text-gray-200 font-medium truncate ml-2">{s.email}</span>
                   <span className="text-xs bg-green-500/20 text-green-300 px-3 py-1 rounded-full border border-green-500/30 whitespace-nowrap">نشط بالصف</span>
                 </div>
@@ -400,38 +515,56 @@ const TeacherPanel = ({ user }) => {
   )
 }
 
-// ========== 6. لوحة الطالب بدون إيموجي ==========
+// ========== 7. لوحة الطالب (تستعلم مباشرة من نفس الصف والمعلم الموحد) ==========
 const StudentPanel = ({ user }) => {
   const [teacherData, setTeacherData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [errorMsg, setErrorMsg] = useState('')
+  const [isHomeworkLocked, setIsHomeworkLocked] = useState(true)
 
   const fetchTeacherInfo = async () => {
     setLoading(true)
     setErrorMsg('')
     try {
+      // الاستعلام مباشرة بالمعرّف الموحد للصف الواحد دون التفتيش العشوائي
       const { data, error } = await supabase
         .from('teachers')
-        .select('lesson_time, students')
-        .limit(1)
-        .maybeSingle()
+        .select('lesson_time, students, homework_text, homework_reveal_time')
+        .eq('id', SINGLE_TEACHER_ID)
+        .single()
+      
       if (error) throw error
-      setTeacherData(data)
+      if (data) {
+        setTeacherData(data)
+        if (data.homework_reveal_time) {
+          const isPast = new Date(data.homework_reveal_time).getTime() - new Date().getTime() <= 0
+          setIsHomeworkLocked(!isPast)
+        }
+      }
     } catch (err) {
       console.error(err)
-      setErrorMsg('فشل تحميل بيانات الحصة: ' + err.message)
+      setErrorMsg('فشل تحميل بيانات الصف: ' + err.message)
     } finally {
       setLoading(false)
     }
   }
 
-  useEffect(() => { fetchTeacherInfo() }, [])
+  useEffect(() => {
+    fetchTeacherInfo()
+    const checkInterval = setInterval(() => {
+      if (teacherData?.homework_reveal_time) {
+        const isPast = new Date(teacherData.homework_reveal_time).getTime() - new Date().getTime() <= 0
+        setIsHomeworkLocked(!isPast)
+      }
+    }, 1000)
+    return () => clearInterval(checkInterval)
+  }, [teacherData?.homework_reveal_time])
 
   const handleLogout = async () => { await supabase.auth.signOut() }
 
   return (
     <div className="container-center min-h-screen p-4 relative" dir="rtl">
-      <div className="glass p-8 max-w-4xl w-full space-y-8 z-10 border border-white/10">
+      <div className="glass p-8 max-w-4xl w-full space-y-6 z-10 border border-white/10">
         <div className="flex justify-between items-center flex-wrap gap-4 border-b border-white/10 pb-4">
           <div>
             <h2 className="text-3xl font-bold text-blue-300">لوحة تحكم الطالب</h2>
@@ -455,6 +588,34 @@ const StudentPanel = ({ user }) => {
           )}
         </div>
 
+        <div className="glass p-6 rounded-2xl border border-white/5 space-y-3 relative overflow-hidden">
+          <h3 className="text-xl font-semibold text-pink-300">الواجب المدرسي المطلوب</h3>
+          
+          {loading ? (
+            <p className="text-gray-400 text-center py-2">جاري تحميل تفاصيل الواجب...</p>
+          ) : teacherData?.homework_text ? (
+            <div className="flex flex-col items-center justify-center w-full text-center">
+              
+              <div className="relative w-full p-4 bg-black/30 rounded-xl border border-white/5 min-h-[60px] flex items-center justify-center">
+                {isHomeworkLocked && (
+                  <div className="absolute inset-0 z-20 flex items-center justify-center text-xl font-bold text-pink-400 bg-black/10 select-none tracking-wider animate-pulse">
+                    🔒 مغلق
+                  </div>
+                )}
+                <p className={`text-base font-medium text-gray-100 transition-all duration-700 w-full select-none ${isHomeworkLocked ? 'blur-md pointer-events-none opacity-40' : ''}`}>
+                  {teacherData.homework_text}
+                </p>
+              </div>
+
+              {isHomeworkLocked && teacherData.homework_reveal_time && (
+                <HomeworkTextCountdown targetDate={teacherData.homework_reveal_time} />
+              )}
+            </div>
+          ) : (
+            <p className="text-gray-400 text-center py-2">لا يوجد واجبات منزلية مسجلة حالياً.</p>
+          )}
+        </div>
+
         <div className="glass p-6 rounded-2xl border border-white/5">
           <h3 className="text-xl font-semibold mb-3 text-blue-200">معلومات وتفاصيل الصف</h3>
           <div className="bg-white/5 p-4 rounded-xl border border-white/5 inline-block">
@@ -468,7 +629,7 @@ const StudentPanel = ({ user }) => {
   )
 }
 
-// ========== 7. التطبيق الرئيسي ==========
+// ========== 8. التطبيق الرئيسي ==========
 const App = () => {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -541,7 +702,7 @@ const App = () => {
   return user.role === 'teacher' ? <TeacherPanel user={user} /> : <StudentPanel user={user} />
 }
 
-// ========== 8. تشغيل التطبيق ==========
+// ========== 9. تشغيل التطبيق ==========
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <App />
