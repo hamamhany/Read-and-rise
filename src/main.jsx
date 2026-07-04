@@ -135,7 +135,7 @@ const HomeworkTextCountdown = ({ targetDate }) => {
   )
 }
 
-// ========== 5. واجهة تسجيل الدخول (مغلقة وآمنة للمعلم وطلابه) ==========
+// ========== 5. واجهة تسجيل الدخول ==========
 const Login = ({ onLogin }) => {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -233,7 +233,7 @@ const Login = ({ onLogin }) => {
   )
 }
 
-// ========== 6. لوحة تحكم المعلم (مع الميزات الجديدة والعدادات المصلحة) ==========
+// ========== 6. لوحة تحكم المعلم (تحديث فوري ومتزامن للطلاب) ==========
 const TeacherPanel = ({ user }) => {
   const [lessonTime, setLessonTime] = useState('')
   const [homeworkText, setHomeworkText] = useState('')
@@ -241,26 +241,22 @@ const TeacherPanel = ({ user }) => {
   const [students, setStudents] = useState([])
   const [loading, setLoading] = useState(true)
   
-  // مدخلات الإدارة
   const [newLessonTime, setNewLessonTime] = useState('')
   const [newHomeworkText, setNewHomeworkText] = useState('')
-  const [publishType, setPublishType] = useState('now') // 'now' أو 'schedule'
+  const [publishType, setPublishType] = useState('now') 
   const [newHomeworkRevealTime, setNewHomeworkRevealTime] = useState('')
   
-  // وضع تعديل تاريخ الواجب الحالي فقط (التقويم المباشر)
   const [isEditingTime, setIsEditingTime] = useState(false)
   const [editRevealTime, setEditRevealTime] = useState('')
 
-  // مدخلات الطالب الجديد
   const [studentEmail, setStudentEmail] = useState('')
   const [studentPassword, setStudentPassword] = useState('')
   const [studentLoading, setStudentLoading] = useState(false)
   
   const [errorMsg, setErrorMsg] = useState('')
 
+  // وظيفة جلب البيانات الأساسية للجدولة والواجبات
   const fetchTeacherData = async () => {
-    setLoading(true)
-    setErrorMsg('')
     try {
       const { data, error } = await supabase
         .from('teachers')
@@ -284,18 +280,7 @@ const TeacherPanel = ({ user }) => {
         setLessonTime(data.lesson_time || '')
         setHomeworkText(data.homework_text || '')
         setHomeworkRevealTime(data.homework_reveal_time || '')
-        
-        // إصلاح وجلب تفاصيل الطلاب المسجلين بالصف بالكامل وبدقة
-        if (data.students && data.students.length > 0) {
-          const { data: profilesData, error: profError } = await supabase
-            .from('profiles')
-            .select('id, email')
-            .in('id', data.students)
-          if (profError) throw profError
-          setStudents(profilesData || [])
-        } else {
-          setStudents([])
-        }
+        await fetchStudentDetails(data.students || [])
       }
     } catch (err) {
       console.error(err)
@@ -305,7 +290,44 @@ const TeacherPanel = ({ user }) => {
     }
   }
 
-  useEffect(() => { fetchTeacherData() }, [])
+  // جلب تفاصيل البريد الإلكتروني للطلاب اعتماداً على الـ UUIDs
+  const fetchStudentDetails = async (studentIds) => {
+    if (studentIds.length > 0) {
+      const { data: profilesData, error: profError } = await supabase
+        .from('profiles')
+        .select('id, email')
+        .in('id', studentIds)
+      if (!profError && profilesData) {
+        setStudents(profilesData)
+      }
+    } else {
+      setStudents([])
+    }
+  }
+
+  useEffect(() => {
+    fetchTeacherData()
+
+    // الاستماع المباشر للتعديلات في جدول المعلمين لتحديث العداد فوراً
+    const channel = supabase
+      .channel('teacher-changes')
+      .on('postgres_changes', { 
+        event: 'UPDATE', 
+        schema: 'public', 
+        table: 'teachers', 
+        filter: `id=eq.${user.id}` 
+      }, (payload) => {
+        setLessonTime(payload.new.lesson_time || '')
+        setHomeworkText(payload.new.homework_text || '')
+        setHomeworkRevealTime(payload.new.homework_reveal_time || '')
+        fetchStudentDetails(payload.new.students || [])
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [user.id])
 
   const updateLessonTime = async () => {
     if (!newLessonTime) return
@@ -315,7 +337,6 @@ const TeacherPanel = ({ user }) => {
         .update({ lesson_time: newLessonTime })
         .eq('id', user.id)
       if (error) throw error
-      setLessonTime(newLessonTime)
       setNewLessonTime('')
       alert('تم تحديث موعد الحصة بنجاح')
     } catch (err) {
@@ -329,7 +350,6 @@ const TeacherPanel = ({ user }) => {
       return
     }
 
-    // إذا اخترنا نشر الآن، يكون الموعد عبارة عن تاريخ قديم أو فارغ ليظهر فوراً، والأنسب هو توقيت اللحظة الحالية
     const finalRevealTime = publishType === 'now' ? new Date().toISOString() : newHomeworkRevealTime
 
     if (publishType === 'schedule' && !newHomeworkRevealTime) {
@@ -347,8 +367,6 @@ const TeacherPanel = ({ user }) => {
         .eq('id', user.id)
       if (error) throw error
       
-      setHomeworkText(newHomeworkText)
-      setHomeworkRevealTime(finalRevealTime)
       setNewHomeworkText('')
       setNewHomeworkRevealTime('')
       alert(publishType === 'now' ? 'تم نشر الواجب للطلاب فوراً!' : 'تم جدولة الواجب بنجاح')
@@ -357,7 +375,6 @@ const TeacherPanel = ({ user }) => {
     }
   }
 
-  // ميزة تعديل موعد النشر بالتقويم مباشرة للواجب الحالي دون مسحه
   const handleUpdateRevealTimeOnly = async () => {
     if (!editRevealTime) return
     try {
@@ -366,7 +383,6 @@ const TeacherPanel = ({ user }) => {
         .update({ homework_reveal_time: editRevealTime })
         .eq('id', user.id)
       if (error) throw error
-      setHomeworkRevealTime(editRevealTime)
       setIsEditingTime(false)
       alert('تم تحديث تاريخ ووقت نشر الواجب بنجاح')
     } catch (err) {
@@ -374,7 +390,6 @@ const TeacherPanel = ({ user }) => {
     }
   }
 
-  // ميزة حذف الواجب النشط الحالي تماماً
   const handleDeleteHomework = async () => {
     if (!window.confirm('هل أنت متأكد من رغبتك في حذف الواجب الحالي تماماً من عند الطلاب؟')) return
     try {
@@ -383,8 +398,6 @@ const TeacherPanel = ({ user }) => {
         .update({ homework_text: '', homework_reveal_time: null })
         .eq('id', user.id)
       if (error) throw error
-      setHomeworkText('')
-      setHomeworkRevealTime(null)
       alert('تم حذف وتصفير الواجب بنجاح.')
     } catch (err) {
       alert('فشل حذف الواجب: ' + err.message)
@@ -407,7 +420,6 @@ const TeacherPanel = ({ user }) => {
 
       await supabase.from('profiles').insert([{ id: newStudent.id, email: studentEmail, role: 'student' }])
 
-      // تحديث مصفوفة الطلاب بدقة
       const currentStudentIds = students.map(s => s.id)
       const updatedIds = [...currentStudentIds, newStudent.id]
 
@@ -421,7 +433,6 @@ const TeacherPanel = ({ user }) => {
       alert(`تم تسجيل الطالب (${studentEmail}) وتحديث عداد الصف تلقائياً!`)
       setStudentEmail('')
       setStudentPassword('')
-      fetchTeacherData() // تحديث فوري للعداد وللقائمة
     } catch (err) {
       alert('فشل إنشاء حساب الطالب: ' + err.message)
     } finally {
@@ -446,7 +457,7 @@ const TeacherPanel = ({ user }) => {
 
         {errorMsg && <p className="text-red-400 text-sm bg-red-500/10 p-3 rounded-xl border border-red-500/20">{errorMsg}</p>}
         
-        {/* إجمالي الطلاب والعداد الحقيقي */}
+        {/* إجمالي الطلاب والعداد الحقيقي المتزامن */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="glass-glow p-6 rounded-2xl border border-purple-500/20 flex flex-col justify-center">
             <h3 className="text-lg font-semibold text-purple-200">العداد الفعلي للطلاب بالمنصة</h3>
@@ -461,13 +472,12 @@ const TeacherPanel = ({ user }) => {
           </div>
         </div>
 
-        {/* قسم إدارة وإعداد الواجبات الاحترافي الجديد */}
+        {/* قسم إدارة وإعداد الواجبات */}
         <div className="glass p-6 rounded-2xl border border-white/5 space-y-4">
           <h3 className="text-xl font-semibold text-pink-300">إدارة ونشر الواجبات المدرسية</h3>
           <div className="space-y-3">
             <textarea placeholder="اكتب تفاصيل ونص الواجب هنا..." className="input-glass w-full h-24 text-right resize-none" value={newHomeworkText} onChange={(e) => setNewHomeworkText(e.target.value)}/>
             
-            {/* خيار النشر الآن أو الجدولة بالوقت */}
             <div className="flex gap-6 items-center bg-white/5 p-3 rounded-xl border border-white/5 text-sm">
               <span className="text-gray-300 font-medium">آلية النشر المعتمدة:</span>
               <label className="flex items-center gap-1.5 cursor-pointer select-none text-gray-200">
@@ -491,7 +501,6 @@ const TeacherPanel = ({ user }) => {
             </div>
           </div>
 
-          {/* عرض الواجب النشط مع خيارات التعديل بالتقويم والحذف فوراً */}
           {homeworkText && (
             <div className="mt-4 p-4 bg-pink-950/20 rounded-2xl border border-pink-500/20 space-y-3">
               <div className="flex justify-between items-start flex-wrap gap-2">
@@ -503,18 +512,15 @@ const TeacherPanel = ({ user }) => {
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  {/* زر التقويم لتغيير موعد النشر مباشرة */}
                   <button onClick={() => { setIsEditingTime(!isEditingTime); setEditRevealTime(homeworkRevealTime || '') }} className="p-2 bg-blue-600/30 text-blue-300 rounded-xl border border-blue-500/40 text-xs hover:bg-blue-600/50 transition-colors" title="تعديل موعد النشر (التقويم)">
                     📅 تعديل الموعد
                   </button>
-                  {/* زر حذف الواجب تماماً */}
                   <button onClick={handleDeleteHomework} className="p-2 bg-red-600/30 text-red-300 rounded-xl border border-red-500/40 text-xs hover:bg-red-600/50 transition-colors">
                     🗑️ حذف الواجب
                   </button>
                 </div>
               </div>
 
-              {/* واجهة منبثقة بسيطة لتحديث التقويم مباشرة */}
               {isEditingTime && (
                 <div className="p-3 bg-black/40 rounded-xl border border-white/5 flex flex-col sm:flex-row gap-3 items-end">
                   <div className="flex-1 w-full">
@@ -531,7 +537,7 @@ const TeacherPanel = ({ user }) => {
           )}
         </div>
 
-        {/* لوحة تسجيل وإضافة الطلاب الجدد بالصف الواحد */}
+        {/* لوحة تسجيل وإضافة الطلاب الجدد */}
         <div className="glass p-6 rounded-2xl border border-white/5 space-y-4">
           <h3 className="text-xl font-semibold text-blue-300">لوحة تسجيل الطلاب الجدد</h3>
           <form onSubmit={handleCreateStudent} className="flex flex-col md:flex-row gap-4 items-end">
@@ -581,7 +587,7 @@ const TeacherPanel = ({ user }) => {
   )
 }
 
-// ========== 7. لوحة تحكم الطالب (تعرض وتخفي البيانات فورياً ومتزامنة) ==========
+// ========== 7. لوحة تحكم الطالب (تحديث فوري وتلقائي للواجبات والطلاب) ==========
 const StudentPanel = ({ user }) => {
   const [teacherData, setTeacherData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -589,8 +595,6 @@ const StudentPanel = ({ user }) => {
   const [isHomeworkLocked, setIsHomeworkLocked] = useState(true)
 
   const fetchTeacherInfo = async () => {
-    setLoading(true)
-    setErrorMsg('')
     try {
       const { data, error } = await supabase
         .from('teachers')
@@ -600,12 +604,7 @@ const StudentPanel = ({ user }) => {
       if (error) throw error
       if (data && data.length > 0) {
         setTeacherData(data[0])
-        if (data[0].homework_reveal_time) {
-          const isPast = new Date(data[0].homework_reveal_time).getTime() - new Date().getTime() <= 0
-          setIsHomeworkLocked(!isPast)
-        } else {
-          setIsHomeworkLocked(true)
-        }
+        checkHomeworkLock(data[0].homework_reveal_time)
       }
     } catch (err) {
       console.error(err)
@@ -615,12 +614,40 @@ const StudentPanel = ({ user }) => {
     }
   }
 
+  const checkHomeworkLock = (revealTime) => {
+    if (revealTime) {
+      const isPast = new Date(revealTime).getTime() - new Date().getTime() <= 0
+      setIsHomeworkLocked(!isPast)
+    } else {
+      setIsHomeworkLocked(true)
+    }
+  }
+
   useEffect(() => {
     fetchTeacherInfo()
+
+    // الاستماع المباشر للتغيرات لتحديث لوحة الطالب فوراً دون إعادة تحميل الصفحة
+    const channel = supabase
+      .channel('student-teacher-monitor')
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'teachers'
+      }, (payload) => {
+        setTeacherData(payload.new)
+        checkHomeworkLock(payload.new.homework_reveal_time)
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [])
+
+  useEffect(() => {
     const checkInterval = setInterval(() => {
       if (teacherData?.homework_reveal_time) {
-        const isPast = new Date(teacherData.homework_reveal_time).getTime() - new Date().getTime() <= 0
-        setIsHomeworkLocked(!isPast)
+        checkHomeworkLock(teacherData.homework_reveal_time)
       }
     }, 1000)
     return () => clearInterval(checkInterval)
