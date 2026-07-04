@@ -8,13 +8,10 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('متغيرات Supabase غير محددة في ملف .env')
+  throw new Error('متغيرات Supabase غير مححدد في ملف .env')
 }
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey)
-
-// معرّف ثابت وموحد للمعلم والصف الواحد لضمان عدم التداخل والخلط
-const SINGLE_TEACHER_ID = "00000000-0000-0000-0000-000000000000"
 
 // ========== 2. هوك مخصص لتغيير ألوان الخلفية تلقائياً وحركة الشعار الخلفي ==========
 const useDynamicBackground = () => {
@@ -138,78 +135,36 @@ const HomeworkTextCountdown = ({ targetDate }) => {
   )
 }
 
-// ========== 5. مكون تسجيل الدخول ==========
+// ========== 5. واجهة تسجيل الدخول (تسجيل دخول فقط - تم إلغاء SignUp العام) ==========
 const Login = ({ onLogin }) => {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [isSignUp, setIsSignUp] = useState(false)
-  const [role, setRole] = useState('student')
 
   const handleAuth = async (e) => {
     e.preventDefault()
     setLoading(true)
     setError('')
     try {
-      if (isSignUp) {
-        const { data, error } = await supabase.auth.signUp({
-          email, password,
-          options: { data: { role } }
-        })
-        if (error) throw error
-        const user = data.user
-        if (!user) throw new Error('فشل إنشاء الحساب')
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+      if (error) throw error
+      const user = data.user
+      if (!user) throw new Error('فشل تسجيل الدخول')
 
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert([{ id: user.id, email, role }])
-        if (profileError) console.warn('profile insert error:', profileError)
+      let userRole = user.user_metadata?.role || 'student'
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+      if (profileData) userRole = profileData.role
 
-        // إذا سجل طالب جديد، نقوم تلقائياً بإضافته إلى مصفوفة الطلاب في الصف الواحد
-        if (role === 'student') {
-          const { data: currentClass } = await supabase
-            .from('teachers')
-            .select('students')
-            .eq('id', SINGLE_TEACHER_ID)
-            .single()
-          
-          if (currentClass) {
-            const updatedStudents = currentClass.students ? [...currentClass.students, user.id] : [user.id]
-            await supabase
-              .from('teachers')
-              .update({ students: updatedStudents })
-              .eq('id', SINGLE_TEACHER_ID)
-          }
-        }
-
-        onLogin({ id: user.id, email: user.email, role })
-        return
-      } else {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-        if (error) throw error
-        const user = data.user
-        if (!user) throw new Error('فشل تسجيل الدخول')
-
-        let userRole = user.user_metadata?.role || 'student'
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', user.id)
-          .single()
-        if (profileData) userRole = profileData.role
-
-        onLogin({ id: user.id, email: user.email, role: userRole })
-        return
-      }
+      onLogin({ id: user.id, email: user.email, role: userRole })
     } catch (err) {
       console.error(err)
-      if (err.message.includes('rate limit')) {
-        setError('تجاوزت حد إرسال الرسائل. تأكد من إلغاء تفعيل تأكيد البريد في إعدادات Supabase.')
-      } else if (err.message.includes('User already registered')) {
-        setError('هذا البريد مسجل مسبقاً، يرجى تسجيل الدخول.')
-      } else if (err.message.includes('Invalid login credentials')) {
+      if (err.message.includes('Invalid login credentials')) {
         setError('اسم المستخدم أو كلمة المرور غير صحيحة.')
       } else {
         setError(err.message)
@@ -224,7 +179,7 @@ const Login = ({ onLogin }) => {
       <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
       
       <div className="relative z-10 w-full max-w-md px-4">
-        <div className="glass p-6 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl flex flex-col items-center relative overflow-hidden min-h-[480px] justify-center">
+        <div className="glass p-6 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl flex flex-col items-center relative overflow-hidden min-h-[440px] justify-center">
           
           <div className="absolute inset-0 flex items-start justify-center pt-6 pointer-events-none z-0 overflow-hidden">
             <img 
@@ -239,7 +194,7 @@ const Login = ({ onLogin }) => {
             
             <div className="text-center space-y-1 w-full">
               <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 text-transparent bg-clip-text">
-                {isSignUp ? 'إنشاء حساب جديد' : 'الفرسان التقنيين - اقرآ وارتق'}
+                الفرسان التقنيين - اقرآ وارتق
               </h2>
               
               <div className="w-full max-w-[310px] bg-black/50 border border-white/10 px-4 py-1.5 rounded-full mx-auto shadow-inner">
@@ -255,7 +210,6 @@ const Login = ({ onLogin }) => {
                 <span className="absolute right-4 text-gray-400 pointer-events-none text-sm font-medium">اسم المستخدم</span>
                 <input 
                   type="email" 
-                  placeholder="" 
                   className="input-glass w-full text-right pr-24 pl-4 text-base bg-black/20" 
                   value={email} 
                   onChange={(e) => setEmail(e.target.value)} 
@@ -267,7 +221,6 @@ const Login = ({ onLogin }) => {
                 <span className="absolute right-4 text-gray-400 pointer-events-none text-sm font-medium">كلمة المرور</span>
                 <input 
                   type={showPassword ? "text" : "password"} 
-                  placeholder="" 
                   className="input-glass w-full text-right pr-24 pl-12 text-base bg-black/20" 
                   value={password} 
                   onChange={(e) => setPassword(e.target.value)} 
@@ -282,17 +235,6 @@ const Login = ({ onLogin }) => {
                 </button>
               </div>
               
-              {isSignUp && (
-                <div className="flex gap-6 items-center justify-center text-sm py-1.5 bg-white/5 rounded-xl border border-white/5">
-                  <label className="flex items-center gap-2 cursor-pointer select-none text-gray-200">
-                    <input type="radio" value="student" className="accent-purple-500" checked={role === 'student'} onChange={() => setRole('student')} /> طالب
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer select-none text-gray-200">
-                    <input type="radio" value="teacher" className="accent-purple-500" checked={role === 'teacher'} onChange={() => setRole('teacher')} /> معلم
-                  </label>
-                </div>
-              )}
-              
               {error && <p className="text-red-400 text-sm text-center whitespace-pre-wrap">{error}</p>}
               
               <button 
@@ -300,19 +242,9 @@ const Login = ({ onLogin }) => {
                 className="btn-primary w-full py-2.5 text-lg font-semibold tracking-wide shadow-lg"
                 disabled={loading}
               >
-                {loading ? 'جاري التحميل...' : isSignUp ? 'تسجيل الحساب' : 'تسجيل الدخول'}
+                {loading ? 'جاري التحميل...' : 'تسجيل الدخول'}
               </button>
             </form>
-            
-            <p className="text-center text-sm text-gray-300 w-full pt-1">
-              {isSignUp ? 'لديك حساب بالفعل؟' : 'ليس لديك حساب بعد؟'}
-              <button 
-                onClick={() => setIsSignUp(!isSignUp)} 
-                className="text-purple-400 hover:underline mr-2 font-semibold"
-              >
-                {isSignUp ? 'تسجيل الدخول' : 'إنشاء حساب'}
-              </button>
-            </p>
 
             <div className="pt-2 border-t border-white/10 text-center text-xs text-gray-400 w-full">
               <p>جميع الحقوق محفوظة © 2026 لصالح المبرمج همام هاني محمد علي</p>
@@ -325,16 +257,24 @@ const Login = ({ onLogin }) => {
   )
 }
 
-// ========== 6. لوحة المعلم (مرتبطة بالمعرّف الثابت للموقع والصف الواحد) ==========
+// ========== 6. لوحة التحكم للمعلم مع ميزة إضافة حسابات الطلاب بنفسه ==========
 const TeacherPanel = ({ user }) => {
   const [lessonTime, setLessonTime] = useState('')
   const [homeworkText, setHomeworkText] = useState('')
   const [homeworkRevealTime, setHomeworkRevealTime] = useState('')
   const [students, setStudents] = useState([])
   const [loading, setLoading] = useState(true)
+  
+  // مدخلات الأقسام
   const [newLessonTime, setNewLessonTime] = useState('')
   const [newHomeworkText, setNewHomeworkText] = useState('')
   const [newHomeworkRevealTime, setNewHomeworkRevealTime] = useState('')
+  
+  // مدخلات الطالب الجديد
+  const [studentEmail, setStudentEmail] = useState('')
+  const [studentPassword, setStudentPassword] = useState('')
+  const [studentLoading, setStudentLoading] = useState(false)
+  
   const [errorMsg, setErrorMsg] = useState('')
 
   const fetchTeacherData = async () => {
@@ -344,14 +284,14 @@ const TeacherPanel = ({ user }) => {
       const { data, error } = await supabase
         .from('teachers')
         .select('lesson_time, students, homework_text, homework_reveal_time')
-        .eq('id', SINGLE_TEACHER_ID)
+        .eq('id', user.id)
         .single()
       
       if (error) {
         if (error.code === 'PGRST116') {
           await supabase
             .from('teachers')
-            .insert([{ id: SINGLE_TEACHER_ID, students: [], homework_text: '', homework_reveal_time: '' }])
+            .insert([{ id: user.id, students: [], homework_text: '', homework_reveal_time: '' }])
           setLessonTime('')
           setHomeworkText('')
           setHomeworkRevealTime('')
@@ -390,7 +330,7 @@ const TeacherPanel = ({ user }) => {
       const { error } = await supabase
         .from('teachers')
         .update({ lesson_time: newLessonTime })
-        .eq('id', SINGLE_TEACHER_ID)
+        .eq('id', user.id)
       if (error) throw error
       setLessonTime(newLessonTime)
       setNewLessonTime('')
@@ -412,7 +352,7 @@ const TeacherPanel = ({ user }) => {
           homework_text: newHomeworkText, 
           homework_reveal_time: newHomeworkRevealTime 
         })
-        .eq('id', SINGLE_TEACHER_ID)
+        .eq('id', user.id)
       if (error) throw error
       setHomeworkText(newHomeworkText)
       setHomeworkRevealTime(newHomeworkRevealTime)
@@ -421,6 +361,47 @@ const TeacherPanel = ({ user }) => {
       alert('تم حفظ الواجب وجدولة موعد الإظهار بنجاح')
     } catch (err) {
       alert('فشل الحفظ: ' + err.message)
+    }
+  }
+
+  // دالة مخصصة لإنشاء حساب الطالب الجديد وإضافته للصف فوراً
+  const handleCreateStudent = async (e) => {
+    e.preventDefault()
+    if (!studentEmail || !studentPassword) return
+    setStudentLoading(true)
+    try {
+      // إنشاء الحساب في السوبابيز
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email: studentEmail,
+        password: studentPassword,
+        options: { data: { role: 'student' } }
+      })
+      if (signUpError) throw signUpError
+      const newStudent = signUpData.user
+      if (!newStudent) throw new Error('تعذر إتمام العملية')
+
+      // إضافة بروفايل الطالب
+      await supabase.from('profiles').insert([{ id: newStudent.id, email: studentEmail, role: 'student' }])
+
+      // تحديث مصفوفة الطلاب الحالية للمعلم
+      const currentStudentIds = students.map(s => s.id)
+      const updatedIds = [...currentStudentIds, newStudent.id]
+
+      const { error: updateClassError } = await supabase
+        .from('teachers')
+        .update({ students: updatedIds })
+        .eq('id', user.id)
+      
+      if (updateClassError) throw updateClassError
+
+      alert(`تم إنشاء حساب الطالب (${studentEmail}) بنجاح وضمه للمنصة!`)
+      setStudentEmail('')
+      setStudentPassword('')
+      fetchTeacherData() // تحديث القائمة والعداد
+    } catch (err) {
+      alert('فشل إنشاء حساب الطالب: ' + err.message)
+    } finally {
+      setStudentLoading(false)
     }
   }
 
@@ -446,43 +427,42 @@ const TeacherPanel = ({ user }) => {
           {lessonTime ? <CountdownTimer targetDate={lessonTime} /> : <p className="text-gray-400 text-center">لم تقم بتحديد موعد حصة بعد</p>}
         </div>
 
+        {/* قسم إنشاء حسابات الطلاب الجديد بدلاً من التسجيل المفتوح */}
+        <div className="glass p-6 rounded-2xl border border-white/5 space-y-4">
+          <h3 className="text-xl font-semibold text-blue-300">لوحة تسجيل الطلاب الجدد</h3>
+          <form onSubmit={handleCreateStudent} className="flex flex-col md:flex-row gap-4 items-end">
+            <div className="flex-1 w-full space-y-1">
+              <span className="text-xs text-gray-400 mr-1">بريد الطالب الإلكتروني:</span>
+              <input type="email" className="input-glass w-full text-right" placeholder="student@example.com" value={studentEmail} onChange={e => setStudentEmail(e.target.value)} required />
+            </div>
+            <div className="flex-1 w-full space-y-1">
+              <span className="text-xs text-gray-400 mr-1">تعيين كلمة المرور:</span>
+              <input type="text" className="input-glass w-full text-right" placeholder="كلمة مرور قوية" value={studentPassword} onChange={e => setStudentPassword(e.target.value)} required />
+            </div>
+            <button type="submit" disabled={studentLoading} className="btn-primary bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 py-3.5 px-6 w-full md:w-auto whitespace-nowrap">
+              {studentLoading ? 'جاري التسجيل...' : 'تسجيل وإضافة الطالب'}
+            </button>
+          </form>
+        </div>
+
         <div className="glass p-6 rounded-2xl border border-white/5 space-y-4">
           <h3 className="text-xl font-semibold text-purple-200">جدولة موعد حصة جديد</h3>
           <div className="flex flex-col sm:flex-row gap-4 items-stretch">
-            <input 
-              type="datetime-local" 
-              className="input-glass flex-1 text-right" 
-              value={newLessonTime} 
-              onChange={(e) => setNewLessonTime(e.target.value)} 
-            />
-            <button onClick={updateLessonTime} className="btn-primary py-3 px-6">
-              حفظ الحصة
-            </button>
+            <input type="datetime-local" className="input-glass flex-1 text-right" value={newLessonTime} onChange={(e) => setNewLessonTime(e.target.value)} />
+            <button onClick={updateLessonTime} className="btn-primary py-3 px-6">حفظ الحصة</button>
           </div>
         </div>
 
         <div className="glass p-6 rounded-2xl border border-white/5 space-y-4">
           <h3 className="text-xl font-semibold text-pink-300">قسم إدارة الواجبات المجدولة</h3>
           <div className="space-y-3">
-            <textarea 
-              placeholder="اكتب تفاصيل ونص الواجب المدرسي هنا..."
-              className="input-glass w-full h-24 text-right resize-none"
-              value={newHomeworkText}
-              onChange={(e) => setNewHomeworkText(e.target.value)}
-            />
+            <textarea placeholder="اكتب تفاصيل ونص الواجب المدرسي هنا..." className="input-glass w-full h-24 text-right resize-none" value={newHomeworkText} onChange={(e) => setNewHomeworkText(e.target.value)}/>
             <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center">
               <div className="flex-1 flex flex-col gap-1">
                 <span className="text-xs text-gray-400 mr-2">تاريخ ووقت إظهار الواجب تلقائياً للطلاب:</span>
-                <input 
-                  type="datetime-local" 
-                  className="input-glass text-right" 
-                  value={newHomeworkRevealTime} 
-                  onChange={(e) => setNewHomeworkRevealTime(e.target.value)} 
-                />
+                <input type="datetime-local" className="input-glass text-right" value={newHomeworkRevealTime} onChange={(e) => setNewHomeworkRevealTime(e.target.value)} />
               </div>
-              <button onClick={saveHomework} className="btn-primary bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 py-3.5 px-6 self-end sm:self-auto">
-                نشر وجدولة الواجب
-              </button>
+              <button onClick={saveHomework} className="btn-primary bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 py-3.5 px-6 self-end sm:self-auto">نشر وجدولة الواجب</button>
             </div>
           </div>
           {homeworkText && (
@@ -515,7 +495,7 @@ const TeacherPanel = ({ user }) => {
   )
 }
 
-// ========== 7. لوحة الطالب (تستعلم مباشرة من نفس الصف والمعلم الموحد) ==========
+// ========== 7. لوحة الطالب (تستعلم مباشرة من أول معلم متاح في النظام) ==========
 const StudentPanel = ({ user }) => {
   const [teacherData, setTeacherData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -526,18 +506,16 @@ const StudentPanel = ({ user }) => {
     setLoading(true)
     setErrorMsg('')
     try {
-      // الاستعلام مباشرة بالمعرّف الموحد للصف الواحد دون التفتيش العشوائي
       const { data, error } = await supabase
         .from('teachers')
         .select('lesson_time, students, homework_text, homework_reveal_time')
-        .eq('id', SINGLE_TEACHER_ID)
-        .single()
+        .limit(1)
       
       if (error) throw error
-      if (data) {
-        setTeacherData(data)
-        if (data.homework_reveal_time) {
-          const isPast = new Date(data.homework_reveal_time).getTime() - new Date().getTime() <= 0
+      if (data && data.length > 0) {
+        setTeacherData(data[0])
+        if (data[0].homework_reveal_time) {
+          const isPast = new Date(data[0].homework_reveal_time).getTime() - new Date().getTime() <= 0
           setIsHomeworkLocked(!isPast)
         }
       }
