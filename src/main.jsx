@@ -13,7 +13,36 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-// ========== 2. مكون العداد التنازلي (مطور) ==========
+// ========== 2. هوك مخصص (Custom Hook) لتغيير ألوان الخلفية تلقائياً ==========
+const useDynamicBackground = () => {
+  useEffect(() => {
+    const bgGradients = [
+      'linear-gradient(135deg, #0f172a, #1e1b4b, #311042)', // نيون داكن
+      'linear-gradient(135deg, #090d16, #111827, #1f2937)', // رمادي/أسود ميتاليك
+      'linear-gradient(135deg, #020617, #0f172a, #1e293b)', // أزرق ليلي عميق
+      'linear-gradient(135deg, #070a13, #161224, #281432)'  // بنفسجي داكن غامض
+    ];
+    let currentIndex = 0;
+
+    // تعيين الخلفية المبدئية
+    document.body.style.background = bgGradients[currentIndex];
+    document.body.style.transition = 'background 4s ease-in-out';
+
+    // تغيير الخلفية كل 7 ثوانٍ بشكل سلس
+    const interval = setInterval(() => {
+      currentIndex = (currentIndex + 1) % bgGradients.length;
+      document.body.style.background = bgGradients[currentIndex];
+    }, 7000);
+
+    return () => {
+      clearInterval(interval);
+      document.body.style.background = '';
+      document.body.style.transition = '';
+    };
+  }, []);
+};
+
+// ========== 3. مكون العداد التنازلي (مطور ومترجم) ==========
 const CountdownTimer = ({ targetDate }) => {
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
 
@@ -22,7 +51,7 @@ const CountdownTimer = ({ targetDate }) => {
       const distance = new Date(targetDate).getTime() - new Date().getTime()
       if (distance < 0) {
         setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 })
-        return true // انتهى الوقت
+        return true 
       }
       setTimeLeft({
         days: Math.floor(distance / (1000 * 60 * 60 * 24)),
@@ -41,7 +70,6 @@ const CountdownTimer = ({ targetDate }) => {
     return () => clearInterval(interval)
   }, [targetDate])
 
-  // ترجمة المفاتيح للعربية للعرض المريح
   const labels = { days: 'أيام', hours: 'ساعات', minutes: 'دقائق', seconds: 'ثواني' };
 
   return (
@@ -56,7 +84,7 @@ const CountdownTimer = ({ targetDate }) => {
   )
 }
 
-// ========== 3. مكون تسجيل الدخول (تصميم زجاجي بالكامل) ==========
+// ========== 4. مكون تسجيل الدخول (تصميم زجاجي) ==========
 const Login = ({ onLogin }) => {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -127,8 +155,8 @@ const Login = ({ onLogin }) => {
   }
 
   return (
-    <div className="container-center relative min-h-screen overflow-hidden bg-gradient-programming">
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
+    <div className="container-center relative min-h-screen overflow-hidden">
+      <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
       
       <div className="relative z-10 w-full max-w-md px-4">
         <div className="glass p-8 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl">
@@ -200,7 +228,7 @@ const Login = ({ onLogin }) => {
   )
 }
 
-// ========== 4. لوحة المعلم ==========
+// ========== 5. لوحة المعلم ==========
 const TeacherPanel = ({ user }) => {
   const [lessonTime, setLessonTime] = useState('')
   const [students, setStudents] = useState([])
@@ -270,7 +298,7 @@ const TeacherPanel = ({ user }) => {
   const handleLogout = async () => { await supabase.auth.signOut() }
 
   return (
-    <div className="container-center min-h-screen bg-gradient-programming p-4 relative" dir="rtl">
+    <div className="container-center min-h-screen p-4 relative" dir="rtl">
       <div className="glass p-8 max-w-4xl w-full space-y-8 z-10 border border-white/10">
         <div className="flex justify-between items-center flex-wrap gap-4 border-b border-white/10 pb-4">
           <div>
@@ -326,7 +354,7 @@ const TeacherPanel = ({ user }) => {
   )
 }
 
-// ========== 5. لوحة الطالب ==========
+// ========== 6. لوحة الطالب ==========
 const StudentPanel = ({ user }) => {
   const [teacherData, setTeacherData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -356,7 +384,7 @@ const StudentPanel = ({ user }) => {
   const handleLogout = async () => { await supabase.auth.signOut() }
 
   return (
-    <div className="container-center min-h-screen bg-gradient-programming p-4 relative" dir="rtl">
+    <div className="container-center min-h-screen p-4 relative" dir="rtl">
       <div className="glass p-8 max-w-4xl w-full space-y-8 z-10 border border-white/10">
         <div className="flex justify-between items-center flex-wrap gap-4 border-b border-white/10 pb-4">
           <div>
@@ -394,13 +422,15 @@ const StudentPanel = ({ user }) => {
   )
 }
 
-// ========== 6. التطبيق الرئيسي ==========
+// ========== 7. التطبيق الرئيسي ==========
 const App = () => {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
 
+  // تفعيل الهوك الخاص بالخلفية المتغيرة ديناميكياً
+  useDynamicBackground();
+
   useEffect(() => {
-    // 1. التحقق من الجلسة الحالية عند الإقلاع
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         supabase
@@ -426,7 +456,6 @@ const App = () => {
       }
     })
 
-    // 2. الاستماع لتغيرات حالة المصادقة (دخول/خروج)
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         supabase
@@ -455,7 +484,7 @@ const App = () => {
 
   if (loading) {
     return (
-      <div className="container-center min-h-screen bg-gradient-programming text-white">
+      <div className="container-center min-h-screen text-white">
         <div className="glass p-8 rounded-2xl border border-white/10 shadow-xl animate-pulse">
           جاري تحميل واجهة الفرسان...
         </div>
@@ -467,7 +496,7 @@ const App = () => {
   return user.role === 'teacher' ? <TeacherPanel user={user} /> : <StudentPanel user={user} />
 }
 
-// ========== 7. تشغيل التطبيق ==========
+// ========== 8. تشغيل التطبيق ==========
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <App />
