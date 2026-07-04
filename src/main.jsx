@@ -1,3 +1,4 @@
+import './index.css'
 import React, { useState, useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
 import { createClient } from '@supabase/supabase-js'
