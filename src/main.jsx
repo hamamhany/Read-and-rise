@@ -96,7 +96,7 @@ const CountdownTimer = ({ targetDate }) => {
   )
 }
 
-// ========== 4. مكون العداد النصي للواجب المجدول (يستخدم في لوحة الطالب) ==========
+// ========== 4. مكون العداد النصي للواجب المجدول ==========
 const HomeworkTextCountdown = ({ targetDate }) => {
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
   const [isPast, setIsPast] = useState(false)
@@ -251,6 +251,9 @@ const TeacherPanel = ({ user }) => {
   const [studentPassword, setStudentPassword] = useState('')
   const [studentLoading, setStudentLoading] = useState(false)
 
+  // حالة جدولة موعد الحصة (تم إضافتها حسب الطلب)
+  const [newLessonTime, setNewLessonTime] = useState('')
+
   // ====== 1. جلب البيانات الأساسية مع عداد الطلاب الفعلي ======
   const fetchTeacherData = async () => {
     try {
@@ -391,7 +394,26 @@ const TeacherPanel = ({ user }) => {
     return diffDays >= 30
   }
 
-  // ====== 5. دوال تسجيل طالب جديد ======
+  // ====== 5. دالة حفظ وتحديث موعد الحصة القادمة (تم إضافتها حسب الطلب) ======
+  const updateLessonTime = async () => {
+    if (!newLessonTime) return alert('يرجى اختيار تاريخ ووقت الحصة أولاً.')
+    try {
+      const { error } = await supabase
+        .from('teachers')
+        .update({ lesson_time: newLessonTime })
+        .eq('id', user.id)
+      
+      if (error) throw error
+      
+      setLessonTime(newLessonTime)
+      setNewLessonTime('')
+      alert('تم تحديث موعد الحصة القادمة بنجاح!')
+    } catch (err) {
+      alert('فشل تحديث موعد الحصة: ' + err.message)
+    }
+  }
+
+  // ====== 6. دوال تسجيل طالب جديد ======
   const handleCreateStudent = async (e) => {
     e.preventDefault()
     if (!studentEmail || !studentPassword) return
@@ -429,7 +451,7 @@ const TeacherPanel = ({ user }) => {
 
   const handleLogout = async () => { await supabase.auth.signOut() }
 
-  // ====== 6. الفرز الذكي للواجبات والطلاب ======
+  // ====== 7. الفرز الذكي للواجبات والطلاب ======
   const sortedHomeworks = [...homeworks].sort((a, b) => (b.is_scheduled ? 1 : 0) - (a.is_scheduled ? 1 : 0))
   const sortedStudents = [...students].sort((a, b) => (a.is_frozen ? 1 : 0) - (b.is_frozen ? 1 : 0))
 
