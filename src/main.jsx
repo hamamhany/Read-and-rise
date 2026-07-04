@@ -8,7 +8,7 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('متغيرات Supabase غير مححدد في ملف .env')
+  throw new Error('متغيرات Supabase غير محددة في ملف .env')
 }
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey)
@@ -96,7 +96,7 @@ const CountdownTimer = ({ targetDate }) => {
   )
 }
 
-// ========== 4. مكون تسجيل الدخول بتصميم مدمج وبدون فراغات عمودية ==========
+// ========== 4. مكون تسجيل الدخول مع رفع الشعار المائي للأعلى ==========
 const Login = ({ onLogin }) => {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -172,11 +172,10 @@ const Login = ({ onLogin }) => {
       <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
       
       <div className="relative z-10 w-full max-w-md px-4">
-        {/* الكارد الرئيسي الزجاجي مع خاصية relative لاحتواء الشعار الخلفي */}
         <div className="glass p-6 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl flex flex-col items-center relative overflow-hidden min-h-[480px] justify-center">
           
-          {/* الشعار المائي الخلفي - ضخم جداً ويملأ الخلفية بامتياز دون حجز مسافة عمودية تؤدي للفراغات */}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0 overflow-hidden">
+          {/* تم تعديل التموضع هنا (items-start pt-6) ليرتفع الشعار للأعلى خلف العناوين ولا تحجبه الأزرار */}
+          <div className="absolute inset-0 flex items-start justify-center pt-6 pointer-events-none z-0 overflow-hidden">
             <img 
               src="/images/logo.png" 
               alt="" 
@@ -185,7 +184,6 @@ const Login = ({ onLogin }) => {
             />
           </div>
           
-          {/* محتوى الاستمارة المرفوع في طبقة أعلى z-10 ومتراص تماماً لإلغاء أي فجوات */}
           <div className="w-full z-10 flex flex-col items-center space-y-4">
             
             <div className="text-center space-y-1 w-full">
@@ -202,7 +200,6 @@ const Login = ({ onLogin }) => {
             
             <form onSubmit={handleAuth} className="space-y-3.5 w-full">
               
-              {/* حقل اسم المستخدم فارغ تماماً من الداخل */}
               <div className="relative flex items-center">
                 <span className="absolute right-4 text-gray-400 pointer-events-none text-sm font-medium">اسم المستخدم</span>
                 <input 
@@ -215,7 +212,6 @@ const Login = ({ onLogin }) => {
                 />
               </div>
 
-              {/* حقل كلمة المرور فارغ تماماً من الداخل */}
               <div className="relative flex items-center">
                 <span className="absolute right-4 text-gray-400 pointer-events-none text-sm font-medium">كلمة المرور</span>
                 <input 
