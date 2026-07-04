@@ -42,7 +42,7 @@ const CountdownTimer = ({ targetDate }) => {
   )
 }
 
-// ========== 3. مكون تسجيل الدخول ==========
+// ========== 3. مكون تسجيل الدخول (معدل) ==========
 const Login = ({ onLogin }) => {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -50,12 +50,6 @@ const Login = ({ onLogin }) => {
   const [error, setError] = useState('')
   const [isSignUp, setIsSignUp] = useState(false)
   const [role, setRole] = useState('student')
-  const [bgImage, setBgImage] = useState('')
-
-  useEffect(() => {
-    const randomNum = Math.floor(Math.random() * 12) + 1
-    setBgImage(`/images/background-${randomNum}.jpg`)
-  }, [])
 
   const handleAuth = async (e) => {
     e.preventDefault()
@@ -63,7 +57,6 @@ const Login = ({ onLogin }) => {
     setError('')
     try {
       if (isSignUp) {
-        // 1. التسجيل
         const { data, error } = await supabase.auth.signUp({
           email, password,
           options: { data: { role } }
@@ -72,13 +65,11 @@ const Login = ({ onLogin }) => {
         const user = data.user
         if (!user) throw new Error('فشل إنشاء الحساب')
 
-        // 2. إنشاء الملف الشخصي
         const { error: profileError } = await supabase
           .from('profiles')
           .insert([{ id: user.id, email, role }])
         if (profileError) console.warn('profile insert error:', profileError)
 
-        // 3. إنشاء صف المعلم إن كان معلم
         if (role === 'teacher') {
           const { error: teacherError } = await supabase
             .from('teachers')
@@ -86,17 +77,14 @@ const Login = ({ onLogin }) => {
           if (teacherError) console.warn('teacher insert error:', teacherError)
         }
 
-        // 4. تسجيل الدخول التلقائي
         onLogin({ id: user.id, email: user.email, role })
         return
       } else {
-        // تسجيل الدخول
         const { data, error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
         const user = data.user
         if (!user) throw new Error('فشل تسجيل الدخول')
 
-        // جلب الدور من profiles
         let userRole = user.user_metadata?.role || 'student'
         const { data: profileData } = await supabase
           .from('profiles')
@@ -127,40 +115,72 @@ const Login = ({ onLogin }) => {
   }
 
   return (
-    <div className="container-center relative min-h-screen overflow-hidden">
-      <div className="absolute inset-0 bg-cover bg-center transition-all duration-1000" 
-           style={{ backgroundImage: `url(${bgImage})`, filter: 'blur(6px) scale(1.1)' }} />
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-      <div className="relative z-10 w-full max-w-md">
-        <div className="glass p-8 rounded-2xl shadow-2xl border border-white/10">
-          <img 
-            src="/images/logo.png" 
-            alt="شعار التطبيق" 
-            className="w-24 h-24 mx-auto mb-4 rounded-2xl shadow-lg border-2 border-white/20 object-cover"
-            onError={(e) => e.target.style.display = 'none'}
-          />
-          <h2 className="text-3xl font-bold text-center mb-2 bg-gradient-to-r from-purple-400 to-pink-400 text-transparent bg-clip-text">
-            {isSignUp ? 'إنشاء حساب' : 'تسجيل الدخول'}
+    <div className="container-center relative min-h-screen overflow-hidden bg-gradient-programming">
+      {/* خلفية شفافة مع تأثير ضبابي */}
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
+      
+      <div className="relative z-10 w-full max-w-md px-4">
+        <div className="glass p-8 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl">
+          {/* شعار بحجم محدد */}
+          <div className="flex justify-center mb-4">
+            <img 
+              src="/images/logo.png" 
+              alt="شعار التطبيق" 
+              className="w-20 h-20 rounded-2xl shadow-lg border-2 border-white/30 object-cover"
+              onError={(e) => e.target.style.display = 'none'}
+            />
+          </div>
+          
+          <h2 className="text-3xl font-bold text-center mb-6 bg-gradient-to-r from-purple-400 to-pink-400 text-transparent bg-clip-text">
+            {isSignUp ? 'إنشاء حساب' : 'مرحباً بك'}
           </h2>
+          
           <form onSubmit={handleAuth} className="space-y-5">
-            <input type="email" placeholder="البريد الإلكتروني" className="input-glass" 
-                   value={email} onChange={(e) => setEmail(e.target.value)} required />
-            <input type="password" placeholder="كلمة المرور" className="input-glass" 
-                   value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <input 
+              type="email" 
+              placeholder="البريد الإلكتروني" 
+              className="input-glass w-full" 
+              value={email} 
+              onChange={(e) => setEmail(e.target.value)} 
+              required 
+            />
+            <input 
+              type="password" 
+              placeholder="كلمة المرور" 
+              className="input-glass w-full" 
+              value={password} 
+              onChange={(e) => setPassword(e.target.value)} 
+              required 
+            />
+            
             {isSignUp && (
-              <div className="flex gap-4 items-center justify-center">
-                <label className="flex items-center gap-2"><input type="radio" value="student" checked={role === 'student'} onChange={() => setRole('student')} /> طالب</label>
-                <label className="flex items-center gap-2"><input type="radio" value="teacher" checked={role === 'teacher'} onChange={() => setRole('teacher')} /> معلم</label>
+              <div className="flex gap-4 items-center justify-center text-sm">
+                <label className="flex items-center gap-2">
+                  <input type="radio" value="student" checked={role === 'student'} onChange={() => setRole('student')} /> طالب
+                </label>
+                <label className="flex items-center gap-2">
+                  <input type="radio" value="teacher" checked={role === 'teacher'} onChange={() => setRole('teacher')} /> معلم
+                </label>
               </div>
             )}
+            
             {error && <p className="text-red-400 text-sm text-center whitespace-pre-wrap">{error}</p>}
-            <button type="submit" className="btn-primary w-full" disabled={loading}>
+            
+            <button 
+              type="submit" 
+              className="btn-primary w-full py-3 text-lg font-semibold tracking-wide"
+              disabled={loading}
+            >
               {loading ? 'جاري...' : isSignUp ? 'تسجيل' : 'دخول'}
             </button>
           </form>
+          
           <p className="text-center text-sm text-gray-300 mt-6">
             {isSignUp ? 'لديك حساب؟' : 'ليس لديك حساب؟'}
-            <button onClick={() => setIsSignUp(!isSignUp)} className="text-purple-400 hover:underline mr-2">
+            <button 
+              onClick={() => setIsSignUp(!isSignUp)} 
+              className="text-purple-400 hover:underline mr-2 font-semibold"
+            >
               {isSignUp ? 'تسجيل الدخول' : 'إنشاء حساب'}
             </button>
           </p>
@@ -190,7 +210,6 @@ const TeacherPanel = ({ user }) => {
       
       if (error) {
         if (error.code === 'PGRST116') {
-          // الصف غير موجود، نقوم بإنشائه
           const { error: insertError } = await supabase
             .from('teachers')
             .insert([{ id: user.id, students: [] }])
