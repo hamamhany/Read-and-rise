@@ -20,7 +20,7 @@ const useDynamicBackground = () => {
     style.innerHTML = `
       @keyframes logoPulseSoft {
         0% { transform: scale(1); }
-        50% { transform: scale(1.04); }
+        50% { transform: scale(1.03); }
         100% { transform: scale(1); }
       }
       .animate-logo-pulse-soft {
@@ -96,7 +96,7 @@ const CountdownTimer = ({ targetDate }) => {
   )
 }
 
-// ========== 4. مكون تسجيل الدخول المطور ==========
+// ========== 4. مكون تسجيل الدخول المطور المدمج والمضغوط ==========
 const Login = ({ onLogin }) => {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -154,7 +154,7 @@ const Login = ({ onLogin }) => {
     } catch (err) {
       console.error(err)
       if (err.message.includes('rate limit')) {
-        setError('تجاوزت حد إرسات الرسائل. تأكد من إلغاء تفعيل تأكيد البريد في إعدادات Supabase.')
+        setError('تجاوزت حد إرسال الرسائل. تأكد من إلغاء تفعيل تأكيد البريد في إعدادات Supabase.')
       } else if (err.message.includes('User already registered')) {
         setError('هذا البريد مسجل مسبقاً، يرجى تسجيل الدخول.')
       } else if (err.message.includes('Invalid login credentials')) {
@@ -172,52 +172,54 @@ const Login = ({ onLogin }) => {
       <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
       
       <div className="relative z-10 w-full max-w-md px-4">
-        <div className="glass p-8 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl flex flex-col items-center">
+        {/* تقليص الـ padding الداخلي لضغط الكارد وتقليل الفراغات كما في صورة image_a06c04.jpg */}
+        <div className="glass p-5 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl flex flex-col items-center">
           
-          {/* تم تكبير حجم الشعار مرتين بناءً على طلبك ليصبح بارزاً وواضحاً جداً */}
-          <div className="mb-5 animate-logo-pulse-soft">
+          {/* تكبير حجم الشعار 10-12 مرة ليصبح بارزاً جداً مع مسافة سفلية صغيرة */}
+          <div className="mb-3 animate-logo-pulse-soft">
             <img 
               src="/images/logo.png" 
               alt="شعار التطبيق" 
-              className="w-36 h-36 object-contain"
+              className="w-48 h-48 md:w-52 md:h-52 object-contain"
               onError={(e) => e.target.style.display = 'none'}
             />
           </div>
           
           {/* عنوان التطبيق الرئيسي */}
-          <h2 className="text-2xl font-bold text-center mb-4 bg-gradient-to-r from-purple-400 to-pink-400 text-transparent bg-clip-text">
+          <h2 className="text-2xl font-bold text-center mb-2 bg-gradient-to-r from-purple-400 to-pink-400 text-transparent bg-clip-text">
             {isSignUp ? 'إنشاء حساب جديد' : 'الفرسان التقنيين - اقرآ وارتق'}
           </h2>
           
-          {/* المستطيل المشطوف الحواف المخصص للمسؤول تماماً مثل تحديد صورة image_9ffb65.png */}
-          <div className="w-full max-w-[280px] bg-black/40 border border-white/10 px-4 py-2 rounded-full text-center mb-6 shadow-inner">
-            <span className="text-xs md:text-sm font-medium text-gray-200 tracking-wide">
+          {/* المستطيل مشطوف الحواف الداكن المخصص للمسؤول مع تقريب المسافة */}
+          <div className="w-full max-w-[310px] bg-black/40 border border-white/10 px-4 py-1.5 rounded-full text-center mb-4 shadow-inner">
+            <span className="text-sm font-semibold text-gray-200 tracking-wide">
               المعلم المسؤول : Dev / همام هاني محمد
             </span>
           </div>
           
-          <form onSubmit={handleAuth} className="space-y-5 w-full">
+          {/* مسافات مضغوطة ومتقاربة للعناصر داخل الفورم */}
+          <form onSubmit={handleAuth} className="space-y-3.5 w-full">
             
-            {/* حقل اسم المستخدم المعدل بعد حذف كلمة البريد الإلكتروني */}
+            {/* حقل اسم المستخدم بدون كلمة البريد الإلكتروني مع تكبير الخط نسبياً */}
             <div className="relative flex items-center">
-              <span className="absolute right-4 text-gray-400 pointer-events-none text-sm">اسم المستخدم</span>
+              <span className="absolute right-4 text-gray-400 pointer-events-none text-sm font-medium">اسم المستخدم</span>
               <input 
                 type="email" 
                 placeholder="اسم المستخدم" 
-                className="input-glass w-full text-right pr-24 pl-4" 
+                className="input-glass w-full text-right pr-24 pl-4 text-base" 
                 value={email} 
                 onChange={(e) => setEmail(e.target.value)} 
                 required 
               />
             </div>
 
-            {/* حقل كلمة المرور وعين الإظهار والاخفاء التفاعلية */}
+            {/* حقل كلمة المرور مع زر الإظهار والإخفاء التفاعلي */}
             <div className="relative flex items-center">
-              <span className="absolute right-4 text-gray-400 pointer-events-none text-sm">كلمة المرور</span>
+              <span className="absolute right-4 text-gray-400 pointer-events-none text-sm font-medium">كلمة المرور</span>
               <input 
                 type={showPassword ? "text" : "password"} 
                 placeholder="••••••••" 
-                className="input-glass w-full text-right pr-24 pl-12" 
+                className="input-glass w-full text-right pr-24 pl-12 text-base" 
                 value={password} 
                 onChange={(e) => setPassword(e.target.value)} 
                 required 
@@ -232,7 +234,7 @@ const Login = ({ onLogin }) => {
             </div>
             
             {isSignUp && (
-              <div className="flex gap-6 items-center justify-center text-sm py-2 bg-white/5 rounded-xl border border-white/5">
+              <div className="flex gap-6 items-center justify-center text-sm py-1.5 bg-white/5 rounded-xl border border-white/5">
                 <label className="flex items-center gap-2 cursor-pointer select-none text-gray-200">
                   <input type="radio" value="student" className="accent-purple-500" checked={role === 'student'} onChange={() => setRole('student')} /> طالب
                 </label>
@@ -246,14 +248,14 @@ const Login = ({ onLogin }) => {
             
             <button 
               type="submit" 
-              className="btn-primary w-full py-3 text-lg font-semibold tracking-wide"
+              className="btn-primary w-full py-2.5 text-lg font-semibold tracking-wide"
               disabled={loading}
             >
               {loading ? 'جاري التحميل...' : isSignUp ? 'تسجيل الحساب' : 'تسجيل الدخول'}
             </button>
           </form>
           
-          <p className="text-center text-sm text-gray-300 mt-6 w-full">
+          <p className="text-center text-sm text-gray-300 mt-4 w-full">
             {isSignUp ? 'لديك حساب بالفعل؟' : 'ليس لديك حساب بعد؟'}
             <button 
               onClick={() => setIsSignUp(!isSignUp)} 
@@ -263,8 +265,8 @@ const Login = ({ onLogin }) => {
             </button>
           </p>
 
-          <div className="mt-8 pt-4 border-t border-white/10 text-center text-xs text-gray-400 w-full">
-            <p>جميع الحقوق محفوظة لصالح المبرمج همام هاني محمد علي</p>
+          <div className="mt-5 pt-3 border-t border-white/10 text-center text-xs text-gray-400 w-full">
+            <p>جميع الحقوق محفوظة © 2026 لصالح المبرمج همام هاني محمد علي</p>
           </div>
           
         </div>
