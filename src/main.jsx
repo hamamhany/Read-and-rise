@@ -13,14 +13,14 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-// ========== 2. هوك مخصص لتغيير ألوان الخلفية تلقائياً وحركة الشعار الناعمة ==========
+// ========== 2. هوك مخصص لتغيير ألوان الخلفية تلقائياً وحركة الشعار ==========
 const useDynamicBackground = () => {
   useEffect(() => {
     const style = document.createElement('style');
     style.innerHTML = `
       @keyframes logoPulseSoft {
         0% { transform: scale(1); }
-        50% { transform: scale(1.06); }
+        50% { transform: scale(1.04); }
         100% { transform: scale(1); }
       }
       .animate-logo-pulse-soft {
@@ -96,7 +96,7 @@ const CountdownTimer = ({ targetDate }) => {
   )
 }
 
-// ========== 4. مكون تسجيل الدخول المطور بالكامل والأيقونات وعين كلمة المرور ==========
+// ========== 4. مكون تسجيل الدخول المطور ==========
 const Login = ({ onLogin }) => {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -154,11 +154,11 @@ const Login = ({ onLogin }) => {
     } catch (err) {
       console.error(err)
       if (err.message.includes('rate limit')) {
-        setError('تجاوزت حد إرسال الرسائل. تأكد من إلغاء تفعيل تأكيد البريد في إعدادات Supabase.')
+        setError('تجاوزت حد إرسات الرسائل. تأكد من إلغاء تفعيل تأكيد البريد في إعدادات Supabase.')
       } else if (err.message.includes('User already registered')) {
         setError('هذا البريد مسجل مسبقاً، يرجى تسجيل الدخول.')
       } else if (err.message.includes('Invalid login credentials')) {
-        setError('البريد الإلكتروني أو كلمة المرور غير صحيحة.')
+        setError('اسم المستخدم أو كلمة المرور غير صحيحة.')
       } else {
         setError(err.message)
       }
@@ -174,29 +174,36 @@ const Login = ({ onLogin }) => {
       <div className="relative z-10 w-full max-w-md px-4">
         <div className="glass p-8 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl flex flex-col items-center">
           
-          {/* الشعار تم تكبيره قليلاً مع أنيميشن نبض ناعم وبدون حدود ومربع */}
-          <div className="mb-6 animate-logo-pulse-soft">
+          {/* تم تكبير حجم الشعار مرتين بناءً على طلبك ليصبح بارزاً وواضحاً جداً */}
+          <div className="mb-5 animate-logo-pulse-soft">
             <img 
               src="/images/logo.png" 
               alt="شعار التطبيق" 
-              className="w-28 h-28 object-contain"
+              className="w-36 h-36 object-contain"
               onError={(e) => e.target.style.display = 'none'}
             />
           </div>
           
-          {/* عنوان التطبيق */}
-          <h2 className="text-2xl font-bold text-center mb-6 bg-gradient-to-r from-purple-400 to-pink-400 text-transparent bg-clip-text">
+          {/* عنوان التطبيق الرئيسي */}
+          <h2 className="text-2xl font-bold text-center mb-4 bg-gradient-to-r from-purple-400 to-pink-400 text-transparent bg-clip-text">
             {isSignUp ? 'إنشاء حساب جديد' : 'الفرسان التقنيين - اقرآ وارتق'}
           </h2>
           
+          {/* المستطيل المشطوف الحواف المخصص للمسؤول تماماً مثل تحديد صورة image_9ffb65.png */}
+          <div className="w-full max-w-[280px] bg-black/40 border border-white/10 px-4 py-2 rounded-full text-center mb-6 shadow-inner">
+            <span className="text-xs md:text-sm font-medium text-gray-200 tracking-wide">
+              المعلم المسؤول : Dev / همام هاني محمد
+            </span>
+          </div>
+          
           <form onSubmit={handleAuth} className="space-y-5 w-full">
             
-            {/* حقل البريد الإلكتروني مع أيقونة المستخدم المدمجة برمجياً */}
+            {/* حقل اسم المستخدم المعدل بعد حذف كلمة البريد الإلكتروني */}
             <div className="relative flex items-center">
               <span className="absolute right-4 text-gray-400 pointer-events-none text-sm">اسم المستخدم</span>
               <input 
                 type="email" 
-                placeholder="البريد الإلكتروني" 
+                placeholder="اسم المستخدم" 
                 className="input-glass w-full text-right pr-24 pl-4" 
                 value={email} 
                 onChange={(e) => setEmail(e.target.value)} 
@@ -204,7 +211,7 @@ const Login = ({ onLogin }) => {
               />
             </div>
 
-            {/* حقل كلمة المرور مع أيقونة القفل وعين الإظهار المتغيرة */}
+            {/* حقل كلمة المرور وعين الإظهار والاخفاء التفاعلية */}
             <div className="relative flex items-center">
               <span className="absolute right-4 text-gray-400 pointer-events-none text-sm">كلمة المرور</span>
               <input 
@@ -256,10 +263,8 @@ const Login = ({ onLogin }) => {
             </button>
           </p>
 
-          {/* الفوتر المعدل بالكامل بناءً على طلبك بدون إيموجي */}
-          <div className="mt-8 pt-4 border-t border-white/10 text-center text-xs text-gray-400 space-y-1.5 w-full">
+          <div className="mt-8 pt-4 border-t border-white/10 text-center text-xs text-gray-400 w-full">
             <p>جميع الحقوق محفوظة لصالح المبرمج همام هاني محمد علي</p>
-            <p className="text-purple-400 font-semibold tracking-wide">المعلم المسؤول : Dev / همام هاني محمد</p>
           </div>
           
         </div>
