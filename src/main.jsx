@@ -8,23 +8,23 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('متغيرات Supabase غير محددة في ملف .env')
+  throw new Error('متغيرات Supabase غير مححدد في ملف .env')
 }
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-// ========== 2. هوك مخصص لتغيير ألوان الخلفية تلقائياً وحركة الشعار ==========
+// ========== 2. هوك مخصص لتغيير ألوان الخلفية تلقائياً وحركة الشعار الخلفي ==========
 const useDynamicBackground = () => {
   useEffect(() => {
     const style = document.createElement('style');
     style.innerHTML = `
       @keyframes logoPulseSoft {
-        0% { transform: scale(1); }
-        50% { transform: scale(1.02); }
-        100% { transform: scale(1); }
+        0% { transform: scale(1); opacity: 0.12; }
+        50% { transform: scale(1.04); opacity: 0.18; }
+        100% { transform: scale(1); opacity: 0.12; }
       }
-      .animate-logo-pulse-soft {
-        animation: logoPulseSoft 4s ease-in-out infinite;
+      .animate-logo-bg {
+        animation: logoPulseSoft 6s ease-in-out infinite;
       }
     `;
     document.head.appendChild(style);
@@ -96,7 +96,7 @@ const CountdownTimer = ({ targetDate }) => {
   )
 }
 
-// ========== 4. مكون تسجيل الدخول المطور بالمقاسات المضغوطة الجديدة ==========
+// ========== 4. مكون تسجيل الدخول بتصميم مدمج وبدون فراغات عمودية ==========
 const Login = ({ onLogin }) => {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -172,101 +172,106 @@ const Login = ({ onLogin }) => {
       <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
       
       <div className="relative z-10 w-full max-w-md px-4">
-        <div className="glass p-5 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl flex flex-col items-center">
+        {/* الكارد الرئيسي الزجاجي مع خاصية relative لاحتواء الشعار الخلفي */}
+        <div className="glass p-6 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl flex flex-col items-center relative overflow-hidden min-h-[480px] justify-center">
           
-          {/* حجم الشعار الضخم جداً مع هامش سفلي مضغوط للغاية تلبيةً لطلبك الأخير */}
-          <div className="mb-1 animate-logo-pulse-soft">
+          {/* الشعار المائي الخلفي - ضخم جداً ويملأ الخلفية بامتياز دون حجز مسافة عمودية تؤدي للفراغات */}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0 overflow-hidden">
             <img 
               src="/images/logo.png" 
-              alt="شعار التطبيق" 
-              className="w-64 h-64 md:w-80 md:h-80 object-contain"
+              alt="" 
+              className="w-96 h-96 md:w-[420px] md:h-[420px] object-contain opacity-15 animate-logo-bg select-none"
               onError={(e) => e.target.style.display = 'none'}
             />
           </div>
           
-          {/* عنوان التطبيق بهامش سفلي مضغوط */}
-          <h2 className="text-2xl font-bold text-center mb-1 bg-gradient-to-r from-purple-400 to-pink-400 text-transparent bg-clip-text">
-            {isSignUp ? 'إنشاء حساب جديد' : 'الفرسان التقنيين - اقرآ وارتق'}
-          </h2>
-          
-          {/* مستطيل المعلم المسؤول بهامش سفلي مصغر */}
-          <div className="w-full max-w-[310px] bg-black/40 border border-white/10 px-4 py-1.5 rounded-full text-center mb-2 shadow-inner">
-            <span className="text-sm font-semibold text-gray-200 tracking-wide">
-              المعلم المسؤول : Dev / همام هاني محمد
-            </span>
-          </div>
-          
-          <form onSubmit={handleAuth} className="space-y-3.5 w-full">
+          {/* محتوى الاستمارة المرفوع في طبقة أعلى z-10 ومتراص تماماً لإلغاء أي فجوات */}
+          <div className="w-full z-10 flex flex-col items-center space-y-4">
             
-            {/* حقل اسم المستخدم: بدون placeholder ليكون فارغاً من الداخل تماماً كما طلبت */}
-            <div className="relative flex items-center">
-              <span className="absolute right-4 text-gray-400 pointer-events-none text-sm font-medium">اسم المستخدم</span>
-              <input 
-                type="email" 
-                placeholder="" 
-                className="input-glass w-full text-right pr-24 pl-4 text-base" 
-                value={email} 
-                onChange={(e) => setEmail(e.target.value)} 
-                required 
-              />
-            </div>
-
-            {/* حقل كلمة المرور: بدون placeholder ليكون فارغاً تماماً ونظيفاً من الداخل */}
-            <div className="relative flex items-center">
-              <span className="absolute right-4 text-gray-400 pointer-events-none text-sm font-medium">كلمة المرور</span>
-              <input 
-                type={showPassword ? "text" : "password"} 
-                placeholder="" 
-                className="input-glass w-full text-right pr-24 pl-12 text-base" 
-                value={password} 
-                onChange={(e) => setPassword(e.target.value)} 
-                required 
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute left-4 text-xs font-semibold text-purple-400 hover:text-purple-300 transition-colors focus:outline-none bg-white/5 px-2 py-1 rounded border border-white/10"
-              >
-                {showPassword ? "إخفاء" : "إظهار"}
-              </button>
-            </div>
-            
-            {isSignUp && (
-              <div className="flex gap-6 items-center justify-center text-sm py-1.5 bg-white/5 rounded-xl border border-white/5">
-                <label className="flex items-center gap-2 cursor-pointer select-none text-gray-200">
-                  <input type="radio" value="student" className="accent-purple-500" checked={role === 'student'} onChange={() => setRole('student')} /> طالب
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer select-none text-gray-200">
-                  <input type="radio" value="teacher" className="accent-purple-500" checked={role === 'teacher'} onChange={() => setRole('teacher')} /> معلم
-                </label>
+            <div className="text-center space-y-1 w-full">
+              <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 text-transparent bg-clip-text">
+                {isSignUp ? 'إنشاء حساب جديد' : 'الفرسان التقنيين - اقرآ وارتق'}
+              </h2>
+              
+              <div className="w-full max-w-[310px] bg-black/50 border border-white/10 px-4 py-1.5 rounded-full mx-auto shadow-inner">
+                <span className="text-sm font-semibold text-gray-200 tracking-wide">
+                  المعلم المسؤول : Dev / همام هاني محمد
+                </span>
               </div>
-            )}
+            </div>
             
-            {error && <p className="text-red-400 text-sm text-center whitespace-pre-wrap">{error}</p>}
-            
-            <button 
-              type="submit" 
-              className="btn-primary w-full py-2.5 text-lg font-semibold tracking-wide"
-              disabled={loading}
-            >
-              {loading ? 'جاري التحميل...' : isSignUp ? 'تسجيل الحساب' : 'تسجيل الدخول'}
-            </button>
-          </form>
-          
-          <p className="text-center text-sm text-gray-300 mt-3 w-full">
-            {isSignUp ? 'لديك حساب بالفعل؟' : 'ليس لديك حساب بعد؟'}
-            <button 
-              onClick={() => setIsSignUp(!isSignUp)} 
-              className="text-purple-400 hover:underline mr-2 font-semibold"
-            >
-              {isSignUp ? 'تسجيل الدخول' : 'إنشاء حساب'}
-            </button>
-          </p>
+            <form onSubmit={handleAuth} className="space-y-3.5 w-full">
+              
+              {/* حقل اسم المستخدم فارغ تماماً من الداخل */}
+              <div className="relative flex items-center">
+                <span className="absolute right-4 text-gray-400 pointer-events-none text-sm font-medium">اسم المستخدم</span>
+                <input 
+                  type="email" 
+                  placeholder="" 
+                  className="input-glass w-full text-right pr-24 pl-4 text-base bg-black/20" 
+                  value={email} 
+                  onChange={(e) => setEmail(e.target.value)} 
+                  required 
+                />
+              </div>
 
-          <div className="mt-4 pt-3 border-t border-white/10 text-center text-xs text-gray-400 w-full">
-            <p>جميع الحقوق محفوظة © 2026 لصالح المبرمج همام هاني محمد علي</p>
+              {/* حقل كلمة المرور فارغ تماماً من الداخل */}
+              <div className="relative flex items-center">
+                <span className="absolute right-4 text-gray-400 pointer-events-none text-sm font-medium">كلمة المرور</span>
+                <input 
+                  type={showPassword ? "text" : "password"} 
+                  placeholder="" 
+                  className="input-glass w-full text-right pr-24 pl-12 text-base bg-black/20" 
+                  value={password} 
+                  onChange={(e) => setPassword(e.target.value)} 
+                  required 
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute left-4 text-xs font-semibold text-purple-400 hover:text-purple-300 transition-colors focus:outline-none bg-white/5 px-2 py-1 rounded border border-white/10"
+                >
+                  {showPassword ? "إخفاء" : "إظهار"}
+                </button>
+              </div>
+              
+              {isSignUp && (
+                <div className="flex gap-6 items-center justify-center text-sm py-1.5 bg-white/5 rounded-xl border border-white/5">
+                  <label className="flex items-center gap-2 cursor-pointer select-none text-gray-200">
+                    <input type="radio" value="student" className="accent-purple-500" checked={role === 'student'} onChange={() => setRole('student')} /> طالب
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer select-none text-gray-200">
+                    <input type="radio" value="teacher" className="accent-purple-500" checked={role === 'teacher'} onChange={() => setRole('teacher')} /> معلم
+                  </label>
+                </div>
+              )}
+              
+              {error && <p className="text-red-400 text-sm text-center whitespace-pre-wrap">{error}</p>}
+              
+              <button 
+                type="submit" 
+                className="btn-primary w-full py-2.5 text-lg font-semibold tracking-wide shadow-lg"
+                disabled={loading}
+              >
+                {loading ? 'جاري التحميل...' : isSignUp ? 'تسجيل الحساب' : 'تسجيل الدخول'}
+              </button>
+            </form>
+            
+            <p className="text-center text-sm text-gray-300 w-full pt-1">
+              {isSignUp ? 'لديك حساب بالفعل؟' : 'ليس لديك حساب بعد؟'}
+              <button 
+                onClick={() => setIsSignUp(!isSignUp)} 
+                className="text-purple-400 hover:underline mr-2 font-semibold"
+              >
+                {isSignUp ? 'تسجيل الدخول' : 'إنشاء حساب'}
+              </button>
+            </p>
+
+            <div className="pt-2 border-t border-white/10 text-center text-xs text-gray-400 w-full">
+              <p>جميع الحقوق محفوظة © 2026 لصالح المبرمج همام هاني محمد علي</p>
+            </div>
+            
           </div>
-          
         </div>
       </div>
     </div>
