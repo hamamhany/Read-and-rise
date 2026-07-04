@@ -13,19 +13,18 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-// ========== 2. هوك مخصص لتغيير ألوان الخلفية تلقائياً وعرض حركة الشعار ==========
+// ========== 2. هوك مخصص لتغيير ألوان الخلفية تلقائياً وحركة الشعار الناعمة ==========
 const useDynamicBackground = () => {
   useEffect(() => {
-    // إضافة كلاس حركة الشعار برمجياً لتجنب تعديل ملفات css خارجية
     const style = document.createElement('style');
     style.innerHTML = `
-      @keyframes logoPulse {
+      @keyframes logoPulseSoft {
         0% { transform: scale(1); }
-        50% { transform: scale(1.12); }
+        50% { transform: scale(1.06); }
         100% { transform: scale(1); }
       }
-      .animate-logo-pulse {
-        animation: logoPulse 3s ease-in-out infinite;
+      .animate-logo-pulse-soft {
+        animation: logoPulseSoft 4s ease-in-out infinite;
       }
     `;
     document.head.appendChild(style);
@@ -97,10 +96,11 @@ const CountdownTimer = ({ targetDate }) => {
   )
 }
 
-// ========== 4. مكون تسجيل الدخول المطور بالكامل ==========
+// ========== 4. مكون تسجيل الدخول المطور بالكامل والأيقونات وعين كلمة المرور ==========
 const Login = ({ onLogin }) => {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [isSignUp, setIsSignUp] = useState(false)
@@ -168,44 +168,61 @@ const Login = ({ onLogin }) => {
   }
 
   return (
-    <div className="container-center relative min-h-screen overflow-hidden">
+    <div className="container-center relative min-h-screen overflow-hidden" dir="rtl">
       <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
       
       <div className="relative z-10 w-full max-w-md px-4">
         <div className="glass p-8 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl flex flex-col items-center">
           
-          {/* الشعار بدون حدود وبدون مربع، مع تأثير التكبير والتصغير المستمر */}
-          <div className="mb-6 animate-logo-pulse">
+          {/* الشعار تم تكبيره قليلاً مع أنيميشن نبض ناعم وبدون حدود ومربع */}
+          <div className="mb-6 animate-logo-pulse-soft">
             <img 
               src="/images/logo.png" 
               alt="شعار التطبيق" 
-              className="w-24 h-24 object-contain"
+              className="w-28 h-28 object-contain"
               onError={(e) => e.target.style.display = 'none'}
             />
           </div>
           
-          {/* النص المطلوب المحدث */}
+          {/* عنوان التطبيق */}
           <h2 className="text-2xl font-bold text-center mb-6 bg-gradient-to-r from-purple-400 to-pink-400 text-transparent bg-clip-text">
             {isSignUp ? 'إنشاء حساب جديد' : 'الفرسان التقنيين - اقرآ وارتق'}
           </h2>
           
           <form onSubmit={handleAuth} className="space-y-5 w-full">
-            <input 
-              type="email" 
-              placeholder="البريد الإلكتروني" 
-              className="input-glass w-full text-right" 
-              value={email} 
-              onChange={(e) => setEmail(e.target.value)} 
-              required 
-            />
-            <input 
-              type="password" 
-              placeholder="كلمة المرور" 
-              className="input-glass w-full text-right" 
-              value={password} 
-              onChange={(e) => setPassword(e.target.value)} 
-              required 
-            />
+            
+            {/* حقل البريد الإلكتروني مع أيقونة المستخدم المدمجة برمجياً */}
+            <div className="relative flex items-center">
+              <span className="absolute right-4 text-gray-400 pointer-events-none text-sm">اسم المستخدم</span>
+              <input 
+                type="email" 
+                placeholder="البريد الإلكتروني" 
+                className="input-glass w-full text-right pr-24 pl-4" 
+                value={email} 
+                onChange={(e) => setEmail(e.target.value)} 
+                required 
+              />
+            </div>
+
+            {/* حقل كلمة المرور مع أيقونة القفل وعين الإظهار المتغيرة */}
+            <div className="relative flex items-center">
+              <span className="absolute right-4 text-gray-400 pointer-events-none text-sm">كلمة المرور</span>
+              <input 
+                type={showPassword ? "text" : "password"} 
+                placeholder="••••••••" 
+                className="input-glass w-full text-right pr-24 pl-12" 
+                value={password} 
+                onChange={(e) => setPassword(e.target.value)} 
+                required 
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute left-4 text-xs font-semibold text-purple-400 hover:text-purple-300 transition-colors focus:outline-none bg-white/5 px-2 py-1 rounded border border-white/10"
+              >
+                {showPassword ? "إخفاء" : "إظهار"}
+              </button>
+            </div>
             
             {isSignUp && (
               <div className="flex gap-6 items-center justify-center text-sm py-2 bg-white/5 rounded-xl border border-white/5">
@@ -239,10 +256,10 @@ const Login = ({ onLogin }) => {
             </button>
           </p>
 
-          {/* تذييل الصفحة بالحقوق والمسؤولين كما طلبت وبدون إيموجي */}
-          <div className="mt-8 pt-4 border-t border-white/10 text-center text-xs text-gray-400 space-y-1 w-full">
+          {/* الفوتر المعدل بالكامل بناءً على طلبك بدون إيموجي */}
+          <div className="mt-8 pt-4 border-t border-white/10 text-center text-xs text-gray-400 space-y-1.5 w-full">
             <p>جميع الحقوق محفوظة لصالح المبرمج همام هاني محمد علي</p>
-            <p className="text-purple-400 font-medium">Dev / همام هاني محمد</p>
+            <p className="text-purple-400 font-semibold tracking-wide">المعلم المسؤول : Dev / همام هاني محمد</p>
           </div>
           
         </div>
