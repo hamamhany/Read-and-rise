@@ -20,7 +20,7 @@ const useDynamicBackground = () => {
     style.innerHTML = `
       @keyframes logoPulseSoft {
         0% { transform: scale(1); }
-        50% { transform: scale(1.03); }
+        50% { transform: scale(1.02); }
         100% { transform: scale(1); }
       }
       .animate-logo-pulse-soft {
@@ -96,7 +96,7 @@ const CountdownTimer = ({ targetDate }) => {
   )
 }
 
-// ========== 4. مكون تسجيل الدخول المطور المدمج والمضغوط ==========
+// ========== 4. مكون تسجيل الدخول المطور بالمقاسات المضغوطة الجديدة ==========
 const Login = ({ onLogin }) => {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -172,40 +172,38 @@ const Login = ({ onLogin }) => {
       <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
       
       <div className="relative z-10 w-full max-w-md px-4">
-        {/* تقليص الـ padding الداخلي لضغط الكارد وتقليل الفراغات كما في صورة image_a06c04.jpg */}
         <div className="glass p-5 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl flex flex-col items-center">
           
-          {/* تكبير حجم الشعار 10-12 مرة ليصبح بارزاً جداً مع مسافة سفلية صغيرة */}
-          <div className="mb-3 animate-logo-pulse-soft">
+          {/* حجم الشعار الضخم جداً مع هامش سفلي مضغوط للغاية تلبيةً لطلبك الأخير */}
+          <div className="mb-1 animate-logo-pulse-soft">
             <img 
               src="/images/logo.png" 
               alt="شعار التطبيق" 
-              className="w-48 h-48 md:w-52 md:h-52 object-contain"
+              className="w-64 h-64 md:w-80 md:h-80 object-contain"
               onError={(e) => e.target.style.display = 'none'}
             />
           </div>
           
-          {/* عنوان التطبيق الرئيسي */}
-          <h2 className="text-2xl font-bold text-center mb-2 bg-gradient-to-r from-purple-400 to-pink-400 text-transparent bg-clip-text">
+          {/* عنوان التطبيق بهامش سفلي مضغوط */}
+          <h2 className="text-2xl font-bold text-center mb-1 bg-gradient-to-r from-purple-400 to-pink-400 text-transparent bg-clip-text">
             {isSignUp ? 'إنشاء حساب جديد' : 'الفرسان التقنيين - اقرآ وارتق'}
           </h2>
           
-          {/* المستطيل مشطوف الحواف الداكن المخصص للمسؤول مع تقريب المسافة */}
-          <div className="w-full max-w-[310px] bg-black/40 border border-white/10 px-4 py-1.5 rounded-full text-center mb-4 shadow-inner">
+          {/* مستطيل المعلم المسؤول بهامش سفلي مصغر */}
+          <div className="w-full max-w-[310px] bg-black/40 border border-white/10 px-4 py-1.5 rounded-full text-center mb-2 shadow-inner">
             <span className="text-sm font-semibold text-gray-200 tracking-wide">
               المعلم المسؤول : Dev / همام هاني محمد
             </span>
           </div>
           
-          {/* مسافات مضغوطة ومتقاربة للعناصر داخل الفورم */}
           <form onSubmit={handleAuth} className="space-y-3.5 w-full">
             
-            {/* حقل اسم المستخدم بدون كلمة البريد الإلكتروني مع تكبير الخط نسبياً */}
+            {/* حقل اسم المستخدم: بدون placeholder ليكون فارغاً من الداخل تماماً كما طلبت */}
             <div className="relative flex items-center">
               <span className="absolute right-4 text-gray-400 pointer-events-none text-sm font-medium">اسم المستخدم</span>
               <input 
                 type="email" 
-                placeholder="اسم المستخدم" 
+                placeholder="" 
                 className="input-glass w-full text-right pr-24 pl-4 text-base" 
                 value={email} 
                 onChange={(e) => setEmail(e.target.value)} 
@@ -213,12 +211,12 @@ const Login = ({ onLogin }) => {
               />
             </div>
 
-            {/* حقل كلمة المرور مع زر الإظهار والإخفاء التفاعلي */}
+            {/* حقل كلمة المرور: بدون placeholder ليكون فارغاً تماماً ونظيفاً من الداخل */}
             <div className="relative flex items-center">
               <span className="absolute right-4 text-gray-400 pointer-events-none text-sm font-medium">كلمة المرور</span>
               <input 
                 type={showPassword ? "text" : "password"} 
-                placeholder="••••••••" 
+                placeholder="" 
                 className="input-glass w-full text-right pr-24 pl-12 text-base" 
                 value={password} 
                 onChange={(e) => setPassword(e.target.value)} 
@@ -255,7 +253,7 @@ const Login = ({ onLogin }) => {
             </button>
           </form>
           
-          <p className="text-center text-sm text-gray-300 mt-4 w-full">
+          <p className="text-center text-sm text-gray-300 mt-3 w-full">
             {isSignUp ? 'لديك حساب بالفعل؟' : 'ليس لديك حساب بعد؟'}
             <button 
               onClick={() => setIsSignUp(!isSignUp)} 
@@ -265,7 +263,7 @@ const Login = ({ onLogin }) => {
             </button>
           </p>
 
-          <div className="mt-5 pt-3 border-t border-white/10 text-center text-xs text-gray-400 w-full">
+          <div className="mt-4 pt-3 border-t border-white/10 text-center text-xs text-gray-400 w-full">
             <p>جميع الحقوق محفوظة © 2026 لصالح المبرمج همام هاني محمد علي</p>
           </div>
           
