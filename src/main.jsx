@@ -8,27 +8,39 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('⚠️ متغيرات Supabase غير محددة في ملف .env')
+  throw new Error('متغيرات Supabase غير محددة في ملف .env')
 }
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-// ========== 2. هوك مخصص (Custom Hook) لتغيير ألوان الخلفية تلقائياً ==========
+// ========== 2. هوك مخصص لتغيير ألوان الخلفية تلقائياً وعرض حركة الشعار ==========
 const useDynamicBackground = () => {
   useEffect(() => {
+    // إضافة كلاس حركة الشعار برمجياً لتجنب تعديل ملفات css خارجية
+    const style = document.createElement('style');
+    style.innerHTML = `
+      @keyframes logoPulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.12); }
+        100% { transform: scale(1); }
+      }
+      .animate-logo-pulse {
+        animation: logoPulse 3s ease-in-out infinite;
+      }
+    `;
+    document.head.appendChild(style);
+
     const bgGradients = [
-      'linear-gradient(135deg, #0f172a, #1e1b4b, #311042)', // نيون داكن
-      'linear-gradient(135deg, #090d16, #111827, #1f2937)', // رمادي/أسود ميتاليك
-      'linear-gradient(135deg, #020617, #0f172a, #1e293b)', // أزرق ليلي عميق
-      'linear-gradient(135deg, #070a13, #161224, #281432)'  // بنفسجي داكن غامض
+      'linear-gradient(135deg, #0f172a, #1e1b4b, #311042)', 
+      'linear-gradient(135deg, #090d16, #111827, #1f2937)', 
+      'linear-gradient(135deg, #020617, #0f172a, #1e293b)', 
+      'linear-gradient(135deg, #070a13, #161224, #281432)'  
     ];
     let currentIndex = 0;
 
-    // تعيين الخلفية المبدئية
     document.body.style.background = bgGradients[currentIndex];
     document.body.style.transition = 'background 4s ease-in-out';
 
-    // تغيير الخلفية كل 7 ثوانٍ بشكل سلس
     const interval = setInterval(() => {
       currentIndex = (currentIndex + 1) % bgGradients.length;
       document.body.style.background = bgGradients[currentIndex];
@@ -38,11 +50,12 @@ const useDynamicBackground = () => {
       clearInterval(interval);
       document.body.style.background = '';
       document.body.style.transition = '';
+      document.head.removeChild(style);
     };
   }, []);
 };
 
-// ========== 3. مكون العداد التنازلي (مطور ومترجم) ==========
+// ========== 3. مكون العداد التنازلي مترجم بدون إيموجي ==========
 const CountdownTimer = ({ targetDate }) => {
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
 
@@ -84,7 +97,7 @@ const CountdownTimer = ({ targetDate }) => {
   )
 }
 
-// ========== 4. مكون تسجيل الدخول (تصميم زجاجي) ==========
+// ========== 4. مكون تسجيل الدخول المطور بالكامل ==========
 const Login = ({ onLogin }) => {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -141,7 +154,7 @@ const Login = ({ onLogin }) => {
     } catch (err) {
       console.error(err)
       if (err.message.includes('rate limit')) {
-        setError('⚠️ تجاوزت حد إرسال الرسائل. تأكد من إلغاء تفعيل "Confirm email" في إعدادات Supabase.')
+        setError('تجاوزت حد إرسال الرسائل. تأكد من إلغاء تفعيل تأكيد البريد في إعدادات Supabase.')
       } else if (err.message.includes('User already registered')) {
         setError('هذا البريد مسجل مسبقاً، يرجى تسجيل الدخول.')
       } else if (err.message.includes('Invalid login credentials')) {
@@ -159,21 +172,24 @@ const Login = ({ onLogin }) => {
       <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
       
       <div className="relative z-10 w-full max-w-md px-4">
-        <div className="glass p-8 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl">
-          <div className="flex justify-center mb-4">
+        <div className="glass p-8 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl flex flex-col items-center">
+          
+          {/* الشعار بدون حدود وبدون مربع، مع تأثير التكبير والتصغير المستمر */}
+          <div className="mb-6 animate-logo-pulse">
             <img 
               src="/images/logo.png" 
               alt="شعار التطبيق" 
-              className="w-20 h-20 rounded-2xl shadow-lg border-2 border-white/30 object-cover"
+              className="w-24 h-24 object-contain"
               onError={(e) => e.target.style.display = 'none'}
             />
           </div>
           
-          <h2 className="text-3xl font-bold text-center mb-6 bg-gradient-to-r from-purple-400 to-pink-400 text-transparent bg-clip-text">
-            {isSignUp ? 'إنشاء حساب جديد' : 'مرحباً بك'}
+          {/* النص المطلوب المحدث */}
+          <h2 className="text-2xl font-bold text-center mb-6 bg-gradient-to-r from-purple-400 to-pink-400 text-transparent bg-clip-text">
+            {isSignUp ? 'إنشاء حساب جديد' : 'الفرسان التقنيين - اقرآ وارتق'}
           </h2>
           
-          <form onSubmit={handleAuth} className="space-y-5">
+          <form onSubmit={handleAuth} className="space-y-5 w-full">
             <input 
               type="email" 
               placeholder="البريد الإلكتروني" 
@@ -213,7 +229,7 @@ const Login = ({ onLogin }) => {
             </button>
           </form>
           
-          <p className="text-center text-sm text-gray-300 mt-6">
+          <p className="text-center text-sm text-gray-300 mt-6 w-full">
             {isSignUp ? 'لديك حساب بالفعل؟' : 'ليس لديك حساب بعد؟'}
             <button 
               onClick={() => setIsSignUp(!isSignUp)} 
@@ -222,13 +238,20 @@ const Login = ({ onLogin }) => {
               {isSignUp ? 'تسجيل الدخول' : 'إنشاء حساب'}
             </button>
           </p>
+
+          {/* تذييل الصفحة بالحقوق والمسؤولين كما طلبت وبدون إيموجي */}
+          <div className="mt-8 pt-4 border-t border-white/10 text-center text-xs text-gray-400 space-y-1 w-full">
+            <p>جميع الحقوق محفوظة لصالح المبرمج همام هاني محمد علي</p>
+            <p className="text-purple-400 font-medium">Dev / همام هاني محمد</p>
+          </div>
+          
         </div>
       </div>
     </div>
   )
 }
 
-// ========== 5. لوحة المعلم ==========
+// ========== 5. لوحة المعلم بدون إيموجي ==========
 const TeacherPanel = ({ user }) => {
   const [lessonTime, setLessonTime] = useState('')
   const [students, setStudents] = useState([])
@@ -289,9 +312,9 @@ const TeacherPanel = ({ user }) => {
       if (error) throw error
       setLessonTime(newLessonTime)
       setNewLessonTime('')
-      alert('✅ تم تحديث موعد الحصة بنجاح!')
+      alert('تم تحديث موعد الحصة بنجاح')
     } catch (err) {
-      alert('❌ فشل التحديث: ' + err.message)
+      alert('فشل التحديث: ' + err.message)
     }
   }
 
@@ -302,7 +325,7 @@ const TeacherPanel = ({ user }) => {
       <div className="glass p-8 max-w-4xl w-full space-y-8 z-10 border border-white/10">
         <div className="flex justify-between items-center flex-wrap gap-4 border-b border-white/10 pb-4">
           <div>
-            <h2 className="text-3xl font-bold text-purple-300">👨‍🏫 لوحة تحكم المعلم</h2>
+            <h2 className="text-3xl font-bold text-purple-300">لوحة تحكم المعلم</h2>
             <p className="text-gray-400 text-sm mt-1">مرحباً بك: {user.email}</p>
           </div>
           <button onClick={handleLogout} className="btn-primary bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 shadow-lg text-sm">
@@ -313,12 +336,12 @@ const TeacherPanel = ({ user }) => {
         {errorMsg && <p className="text-red-400 text-sm bg-red-500/10 p-3 rounded-xl border border-red-500/20">{errorMsg}</p>}
         
         <div className="glass-glow p-6 rounded-2xl border border-purple-500/20">
-          <h3 className="text-xl font-semibold mb-4 text-purple-200">⏳ الوقت المتبقي لبدء الحصة</h3>
+          <h3 className="text-xl font-semibold mb-4 text-purple-200">الوقت المتبقي لبدء الحصة</h3>
           {lessonTime ? <CountdownTimer targetDate={lessonTime} /> : <p className="text-gray-400 text-center">لم تقم بتحديد موعد حصة بعد</p>}
         </div>
 
         <div className="glass p-6 rounded-2xl border border-white/5 space-y-4">
-          <h3 className="text-xl font-semibold text-purple-200">📅 جدولة موعد حصة جديد</h3>
+          <h3 className="text-xl font-semibold text-purple-200">جدولة موعد حصة جديد</h3>
           <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center">
             <input 
               type="datetime-local" 
@@ -333,7 +356,7 @@ const TeacherPanel = ({ user }) => {
         </div>
 
         <div className="glass p-6 rounded-2xl border border-white/5">
-          <h3 className="text-xl font-semibold mb-4 text-purple-200">📋 قائمة الطلاب المسجلين بالصف ({students.length})</h3>
+          <h3 className="text-xl font-semibold mb-4 text-purple-200">قائمة الطلاب المسجلين بالصف ({students.length})</h3>
           {loading ? (
             <p className="text-gray-400 text-center py-4">جاري تحميل الطلاب...</p>
           ) : students.length > 0 ? (
@@ -341,7 +364,7 @@ const TeacherPanel = ({ user }) => {
               {students.map(s => (
                 <div key={s.id} className="bg-white/5 p-4 rounded-xl border border-white/5 flex justify-between items-center">
                   <span className="text-gray-200 font-medium truncate ml-2">{s.email}</span>
-                  <span className="text-xs bg-green-500/20 text-green-300 px-3 py-1 rounded-full border border-green-500/30 whitespace-nowrap">● نشط بالصف</span>
+                  <span className="text-xs bg-green-500/20 text-green-300 px-3 py-1 rounded-full border border-green-500/30 whitespace-nowrap">نشط بالصف</span>
                 </div>
               ))}
             </div>
@@ -354,7 +377,7 @@ const TeacherPanel = ({ user }) => {
   )
 }
 
-// ========== 6. لوحة الطالب ==========
+// ========== 6. لوحة الطالب بدون إيموجي ==========
 const StudentPanel = ({ user }) => {
   const [teacherData, setTeacherData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -388,7 +411,7 @@ const StudentPanel = ({ user }) => {
       <div className="glass p-8 max-w-4xl w-full space-y-8 z-10 border border-white/10">
         <div className="flex justify-between items-center flex-wrap gap-4 border-b border-white/10 pb-4">
           <div>
-            <h2 className="text-3xl font-bold text-blue-300">🧑‍🎓 لوحة تحكم الطالب</h2>
+            <h2 className="text-3xl font-bold text-blue-300">لوحة تحكم الطالب</h2>
             <p className="text-gray-400 text-sm mt-1">أهلاً بك: {user.email}</p>
           </div>
           <button onClick={handleLogout} className="btn-primary bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 shadow-lg text-sm">
@@ -399,18 +422,18 @@ const StudentPanel = ({ user }) => {
         {errorMsg && <p className="text-red-400 text-sm bg-red-500/10 p-3 rounded-xl border border-red-500/20">{errorMsg}</p>}
         
         <div className="glass-glow p-6 rounded-2xl border border-blue-500/20">
-          <h3 className="text-xl font-semibold mb-4 text-blue-200">⏳ الوقت المتبقي لحصتك القادمة</h3>
+          <h3 className="text-xl font-semibold mb-4 text-blue-200">الوقت المتبقي لحصتك القادمة</h3>
           {loading ? (
             <p className="text-gray-400 text-center py-2">جاري التحقق من الموعد...</p>
           ) : teacherData?.lesson_time ? (
             <CountdownTimer targetDate={teacherData.lesson_time} />
           ) : (
-            <p className="text-gray-400 text-center py-2">المعلم لم يقم بجدولة حصة قادمة حتى الآن 🕒</p>
+            <p className="text-gray-400 text-center py-2">المعلم لم يقم بجدولة حصة قادمة حتى الآن</p>
           )}
         </div>
 
         <div className="glass p-6 rounded-2xl border border-white/5">
-          <h3 className="text-xl font-semibold mb-3 text-blue-200">📊 معلومات وتفاصيل الصف</h3>
+          <h3 className="text-xl font-semibold mb-3 text-blue-200">معلومات وتفاصيل الصف</h3>
           <div className="bg-white/5 p-4 rounded-xl border border-white/5 inline-block">
             <p className="text-gray-300">
               إجمالي عدد زملائك الطلاب المتواجدين في الصف: <strong className="text-blue-300 text-lg mr-1">{teacherData?.students?.length || 0}</strong>
@@ -427,7 +450,6 @@ const App = () => {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  // تفعيل الهوك الخاص بالخلفية المتغيرة ديناميكياً
   useDynamicBackground();
 
   useEffect(() => {
