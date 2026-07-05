@@ -3,7 +3,6 @@ import React, { useState, useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
 import { createClient } from '@supabase/supabase-js'
 
-// ========== 1. اتصال Supabase ==========
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
@@ -13,7 +12,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-// ========== 2. هوك خلفية متحركة ==========
+// ========== هوك خلفية متحركة ==========
 const useDynamicBackground = () => {
   useEffect(() => {
     const style = document.createElement('style');
@@ -54,7 +53,7 @@ const useDynamicBackground = () => {
   }, []);
 };
 
-// ========== 3. عداد تنازلي ==========
+// ========== عداد تنازلي ==========
 const CountdownTimer = ({ targetDate }) => {
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
 
@@ -134,7 +133,7 @@ const HomeworkTextCountdown = ({ targetDate }) => {
   )
 }
 
-// ========== 4. واجهة تسجيل الدخول (باستخدام اسم المستخدم) ==========
+// ========== واجهة تسجيل الدخول ==========
 const Login = ({ onLogin }) => {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -147,7 +146,7 @@ const Login = ({ onLogin }) => {
     setLoading(true)
     setError('')
     try {
-      // 1. البحث عن البريد الإلكتروني باستخدام الدالة الآمنة
+      // 1. البحث عن البريد الإلكتروني باستخدام اسم المستخدم
       const { data: email, error: fetchError } = await supabase
         .rpc('get_email_by_username', { username_input: username })
 
@@ -157,7 +156,7 @@ const Login = ({ onLogin }) => {
       }
       if (!email) throw new Error('اسم المستخدم غير موجود')
 
-      // 2. تسجيل الدخول باستخدام البريد الإلكتروني وكلمة المرور
+      // 2. تسجيل الدخول
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: email,
         password: password
@@ -168,7 +167,7 @@ const Login = ({ onLogin }) => {
       const user = authData.user
       if (!user) throw new Error('فشل تسجيل الدخول')
 
-      // 3. التحقق من الملف الشخصي وحالة التجميد
+      // 3. التحقق من الملف الشخصي
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('role, is_frozen')
@@ -245,7 +244,7 @@ const Login = ({ onLogin }) => {
   )
 }
 
-// ========== 5. لوحة تحكم المعلم ==========
+// ========== لوحة تحكم المعلم ==========
 const TeacherPanel = ({ user }) => {
   const [lessonTime, setLessonTime] = useState('')
   const [homeworks, setHomeworks] = useState([])
@@ -454,7 +453,7 @@ const TeacherPanel = ({ user }) => {
     }
   }
 
-  // تسجيل طالب جديد (اسم مستخدم، رقم واتساب، كلمة مرور)
+  // تسجيل طالب جديد
   const handleCreateStudent = async (e) => {
     e.preventDefault()
     if (!studentUsername || !studentWhatsapp || !studentPassword) {
@@ -464,20 +463,19 @@ const TeacherPanel = ({ user }) => {
     setStudentLoading(true)
     try {
       // 1. التحقق من أن اسم المستخدم غير مكرر
-      const { data: existingUsername, error: checkError } = await supabase
+      const { data: existingUsername } = await supabase
         .from('profiles')
         .select('username')
         .eq('username', studentUsername)
         .maybeSingle()
 
-      if (checkError) throw new Error('خطأ في التحقق من اسم المستخدم')
       if (existingUsername) {
         alert('اسم المستخدم هذا مستخدم مسبقاً. يرجى اختيار اسم آخر.')
         setStudentLoading(false)
         return
       }
 
-      // 2. إنشاء بريد إلكتروني افتراضي (لن يظهر للمستخدم)
+      // 2. إنشاء بريد إلكتروني افتراضي
       const fakeEmail = `${studentUsername}@school.temp`
 
       // 3. إنشاء الحساب في Auth
@@ -489,7 +487,6 @@ const TeacherPanel = ({ user }) => {
 
       if (signUpError) {
         if (signUpError.message.includes('User already registered')) {
-          // إذا كان البريد الافتراضي مستخدماً، نضيف رقماً عشوائياً
           const randomSuffix = Math.floor(Math.random() * 10000)
           const newFakeEmail = `${studentUsername}${randomSuffix}@school.temp`
           const { data: retryData, error: retryError } = await supabase.auth.signUp({
@@ -500,6 +497,7 @@ const TeacherPanel = ({ user }) => {
           if (retryError) throw retryError
           const newStudent = retryData.user
           if (!newStudent) throw new Error('تعذر إنشاء الحساب')
+          
           // إدراج الملف الشخصي
           const { error: insertError } = await supabase
             .from('profiles')
@@ -529,7 +527,7 @@ const TeacherPanel = ({ user }) => {
       const newStudent = signUpData.user
       if (!newStudent) throw new Error('تعذر إنشاء الحساب')
 
-      // 4. إدراج الملف الشخصي مع رقم واتساب
+      // 4. إدراج الملف الشخصي
       const { error: insertError } = await supabase
         .from('profiles')
         .insert([{ 
@@ -549,7 +547,6 @@ const TeacherPanel = ({ user }) => {
         throw insertError
       }
 
-      // تسجيل خروج المستخدم الجديد تلقائياً
       await supabase.auth.signOut()
 
       alert(`تم تسجيل الطالب (${studentUsername}) بنجاح!`)
@@ -564,7 +561,7 @@ const TeacherPanel = ({ user }) => {
     }
   }
 
-  // تحديث رقم واتساب للطالب
+  // تحديث رقم واتساب
   const updateWhatsapp = async (studentId, currentWhatsapp) => {
     const newWhatsapp = window.prompt('أدخل رقم واتساب الجديد للطالب:', currentWhatsapp || '');
     if (newWhatsapp === null) return;
@@ -752,7 +749,7 @@ const TeacherPanel = ({ user }) => {
   )
 }
 
-// ========== 6. لوحة تحكم الطالب ==========
+// ========== لوحة تحكم الطالب ==========
 const StudentPanel = ({ user }) => {
   const [teacherData, setTeacherData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -905,7 +902,7 @@ const StudentPanel = ({ user }) => {
   )
 }
 
-// ========== 7. التطبيق الرئيسي ==========
+// ========== التطبيق الرئيسي ==========
 const App = () => {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -992,7 +989,6 @@ const App = () => {
   return user.role === 'teacher' ? <TeacherPanel user={user} /> : <StudentPanel user={user} />
 }
 
-// ========== 8. تشغيل التطبيق ==========
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <App />
