@@ -264,6 +264,10 @@ const TeacherPanel = ({ user }) => {
         .eq('id', user.id)
         .single()
       
+      if (tError && tError.code !== 'PGRST116') {
+        throw new Error('خطأ في جلب بيانات المعلم: ' + tError.message)
+      }
+      
       if (teacherData) {
         setLessonTime(teacherData.lesson_time || '')
         setHomeworks(teacherData.homeworks || [])
@@ -282,8 +286,14 @@ const TeacherPanel = ({ user }) => {
         .select('*')
         .eq('role', 'student')
         
-      if (profilesData) {
-        setStudents(profilesData)
+      if (pError) {
+        console.error("خطأ في جلب الطلاب:", pError)
+        setErrorMsg('فشل تحميل الطلاب: ' + pError.message + ' (قد يكون بسبب سياسات RLS)')
+        setStudents([])  // تعيين مصفوفة فارغة لتجنب undefined
+      } else {
+        setStudents(profilesData || [])
+        // إذا كان هناك خطأ سابق، نمسحه
+        if (errorMsg.includes('RLS')) setErrorMsg('')
       }
     } catch (err) {
       console.error("خطأ في جلب البيانات الدقيقة:", err)
@@ -363,18 +373,26 @@ const TeacherPanel = ({ user }) => {
       if (!confirmFreeze) return
     }
 
-    await supabase.from('profiles').update({ 
-      is_frozen: nextStatus,
-      frozen_at: nextStatus ? new Date().toISOString() : null
-    }).eq('id', student.id)
-    
-    fetchTeacherData() // تحديث فوري
+    try {
+      await supabase.from('profiles').update({ 
+        is_frozen: nextStatus,
+        frozen_at: nextStatus ? new Date().toISOString() : null
+      }).eq('id', student.id)
+      
+      fetchTeacherData() // تحديث فوري
+    } catch (err) {
+      alert('فشل تحديث حالة التجميد: ' + err.message)
+    }
   }
 
   const handleDeleteStudentPermanently = async (studentId) => {
     if (!window.confirm('إجراء خطير: هل أنت متأكد من حذف حساب هذا الطالب نهائياً وفوراً من المنصة؟')) return
-    await supabase.from('profiles').delete().eq('id', studentId)
-    fetchTeacherData()
+    try {
+      await supabase.from('profiles').delete().eq('id', studentId)
+      fetchTeacherData()
+    } catch (err) {
+      alert('فشل حذف الطالب: ' + err.message)
+    }
   }
 
   const getRemainingFreezeDays = (frozenAtStr) => {
@@ -419,6 +437,7 @@ const TeacherPanel = ({ user }) => {
     if (!studentEmail || !studentPassword) return
     setStudentLoading(true)
     try {
+      // 1. إنشاء الحساب في Auth
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: studentEmail,
         password: studentPassword,
@@ -426,22 +445,31 @@ const TeacherPanel = ({ user }) => {
       })
       if (signUpError) throw signUpError
       const newStudent = signUpData.user
-      if (!newStudent) throw new Error('تعذر إتمام العملية')
+      if (!newStudent) throw new Error('تعذر إنشاء الحساب')
 
-      // إضافة profile للطالب
-      await supabase.from('profiles').insert([{ 
-        id: newStudent.id, 
-        email: studentEmail, 
-        role: 'student',
-        is_frozen: false,
-        frozen_at: null,
-        last_seen: new Date().toISOString()
-      }])
+      // 2. إدراج الملف الشخصي في جدول profiles
+      const { error: insertError } = await supabase
+        .from('profiles')
+        .insert([{ 
+          id: newStudent.id, 
+          email: studentEmail, 
+          role: 'student',
+          is_frozen: false,
+          frozen_at: null,
+          last_seen: new Date().toISOString()
+        }])
+      
+      if (insertError) {
+        console.error("فشل إدراج الملف الشخصي:", insertError)
+        alert("فشل إنشاء ملف الطالب: " + insertError.message + " (قد يكون بسبب سياسات RLS)")
+        throw insertError
+      }
 
       alert(`تم تسجيل الطالب (${studentEmail}) وتحديث عداد الصف تلقائياً!`)
       setStudentEmail('')
       setStudentPassword('')
-      fetchTeacherData() // تحديث فوري
+      // تحديث القائمة فوراً
+      await fetchTeacherData()
     } catch (err) {
       alert('فشل إنشاء حساب الطالب: ' + err.message)
     } finally {
