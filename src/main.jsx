@@ -134,9 +134,9 @@ const HomeworkTextCountdown = ({ targetDate }) => {
   )
 }
 
-// ========== 4. واجهة تسجيل الدخول ==========
+// ========== 4. واجهة تسجيل الدخول (باستخدام اسم المستخدم) ==========
 const Login = ({ onLogin }) => {
-  const [email, setEmail] = useState('')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -147,12 +147,30 @@ const Login = ({ onLogin }) => {
     setLoading(true)
     setError('')
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-      if (error) throw error
-      const user = data.user
+      // 1. البحث عن البريد الإلكتروني باستخدام اسم المستخدم
+      const { data, error: fetchError } = await supabase
+        .from('profiles')
+        .select('email')
+        .eq('username', username)
+        .maybeSingle()
+
+      if (fetchError) throw new Error('خطأ في البحث عن المستخدم: ' + fetchError.message)
+      if (!data) throw new Error('اسم المستخدم غير موجود')
+
+      const email = data.email
+
+      // 2. تسجيل الدخول باستخدام البريد الإلكتروني وكلمة المرور
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: email,
+        password: password
+      })
+
+      if (authError) throw new Error('اسم المستخدم أو كلمة المرور غير صحيحة')
+
+      const user = authData.user
       if (!user) throw new Error('فشل تسجيل الدخول')
 
-      // التحقق من وجود ملف شخصي وحالة التجميد
+      // 3. التحقق من الملف الشخصي وحالة التجميد
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('role, is_frozen')
@@ -163,13 +181,13 @@ const Login = ({ onLogin }) => {
       if (!profile) throw new Error('لا يوجد ملف شخصي لهذا الحساب، يرجى التواصل مع المدير')
       if (profile.is_frozen) throw new Error('هذا الحساب مجمد، لا يمكن تسجيل الدخول')
 
-      // تحديث last_seen
+      // 4. تحديث last_seen
       await supabase
         .from('profiles')
         .update({ last_seen: new Date().toISOString() })
         .eq('id', user.id)
 
-      onLogin({ id: user.id, email: user.email, role: profile.role })
+      onLogin({ id: user.id, email: user.email, role: profile.role, username: username })
     } catch (err) {
       console.error(err)
       setError(err.message)
@@ -205,7 +223,7 @@ const Login = ({ onLogin }) => {
             <form onSubmit={handleAuth} className="space-y-3.5 w-full">
               <div className="relative flex items-center">
                 <span className="absolute right-4 text-gray-400 pointer-events-none text-sm font-medium">اسم المستخدم</span>
-                <input type="email" className="input-glass w-full text-right pr-24 pl-4 text-base bg-black/20" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                <input type="text" className="input-glass w-full text-right pr-24 pl-4 text-base bg-black/20" value={username} onChange={(e) => setUsername(e.target.value)} required />
               </div>
               <div className="relative flex items-center">
                 <span className="absolute right-4 text-gray-400 pointer-events-none text-sm font-medium">كلمة المرور</span>
@@ -229,7 +247,7 @@ const Login = ({ onLogin }) => {
   )
 }
 
-// ========== 5. لوحة تحكم المعلم ==========
+// ========== 5. لوحة تحكم المعلم (معدلة لدعم اسم المستخدم) ==========
 const TeacherPanel = ({ user }) => {
   const [lessonTime, setLessonTime] = useState('')
   const [homeworks, setHomeworks] = useState([])
@@ -241,6 +259,7 @@ const TeacherPanel = ({ user }) => {
   const [publishType, setPublishType] = useState('now')
   const [newHomeworkRevealTime, setNewHomeworkRevealTime] = useState('')
 
+  const [studentUsername, setStudentUsername] = useState('')
   const [studentEmail, setStudentEmail] = useState('')
   const [studentPassword, setStudentPassword] = useState('')
   const [studentLoading, setStudentLoading] = useState(false)
@@ -370,7 +389,6 @@ const TeacherPanel = ({ user }) => {
         frozen_at: nextStatus ? new Date().toISOString() : null
       }).eq('id', student.id)
       
-      // تحديث القائمة
       fetchTeacherData()
     } catch (err) {
       alert('فشل تحديث حالة التجميد: ' + err.message)
@@ -381,7 +399,6 @@ const TeacherPanel = ({ user }) => {
   const handleDeleteStudentPermanently = async (studentId) => {
     if (!window.confirm('إجراء خطير: هل أنت متأكد من حذف حساب هذا الطالب نهائياً وفوراً من المنصة؟')) return
     try {
-      // حذف من profiles
       const { error } = await supabase.from('profiles').delete().eq('id', studentId)
       if (error) throw error
       alert('تم حذف الطالب من النظام، ولن يتمكن من تسجيل الدخول.')
@@ -444,31 +461,55 @@ const TeacherPanel = ({ user }) => {
     }
   }
 
-  // تسجيل طالب جديد
+  // تسجيل طالب جديد (باستخدام اسم المستخدم)
   const handleCreateStudent = async (e) => {
     e.preventDefault()
-    if (!studentEmail || !studentPassword) {
-      alert('يرجى ملء البريد الإلكتروني وكلمة المرور.')
+    if (!studentUsername || !studentEmail || !studentPassword) {
+      alert('يرجى ملء جميع الحقول: اسم المستخدم، البريد الإلكتروني، كلمة المرور.')
       return
     }
     setStudentLoading(true)
     try {
-      // 1. إنشاء الحساب في Auth
+      // 1. التحقق من أن اسم المستخدم غير مكرر
+      const { data: existingUsername, error: checkError } = await supabase
+        .from('profiles')
+        .select('username')
+        .eq('username', studentUsername)
+        .maybeSingle()
+
+      if (checkError) throw new Error('خطأ في التحقق من اسم المستخدم')
+      if (existingUsername) {
+        alert('اسم المستخدم هذا مستخدم مسبقاً. يرجى اختيار اسم آخر.')
+        setStudentLoading(false)
+        return
+      }
+
+      // 2. إنشاء الحساب في Auth
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: studentEmail,
         password: studentPassword,
-        options: { data: { role: 'student' } }
+        options: { data: { role: 'student', username: studentUsername } }
       })
-      if (signUpError) throw signUpError
+
+      if (signUpError) {
+        if (signUpError.message.includes('User already registered')) {
+          alert(`البريد الإلكتروني (${studentEmail}) مسجل بالفعل. يرجى استخدام بريد آخر.`)
+          setStudentLoading(false)
+          return
+        }
+        throw signUpError
+      }
+
       const newStudent = signUpData.user
       if (!newStudent) throw new Error('تعذر إنشاء الحساب')
 
-      // 2. إدراج الملف الشخصي في جدول profiles
+      // 3. إدراج الملف الشخصي في جدول profiles مع اسم المستخدم
       const { error: insertError } = await supabase
         .from('profiles')
         .insert([{ 
           id: newStudent.id, 
-          email: studentEmail, 
+          email: studentEmail,
+          username: studentUsername,
           role: 'student',
           is_frozen: false,
           frozen_at: null,
@@ -478,17 +519,16 @@ const TeacherPanel = ({ user }) => {
       if (insertError) {
         console.error("فشل إدراج الملف الشخصي:", insertError)
         alert("فشل إنشاء ملف الطالب: " + insertError.message)
-        // حذف الحساب من auth إذا فشل الإدراج (اختياري، لكن صعب من العميل)
         throw insertError
       }
 
-      // تسجيل خروج المستخدم الجديد تلقائياً (لأن signUp يسجل دخوله)
+      // تسجيل خروج المستخدم الجديد تلقائياً
       await supabase.auth.signOut()
 
-      alert(`تم تسجيل الطالب (${studentEmail}) بنجاح!`)
+      alert(`تم تسجيل الطالب (${studentUsername}) بنجاح!`)
+      setStudentUsername('')
       setStudentEmail('')
       setStudentPassword('')
-      // تحديث القائمة
       await fetchTeacherData()
     } catch (err) {
       alert('فشل إنشاء حساب الطالب: ' + err.message)
@@ -497,18 +537,9 @@ const TeacherPanel = ({ user }) => {
     }
   }
 
-  // تغيير كلمة مرور الطالب (من المعلم)
+  // تغيير كلمة مرور الطالب (من المعلم) - غير ممكن من العميل
   const changeStudentPassword = async (studentId, studentEmail) => {
-    const newPass = window.prompt(`أدخل كلمة المرور الجديدة للطالب: ${studentEmail}`);
-    if (!newPass) return;
-    try {
-      // لا يمكن تغيير كلمة مرور مستخدم آخر من العميل باستخدام anon key.
-      // يجب استخدام service_role أو Edge Function.
-      // سنعرض رسالة توضيحية.
-      alert('لا يمكن تغيير كلمة مرور الطالب من هنا حالياً. يمكن للطالب تغييرها من لوحته الخاصة.')
-    } catch (err) {
-      alert('فشل تغيير كلمة المرور: ' + err.message)
-    }
+    alert('لا يمكن تغيير كلمة مرور الطالب من هنا. يمكن للطالب تغييرها من لوحته الخاصة.')
   }
 
   const handleLogout = async () => { await supabase.auth.signOut() }
@@ -522,7 +553,7 @@ const TeacherPanel = ({ user }) => {
         <div className="flex justify-between items-center flex-wrap gap-4 border-b border-white/10 pb-4">
           <div>
             <h2 className="text-3xl font-bold text-purple-300">لوحة تحكم المعلم</h2>
-            <p className="text-gray-400 text-sm mt-1">مرحباً بك: {user.email}</p>
+            <p className="text-gray-400 text-sm mt-1">مرحباً بك: {user.username || user.email}</p>
           </div>
           <button onClick={handleLogout} className="btn-primary bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 shadow-lg text-sm">
             تسجيل الخروج
@@ -603,11 +634,15 @@ const TeacherPanel = ({ user }) => {
           <h3 className="text-xl font-semibold text-blue-300">لوحة تسجيل الطلاب الجدد</h3>
           <form onSubmit={handleCreateStudent} className="flex flex-col md:flex-row gap-4 items-end">
             <div className="flex-1 w-full space-y-1">
-              <span className="text-xs text-gray-400 mr-1">بريد الطالب الإلكتروني:</span>
+              <span className="text-xs text-gray-400 mr-1">اسم المستخدم للطالب:</span>
+              <input type="text" className="input-glass w-full text-right" placeholder="student_username" value={studentUsername} onChange={e => setStudentUsername(e.target.value)} required />
+            </div>
+            <div className="flex-1 w-full space-y-1">
+              <span className="text-xs text-gray-400 mr-1">البريد الإلكتروني:</span>
               <input type="email" className="input-glass w-full text-right" placeholder="student@example.com" value={studentEmail} onChange={e => setStudentEmail(e.target.value)} required />
             </div>
             <div className="flex-1 w-full space-y-1">
-              <span className="text-xs text-gray-400 mr-1">تعيين كلمة المرور:</span>
+              <span className="text-xs text-gray-400 mr-1">كلمة المرور:</span>
               <input type="text" className="input-glass w-full text-right" placeholder="كلمة مرور الدخول" value={studentPassword} onChange={e => setStudentPassword(e.target.value)} required />
             </div>
             <button type="submit" disabled={studentLoading} className="btn-primary bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 py-3.5 px-6 w-full md:w-auto whitespace-nowrap">
@@ -635,7 +670,7 @@ const TeacherPanel = ({ user }) => {
             {sortedStudents.map(s => (
               <div key={s.id} className={`p-3 rounded-xl border flex flex-wrap justify-between items-center gap-3 ${s.is_frozen ? 'bg-gray-900/60 border-gray-700 opacity-60' : 'bg-white/5 border-white/5'}`}>
                 <div className="flex items-center gap-3 flex-wrap">
-                  <span className="text-white text-sm font-medium">{s.email}</span>
+                  <span className="text-white text-sm font-medium">{s.username || s.email}</span>
                   {s.is_frozen && (
                     <span className="text-xs text-orange-400 bg-orange-950/40 px-2 py-0.5 rounded border border-orange-500/20">
                       ⏳ مجمد (متبقي {getRemainingFreezeDays(s.frozen_at)} يوم على الحذف نهائياً)
@@ -758,7 +793,7 @@ const StudentPanel = ({ user }) => {
         <div className="flex justify-between items-center flex-wrap gap-4 border-b border-white/10 pb-4">
           <div>
             <h2 className="text-3xl font-bold text-blue-300">لوحة تحكم الطالب</h2>
-            <p className="text-gray-400 text-sm mt-1">أهلاً بك: {user.email}</p>
+            <p className="text-gray-400 text-sm mt-1">أهلاً بك: {user.username || user.email}</p>
           </div>
           <div className="flex gap-2">
             <button onClick={changePassword} className="btn-primary bg-blue-600 hover:bg-blue-700 text-sm">
@@ -837,16 +872,20 @@ const App = () => {
         try {
           const { data: profile, error } = await supabase
             .from('profiles')
-            .select('role, is_frozen')
+            .select('role, is_frozen, username')
             .eq('id', session.user.id)
             .maybeSingle()
           if (error) throw error
           if (!profile || profile.is_frozen) {
-            // الملف الشخصي مفقود أو مجمد => تسجيل الخروج
             await supabase.auth.signOut()
             setUser(null)
           } else {
-            setUser({ id: session.user.id, email: session.user.email, role: profile.role })
+            setUser({ 
+              id: session.user.id, 
+              email: session.user.email, 
+              role: profile.role,
+              username: profile.username 
+            })
           }
         } catch (err) {
           console.error('خطأ في التحقق من الجلسة:', err)
@@ -864,7 +903,7 @@ const App = () => {
         try {
           const { data: profile, error } = await supabase
             .from('profiles')
-            .select('role, is_frozen')
+            .select('role, is_frozen, username')
             .eq('id', session.user.id)
             .maybeSingle()
           if (error) throw error
@@ -872,7 +911,12 @@ const App = () => {
             await supabase.auth.signOut()
             setUser(null)
           } else {
-            setUser({ id: session.user.id, email: session.user.email, role: profile.role })
+            setUser({ 
+              id: session.user.id, 
+              email: session.user.email, 
+              role: profile.role,
+              username: profile.username 
+            })
           }
         } catch (err) {
           console.error('خطأ في تغيير حالة المصادقة:', err)
