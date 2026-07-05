@@ -370,18 +370,16 @@ const TeacherPanel = ({ user }) => {
         frozen_at: nextStatus ? new Date().toISOString() : null
       }).eq('id', student.id)
       
-      // تحديث القائمة
       fetchTeacherData()
     } catch (err) {
       alert('فشل تحديث حالة التجميد: ' + err.message)
     }
   }
 
-  // حذف طالب نهائياً (من profiles فقط)
+  // حذف طالب نهائياً (من profiles)
   const handleDeleteStudentPermanently = async (studentId) => {
     if (!window.confirm('إجراء خطير: هل أنت متأكد من حذف حساب هذا الطالب نهائياً وفوراً من المنصة؟')) return
     try {
-      // حذف من profiles
       const { error } = await supabase.from('profiles').delete().eq('id', studentId)
       if (error) throw error
       alert('تم حذف الطالب من النظام، ولن يتمكن من تسجيل الدخول.')
@@ -453,7 +451,6 @@ const TeacherPanel = ({ user }) => {
     }
     setStudentLoading(true)
     try {
-      // 1. إنشاء الحساب في Auth
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: studentEmail,
         password: studentPassword,
@@ -463,7 +460,6 @@ const TeacherPanel = ({ user }) => {
       const newStudent = signUpData.user
       if (!newStudent) throw new Error('تعذر إنشاء الحساب')
 
-      // 2. إدراج الملف الشخصي في جدول profiles
       const { error: insertError } = await supabase
         .from('profiles')
         .insert([{ 
@@ -478,17 +474,15 @@ const TeacherPanel = ({ user }) => {
       if (insertError) {
         console.error("فشل إدراج الملف الشخصي:", insertError)
         alert("فشل إنشاء ملف الطالب: " + insertError.message)
-        // حذف الحساب من auth إذا فشل الإدراج (اختياري، لكن صعب من العميل)
         throw insertError
       }
 
-      // تسجيل خروج المستخدم الجديد تلقائياً (لأن signUp يسجل دخوله)
+      // تسجيل الخروج تلقائياً لأن signUp يسجل دخول المستخدم الجديد
       await supabase.auth.signOut()
 
       alert(`تم تسجيل الطالب (${studentEmail}) بنجاح!`)
       setStudentEmail('')
       setStudentPassword('')
-      // تحديث القائمة
       await fetchTeacherData()
     } catch (err) {
       alert('فشل إنشاء حساب الطالب: ' + err.message)
@@ -497,18 +491,9 @@ const TeacherPanel = ({ user }) => {
     }
   }
 
-  // تغيير كلمة مرور الطالب (من المعلم)
+  // تغيير كلمة مرور الطالب (من المعلم) - غير ممكن من العميل
   const changeStudentPassword = async (studentId, studentEmail) => {
-    const newPass = window.prompt(`أدخل كلمة المرور الجديدة للطالب: ${studentEmail}`);
-    if (!newPass) return;
-    try {
-      // لا يمكن تغيير كلمة مرور مستخدم آخر من العميل باستخدام anon key.
-      // يجب استخدام service_role أو Edge Function.
-      // سنعرض رسالة توضيحية.
-      alert('لا يمكن تغيير كلمة مرور الطالب من هنا حالياً. يمكن للطالب تغييرها من لوحته الخاصة.')
-    } catch (err) {
-      alert('فشل تغيير كلمة المرور: ' + err.message)
-    }
+    alert('لا يمكن تغيير كلمة مرور الطالب من هنا. يمكن للطالب تغييرها من لوحته الخاصة.')
   }
 
   const handleLogout = async () => { await supabase.auth.signOut() }
@@ -823,7 +808,7 @@ const StudentPanel = ({ user }) => {
   )
 }
 
-// ========== 7. التطبيق الرئيسي ==========
+// ========== 7. التطبيق الرئيسي (مع التحقق من صحة الجلسة) ==========
 const App = () => {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -831,49 +816,54 @@ const App = () => {
   useDynamicBackground();
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
       if (session?.user) {
-        supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', session.user.id)
-          .maybeSingle()
-          .then(({ data }) => {
-            const role = data?.role || session.user.user_metadata?.role || 'student'
-            setUser({ id: session.user.id, email: session.user.email, role })
-            setLoading(false)
-          })
-          .catch(() => {
-            setUser({
-              id: session.user.id,
-              email: session.user.email,
-              role: session.user.user_metadata?.role || 'student'
-            })
-            setLoading(false)
-          })
-      } else {
-        setLoading(false)
+        try {
+          const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('role, is_frozen')
+            .eq('id', session.user.id)
+            .maybeSingle()
+          if (error) throw error
+          if (!profile || profile.is_frozen) {
+            // الملف الشخصي مفقود أو مجمد => تسجيل الخروج
+            await supabase.auth.signOut()
+            setUser(null)
+          } else {
+            setUser({ id: session.user.id, email: session.user.email, role: profile.role })
+          }
+        } catch (err) {
+          console.error('خطأ في التحقق من الجلسة:', err)
+          await supabase.auth.signOut()
+          setUser(null)
+        }
       }
-    })
+      setLoading(false)
+    }
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    checkSession()
+
+    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
-        supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', session.user.id)
-          .maybeSingle()
-          .then(({ data }) => {
-            const role = data?.role || session.user.user_metadata?.role || 'student'
-            setUser({ id: session.user.id, email: session.user.email, role })
-          })
-          .catch(() => {
-            setUser({
-              id: session.user.id,
-              email: session.user.email,
-              role: session.user.user_metadata?.role || 'student'
-            })
-          })
+        try {
+          const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('role, is_frozen')
+            .eq('id', session.user.id)
+            .maybeSingle()
+          if (error) throw error
+          if (!profile || profile.is_frozen) {
+            await supabase.auth.signOut()
+            setUser(null)
+          } else {
+            setUser({ id: session.user.id, email: session.user.email, role: profile.role })
+          }
+        } catch (err) {
+          console.error('خطأ في تغيير حالة المصادقة:', err)
+          await supabase.auth.signOut()
+          setUser(null)
+        }
       } else {
         setUser(null)
       }
