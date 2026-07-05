@@ -370,16 +370,18 @@ const TeacherPanel = ({ user }) => {
         frozen_at: nextStatus ? new Date().toISOString() : null
       }).eq('id', student.id)
       
+      // تحديث القائمة
       fetchTeacherData()
     } catch (err) {
       alert('فشل تحديث حالة التجميد: ' + err.message)
     }
   }
 
-  // حذف طالب نهائياً (من profiles)
+  // حذف طالب نهائياً (من profiles فقط)
   const handleDeleteStudentPermanently = async (studentId) => {
     if (!window.confirm('إجراء خطير: هل أنت متأكد من حذف حساب هذا الطالب نهائياً وفوراً من المنصة؟')) return
     try {
+      // حذف من profiles
       const { error } = await supabase.from('profiles').delete().eq('id', studentId)
       if (error) throw error
       alert('تم حذف الطالب من النظام، ولن يتمكن من تسجيل الدخول.')
@@ -451,6 +453,7 @@ const TeacherPanel = ({ user }) => {
     }
     setStudentLoading(true)
     try {
+      // 1. إنشاء الحساب في Auth
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: studentEmail,
         password: studentPassword,
@@ -460,6 +463,7 @@ const TeacherPanel = ({ user }) => {
       const newStudent = signUpData.user
       if (!newStudent) throw new Error('تعذر إنشاء الحساب')
 
+      // 2. إدراج الملف الشخصي في جدول profiles
       const { error: insertError } = await supabase
         .from('profiles')
         .insert([{ 
@@ -474,15 +478,17 @@ const TeacherPanel = ({ user }) => {
       if (insertError) {
         console.error("فشل إدراج الملف الشخصي:", insertError)
         alert("فشل إنشاء ملف الطالب: " + insertError.message)
+        // حذف الحساب من auth إذا فشل الإدراج (اختياري، لكن صعب من العميل)
         throw insertError
       }
 
-      // تسجيل الخروج تلقائياً لأن signUp يسجل دخول المستخدم الجديد
+      // تسجيل خروج المستخدم الجديد تلقائياً (لأن signUp يسجل دخوله)
       await supabase.auth.signOut()
 
       alert(`تم تسجيل الطالب (${studentEmail}) بنجاح!`)
       setStudentEmail('')
       setStudentPassword('')
+      // تحديث القائمة
       await fetchTeacherData()
     } catch (err) {
       alert('فشل إنشاء حساب الطالب: ' + err.message)
@@ -491,9 +497,18 @@ const TeacherPanel = ({ user }) => {
     }
   }
 
-  // تغيير كلمة مرور الطالب (من المعلم) - غير ممكن من العميل
+  // تغيير كلمة مرور الطالب (من المعلم)
   const changeStudentPassword = async (studentId, studentEmail) => {
-    alert('لا يمكن تغيير كلمة مرور الطالب من هنا. يمكن للطالب تغييرها من لوحته الخاصة.')
+    const newPass = window.prompt(`أدخل كلمة المرور الجديدة للطالب: ${studentEmail}`);
+    if (!newPass) return;
+    try {
+      // لا يمكن تغيير كلمة مرور مستخدم آخر من العميل باستخدام anon key.
+      // يجب استخدام service_role أو Edge Function.
+      // سنعرض رسالة توضيحية.
+      alert('لا يمكن تغيير كلمة مرور الطالب من هنا حالياً. يمكن للطالب تغييرها من لوحته الخاصة.')
+    } catch (err) {
+      alert('فشل تغيير كلمة المرور: ' + err.message)
+    }
   }
 
   const handleLogout = async () => { await supabase.auth.signOut() }
