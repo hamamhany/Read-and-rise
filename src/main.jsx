@@ -13,7 +13,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-// ========== 2. هوك مخصص لتغيير ألوان الخلفية وحركة الشعار الخلفي ==========
+// ========== 2. هوك خلفية متحركة ==========
 const useDynamicBackground = () => {
   useEffect(() => {
     const style = document.createElement('style');
@@ -30,10 +30,10 @@ const useDynamicBackground = () => {
     document.head.appendChild(style);
 
     const bgGradients = [
-      'linear-gradient(135deg, #0f172a, #1e1b4b, #311042)', 
-      'linear-gradient(135deg, #090d16, #111827, #1f2937)', 
-      'linear-gradient(135deg, #020617, #0f172a, #1e293b)', 
-      'linear-gradient(135deg, #070a13, #161224, #281432)'  
+      'linear-gradient(135deg, #0f172a, #1e1b4b, #311042)',
+      'linear-gradient(135deg, #090d16, #111827, #1f2937)',
+      'linear-gradient(135deg, #020617, #0f172a, #1e293b)',
+      'linear-gradient(135deg, #070a13, #161224, #281432)'
     ];
     let currentIndex = 0;
 
@@ -54,7 +54,7 @@ const useDynamicBackground = () => {
   }, []);
 };
 
-// ========== 3. مكون العداد التنازلي للحصة ==========
+// ========== 3. عداد تنازلي ==========
 const CountdownTimer = ({ targetDate }) => {
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
 
@@ -63,7 +63,7 @@ const CountdownTimer = ({ targetDate }) => {
       const distance = new Date(targetDate).getTime() - new Date().getTime()
       if (distance < 0) {
         setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 })
-        return true 
+        return true
       }
       setTimeLeft({
         days: Math.floor(distance / (1000 * 60 * 60 * 24)),
@@ -96,7 +96,6 @@ const CountdownTimer = ({ targetDate }) => {
   )
 }
 
-// ========== 4. مكون العداد النصي للواجب المجدول ==========
 const HomeworkTextCountdown = ({ targetDate }) => {
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
   const [isPast, setIsPast] = useState(false)
@@ -135,7 +134,7 @@ const HomeworkTextCountdown = ({ targetDate }) => {
   )
 }
 
-// ========== 5. واجهة تسجيل الدخول ==========
+// ========== 4. واجهة تسجيل الدخول ==========
 const Login = ({ onLogin }) => {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -153,12 +152,18 @@ const Login = ({ onLogin }) => {
       const user = data.user
       if (!user) throw new Error('فشل تسجيل الدخول')
 
+      // تحديث last_seen فور تسجيل الدخول
+      await supabase
+        .from('profiles')
+        .update({ last_seen: new Date().toISOString() })
+        .eq('id', user.id)
+
       let userRole = user.user_metadata?.role || 'student'
       const { data: profileData } = await supabase
         .from('profiles')
         .select('role')
         .eq('id', user.id)
-        .single()
+        .maybeSingle()   // ← استخدام maybeSingle بدلاً من single لتجنب 406
       if (profileData) userRole = profileData.role
 
       onLogin({ id: user.id, email: user.email, role: userRole })
@@ -177,10 +182,8 @@ const Login = ({ onLogin }) => {
   return (
     <div className="container-center relative min-h-screen overflow-hidden" dir="rtl">
       <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
-      
       <div className="relative z-10 w-full max-w-md px-4">
         <div className="glass p-6 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl flex flex-col items-center relative overflow-hidden min-h-[440px] justify-center">
-          
           <div className="absolute inset-0 flex items-start justify-center pt-6 pointer-events-none z-0 overflow-hidden">
             <img 
               src="/images/logo.png" 
@@ -189,7 +192,6 @@ const Login = ({ onLogin }) => {
               onError={(e) => e.target.style.display = 'none'}
             />
           </div>
-          
           <div className="w-full z-10 flex flex-col items-center space-y-4">
             <div className="text-center space-y-1 w-full">
               <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 text-transparent bg-clip-text">
@@ -201,13 +203,11 @@ const Login = ({ onLogin }) => {
                 </span>
               </div>
             </div>
-            
             <form onSubmit={handleAuth} className="space-y-3.5 w-full">
               <div className="relative flex items-center">
                 <span className="absolute right-4 text-gray-400 pointer-events-none text-sm font-medium">اسم المستخدم</span>
                 <input type="email" className="input-glass w-full text-right pr-24 pl-4 text-base bg-black/20" value={email} onChange={(e) => setEmail(e.target.value)} required />
               </div>
-
               <div className="relative flex items-center">
                 <span className="absolute right-4 text-gray-400 pointer-events-none text-sm font-medium">كلمة المرور</span>
                 <input type={showPassword ? "text" : "password"} className="input-glass w-full text-right pr-24 pl-12 text-base bg-black/20" value={password} onChange={(e) => setPassword(e.target.value)} required />
@@ -215,14 +215,11 @@ const Login = ({ onLogin }) => {
                   {showPassword ? "إخفاء" : "إظهار"}
                 </button>
               </div>
-              
               {error && <p className="text-red-400 text-sm text-center whitespace-pre-wrap">{error}</p>}
-              
               <button type="submit" className="btn-primary w-full py-2.5 text-lg font-semibold tracking-wide shadow-lg" disabled={loading}>
                 {loading ? 'جاري التحميل...' : 'تسجيل الدخول'}
               </button>
             </form>
-
             <div className="pt-2 border-t border-white/10 text-center text-xs text-gray-400 w-full">
               <p>جميع الحقوق محفوظة © 2026 لصالح المبرمج همام هاني محمد علي</p>
             </div>
@@ -233,36 +230,32 @@ const Login = ({ onLogin }) => {
   )
 }
 
-// ========== 6. لوحة تحكم المعلم (تحديث فوري ومتزامن مع الواجبات المتعددة) ==========
+// ========== 5. لوحة تحكم المعلم ==========
 const TeacherPanel = ({ user }) => {
   const [lessonTime, setLessonTime] = useState('')
-  const [homeworks, setHomeworks] = useState([])      // مصفوفة الواجبات
+  const [homeworks, setHomeworks] = useState([])
   const [students, setStudents] = useState([])
   const [loading, setLoading] = useState(true)
   const [errorMsg, setErrorMsg] = useState('')
 
-  // حالة إضافة واجب جديد
   const [newHomeworkText, setNewHomeworkText] = useState('')
-  const [publishType, setPublishType] = useState('now') 
+  const [publishType, setPublishType] = useState('now')
   const [newHomeworkRevealTime, setNewHomeworkRevealTime] = useState('')
 
-  // حالة تسجيل الطالب
   const [studentEmail, setStudentEmail] = useState('')
   const [studentPassword, setStudentPassword] = useState('')
   const [studentLoading, setStudentLoading] = useState(false)
 
-  // حالة جدولة موعد الحصة (تم إضافتها حسب الطلب)
   const [newLessonTime, setNewLessonTime] = useState('')
 
-  // ====== 1. جلب البيانات الأساسية مع عداد الطلاب الفعلي ======
+  // جلب البيانات
   const fetchTeacherData = async () => {
     try {
-      // 1. جلب بيانات المعلم (الحصة والواجبات)
       const { data: teacherData, error: tError } = await supabase
         .from('teachers')
         .select('lesson_time, homeworks')
         .eq('id', user.id)
-        .single()
+        .maybeSingle()
       
       if (tError && tError.code !== 'PGRST116') {
         throw new Error('خطأ في جلب بيانات المعلم: ' + tError.message)
@@ -272,7 +265,6 @@ const TeacherPanel = ({ user }) => {
         setLessonTime(teacherData.lesson_time || '')
         setHomeworks(teacherData.homeworks || [])
       } else {
-        // إذا لم يكن للمعلم سجل، ننشئ واحداً
         await supabase
           .from('teachers')
           .insert([{ id: user.id, lesson_time: '', homeworks: [] }])
@@ -280,7 +272,6 @@ const TeacherPanel = ({ user }) => {
         setHomeworks([])
       }
 
-      // 2. جلب جميع الطلاب الفعليين (دور student) من جدول الحسابات
       const { data: profilesData, error: pError } = await supabase
         .from('profiles')
         .select('*')
@@ -288,22 +279,20 @@ const TeacherPanel = ({ user }) => {
         
       if (pError) {
         console.error("خطأ في جلب الطلاب:", pError)
-        setErrorMsg('فشل تحميل الطلاب: ' + pError.message + ' (قد يكون بسبب سياسات RLS)')
-        setStudents([])  // تعيين مصفوفة فارغة لتجنب undefined
+        setErrorMsg('فشل تحميل الطلاب: ' + pError.message)
+        setStudents([])
       } else {
         setStudents(profilesData || [])
-        // إذا كان هناك خطأ سابق، نمسحه
         if (errorMsg.includes('RLS')) setErrorMsg('')
       }
     } catch (err) {
-      console.error("خطأ في جلب البيانات الدقيقة:", err)
+      console.error("خطأ في جلب البيانات:", err)
       setErrorMsg('فشل تحميل البيانات: ' + err.message)
     } finally {
       setLoading(false)
     }
   }
 
-  // ====== 2. تفعيل القنوات المباشرة للمراقبة الفورية ======
   useEffect(() => {
     fetchTeacherData()
 
@@ -318,7 +307,7 @@ const TeacherPanel = ({ user }) => {
     }
   }, [user.id])
 
-  // ====== 3. دوال إدارة الواجبات ======
+  // إدارة الواجبات
   const saveHomework = async () => {
     if (!newHomeworkText.trim()) return alert('يرجى كتابة نص الواجب أولاً.')
     
@@ -365,7 +354,7 @@ const TeacherPanel = ({ user }) => {
     }
   }
 
-  // ====== 4. دوال إدارة الطلاب (تجميد، حذف، إنذار) ======
+  // إدارة الطلاب (تجميد، حذف، إنذار)
   const toggleFreezeStudent = async (student) => {
     const nextStatus = !student.is_frozen
     if (nextStatus) {
@@ -379,7 +368,7 @@ const TeacherPanel = ({ user }) => {
         frozen_at: nextStatus ? new Date().toISOString() : null
       }).eq('id', student.id)
       
-      fetchTeacherData() // تحديث فوري
+      fetchTeacherData()
     } catch (err) {
       alert('فشل تحديث حالة التجميد: ' + err.message)
     }
@@ -394,6 +383,22 @@ const TeacherPanel = ({ user }) => {
       alert('فشل حذف الطالب: ' + err.message)
     }
   }
+
+  // حذف المجمدين تلقائياً بعد 90 يوم
+  const deleteFrozenAccounts = async () => {
+    const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: frozen, error } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('is_frozen', true)
+      .lt('frozen_at', cutoff);
+    if (error) { alert('خطأ: ' + error.message); return; }
+    for (const student of frozen) {
+      await supabase.from('profiles').delete().eq('id', student.id);
+    }
+    alert(`تم حذف ${frozen.length} حساب مجمد`);
+    fetchTeacherData();
+  };
 
   const getRemainingFreezeDays = (frozenAtStr) => {
     if (!frozenAtStr) return 90
@@ -412,7 +417,7 @@ const TeacherPanel = ({ user }) => {
     return diffDays >= 30
   }
 
-  // ====== 5. دالة حفظ وتحديث موعد الحصة القادمة (تم إضافتها حسب الطلب) ======
+  // تحديث موعد الحصة
   const updateLessonTime = async () => {
     if (!newLessonTime) return alert('يرجى اختيار تاريخ ووقت الحصة أولاً.')
     try {
@@ -431,13 +436,12 @@ const TeacherPanel = ({ user }) => {
     }
   }
 
-  // ====== 6. دوال تسجيل طالب جديد ======
+  // تسجيل طالب جديد
   const handleCreateStudent = async (e) => {
     e.preventDefault()
     if (!studentEmail || !studentPassword) return
     setStudentLoading(true)
     try {
-      // 1. إنشاء الحساب في Auth
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: studentEmail,
         password: studentPassword,
@@ -447,7 +451,6 @@ const TeacherPanel = ({ user }) => {
       const newStudent = signUpData.user
       if (!newStudent) throw new Error('تعذر إنشاء الحساب')
 
-      // 2. إدراج الملف الشخصي في جدول profiles
       const { error: insertError } = await supabase
         .from('profiles')
         .insert([{ 
@@ -461,14 +464,13 @@ const TeacherPanel = ({ user }) => {
       
       if (insertError) {
         console.error("فشل إدراج الملف الشخصي:", insertError)
-        alert("فشل إنشاء ملف الطالب: " + insertError.message + " (قد يكون بسبب سياسات RLS)")
+        alert("فشل إنشاء ملف الطالب: " + insertError.message)
         throw insertError
       }
 
       alert(`تم تسجيل الطالب (${studentEmail}) وتحديث عداد الصف تلقائياً!`)
       setStudentEmail('')
       setStudentPassword('')
-      // تحديث القائمة فوراً
       await fetchTeacherData()
     } catch (err) {
       alert('فشل إنشاء حساب الطالب: ' + err.message)
@@ -479,7 +481,6 @@ const TeacherPanel = ({ user }) => {
 
   const handleLogout = async () => { await supabase.auth.signOut() }
 
-  // ====== 7. الفرز الذكي للواجبات والطلاب ======
   const sortedHomeworks = [...homeworks].sort((a, b) => (b.is_scheduled ? 1 : 0) - (a.is_scheduled ? 1 : 0))
   const sortedStudents = [...students].sort((a, b) => (a.is_frozen ? 1 : 0) - (b.is_frozen ? 1 : 0))
 
@@ -498,7 +499,6 @@ const TeacherPanel = ({ user }) => {
 
         {errorMsg && <p className="text-red-400 text-sm bg-red-500/10 p-3 rounded-xl border border-red-500/20">{errorMsg}</p>}
         
-        {/* إجمالي الطلاب والعداد الحقيقي المتزامن */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="glass-glow p-6 rounded-2xl border border-purple-500/20 flex flex-col justify-center">
             <h3 className="text-lg font-semibold text-purple-200">العداد الفعلي للطلاب بالمنصة</h3>
@@ -513,14 +513,10 @@ const TeacherPanel = ({ user }) => {
           </div>
         </div>
 
-        {/* قسم إدارة الواجبات المتعددة */}
         <div className="glass p-6 rounded-2xl border border-white/5 space-y-4">
           <h3 className="text-xl font-semibold text-pink-300">إدارة ونشر الواجبات المدرسية (متعددة)</h3>
-          
-          {/* نموذج إضافة واجب جديد */}
           <div className="space-y-3">
             <textarea placeholder="اكتب تفاصيل ونص الواجب هنا..." className="input-glass w-full h-24 text-right resize-none" value={newHomeworkText} onChange={(e) => setNewHomeworkText(e.target.value)}/>
-            
             <div className="flex gap-6 items-center bg-white/5 p-3 rounded-xl border border-white/5 text-sm flex-wrap">
               <span className="text-gray-300 font-medium">آلية النشر المعتمدة:</span>
               <label className="flex items-center gap-1.5 cursor-pointer select-none text-gray-200">
@@ -530,7 +526,6 @@ const TeacherPanel = ({ user }) => {
                 <input type="radio" name="pubtype" value="schedule" checked={publishType === 'schedule'} onChange={() => setPublishType('schedule')} className="accent-pink-500" /> جدولة لوقت لاحق
               </label>
             </div>
-
             <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center">
               {publishType === 'schedule' && (
                 <div className="flex-1 flex flex-col gap-1">
@@ -544,7 +539,6 @@ const TeacherPanel = ({ user }) => {
             </div>
           </div>
 
-          {/* عرض قائمة الواجبات الحالية */}
           {homeworks.length > 0 && (
             <div className="mt-4 space-y-3 max-h-60 overflow-y-auto">
               {sortedHomeworks.map(hw => {
@@ -573,7 +567,6 @@ const TeacherPanel = ({ user }) => {
           )}
         </div>
 
-        {/* لوحة تسجيل وإضافة الطلاب الجدد */}
         <div className="glass p-6 rounded-2xl border border-white/5 space-y-4">
           <h3 className="text-xl font-semibold text-blue-300">لوحة تسجيل الطلاب الجدد</h3>
           <form onSubmit={handleCreateStudent} className="flex flex-col md:flex-row gap-4 items-end">
@@ -591,7 +584,6 @@ const TeacherPanel = ({ user }) => {
           </form>
         </div>
 
-        {/* قسم جدولة موعد حصة جديد */}
         <div className="glass p-6 rounded-2xl border border-white/5 space-y-4">
           <h3 className="text-xl font-semibold text-purple-200">جدولة موعد حصة جديد</h3>
           <div className="flex flex-col sm:flex-row gap-4 items-stretch">
@@ -600,9 +592,13 @@ const TeacherPanel = ({ user }) => {
           </div>
         </div>
 
-        {/* قائمة الطلاب مع إدارة متقدمة (تجميد، حذف، إنذار) */}
         <div className="glass p-6 rounded-2xl border border-white/5">
-          <h3 className="text-xl font-semibold mb-4 text-purple-200">إدارة الطلاب المسجلين بالصف ({students.length})</h3>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xl font-semibold text-purple-200">إدارة الطلاب المسجلين بالصف ({students.length})</h3>
+            <button onClick={deleteFrozenAccounts} className="btn-primary bg-red-600 hover:bg-red-700 text-sm py-1 px-3">
+              حذف المجمدين تلقائياً (90 يوم)
+            </button>
+          </div>
           <div className="space-y-3 max-h-80 overflow-y-auto pl-1">
             {sortedStudents.map(s => (
               <div key={s.id} className={`p-3 rounded-xl border flex flex-wrap justify-between items-center gap-3 ${s.is_frozen ? 'bg-gray-900/60 border-gray-700 opacity-60' : 'bg-white/5 border-white/5'}`}>
@@ -621,7 +617,6 @@ const TeacherPanel = ({ user }) => {
                 </div>
 
                 <div className="flex items-center gap-4 flex-wrap">
-                  {/* زر تعديل كلمة المرور (محاكاة) */}
                   <button onClick={() => {
                     const newPass = window.prompt(`أدخل كلمة المرور الجديدة للطالب: ${s.email}`);
                     if(newPass) alert('تم إصدار أمر تحديث كلمة المرور بنجاح.');
@@ -629,7 +624,6 @@ const TeacherPanel = ({ user }) => {
                   
                   <button onClick={() => handleDeleteStudentPermanently(s.id)} className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg hover:bg-red-500/30 transition-colors">❌ حذف الحساب</button>
 
-                  {/* مفتاح التجميد التفاعلي (Switch) */}
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-gray-400">{s.is_frozen ? 'مجمد' : 'مفعل'}</span>
                     <div onClick={() => toggleFreezeStudent(s)} className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-300 ${s.is_frozen ? 'bg-gray-600' : 'bg-green-500'}`}>
@@ -647,7 +641,7 @@ const TeacherPanel = ({ user }) => {
   )
 }
 
-// ========== 7. لوحة تحكم الطالب (تحديث فوري وتلقائي للواجبات المتعددة) ==========
+// ========== 6. لوحة تحكم الطالب ==========
 const StudentPanel = ({ user }) => {
   const [teacherData, setTeacherData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -658,13 +652,12 @@ const StudentPanel = ({ user }) => {
     try {
       const { data, error } = await supabase
         .from('teachers')
-        .select('lesson_time, students, homeworks')
+        .select('lesson_time, homeworks')
         .limit(1)
       
       if (error) throw error
       if (data && data.length > 0) {
         setTeacherData(data[0])
-        // تصفية الواجبات المتاحة (الوقت الحالي >= وقت النشر)
         const now = new Date().getTime()
         const available = (data[0].homeworks || []).filter(hw => new Date(hw.reveal_time).getTime() <= now)
         setAvailableHomeworks(available)
@@ -680,7 +673,6 @@ const StudentPanel = ({ user }) => {
   useEffect(() => {
     fetchTeacherInfo()
 
-    // الاستماع المباشر لتحديث الواجبات فوراً
     const channel = supabase
       .channel('student-teacher-monitor')
       .on('postgres_changes', {
@@ -700,7 +692,6 @@ const StudentPanel = ({ user }) => {
     }
   }, [])
 
-  // تحديث القائمة كل ثانية لظهور الواجبات المجدولة
   useEffect(() => {
     const interval = setInterval(() => {
       if (teacherData?.homeworks) {
@@ -714,13 +705,19 @@ const StudentPanel = ({ user }) => {
 
   const handleLogout = async () => { await supabase.auth.signOut() }
 
-  // حساب العداد التنازلي لأول واجب مجدول غير متاح بعد
+  const changePassword = async () => {
+    const newPass = window.prompt('أدخل كلمة المرور الجديدة');
+    if (!newPass) return;
+    const { error } = await supabase.auth.updateUser({ password: newPass });
+    if (error) alert('فشل التحديث: ' + error.message);
+    else alert('تم تغيير كلمة المرور بنجاح');
+  };
+
   const getNextScheduledHomework = () => {
     if (!teacherData?.homeworks) return null
     const now = new Date().getTime()
     const scheduled = teacherData.homeworks.filter(hw => new Date(hw.reveal_time).getTime() > now)
     if (scheduled.length === 0) return null
-    // اختر الأقرب
     return scheduled.reduce((a, b) => new Date(a.reveal_time).getTime() < new Date(b.reveal_time).getTime() ? a : b)
   }
 
@@ -734,9 +731,14 @@ const StudentPanel = ({ user }) => {
             <h2 className="text-3xl font-bold text-blue-300">لوحة تحكم الطالب</h2>
             <p className="text-gray-400 text-sm mt-1">أهلاً بك: {user.email}</p>
           </div>
-          <button onClick={handleLogout} className="btn-primary bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 shadow-lg text-sm">
-            تسجيل الخروج
-          </button>
+          <div className="flex gap-2">
+            <button onClick={changePassword} className="btn-primary bg-blue-600 hover:bg-blue-700 text-sm">
+              تغيير كلمة المرور
+            </button>
+            <button onClick={handleLogout} className="btn-primary bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 shadow-lg text-sm">
+              تسجيل الخروج
+            </button>
+          </div>
         </div>
 
         {errorMsg && <p className="text-red-400 text-sm bg-red-500/10 p-3 rounded-xl border border-red-500/20">{errorMsg}</p>}
@@ -783,7 +785,7 @@ const StudentPanel = ({ user }) => {
           <h3 className="text-xl font-semibold mb-3 text-blue-200">معلومات وتفاصيل الصف</h3>
           <div className="bg-white/5 p-4 rounded-xl border border-white/5 inline-block">
             <p className="text-gray-300">
-              إجمالي عدد زملائك الطلاب المتواجدين في الصف: <strong className="text-blue-300 text-lg mr-1">{teacherData?.students?.length || 0}</strong>
+              إجمالي عدد زملائك الطلاب المتواجدين في الصف: <strong className="text-blue-300 text-lg mr-1">—</strong>
             </p>
           </div>
         </div>
@@ -792,7 +794,7 @@ const StudentPanel = ({ user }) => {
   )
 }
 
-// ========== 8. التطبيق الرئيسي ==========
+// ========== 7. التطبيق الرئيسي ==========
 const App = () => {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -806,7 +808,7 @@ const App = () => {
           .from('profiles')
           .select('role')
           .eq('id', session.user.id)
-          .single()
+          .maybeSingle()
           .then(({ data }) => {
             const role = data?.role || session.user.user_metadata?.role || 'student'
             setUser({ id: session.user.id, email: session.user.email, role })
@@ -831,7 +833,7 @@ const App = () => {
           .from('profiles')
           .select('role')
           .eq('id', session.user.id)
-          .single()
+          .maybeSingle()
           .then(({ data }) => {
             const role = data?.role || session.user.user_metadata?.role || 'student'
             setUser({ id: session.user.id, email: session.user.email, role })
@@ -865,7 +867,7 @@ const App = () => {
   return user.role === 'teacher' ? <TeacherPanel user={user} /> : <StudentPanel user={user} />
 }
 
-// ========== 9. تشغيل التطبيق ==========
+// ========== 8. تشغيل التطبيق ==========
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <App />
