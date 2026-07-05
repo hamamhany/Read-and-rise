@@ -134,7 +134,7 @@ const HomeworkTextCountdown = ({ targetDate }) => {
   )
 }
 
-// ========== 4. واجهة تسجيل الدخول (باستخدام اسم المستخدم فقط) ==========
+// ========== 4. واجهة تسجيل الدخول ==========
 const Login = ({ onLogin }) => {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -147,7 +147,7 @@ const Login = ({ onLogin }) => {
     setLoading(true)
     setError('')
     try {
-      // 1. البحث عن البريد الإلكتروني باستخدام الدالة الآمنة (rpc)
+      // 1. البحث عن البريد الإلكتروني باستخدام الدالة الآمنة
       const { data: email, error: fetchError } = await supabase
         .rpc('get_email_by_username', { username_input: username })
 
@@ -157,7 +157,7 @@ const Login = ({ onLogin }) => {
       }
       if (!email) throw new Error('اسم المستخدم غير موجود')
 
-      // 2. تسجيل الدخول باستخدام البريد الإلكتروني وكلمة المرور
+      // 2. تسجيل الدخول
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: email,
         password: password
@@ -168,7 +168,7 @@ const Login = ({ onLogin }) => {
       const user = authData.user
       if (!user) throw new Error('فشل تسجيل الدخول')
 
-      // 3. التحقق من الملف الشخصي وحالة التجميد
+      // 3. التحقق من الملف الشخصي
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('role, is_frozen')
@@ -380,11 +380,15 @@ const TeacherPanel = ({ user }) => {
     }
 
     try {
-      await supabase.from('profiles').update({ 
-        is_frozen: nextStatus,
-        frozen_at: nextStatus ? new Date().toISOString() : null
-      }).eq('id', student.id)
+      const { error } = await supabase
+        .from('profiles')
+        .update({ 
+          is_frozen: nextStatus,
+          frozen_at: nextStatus ? new Date().toISOString() : null
+        })
+        .eq('id', student.id)
       
+      if (error) throw error
       fetchTeacherData()
     } catch (err) {
       alert('فشل تحديث حالة التجميد: ' + err.message)
@@ -454,7 +458,7 @@ const TeacherPanel = ({ user }) => {
     }
   }
 
-  // تسجيل طالب جديد (اسم مستخدم، رقم واتساب، كلمة مرور)
+  // تسجيل طالب جديد
   const handleCreateStudent = async (e) => {
     e.preventDefault()
     if (!studentUsername || !studentWhatsapp || !studentPassword) {
@@ -470,14 +474,17 @@ const TeacherPanel = ({ user }) => {
         .eq('username', studentUsername)
         .maybeSingle()
 
-      if (checkError) throw new Error('خطأ في التحقق من اسم المستخدم')
+      if (checkError) {
+        console.error('خطأ في التحقق من اسم المستخدم:', checkError)
+        throw new Error('خطأ في التحقق من اسم المستخدم: ' + checkError.message)
+      }
       if (existingUsername) {
         alert('اسم المستخدم هذا مستخدم مسبقاً. يرجى اختيار اسم آخر.')
         setStudentLoading(false)
         return
       }
 
-      // 2. إنشاء بريد إلكتروني افتراضي (لن يظهر للمستخدم)
+      // 2. إنشاء بريد إلكتروني افتراضي
       const fakeEmail = `${studentUsername}@school.temp`
 
       // 3. إنشاء الحساب في Auth
@@ -489,7 +496,7 @@ const TeacherPanel = ({ user }) => {
 
       if (signUpError) {
         if (signUpError.message.includes('User already registered')) {
-          // إذا كان البريد الافتراضي مستخدماً، نضيف رقماً عشوائياً
+          // محاولة مع بريد مختلف
           const randomSuffix = Math.floor(Math.random() * 10000)
           const newFakeEmail = `${studentUsername}${randomSuffix}@school.temp`
           const { data: retryData, error: retryError } = await supabase.auth.signUp({
@@ -500,6 +507,7 @@ const TeacherPanel = ({ user }) => {
           if (retryError) throw retryError
           const newStudent = retryData.user
           if (!newStudent) throw new Error('تعذر إنشاء الحساب')
+          
           // إدراج الملف الشخصي
           const { error: insertError } = await supabase
             .from('profiles')
@@ -514,6 +522,7 @@ const TeacherPanel = ({ user }) => {
               last_seen: new Date().toISOString()
             }])
           if (insertError) throw insertError
+          
           await supabase.auth.signOut()
           alert(`تم تسجيل الطالب (${studentUsername}) بنجاح!`)
           setStudentUsername('')
@@ -529,7 +538,7 @@ const TeacherPanel = ({ user }) => {
       const newStudent = signUpData.user
       if (!newStudent) throw new Error('تعذر إنشاء الحساب')
 
-      // 4. إدراج الملف الشخصي مع رقم واتساب
+      // 4. إدراج الملف الشخصي
       const { error: insertError } = await supabase
         .from('profiles')
         .insert([{ 
@@ -549,7 +558,7 @@ const TeacherPanel = ({ user }) => {
         throw insertError
       }
 
-      // تسجيل خروج المستخدم الجديد تلقائياً
+      // تسجيل خروج المستخدم الجديد
       await supabase.auth.signOut()
 
       alert(`تم تسجيل الطالب (${studentUsername}) بنجاح!`)
@@ -558,13 +567,14 @@ const TeacherPanel = ({ user }) => {
       setStudentPassword('')
       await fetchTeacherData()
     } catch (err) {
+      console.error('خطأ في إنشاء الطالب:', err)
       alert('فشل إنشاء حساب الطالب: ' + err.message)
     } finally {
       setStudentLoading(false)
     }
   }
 
-  // تحديث رقم واتساب للطالب
+  // تحديث رقم واتساب
   const updateWhatsapp = async (studentId, currentWhatsapp) => {
     const newWhatsapp = window.prompt('أدخل رقم واتساب الجديد للطالب:', currentWhatsapp || '');
     if (newWhatsapp === null) return;
