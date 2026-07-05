@@ -134,7 +134,7 @@ const HomeworkTextCountdown = ({ targetDate }) => {
   )
 }
 
-// ========== 4. واجهة تسجيل الدخول (باستخدام اسم المستخدم) ==========
+// ========== 4. واجهة تسجيل الدخول (فقط اسم المستخدم وكلمة المرور) ==========
 const Login = ({ onLogin }) => {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -147,7 +147,7 @@ const Login = ({ onLogin }) => {
     setLoading(true)
     setError('')
     try {
-      // 1. البحث عن البريد الإلكتروني باستخدام اسم المستخدم
+      // البحث عن البريد الإلكتروني باستخدام اسم المستخدم
       const { data, error: fetchError } = await supabase
         .from('profiles')
         .select('email')
@@ -159,7 +159,7 @@ const Login = ({ onLogin }) => {
 
       const email = data.email
 
-      // 2. تسجيل الدخول باستخدام البريد الإلكتروني وكلمة المرور
+      // تسجيل الدخول باستخدام البريد الإلكتروني وكلمة المرور
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: email,
         password: password
@@ -170,7 +170,7 @@ const Login = ({ onLogin }) => {
       const user = authData.user
       if (!user) throw new Error('فشل تسجيل الدخول')
 
-      // 3. التحقق من الملف الشخصي وحالة التجميد
+      // التحقق من الملف الشخصي وحالة التجميد
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('role, is_frozen')
@@ -181,7 +181,7 @@ const Login = ({ onLogin }) => {
       if (!profile) throw new Error('لا يوجد ملف شخصي لهذا الحساب، يرجى التواصل مع المدير')
       if (profile.is_frozen) throw new Error('هذا الحساب مجمد، لا يمكن تسجيل الدخول')
 
-      // 4. تحديث last_seen
+      // تحديث last_seen
       await supabase
         .from('profiles')
         .update({ last_seen: new Date().toISOString() })
@@ -247,7 +247,7 @@ const Login = ({ onLogin }) => {
   )
 }
 
-// ========== 5. لوحة تحكم المعلم (معدلة لدعم اسم المستخدم) ==========
+// ========== 5. لوحة تحكم المعلم ==========
 const TeacherPanel = ({ user }) => {
   const [lessonTime, setLessonTime] = useState('')
   const [homeworks, setHomeworks] = useState([])
@@ -260,7 +260,7 @@ const TeacherPanel = ({ user }) => {
   const [newHomeworkRevealTime, setNewHomeworkRevealTime] = useState('')
 
   const [studentUsername, setStudentUsername] = useState('')
-  const [studentEmail, setStudentEmail] = useState('')
+  const [studentWhatsapp, setStudentWhatsapp] = useState('')
   const [studentPassword, setStudentPassword] = useState('')
   const [studentLoading, setStudentLoading] = useState(false)
 
@@ -284,7 +284,6 @@ const TeacherPanel = ({ user }) => {
         setLessonTime(teacherData.lesson_time || '')
         setHomeworks(teacherData.homeworks || [])
       } else {
-        // إنشاء سجل للمعلم إذا لم يوجد
         await supabase
           .from('teachers')
           .insert([{ id: user.id, lesson_time: '', homeworks: [] }])
@@ -304,7 +303,6 @@ const TeacherPanel = ({ user }) => {
         setStudents([])
       } else {
         setStudents(profilesData || [])
-        if (errorMsg.includes('RLS')) setErrorMsg('')
       }
     } catch (err) {
       console.error("خطأ في جلب البيانات:", err)
@@ -375,7 +373,7 @@ const TeacherPanel = ({ user }) => {
     }
   }
 
-  // إدارة الطلاب (تجميد، حذف، إنذار)
+  // إدارة الطلاب
   const toggleFreezeStudent = async (student) => {
     const nextStatus = !student.is_frozen
     if (nextStatus) {
@@ -395,7 +393,6 @@ const TeacherPanel = ({ user }) => {
     }
   }
 
-  // حذف طالب نهائياً (من profiles فقط)
   const handleDeleteStudentPermanently = async (studentId) => {
     if (!window.confirm('إجراء خطير: هل أنت متأكد من حذف حساب هذا الطالب نهائياً وفوراً من المنصة؟')) return
     try {
@@ -408,7 +405,6 @@ const TeacherPanel = ({ user }) => {
     }
   }
 
-  // حذف المجمدين تلقائياً بعد 90 يوم
   const deleteFrozenAccounts = async () => {
     const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
     const { data: frozen, error } = await supabase
@@ -442,7 +438,6 @@ const TeacherPanel = ({ user }) => {
     return diffDays >= 30
   }
 
-  // تحديث موعد الحصة
   const updateLessonTime = async () => {
     if (!newLessonTime) return alert('يرجى اختيار تاريخ ووقت الحصة أولاً.')
     try {
@@ -461,11 +456,11 @@ const TeacherPanel = ({ user }) => {
     }
   }
 
-  // تسجيل طالب جديد (باستخدام اسم المستخدم)
+  // تسجيل طالب جديد (اسم مستخدم، رقم واتساب، كلمة مرور)
   const handleCreateStudent = async (e) => {
     e.preventDefault()
-    if (!studentUsername || !studentEmail || !studentPassword) {
-      alert('يرجى ملء جميع الحقول: اسم المستخدم، البريد الإلكتروني، كلمة المرور.')
+    if (!studentUsername || !studentWhatsapp || !studentPassword) {
+      alert('يرجى ملء جميع الحقول: اسم المستخدم، رقم واتساب، كلمة المرور.')
       return
     }
     setStudentLoading(true)
@@ -484,16 +479,49 @@ const TeacherPanel = ({ user }) => {
         return
       }
 
-      // 2. إنشاء الحساب في Auth
+      // 2. إنشاء بريد إلكتروني افتراضي (لن يظهر للمستخدم)
+      const fakeEmail = `${studentUsername}@school.temp`
+
+      // 3. إنشاء الحساب في Auth
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email: studentEmail,
+        email: fakeEmail,
         password: studentPassword,
         options: { data: { role: 'student', username: studentUsername } }
       })
 
       if (signUpError) {
         if (signUpError.message.includes('User already registered')) {
-          alert(`البريد الإلكتروني (${studentEmail}) مسجل بالفعل. يرجى استخدام بريد آخر.`)
+          // إذا كان البريد الافتراضي مستخدماً، نضيف رقماً عشوائياً
+          const randomSuffix = Math.floor(Math.random() * 10000)
+          const newFakeEmail = `${studentUsername}${randomSuffix}@school.temp`
+          const { data: retryData, error: retryError } = await supabase.auth.signUp({
+            email: newFakeEmail,
+            password: studentPassword,
+            options: { data: { role: 'student', username: studentUsername } }
+          })
+          if (retryError) throw retryError
+          const newStudent = retryData.user
+          if (!newStudent) throw new Error('تعذر إنشاء الحساب')
+          // إدراج الملف الشخصي
+          const { error: insertError } = await supabase
+            .from('profiles')
+            .insert([{ 
+              id: newStudent.id, 
+              email: newFakeEmail,
+              username: studentUsername,
+              whatsapp: studentWhatsapp,
+              role: 'student',
+              is_frozen: false,
+              frozen_at: null,
+              last_seen: new Date().toISOString()
+            }])
+          if (insertError) throw insertError
+          await supabase.auth.signOut()
+          alert(`تم تسجيل الطالب (${studentUsername}) بنجاح!`)
+          setStudentUsername('')
+          setStudentWhatsapp('')
+          setStudentPassword('')
+          await fetchTeacherData()
           setStudentLoading(false)
           return
         }
@@ -503,13 +531,14 @@ const TeacherPanel = ({ user }) => {
       const newStudent = signUpData.user
       if (!newStudent) throw new Error('تعذر إنشاء الحساب')
 
-      // 3. إدراج الملف الشخصي في جدول profiles مع اسم المستخدم
+      // 4. إدراج الملف الشخصي مع رقم واتساب
       const { error: insertError } = await supabase
         .from('profiles')
         .insert([{ 
           id: newStudent.id, 
-          email: studentEmail,
+          email: fakeEmail,
           username: studentUsername,
+          whatsapp: studentWhatsapp,
           role: 'student',
           is_frozen: false,
           frozen_at: null,
@@ -527,7 +556,7 @@ const TeacherPanel = ({ user }) => {
 
       alert(`تم تسجيل الطالب (${studentUsername}) بنجاح!`)
       setStudentUsername('')
-      setStudentEmail('')
+      setStudentWhatsapp('')
       setStudentPassword('')
       await fetchTeacherData()
     } catch (err) {
@@ -537,7 +566,23 @@ const TeacherPanel = ({ user }) => {
     }
   }
 
-  // تغيير كلمة مرور الطالب (من المعلم) - غير ممكن من العميل
+  // تحديث رقم واتساب للطالب
+  const updateWhatsapp = async (studentId, currentWhatsapp) => {
+    const newWhatsapp = window.prompt('أدخل رقم واتساب الجديد للطالب:', currentWhatsapp || '');
+    if (newWhatsapp === null) return;
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ whatsapp: newWhatsapp })
+        .eq('id', studentId)
+      if (error) throw error
+      alert('تم تحديث رقم واتساب بنجاح.')
+      fetchTeacherData()
+    } catch (err) {
+      alert('فشل التحديث: ' + err.message)
+    }
+  }
+
   const changeStudentPassword = async (studentId, studentEmail) => {
     alert('لا يمكن تغيير كلمة مرور الطالب من هنا. يمكن للطالب تغييرها من لوحته الخاصة.')
   }
@@ -635,11 +680,11 @@ const TeacherPanel = ({ user }) => {
           <form onSubmit={handleCreateStudent} className="flex flex-col md:flex-row gap-4 items-end">
             <div className="flex-1 w-full space-y-1">
               <span className="text-xs text-gray-400 mr-1">اسم المستخدم للطالب:</span>
-              <input type="text" className="input-glass w-full text-right" placeholder="student_username" value={studentUsername} onChange={e => setStudentUsername(e.target.value)} required />
+              <input type="text" className="input-glass w-full text-right" placeholder="اسم المستخدم" value={studentUsername} onChange={e => setStudentUsername(e.target.value)} required />
             </div>
             <div className="flex-1 w-full space-y-1">
-              <span className="text-xs text-gray-400 mr-1">البريد الإلكتروني:</span>
-              <input type="email" className="input-glass w-full text-right" placeholder="student@example.com" value={studentEmail} onChange={e => setStudentEmail(e.target.value)} required />
+              <span className="text-xs text-gray-400 mr-1">رقم واتساب (للتواصل):</span>
+              <input type="text" className="input-glass w-full text-right" placeholder="مثال: 966512345678" value={studentWhatsapp} onChange={e => setStudentWhatsapp(e.target.value)} required />
             </div>
             <div className="flex-1 w-full space-y-1">
               <span className="text-xs text-gray-400 mr-1">كلمة المرور:</span>
@@ -671,6 +716,7 @@ const TeacherPanel = ({ user }) => {
               <div key={s.id} className={`p-3 rounded-xl border flex flex-wrap justify-between items-center gap-3 ${s.is_frozen ? 'bg-gray-900/60 border-gray-700 opacity-60' : 'bg-white/5 border-white/5'}`}>
                 <div className="flex items-center gap-3 flex-wrap">
                   <span className="text-white text-sm font-medium">{s.username || s.email}</span>
+                  {s.whatsapp && <span className="text-xs text-gray-400">📱 {s.whatsapp}</span>}
                   {s.is_frozen && (
                     <span className="text-xs text-orange-400 bg-orange-950/40 px-2 py-0.5 rounded border border-orange-500/20">
                       ⏳ مجمد (متبقي {getRemainingFreezeDays(s.frozen_at)} يوم على الحذف نهائياً)
@@ -684,6 +730,9 @@ const TeacherPanel = ({ user }) => {
                 </div>
 
                 <div className="flex items-center gap-4 flex-wrap">
+                  <button onClick={() => updateWhatsapp(s.id, s.whatsapp)} className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-lg hover:bg-green-500/30 transition-colors">
+                    📞 تحديث واتساب
+                  </button>
                   <button onClick={() => changeStudentPassword(s.id, s.email)} className="text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-1 rounded-lg hover:bg-blue-500/30 transition-colors">⚙️ كلمة المرور</button>
                   
                   <button onClick={() => handleDeleteStudentPermanently(s.id)} className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg hover:bg-red-500/30 transition-colors">❌ حذف الحساب</button>
@@ -858,7 +907,7 @@ const StudentPanel = ({ user }) => {
   )
 }
 
-// ========== 7. التطبيق الرئيسي (مع التحقق من صحة الجلسة) ==========
+// ========== 7. التطبيق الرئيسي ==========
 const App = () => {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
