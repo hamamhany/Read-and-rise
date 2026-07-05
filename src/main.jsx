@@ -134,7 +134,7 @@ const HomeworkTextCountdown = ({ targetDate }) => {
   )
 }
 
-// ========== 4. واجهة تسجيل الدخول (فقط اسم المستخدم وكلمة المرور) ==========
+// ========== 4. واجهة تسجيل الدخول (باستخدام اسم المستخدم فقط) ==========
 const Login = ({ onLogin }) => {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -147,19 +147,17 @@ const Login = ({ onLogin }) => {
     setLoading(true)
     setError('')
     try {
-      // البحث عن البريد الإلكتروني باستخدام اسم المستخدم
-      const { data, error: fetchError } = await supabase
-        .from('profiles')
-        .select('email')
-        .eq('username', username)
-        .maybeSingle()
+      // 1. البحث عن البريد الإلكتروني باستخدام الدالة الآمنة (rpc)
+      const { data: email, error: fetchError } = await supabase
+        .rpc('get_email_by_username', { username_input: username })
 
-      if (fetchError) throw new Error('خطأ في البحث عن المستخدم: ' + fetchError.message)
-      if (!data) throw new Error('اسم المستخدم غير موجود')
+      if (fetchError) {
+        console.error('خطأ في RPC:', fetchError)
+        throw new Error('خطأ في البحث عن المستخدم: ' + fetchError.message)
+      }
+      if (!email) throw new Error('اسم المستخدم غير موجود')
 
-      const email = data.email
-
-      // تسجيل الدخول باستخدام البريد الإلكتروني وكلمة المرور
+      // 2. تسجيل الدخول باستخدام البريد الإلكتروني وكلمة المرور
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: email,
         password: password
@@ -170,7 +168,7 @@ const Login = ({ onLogin }) => {
       const user = authData.user
       if (!user) throw new Error('فشل تسجيل الدخول')
 
-      // التحقق من الملف الشخصي وحالة التجميد
+      // 3. التحقق من الملف الشخصي وحالة التجميد
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('role, is_frozen')
@@ -181,7 +179,7 @@ const Login = ({ onLogin }) => {
       if (!profile) throw new Error('لا يوجد ملف شخصي لهذا الحساب، يرجى التواصل مع المدير')
       if (profile.is_frozen) throw new Error('هذا الحساب مجمد، لا يمكن تسجيل الدخول')
 
-      // تحديث last_seen
+      // 4. تحديث last_seen
       await supabase
         .from('profiles')
         .update({ last_seen: new Date().toISOString() })
