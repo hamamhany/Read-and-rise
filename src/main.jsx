@@ -152,28 +152,27 @@ const Login = ({ onLogin }) => {
       const user = data.user
       if (!user) throw new Error('فشل تسجيل الدخول')
 
-      // تحديث last_seen فور تسجيل الدخول
+      // التحقق من وجود ملف شخصي وحالة التجميد
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('role, is_frozen')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      if (profileError) throw new Error('خطأ في التحقق من الملف الشخصي')
+      if (!profile) throw new Error('لا يوجد ملف شخصي لهذا الحساب، يرجى التواصل مع المدير')
+      if (profile.is_frozen) throw new Error('هذا الحساب مجمد، لا يمكن تسجيل الدخول')
+
+      // تحديث last_seen
       await supabase
         .from('profiles')
         .update({ last_seen: new Date().toISOString() })
         .eq('id', user.id)
 
-      let userRole = user.user_metadata?.role || 'student'
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .maybeSingle()   // ← استخدام maybeSingle بدلاً من single لتجنب 406
-      if (profileData) userRole = profileData.role
-
-      onLogin({ id: user.id, email: user.email, role: userRole })
+      onLogin({ id: user.id, email: user.email, role: profile.role })
     } catch (err) {
       console.error(err)
-      if (err.message.includes('Invalid login credentials')) {
-        setError('اسم المستخدم أو كلمة المرور غير صحيحة.')
-      } else {
-        setError(err.message)
-      }
+      setError(err.message)
     } finally {
       setLoading(false)
     }
@@ -251,6 +250,7 @@ const TeacherPanel = ({ user }) => {
   // جلب البيانات
   const fetchTeacherData = async () => {
     try {
+      // 1. جلب بيانات المعلم
       const { data: teacherData, error: tError } = await supabase
         .from('teachers')
         .select('lesson_time, homeworks')
@@ -265,6 +265,7 @@ const TeacherPanel = ({ user }) => {
         setLessonTime(teacherData.lesson_time || '')
         setHomeworks(teacherData.homeworks || [])
       } else {
+        // إنشاء سجل للمعلم إذا لم يوجد
         await supabase
           .from('teachers')
           .insert([{ id: user.id, lesson_time: '', homeworks: [] }])
@@ -272,6 +273,7 @@ const TeacherPanel = ({ user }) => {
         setHomeworks([])
       }
 
+      // 2. جلب جميع الطلاب
       const { data: profilesData, error: pError } = await supabase
         .from('profiles')
         .select('*')
@@ -368,16 +370,21 @@ const TeacherPanel = ({ user }) => {
         frozen_at: nextStatus ? new Date().toISOString() : null
       }).eq('id', student.id)
       
+      // تحديث القائمة
       fetchTeacherData()
     } catch (err) {
       alert('فشل تحديث حالة التجميد: ' + err.message)
     }
   }
 
+  // حذف طالب نهائياً (من profiles فقط)
   const handleDeleteStudentPermanently = async (studentId) => {
     if (!window.confirm('إجراء خطير: هل أنت متأكد من حذف حساب هذا الطالب نهائياً وفوراً من المنصة؟')) return
     try {
-      await supabase.from('profiles').delete().eq('id', studentId)
+      // حذف من profiles
+      const { error } = await supabase.from('profiles').delete().eq('id', studentId)
+      if (error) throw error
+      alert('تم حذف الطالب من النظام، ولن يتمكن من تسجيل الدخول.')
       fetchTeacherData()
     } catch (err) {
       alert('فشل حذف الطالب: ' + err.message)
@@ -393,6 +400,7 @@ const TeacherPanel = ({ user }) => {
       .eq('is_frozen', true)
       .lt('frozen_at', cutoff);
     if (error) { alert('خطأ: ' + error.message); return; }
+    if (frozen.length === 0) { alert('لا يوجد حسابات مجمدة تجاوزت 90 يوماً.'); return; }
     for (const student of frozen) {
       await supabase.from('profiles').delete().eq('id', student.id);
     }
@@ -439,9 +447,13 @@ const TeacherPanel = ({ user }) => {
   // تسجيل طالب جديد
   const handleCreateStudent = async (e) => {
     e.preventDefault()
-    if (!studentEmail || !studentPassword) return
+    if (!studentEmail || !studentPassword) {
+      alert('يرجى ملء البريد الإلكتروني وكلمة المرور.')
+      return
+    }
     setStudentLoading(true)
     try {
+      // 1. إنشاء الحساب في Auth
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: studentEmail,
         password: studentPassword,
@@ -451,6 +463,7 @@ const TeacherPanel = ({ user }) => {
       const newStudent = signUpData.user
       if (!newStudent) throw new Error('تعذر إنشاء الحساب')
 
+      // 2. إدراج الملف الشخصي في جدول profiles
       const { error: insertError } = await supabase
         .from('profiles')
         .insert([{ 
@@ -465,17 +478,36 @@ const TeacherPanel = ({ user }) => {
       if (insertError) {
         console.error("فشل إدراج الملف الشخصي:", insertError)
         alert("فشل إنشاء ملف الطالب: " + insertError.message)
+        // حذف الحساب من auth إذا فشل الإدراج (اختياري، لكن صعب من العميل)
         throw insertError
       }
 
-      alert(`تم تسجيل الطالب (${studentEmail}) وتحديث عداد الصف تلقائياً!`)
+      // تسجيل خروج المستخدم الجديد تلقائياً (لأن signUp يسجل دخوله)
+      await supabase.auth.signOut()
+
+      alert(`تم تسجيل الطالب (${studentEmail}) بنجاح!`)
       setStudentEmail('')
       setStudentPassword('')
+      // تحديث القائمة
       await fetchTeacherData()
     } catch (err) {
       alert('فشل إنشاء حساب الطالب: ' + err.message)
     } finally {
       setStudentLoading(false)
+    }
+  }
+
+  // تغيير كلمة مرور الطالب (من المعلم)
+  const changeStudentPassword = async (studentId, studentEmail) => {
+    const newPass = window.prompt(`أدخل كلمة المرور الجديدة للطالب: ${studentEmail}`);
+    if (!newPass) return;
+    try {
+      // لا يمكن تغيير كلمة مرور مستخدم آخر من العميل باستخدام anon key.
+      // يجب استخدام service_role أو Edge Function.
+      // سنعرض رسالة توضيحية.
+      alert('لا يمكن تغيير كلمة مرور الطالب من هنا حالياً. يمكن للطالب تغييرها من لوحته الخاصة.')
+    } catch (err) {
+      alert('فشل تغيير كلمة المرور: ' + err.message)
     }
   }
 
@@ -617,10 +649,7 @@ const TeacherPanel = ({ user }) => {
                 </div>
 
                 <div className="flex items-center gap-4 flex-wrap">
-                  <button onClick={() => {
-                    const newPass = window.prompt(`أدخل كلمة المرور الجديدة للطالب: ${s.email}`);
-                    if(newPass) alert('تم إصدار أمر تحديث كلمة المرور بنجاح.');
-                  }} className="text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-1 rounded-lg hover:bg-blue-500/30 transition-colors">⚙️ كلمة المرور</button>
+                  <button onClick={() => changeStudentPassword(s.id, s.email)} className="text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-1 rounded-lg hover:bg-blue-500/30 transition-colors">⚙️ كلمة المرور</button>
                   
                   <button onClick={() => handleDeleteStudentPermanently(s.id)} className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg hover:bg-red-500/30 transition-colors">❌ حذف الحساب</button>
 
