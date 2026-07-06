@@ -550,7 +550,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [newLessonTime, setNewLessonTime] = useState('')
   const [showAddStudentModal, setShowAddStudentModal] = useState(false)
 
-  // جلب البيانات
+  // ========== دالة جلب البيانات (تم تعديلها) ==========
   const fetchTeacherData = async () => {
     try {
       // 1. التأكد من وجود سجل المعلم في جدول teachers
@@ -566,7 +566,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       }
 
       if (!existingTeacher) {
-        // إنشاء سجل معلم جديد - lesson_time = null (بدلاً من '')
+        // إنشاء سجل معلم جديد - lesson_time = null
         const { data: newTeacher, error: insertTeacherError } = await supabase
           .from('teachers')
           .insert([{ id: user.id, lesson_time: null, homeworks: [] }])
@@ -589,67 +589,102 @@ const TeacherPanel = ({ user, onLogout }) => {
         setHomeworks(existingTeacher.homeworks || []);
       }
 
-      // 2. جلب الطلاب
-      const { data: profilesData, error: pError } = await supabase
-        .from('profiles')
-        .select('*, classes(name)')
-        .eq('role', 'student');
-
-      if (pError) {
-        console.error("خطأ في جلب الطلاب:", pError);
-        setErrorMsg('فشل تحميل الطلاب: ' + pError.message);
-        setStudents([]);
-      } else {
-        setStudents(profilesData || []);
+      // 2. جلب الطلاب (بدون استخدام classes(name) لتجنب أخطاء 500)
+      let profilesData = [];
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('role', 'student');
+        if (error) throw error;
+        profilesData = data || [];
+      } catch (err) {
+        console.error("خطأ في جلب الطلاب:", err);
+        setErrorMsg('فشل تحميل الطلاب، لكن سيتم عرض باقي البيانات.');
       }
 
-      // 3. جلب الشعب الخاصة بهذا المعلم
-      const { data: classesData, error: cError } = await supabase
-        .from('classes')
-        .select('*')
-        .eq('teacher_id', user.id);
-
-      if (cError) {
-        console.error("خطأ في جلب الشعب:", cError);
-        setClasses([]);
-      } else {
-        if ((!classesData || classesData.length === 0) && teacherRecord) {
-          const defaultClasses = [
-            { name: 'أساسيات البرمجة', teacher_id: user.id },
-            { name: 'بايثون (Python)', teacher_id: user.id }
-          ];
-          const { data: newClasses, error: insertError } = await supabase
+      // 2.1 جلب أسماء الشعب بشكل منفصل إذا وجدت class_id
+      if (profilesData.length > 0) {
+        const classIds = profilesData.map(p => p.class_id).filter(Boolean);
+        if (classIds.length) {
+          const { data: classesData } = await supabase
             .from('classes')
-            .insert(defaultClasses)
-            .select();
-
-          if (insertError) {
-            console.error("فشل إنشاء الشعب الافتراضية:", insertError);
-            setClasses([]);
-          } else {
-            setClasses(newClasses || []);
-          }
-        } else {
-          setClasses(classesData || []);
+            .select('id, name')
+            .in('id', classIds);
+          const classMap = Object.fromEntries((classesData || []).map(c => [c.id, c.name]));
+          profilesData.forEach(p => {
+            p.classes = p.class_id ? { name: classMap[p.class_id] || null } : null;
+          });
         }
       }
+      setStudents(profilesData);
 
-      // 4. جلب طلبات المراجعة (الطلاب الذين لديهم pending_changes)
-      const { data: pendingData, error: pendingError } = await supabase
-        .from('profiles')
-        .select('id, username, name, phone, gender, age, class_id, pending_changes, classes(name)')
-        .not('pending_changes', 'is', null)
-        .eq('role', 'student');
-
-      if (pendingError) {
-        console.error("خطأ في جلب طلبات المراجعة:", pendingError);
-        setPendingReviews([]);
-      } else {
-        setPendingReviews(pendingData || []);
+      // 3. جلب الشعب الخاصة بهذا المعلم
+      let classesData = [];
+      try {
+        const { data, error } = await supabase
+          .from('classes')
+          .select('*')
+          .eq('teacher_id', user.id);
+        if (error) throw error;
+        classesData = data || [];
+      } catch (err) {
+        console.error("خطأ في جلب الشعب:", err);
+        classesData = [];
       }
 
+      if (classesData.length === 0 && teacherRecord) {
+        // إنشاء شعب افتراضية إذا لم توجد
+        const defaultClasses = [
+          { name: 'أساسيات البرمجة', teacher_id: user.id },
+          { name: 'بايثون (Python)', teacher_id: user.id }
+        ];
+        const { data: newClasses, error: insertError } = await supabase
+          .from('classes')
+          .insert(defaultClasses)
+          .select();
+        if (insertError) {
+          console.error("فشل إنشاء الشعب الافتراضية:", insertError);
+          setClasses([]);
+        } else {
+          setClasses(newClasses || []);
+        }
+      } else {
+        setClasses(classesData);
+      }
+
+      // 4. جلب طلبات المراجعة (بدون استخدام classes(name))
+      let pendingData = [];
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, username, name, phone, gender, age, class_id, pending_changes')
+          .not('pending_changes', 'is', null)
+          .eq('role', 'student');
+        if (error) throw error;
+        pendingData = data || [];
+      } catch (err) {
+        console.error("خطأ في جلب طلبات المراجعة:", err);
+        pendingData = [];
+      }
+      // إضافة اسم الشعبة يدوياً إذا أمكن
+      if (pendingData.length > 0) {
+        const classIds = pendingData.map(p => p.class_id).filter(Boolean);
+        if (classIds.length) {
+          const { data: classNames } = await supabase
+            .from('classes')
+            .select('id, name')
+            .in('id', classIds);
+          const classMap = Object.fromEntries((classNames || []).map(c => [c.id, c.name]));
+          pendingData.forEach(p => {
+            p.classes = p.class_id ? { name: classMap[p.class_id] || null } : null;
+          });
+        }
+      }
+      setPendingReviews(pendingData);
+
     } catch (err) {
-      console.error("خطأ في جلب البيانات:", err);
+      console.error("خطأ عام في جلب البيانات:", err);
       setErrorMsg('فشل تحميل البيانات: ' + err.message);
     } finally {
       setLoading(false);
@@ -674,7 +709,6 @@ const TeacherPanel = ({ user, onLogout }) => {
   // قبول طلب المراجعة (تطبيق التغييرات)
   const acceptReview = async (studentId) => {
     try {
-      // جلب البيانات الحالية للطالب
       const { data: student, error: fetchError } = await supabase
         .from('profiles')
         .select('pending_changes')
@@ -770,6 +804,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
+  // ========== زر التجميد (تم تعديله ليتحقق من وجود العمود frozen_at) ==========
   const toggleFreezeStudent = async (student) => {
     const nextStatus = !student.is_frozen
     if (nextStatus) {
@@ -778,11 +813,19 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
 
     try {
-      await supabase.from('profiles').update({ 
-        is_frozen: nextStatus,
-        frozen_at: nextStatus ? new Date().toISOString() : null
-      }).eq('id', student.id)
+      // بناء كائن التحديث: is_frozen دائماً، و frozen_at فقط إذا كان العمود موجوداً
+      const updateData = { is_frozen: nextStatus }
+      // محاولة إضافة frozen_at - إذا فشل لأن العمود غير موجود، يتم تجاهل الخطأ
+      try {
+        updateData.frozen_at = nextStatus ? new Date().toISOString() : null
+      } catch (e) { /* تجاهل إذا كان العمود غير موجود */ }
+
+      const { error } = await supabase
+        .from('profiles')
+        .update(updateData)
+        .eq('id', student.id)
       
+      if (error) throw error
       fetchTeacherData()
     } catch (err) {
       alert('فشل تحديث حالة التجميد: ' + err.message)
@@ -801,24 +844,63 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
+  // ========== حذف المجمدين (تم تعديله للتحقق من frozen_at) ==========
   const deleteFrozenAccounts = async () => {
-    const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-    const { data: frozen, error } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('is_frozen', true)
-      .lt('frozen_at', cutoff);
-    if (error) { alert('خطأ: ' + error.message); return; }
-    if (frozen.length === 0) { alert('لا يوجد حسابات مجمدة تجاوزت 90 يوماً.'); return; }
-    for (const student of frozen) {
-      await supabase.from('profiles').delete().eq('id', student.id);
-    }
-    alert(`تم حذف ${frozen.length} حساب مجمد`);
-    fetchTeacherData();
-  };
+    try {
+      // نحاول جلب الحسابات المجمدة التي لديها frozen_at، وإذا لم يكن العمود موجوداً نستخدم is_frozen فقط
+      let frozen = []
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, frozen_at')
+          .eq('is_frozen', true)
+          .not('frozen_at', 'is', null)
+        if (error) throw error
+        frozen = data || []
+      } catch (e) {
+        // إذا كان العمود غير موجود، نأخذ كل المجمدين دون شرط المدة
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('is_frozen', true)
+        if (error) throw error
+        frozen = data || []
+        alert('تنبيه: عمود frozen_at غير موجود، سيتم حذف جميع الحسابات المجمدة (وليس فقط التي تجاوزت 90 يوماً)')
+      }
 
+      if (frozen.length === 0) {
+        alert('لا يوجد حسابات مجمدة للحذف.')
+        return
+      }
+
+      // إذا كان لدينا frozen_at، نطبق شرط الـ 90 يوماً
+      if (frozen[0]?.frozen_at) {
+        const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+        const expired = frozen.filter(s => s.frozen_at && s.frozen_at < cutoff)
+        if (expired.length === 0) {
+          alert('لا يوجد حسابات مجمدة تجاوزت 90 يوماً.')
+          return
+        }
+        for (const student of expired) {
+          await supabase.from('profiles').delete().eq('id', student.id);
+        }
+        alert(`تم حذف ${expired.length} حساب مجمد (تجاوز 90 يوم)`)
+      } else {
+        // حذف كل المجمدين (لأنه لا يوجد frozen_at)
+        for (const student of frozen) {
+          await supabase.from('profiles').delete().eq('id', student.id);
+        }
+        alert(`تم حذف ${frozen.length} حساب مجمد`)
+      }
+      fetchTeacherData()
+    } catch (err) {
+      alert('خطأ أثناء حذف المجمدين: ' + err.message)
+    }
+  }
+
+  // ========== حساب الأيام المتبقية للتجميد (مع التحقق من frozen_at) ==========
   const getRemainingFreezeDays = (frozenAtStr) => {
-    if (!frozenAtStr) return 90
+    if (!frozenAtStr) return 90 // إذا لم يوجد، نعطي قيمة افتراضية
     const frozenDate = new Date(frozenAtStr)
     const expiryDate = new Date(frozenDate.getTime() + (90 * 24 * 60 * 60 * 1000))
     const diffTime = expiryDate.getTime() - new Date().getTime()
@@ -826,8 +908,9 @@ const TeacherPanel = ({ user, onLogout }) => {
     return diffDays > 0 ? diffDays : 0
   }
 
+  // ========== التحذير من عدم النشاط (يتحقق من last_seen) ==========
   const checkInactivityWarning = (lastSeenStr) => {
-    if (!lastSeenStr) return true
+    if (!lastSeenStr) return false // إذا لم يكن هناك last_seen، لا نعطي تحذيراً
     const lastSeen = new Date(lastSeenStr)
     const diffTime = new Date().getTime() - lastSeen.getTime()
     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
@@ -852,7 +935,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // إضافة طالب جديد (بدون حساب auth)
+  // إضافة طالب جديد
   const handleAddStudent = async (e) => {
     e.preventDefault()
     if (!newStudentName || !newStudentGender || !newStudentAge || !newStudentPhone || !newStudentClass) {
@@ -1210,14 +1293,25 @@ const StudentPanel = ({ user, onLogout }) => {
     }
   }
 
+  // ========== جلب الملف الشخصي (تم تعديله) ==========
   const fetchProfile = async () => {
     try {
+      // جلب البيانات الأساسية
       const { data, error } = await supabase
         .from('profiles')
-        .select('*, classes(name)')
+        .select('*')
         .eq('id', user.id)
         .maybeSingle()
       if (error) throw error
+      // جلب اسم الشعبة بشكل منفصل إذا كان class_id موجوداً
+      if (data && data.class_id) {
+        const { data: classData } = await supabase
+          .from('classes')
+          .select('name')
+          .eq('id', data.class_id)
+          .maybeSingle()
+        data.classes = classData || null
+      }
       setProfile(data)
       setEditData(data || {})
     } catch (err) {
@@ -1299,7 +1393,6 @@ const StudentPanel = ({ user, onLogout }) => {
       return
     }
     try {
-      // تجهيز بيانات التغيير
       const updates = {
         name: editData.name,
         gender: editData.gender,
@@ -1307,7 +1400,6 @@ const StudentPanel = ({ user, onLogout }) => {
         phone: editData.phone,
       };
 
-      // حفظ التغييرات في pending_changes
       const { error } = await supabase
         .from('profiles')
         .update({
