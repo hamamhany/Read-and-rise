@@ -12,7 +12,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-// ===== خلفية متحركة =====
+// ========== هوك خلفية متحركة ==========
 const useDynamicBackground = () => {
   useEffect(() => {
     const style = document.createElement('style');
@@ -22,9 +22,12 @@ const useDynamicBackground = () => {
         50% { transform: scale(1.04); opacity: 0.18; }
         100% { transform: scale(1); opacity: 0.12; }
       }
-      .animate-logo-bg { animation: logoPulseSoft 6s ease-in-out infinite; }
+      .animate-logo-bg {
+        animation: logoPulseSoft 6s ease-in-out infinite;
+      }
     `;
     document.head.appendChild(style);
+
     const bgGradients = [
       'linear-gradient(135deg, #0f172a, #1e1b4b, #311042)',
       'linear-gradient(135deg, #090d16, #111827, #1f2937)',
@@ -32,12 +35,15 @@ const useDynamicBackground = () => {
       'linear-gradient(135deg, #070a13, #161224, #281432)'
     ];
     let currentIndex = 0;
+
     document.body.style.background = bgGradients[currentIndex];
     document.body.style.transition = 'background 4s ease-in-out';
+
     const interval = setInterval(() => {
       currentIndex = (currentIndex + 1) % bgGradients.length;
       document.body.style.background = bgGradients[currentIndex];
     }, 7000);
+
     return () => {
       clearInterval(interval);
       document.body.style.background = '';
@@ -47,9 +53,10 @@ const useDynamicBackground = () => {
   }, []);
 };
 
-// ===== عداد تنازلي =====
+// ========== عداد تنازلي ==========
 const CountdownTimer = ({ targetDate }) => {
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
+
   useEffect(() => {
     const calculateTime = () => {
       const distance = new Date(targetDate).getTime() - new Date().getTime()
@@ -65,6 +72,7 @@ const CountdownTimer = ({ targetDate }) => {
       })
       return false
     };
+
     calculateTime();
     const interval = setInterval(() => {
       const isEnded = calculateTime();
@@ -72,7 +80,9 @@ const CountdownTimer = ({ targetDate }) => {
     }, 1000)
     return () => clearInterval(interval)
   }, [targetDate])
+
   const labels = { days: 'أيام', hours: 'ساعات', minutes: 'دقائق', seconds: 'ثواني' };
+
   return (
     <div className="flex gap-4 text-center flex-wrap justify-center">
       {Object.entries(timeLeft).map(([unit, value]) => (
@@ -88,6 +98,7 @@ const CountdownTimer = ({ targetDate }) => {
 const HomeworkTextCountdown = ({ targetDate }) => {
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
   const [isPast, setIsPast] = useState(false)
+
   useEffect(() => {
     const calculate = () => {
       const distance = new Date(targetDate).getTime() - new Date().getTime()
@@ -104,6 +115,7 @@ const HomeworkTextCountdown = ({ targetDate }) => {
       })
       return false
     }
+
     calculate()
     const interval = setInterval(() => {
       const ended = calculate()
@@ -111,7 +123,9 @@ const HomeworkTextCountdown = ({ targetDate }) => {
     }, 1000)
     return () => clearInterval(interval)
   }, [targetDate])
+
   if (isPast) return null
+
   return (
     <div className="text-sm font-semibold text-pink-300 mt-2 tracking-wide bg-pink-950/30 px-4 py-2 rounded-xl inline-block border border-pink-500/20 animate-pulse">
       متبقي على إظهار الواجب : {timeLeft.days} يوم :{timeLeft.hours} ساعة :{timeLeft.minutes} دقائق :{timeLeft.seconds} ثواني
@@ -119,14 +133,24 @@ const HomeworkTextCountdown = ({ targetDate }) => {
   )
 }
 
-// ===== حساب مجمد =====
+// ========== شاشة الحساب المجمد ==========
 const FrozenAccount = ({ user, onLogout }) => {
   const studentName = user?.name || user?.username || 'الطالب'
   const studentClass = user?.class_name || 'غير محدد'
   const studentPhone = user?.phone || 'غير مسجل'
+
   const waMessage = encodeURIComponent(
-    `السلام عليكم ورحمة الله وبركاته\nالموضوع: طلب فك تجميد حساب - [${studentName}]\n\nمرحباً أستاذ همام هاني محمد ،\nأرجو منكم التكرم بفك تجميد حسابي في التطبيق.\nبيانات الطالب:\nالاسم: ${studentName}\nالشعبة: ${studentClass}\nرقم الهاتف: ${studentPhone}\n\nشاكراً لكم تعاونكم.`
+    `السلام عليكم ورحمة الله وبركاته\n` +
+    `الموضوع: طلب فك تجميد حساب - [${studentName}]\n\n` +
+    `مرحباً أستاذ همام هاني محمد ،\n` +
+    `أرجو منكم التكرم بفك تجميد حسابي في التطبيق، حيث أنني حالياً لا أستطيع الوصول للمحتوى التعليمي.\n\n` +
+    `بيانات الطالب:\n` +
+    `الاسم الكامل: ${studentName}\n` +
+    `الشعبة: ${studentClass}\n` +
+    `رقم الهاتف المسجل: ${studentPhone}\n\n` +
+    `شاكراً لكم تعاونكم.`
   )
+
   return (
     <div className="container-center min-h-screen relative" dir="rtl">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-md" />
@@ -135,19 +159,29 @@ const FrozenAccount = ({ user, onLogout }) => {
           <div className="text-6xl mb-2">🚫</div>
           <h2 className="text-2xl font-bold text-red-400">الحساب مجمد</h2>
           <p className="text-gray-300 leading-relaxed">
-            يرجى التواصل مع <strong className="text-purple-300">رئيس قسم التكنولوجيا: همام هاني محمد</strong> عبر واتساب.
+            يرجى التواصل مع <strong className="text-purple-300">رئيس قسم التكنولوجيا وإدارة المعلومات: همام هاني محمد</strong> عبر واتساب.
           </p>
-          <a href={`https://wa.me/962786117388?text=${waMessage}`} target="_blank" rel="noopener noreferrer" className="btn-primary w-full py-4 text-lg bg-green-600 hover:bg-green-700 shadow-lg flex items-center justify-center gap-2">
-            <span>📱</span> اضغط هنا للتواصل
+          <a
+            href={`https://wa.me/962786117388?text=${waMessage}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-primary w-full py-4 text-lg bg-green-600 hover:bg-green-700 shadow-lg flex items-center justify-center gap-2"
+          >
+            <span>📱</span> اضغط هنا للتواصل مع المشرف
           </a>
-          <button onClick={onLogout} className="text-sm text-gray-400 hover:text-white transition-colors mt-4">تسجيل الخروج</button>
+          <button
+            onClick={onLogout}
+            className="text-sm text-gray-400 hover:text-white transition-colors mt-4"
+          >
+            تسجيل الخروج
+          </button>
         </div>
       </div>
     </div>
   )
 }
 
-// ===== تسجيل الدخول لأول مرة =====
+// ========== تسجيل الدخول لأول مرة ==========
 const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
   const [username, setUsername] = useState('')
   const [phone, setPhone] = useState('')
@@ -164,6 +198,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
     }
     setLoading(true)
     setError('')
+
     try {
       const { data: profile, error: searchError } = await supabase
         .from('profiles')
@@ -173,6 +208,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
         .eq('gender', gender)
         .eq('age', parseInt(age))
         .maybeSingle()
+
       if (searchError) throw searchError
       if (!profile) {
         setError('البيانات غير صحيحة. تأكد من اسم المستخدم ورقم الهاتف والجنس والعمر.')
@@ -182,11 +218,13 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
 
       const fakeEmail = `${username}@school.temp`
       const tempPassword = Math.random().toString(36).slice(-8)
+
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: fakeEmail,
         password: tempPassword,
         options: { data: { role: 'student', username: username } }
       })
+
       if (signUpError) {
         if (signUpError.message.includes('User already registered')) {
           const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
@@ -211,6 +249,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
           class_id: profile.class_id
         })
         .eq('id', profile.id)
+
       if (updateError) throw updateError
 
       const { data: { user: currentUser } } = await supabase.auth.getUser()
@@ -228,6 +267,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
         class_id: profile.class_id,
         needsPasswordChange: true
       })
+
     } catch (err) {
       console.error(err)
       setError(err.message)
@@ -276,7 +316,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
   )
 }
 
-// ===== تغيير كلمة المرور الإجبارية =====
+// ========== تغيير كلمة المرور الإجبارية ==========
 const ForcePasswordChange = ({ user, onPasswordSet }) => {
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -333,7 +373,7 @@ const ForcePasswordChange = ({ user, onPasswordSet }) => {
   )
 }
 
-// ===== واجهة تسجيل الدخول =====
+// ========== واجهة تسجيل الدخول الرئيسية ==========
 const Login = ({ onLogin, onFrozen, onFirstTime }) => {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -348,13 +388,18 @@ const Login = ({ onLogin, onFrozen, onFirstTime }) => {
     try {
       const { data: email, error: fetchError } = await supabase
         .rpc('get_email_by_username', { username_input: username })
-      if (fetchError) throw new Error('خطأ في البحث عن المستخدم: ' + fetchError.message)
+
+      if (fetchError) {
+        console.error('خطأ في RPC:', fetchError)
+        throw new Error('خطأ في البحث عن المستخدم: ' + fetchError.message)
+      }
       if (!email) throw new Error('اسم المستخدم غير موجود')
 
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: email,
         password: password
       })
+
       if (authError) throw new Error('اسم المستخدم أو كلمة المرور غير صحيحة')
 
       const user = authData.user
@@ -365,6 +410,7 @@ const Login = ({ onLogin, onFrozen, onFirstTime }) => {
         .select('role, is_frozen, username, name, gender, age, phone, class_id, info_verified')
         .eq('id', user.id)
         .maybeSingle()
+
       if (profileError) throw new Error('خطأ في التحقق من الملف الشخصي')
       if (!profile) throw new Error('لا يوجد ملف شخصي لهذا الحساب، يرجى التواصل مع المدير')
       
@@ -397,8 +443,7 @@ const Login = ({ onLogin, onFrozen, onFirstTime }) => {
         return
       }
 
-      // تحديث last_seen محذوف لتجنب خطأ العمود غير الموجود
-      // يمكنك إضافته إذا أضفت العمود في قاعدة البيانات
+      // ===== تم إزالة تحديث last_seen نهائياً =====
 
       onLogin({ 
         id: user.id, 
@@ -477,7 +522,7 @@ const Login = ({ onLogin, onFrozen, onFirstTime }) => {
   )
 }
 
-// ===== لوحة المعلم (معدلة بالكامل) =====
+// ========== لوحة تحكم المعلم ==========
 const TeacherPanel = ({ user, onLogout }) => {
   const [lessonTime, setLessonTime] = useState('')
   const [homeworks, setHomeworks] = useState([])
@@ -501,7 +546,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [newLessonTime, setNewLessonTime] = useState('')
   const [showAddStudentModal, setShowAddStudentModal] = useState(false)
 
-  // دالة لجلب أسماء الشعب بشكل منفصل (لتجنب خطأ 500)
+  // ========== جلب أسماء الشعب بشكل منفصل (دالة مساعدة) ==========
   const fetchClassNames = async (classIds) => {
     if (!classIds || classIds.length === 0) return {}
     const { data, error } = await supabase
@@ -515,6 +560,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     return Object.fromEntries((data || []).map(c => [c.id, c.name]))
   }
 
+  // ========== دالة جلب البيانات (تم تعديلها) ==========
   const fetchTeacherData = async () => {
     try {
       // 1. جلب بيانات المعلم
@@ -524,9 +570,11 @@ const TeacherPanel = ({ user, onLogout }) => {
         .select('*')
         .eq('id', user.id)
         .maybeSingle();
+
       if (teacherFetchError && teacherFetchError.code !== 'PGRST116') {
         throw new Error('خطأ في جلب بيانات المعلم: ' + teacherFetchError.message);
       }
+
       if (!existingTeacher) {
         const { data: newTeacher, error: insertError } = await supabase
           .from('teachers')
@@ -549,7 +597,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         setHomeworks(existingTeacher.homeworks || []);
       }
 
-      // 2. جلب الطلاب (بدون علاقة)
+      // 2. جلب الطلاب (بدون استخدام classes(name))
       let profilesData = [];
       try {
         const { data, error } = await supabase
@@ -606,7 +654,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         setClasses(classesData);
       }
 
-      // 4. جلب طلبات المراجعة
+      // 4. جلب طلبات المراجعة (بدون classes(name))
       let pendingData = [];
       try {
         const { data, error } = await supabase
@@ -739,7 +787,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // ===== زر التجميد (يعمل الآن) =====
+  // ===== زر التجميد (تم تعديله: يحدث is_frozen فقط) =====
   const toggleFreezeStudent = async (student) => {
     const nextStatus = !student.is_frozen
     if (nextStatus) {
@@ -756,6 +804,44 @@ const TeacherPanel = ({ user, onLogout }) => {
     } catch (err) {
       alert('فشل تحديث حالة التجميد: ' + err.message)
     }
+  }
+
+  // ===== حذف الحسابات المجمدة (يتجاهل frozen_at) =====
+  const deleteFrozenAccounts = async () => {
+    try {
+      const { data: frozen, error } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('is_frozen', true);
+      if (error) throw error;
+      if (frozen.length === 0) {
+        alert('لا يوجد حسابات مجمدة.');
+        return;
+      }
+      if (!window.confirm(`هل أنت متأكد من حذف ${frozen.length} حساب مجمد نهائياً؟`)) return;
+      for (const student of frozen) {
+        await supabase.from('profiles').delete().eq('id', student.id);
+      }
+      alert(`تم حذف ${frozen.length} حساب مجمد.`);
+      fetchTeacherData();
+    } catch (err) {
+      alert('خطأ أثناء الحذف: ' + err.message);
+    }
+  }
+
+  // ===== دالة التحذير من عدم النشاط (تتجاهل last_seen إذا كان غير موجود) =====
+  const checkInactivityWarning = (lastSeenStr) => {
+    if (!lastSeenStr) return false; // إذا لم يكن موجوداً، لا تظهر تحذيراً
+    const lastSeen = new Date(lastSeenStr);
+    const diffTime = new Date().getTime() - lastSeen.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays >= 30;
+  }
+
+  // ===== دالة حساب الأيام المتبقية (تتجاهل frozen_at) =====
+  const getRemainingFreezeDays = () => {
+    // تم إزالة الاعتماد على frozen_at نهائياً
+    return 0;
   }
 
   // ===== حذف الطالب نهائياً =====
@@ -970,11 +1056,14 @@ const TeacherPanel = ({ user, onLogout }) => {
           )}
         </div>
 
-        {/* إضافة طالب */}
+        {/* إضافة طالب وحذف المجمدين */}
         <div className="glass p-6 rounded-2xl border border-white/5">
-          <div className="flex justify-between items-center">
+          <div className="flex flex-wrap justify-between items-center gap-3">
             <h3 className="text-xl font-semibold text-blue-300">إدارة الطلاب</h3>
-            <button onClick={() => setShowAddStudentModal(true)} className="btn-primary bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 py-2 px-4 text-sm">+ إضافة طالب</button>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => setShowAddStudentModal(true)} className="btn-primary bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 py-2 px-4 text-sm">+ إضافة طالب</button>
+              <button onClick={deleteFrozenAccounts} className="btn-primary bg-red-600 hover:bg-red-700 py-2 px-4 text-sm">🗑️ حذف المجمدين</button>
+            </div>
           </div>
         </div>
 
@@ -1001,6 +1090,9 @@ const TeacherPanel = ({ user, onLogout }) => {
                   {s.gender && <span className="text-xs text-gray-400">{s.gender}</span>}
                   {s.age && <span className="text-xs text-gray-400">عمر {s.age}</span>}
                   {s.is_frozen && <span className="text-xs text-orange-400 bg-orange-950/40 px-2 py-0.5 rounded border border-orange-500/20">⏳ مجمد</span>}
+                  {checkInactivityWarning(s.last_seen) && !s.is_frozen && (
+                    <span className="text-xs text-red-400 bg-red-950/40 px-2 py-0.5 rounded border border-red-500/30 animate-bounce">🚨 لم يفتح منذ 30 يوم!</span>
+                  )}
                 </div>
                 <div className="flex items-center gap-4 flex-wrap">
                   <button onClick={() => updateWhatsapp(s.id, s.phone)} className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-lg hover:bg-green-500/30">📞 تحديث الهاتف</button>
@@ -1065,7 +1157,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   )
 }
 
-// ===== لوحة الطالب (معدلة) =====
+// ========== لوحة تحكم الطالب ==========
 const StudentPanel = ({ user, onLogout }) => {
   const [teacherData, setTeacherData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -1305,7 +1397,7 @@ const StudentPanel = ({ user, onLogout }) => {
   )
 }
 
-// ===== التطبيق الرئيسي =====
+// ========== التطبيق الرئيسي ==========
 const App = () => {
   const [user, setUser] = useState(null)
   const [frozenUser, setFrozenUser] = useState(null)
