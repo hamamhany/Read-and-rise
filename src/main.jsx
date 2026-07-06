@@ -552,72 +552,93 @@ const TeacherPanel = ({ user, onLogout }) => {
   // جلب البيانات
   const fetchTeacherData = async () => {
     try {
-      const { data: teacherData, error: tError } = await supabase
+      // 1. التأكد من وجود سجل المعلم في جدول teachers
+      let teacherRecord;
+      const { data: existingTeacher, error: teacherFetchError } = await supabase
         .from('teachers')
-        .select('lesson_time, homeworks')
+        .select('*')
         .eq('id', user.id)
-        .maybeSingle()
-      
-      if (tError && tError.code !== 'PGRST116') {
-        throw new Error('خطأ في جلب بيانات المعلم: ' + tError.message)
-      }
-      
-      if (teacherData) {
-        setLessonTime(teacherData.lesson_time || '')
-        setHomeworks(teacherData.homeworks || [])
-      } else {
-        await supabase
-          .from('teachers')
-          .insert([{ id: user.id, lesson_time: '', homeworks: [] }])
-        setLessonTime('')
-        setHomeworks([])
+        .maybeSingle();
+
+      if (teacherFetchError && teacherFetchError.code !== 'PGRST116') {
+        throw new Error('خطأ في جلب بيانات المعلم: ' + teacherFetchError.message);
       }
 
+      if (!existingTeacher) {
+        // إنشاء سجل معلم جديد
+        const { data: newTeacher, error: insertTeacherError } = await supabase
+          .from('teachers')
+          .insert([{ id: user.id, lesson_time: '', homeworks: [] }])
+          .select()
+          .single();
+
+        if (insertTeacherError) {
+          console.error('فشل إنشاء سجل المعلم:', insertTeacherError);
+          setLessonTime('');
+          setHomeworks([]);
+          teacherRecord = null;
+        } else {
+          teacherRecord = newTeacher;
+          setLessonTime(newTeacher.lesson_time || '');
+          setHomeworks(newTeacher.homeworks || []);
+        }
+      } else {
+        teacherRecord = existingTeacher;
+        setLessonTime(existingTeacher.lesson_time || '');
+        setHomeworks(existingTeacher.homeworks || []);
+      }
+
+      // 2. جلب الطلاب
       const { data: profilesData, error: pError } = await supabase
         .from('profiles')
         .select('*, classes(name)')
-        .eq('role', 'student')
-        
+        .eq('role', 'student');
+
       if (pError) {
-        console.error("خطأ في جلب الطلاب:", pError)
-        setErrorMsg('فشل تحميل الطلاب: ' + pError.message)
-        setStudents([])
+        console.error("خطأ في جلب الطلاب:", pError);
+        setErrorMsg('فشل تحميل الطلاب: ' + pError.message);
+        setStudents([]);
       } else {
-        setStudents(profilesData || [])
+        setStudents(profilesData || []);
       }
 
+      // 3. جلب الشعب الخاصة بهذا المعلم
       const { data: classesData, error: cError } = await supabase
         .from('classes')
         .select('*')
-        .eq('teacher_id', user.id)
-      
+        .eq('teacher_id', user.id);
+
       if (cError) {
-        console.error("خطأ في جلب الشعب:", cError)
-        setClasses([])
+        console.error("خطأ في جلب الشعب:", cError);
+        setClasses([]);
       } else {
-        if (!classesData || classesData.length === 0) {
+        // إذا لم توجد شعب، ننشئها فقط إذا كان لدينا سجل معلم (teacherRecord)
+        if ((!classesData || classesData.length === 0) && teacherRecord) {
           const defaultClasses = [
             { name: 'أساسيات البرمجة', teacher_id: user.id },
             { name: 'بايثون (Python)', teacher_id: user.id }
-          ]
+          ];
           const { data: newClasses, error: insertError } = await supabase
             .from('classes')
             .insert(defaultClasses)
-            .select()
+            .select();
+
           if (insertError) {
-            console.error("فشل إنشاء الشعب الافتراضية:", insertError)
+            console.error("فشل إنشاء الشعب الافتراضية:", insertError);
+            // نترك المصفوفة فارغة
+            setClasses([]);
           } else {
-            setClasses(newClasses || [])
+            setClasses(newClasses || []);
           }
         } else {
-          setClasses(classesData)
+          setClasses(classesData || []);
         }
       }
     } catch (err) {
-      console.error("خطأ في جلب البيانات:", err)
-      setErrorMsg('فشل تحميل البيانات: ' + err.message)
+      console.error("خطأ في جلب البيانات:", err);
+      setErrorMsg('فشل تحميل البيانات: ' + err.message);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
