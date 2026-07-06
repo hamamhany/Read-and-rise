@@ -133,8 +133,44 @@ const HomeworkTextCountdown = ({ targetDate }) => {
   )
 }
 
+// ========== شاشة الحساب المجمد ==========
+const FrozenAccount = ({ user, onLogout }) => {
+  return (
+    <div className="container-center min-h-screen relative" dir="rtl">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-md" />
+      <div className="relative z-10 w-full max-w-md px-4">
+        <div className="glass p-8 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl text-center space-y-6">
+          <div className="text-6xl mb-2">🚫</div>
+          <h2 className="text-2xl font-bold text-red-400">الحساب مجمد</h2>
+          <p className="text-gray-300 leading-relaxed">
+            لا يمكن الدخول إلى الحساب في الوقت الحالي.
+            <br />
+            لإعادة الحساب للعمل، يرجى التواصل مع 
+            <strong className="text-purple-300"> رئيس قسم التكنولوجيا وإدارة المعلومات </strong>
+            عبر واتساب.
+          </p>
+          <a
+            href="https://wa.me/962786117388"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-primary w-full py-4 text-lg bg-green-600 hover:bg-green-700 shadow-lg flex items-center justify-center gap-2"
+          >
+            <span>📱</span> اضغط هنا للتواصل مع المشرف
+          </a>
+          <button
+            onClick={onLogout}
+            className="text-sm text-gray-400 hover:text-white transition-colors mt-4"
+          >
+            تسجيل الخروج
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ========== واجهة تسجيل الدخول ==========
-const Login = ({ onLogin }) => {
+const Login = ({ onLogin, onFrozen }) => {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -146,7 +182,7 @@ const Login = ({ onLogin }) => {
     setLoading(true)
     setError('')
     try {
-      // 🔧 التعديل 1: استخدام RPC للبحث عن البريد الإلكتروني
+      // 1. البحث عن البريد الإلكتروني باستخدام RPC
       const { data: email, error: fetchError } = await supabase
         .rpc('get_email_by_username', { username_input: username })
 
@@ -156,9 +192,9 @@ const Login = ({ onLogin }) => {
       }
       if (!email) throw new Error('اسم المستخدم غير موجود')
 
-      // 2. تسجيل الدخول باستخدام البريد المسترجع
+      // 2. تسجيل الدخول
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: email,  // استخدم email مباشرة
+        email: email,
         password: password
       })
 
@@ -176,7 +212,17 @@ const Login = ({ onLogin }) => {
 
       if (profileError) throw new Error('خطأ في التحقق من الملف الشخصي')
       if (!profile) throw new Error('لا يوجد ملف شخصي لهذا الحساب، يرجى التواصل مع المدير')
-      if (profile.is_frozen) throw new Error('هذا الحساب مجمد، لا يمكن تسجيل الدخول')
+      
+      // إذا كان الحساب مجمداً
+      if (profile.is_frozen) {
+        onFrozen({ 
+          id: user.id, 
+          email: user.email, 
+          username: username,
+          role: profile.role 
+        })
+        return
+      }
 
       // 4. تحديث last_seen
       await supabase
@@ -184,7 +230,6 @@ const Login = ({ onLogin }) => {
         .update({ last_seen: new Date().toISOString() })
         .eq('id', user.id)
 
-      // 🔧 التعديل 3: تمرير username مع كائن المستخدم
       onLogin({ id: user.id, email: user.email, role: profile.role, username: username })
     } catch (err) {
       console.error(err)
@@ -246,7 +291,7 @@ const Login = ({ onLogin }) => {
 }
 
 // ========== لوحة تحكم المعلم ==========
-const TeacherPanel = ({ user }) => {
+const TeacherPanel = ({ user, onLogout }) => {
   const [lessonTime, setLessonTime] = useState('')
   const [homeworks, setHomeworks] = useState([])
   const [students, setStudents] = useState([])
@@ -267,7 +312,6 @@ const TeacherPanel = ({ user }) => {
   // جلب البيانات
   const fetchTeacherData = async () => {
     try {
-      // 1. جلب بيانات المعلم
       const { data: teacherData, error: tError } = await supabase
         .from('teachers')
         .select('lesson_time, homeworks')
@@ -289,7 +333,6 @@ const TeacherPanel = ({ user }) => {
         setHomeworks([])
       }
 
-      // 2. جلب جميع الطلاب
       const { data: profilesData, error: pError } = await supabase
         .from('profiles')
         .select('*')
@@ -324,7 +367,6 @@ const TeacherPanel = ({ user }) => {
     }
   }, [user.id])
 
-  // إدارة الواجبات
   const saveHomework = async () => {
     if (!newHomeworkText.trim()) return alert('يرجى كتابة نص الواجب أولاً.')
     
@@ -371,7 +413,6 @@ const TeacherPanel = ({ user }) => {
     }
   }
 
-  // إدارة الطلاب
   const toggleFreezeStudent = async (student) => {
     const nextStatus = !student.is_frozen
     if (nextStatus) {
@@ -454,7 +495,6 @@ const TeacherPanel = ({ user }) => {
     }
   }
 
-  // تسجيل طالب جديد
   const handleCreateStudent = async (e) => {
     e.preventDefault()
     if (!studentUsername || !studentWhatsapp || !studentPassword) {
@@ -463,7 +503,6 @@ const TeacherPanel = ({ user }) => {
     }
     setStudentLoading(true)
     try {
-      // 1. التحقق من أن اسم المستخدم غير مكرر
       const { data: existingUsername } = await supabase
         .from('profiles')
         .select('username')
@@ -476,10 +515,8 @@ const TeacherPanel = ({ user }) => {
         return
       }
 
-      // 2. إنشاء بريد إلكتروني افتراضي
       const fakeEmail = `${studentUsername}@school.temp`
 
-      // 3. إنشاء الحساب في Auth
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: fakeEmail,
         password: studentPassword,
@@ -499,7 +536,6 @@ const TeacherPanel = ({ user }) => {
           const newStudent = retryData.user
           if (!newStudent) throw new Error('تعذر إنشاء الحساب')
           
-          // إدراج الملف الشخصي
           const { error: insertError } = await supabase
             .from('profiles')
             .insert([{ 
@@ -528,7 +564,6 @@ const TeacherPanel = ({ user }) => {
       const newStudent = signUpData.user
       if (!newStudent) throw new Error('تعذر إنشاء الحساب')
 
-      // 🔧 التعديل 5: التأكد من وجود username و whatsapp عند الإدراج
       const { error: insertError } = await supabase
         .from('profiles')
         .insert([{ 
@@ -562,7 +597,6 @@ const TeacherPanel = ({ user }) => {
     }
   }
 
-  // تحديث رقم واتساب
   const updateWhatsapp = async (studentId, currentWhatsapp) => {
     const newWhatsapp = window.prompt('أدخل رقم واتساب الجديد للطالب:', currentWhatsapp || '');
     if (newWhatsapp === null) return;
@@ -583,8 +617,6 @@ const TeacherPanel = ({ user }) => {
     alert('لا يمكن تغيير كلمة مرور الطالب من هنا. يمكن للطالب تغييرها من لوحته الخاصة.')
   }
 
-  const handleLogout = async () => { await supabase.auth.signOut() }
-
   const sortedHomeworks = [...homeworks].sort((a, b) => (b.is_scheduled ? 1 : 0) - (a.is_scheduled ? 1 : 0))
   const sortedStudents = [...students].sort((a, b) => (a.is_frozen ? 1 : 0) - (b.is_frozen ? 1 : 0))
 
@@ -594,10 +626,9 @@ const TeacherPanel = ({ user }) => {
         <div className="flex justify-between items-center flex-wrap gap-4 border-b border-white/10 pb-4">
           <div>
             <h2 className="text-3xl font-bold text-purple-300">لوحة تحكم المعلم</h2>
-            {/* 🔧 التعديل 4: عرض اسم المستخدم */}
             <p className="text-gray-400 text-sm mt-1">مرحباً بك: {user.username || user.email}</p>
           </div>
-          <button onClick={handleLogout} className="btn-primary bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 shadow-lg text-sm">
+          <button onClick={onLogout} className="btn-primary bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 shadow-lg text-sm">
             تسجيل الخروج
           </button>
         </div>
@@ -752,7 +783,7 @@ const TeacherPanel = ({ user }) => {
 }
 
 // ========== لوحة تحكم الطالب ==========
-const StudentPanel = ({ user }) => {
+const StudentPanel = ({ user, onLogout }) => {
   const [teacherData, setTeacherData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [errorMsg, setErrorMsg] = useState('')
@@ -813,8 +844,6 @@ const StudentPanel = ({ user }) => {
     return () => clearInterval(interval)
   }, [teacherData?.homeworks])
 
-  const handleLogout = async () => { await supabase.auth.signOut() }
-
   const changePassword = async () => {
     const newPass = window.prompt('أدخل كلمة المرور الجديدة');
     if (!newPass) return;
@@ -839,14 +868,13 @@ const StudentPanel = ({ user }) => {
         <div className="flex justify-between items-center flex-wrap gap-4 border-b border-white/10 pb-4">
           <div>
             <h2 className="text-3xl font-bold text-blue-300">لوحة تحكم الطالب</h2>
-            {/* 🔧 التعديل 4: عرض اسم المستخدم */}
             <p className="text-gray-400 text-sm mt-1">أهلاً بك: {user.username || user.email}</p>
           </div>
           <div className="flex gap-2">
             <button onClick={changePassword} className="btn-primary bg-blue-600 hover:bg-blue-700 text-sm">
               تغيير كلمة المرور
             </button>
-            <button onClick={handleLogout} className="btn-primary bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 shadow-lg text-sm">
+            <button onClick={onLogout} className="btn-primary bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 shadow-lg text-sm">
               تسجيل الخروج
             </button>
           </div>
@@ -908,9 +936,16 @@ const StudentPanel = ({ user }) => {
 // ========== التطبيق الرئيسي ==========
 const App = () => {
   const [user, setUser] = useState(null)
+  const [frozenUser, setFrozenUser] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useDynamicBackground();
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    setUser(null)
+    setFrozenUser(null)
+  }
 
   useEffect(() => {
     const checkSession = async () => {
@@ -923,31 +958,49 @@ const App = () => {
             .eq('id', session.user.id)
             .maybeSingle()
 
-          // 🔧 التعديل 2: معالجة محسنة للأخطاء
           if (error) {
             console.error('خطأ في جلب الملف الشخصي:', error)
             await supabase.auth.signOut()
             setUser(null)
+            setFrozenUser(null)
+            setLoading(false)
             return
           }
 
-          if (!profile || profile.is_frozen) {
+          if (!profile) {
             await supabase.auth.signOut()
             setUser(null)
+            setFrozenUser(null)
+            setLoading(false)
             return
           }
 
-          setUser({ 
-            id: session.user.id, 
-            email: session.user.email, 
-            role: profile.role,
-            username: profile.username 
-          })
+          if (profile.is_frozen) {
+            setFrozenUser({
+              id: session.user.id,
+              email: session.user.email,
+              username: profile.username || session.user.email,
+              role: profile.role
+            })
+            setUser(null)
+          } else {
+            setUser({
+              id: session.user.id,
+              email: session.user.email,
+              role: profile.role,
+              username: profile.username
+            })
+            setFrozenUser(null)
+          }
         } catch (err) {
           console.error('خطأ في التحقق من الجلسة:', err)
           await supabase.auth.signOut()
           setUser(null)
+          setFrozenUser(null)
         }
+      } else {
+        setUser(null)
+        setFrozenUser(null)
       }
       setLoading(false)
     }
@@ -967,27 +1020,43 @@ const App = () => {
             console.error('خطأ في تغيير حالة المصادقة:', error)
             await supabase.auth.signOut()
             setUser(null)
+            setFrozenUser(null)
             return
           }
 
-          if (!profile || profile.is_frozen) {
+          if (!profile) {
             await supabase.auth.signOut()
             setUser(null)
-          } else {
-            setUser({ 
-              id: session.user.id, 
-              email: session.user.email, 
-              role: profile.role,
-              username: profile.username 
+            setFrozenUser(null)
+            return
+          }
+
+          if (profile.is_frozen) {
+            setFrozenUser({
+              id: session.user.id,
+              email: session.user.email,
+              username: profile.username || session.user.email,
+              role: profile.role
             })
+            setUser(null)
+          } else {
+            setUser({
+              id: session.user.id,
+              email: session.user.email,
+              role: profile.role,
+              username: profile.username
+            })
+            setFrozenUser(null)
           }
         } catch (err) {
           console.error('خطأ في تغيير حالة المصادقة:', err)
           await supabase.auth.signOut()
           setUser(null)
+          setFrozenUser(null)
         }
       } else {
         setUser(null)
+        setFrozenUser(null)
       }
     })
 
@@ -1004,8 +1073,15 @@ const App = () => {
     )
   }
 
-  if (!user) return <Login onLogin={setUser} />
-  return user.role === 'teacher' ? <TeacherPanel user={user} /> : <StudentPanel user={user} />
+  if (frozenUser) {
+    return <FrozenAccount user={frozenUser} onLogout={handleLogout} />
+  }
+
+  if (!user) return <Login onLogin={setUser} onFrozen={setFrozenUser} />
+
+  return user.role === 'teacher' 
+    ? <TeacherPanel user={user} onLogout={handleLogout} />
+    : <StudentPanel user={user} onLogout={handleLogout} />
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(
