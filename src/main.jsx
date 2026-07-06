@@ -146,7 +146,7 @@ const Login = ({ onLogin }) => {
     setLoading(true)
     setError('')
     try {
-      // 1. البحث عن البريد الإلكتروني باستخدام اسم المستخدم
+      // 🔧 التعديل 1: استخدام RPC للبحث عن البريد الإلكتروني
       const { data: email, error: fetchError } = await supabase
         .rpc('get_email_by_username', { username_input: username })
 
@@ -156,9 +156,9 @@ const Login = ({ onLogin }) => {
       }
       if (!email) throw new Error('اسم المستخدم غير موجود')
 
-      // 2. تسجيل الدخول
+      // 2. تسجيل الدخول باستخدام البريد المسترجع
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: email,
+        email: email,  // استخدم email مباشرة
         password: password
       })
 
@@ -184,6 +184,7 @@ const Login = ({ onLogin }) => {
         .update({ last_seen: new Date().toISOString() })
         .eq('id', user.id)
 
+      // 🔧 التعديل 3: تمرير username مع كائن المستخدم
       onLogin({ id: user.id, email: user.email, role: profile.role, username: username })
     } catch (err) {
       console.error(err)
@@ -527,7 +528,7 @@ const TeacherPanel = ({ user }) => {
       const newStudent = signUpData.user
       if (!newStudent) throw new Error('تعذر إنشاء الحساب')
 
-      // 4. إدراج الملف الشخصي
+      // 🔧 التعديل 5: التأكد من وجود username و whatsapp عند الإدراج
       const { error: insertError } = await supabase
         .from('profiles')
         .insert([{ 
@@ -593,6 +594,7 @@ const TeacherPanel = ({ user }) => {
         <div className="flex justify-between items-center flex-wrap gap-4 border-b border-white/10 pb-4">
           <div>
             <h2 className="text-3xl font-bold text-purple-300">لوحة تحكم المعلم</h2>
+            {/* 🔧 التعديل 4: عرض اسم المستخدم */}
             <p className="text-gray-400 text-sm mt-1">مرحباً بك: {user.username || user.email}</p>
           </div>
           <button onClick={handleLogout} className="btn-primary bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 shadow-lg text-sm">
@@ -837,6 +839,7 @@ const StudentPanel = ({ user }) => {
         <div className="flex justify-between items-center flex-wrap gap-4 border-b border-white/10 pb-4">
           <div>
             <h2 className="text-3xl font-bold text-blue-300">لوحة تحكم الطالب</h2>
+            {/* 🔧 التعديل 4: عرض اسم المستخدم */}
             <p className="text-gray-400 text-sm mt-1">أهلاً بك: {user.username || user.email}</p>
           </div>
           <div className="flex gap-2">
@@ -919,18 +922,27 @@ const App = () => {
             .select('role, is_frozen, username')
             .eq('id', session.user.id)
             .maybeSingle()
-          if (error) throw error
+
+          // 🔧 التعديل 2: معالجة محسنة للأخطاء
+          if (error) {
+            console.error('خطأ في جلب الملف الشخصي:', error)
+            await supabase.auth.signOut()
+            setUser(null)
+            return
+          }
+
           if (!profile || profile.is_frozen) {
             await supabase.auth.signOut()
             setUser(null)
-          } else {
-            setUser({ 
-              id: session.user.id, 
-              email: session.user.email, 
-              role: profile.role,
-              username: profile.username 
-            })
+            return
           }
+
+          setUser({ 
+            id: session.user.id, 
+            email: session.user.email, 
+            role: profile.role,
+            username: profile.username 
+          })
         } catch (err) {
           console.error('خطأ في التحقق من الجلسة:', err)
           await supabase.auth.signOut()
@@ -950,7 +962,14 @@ const App = () => {
             .select('role, is_frozen, username')
             .eq('id', session.user.id)
             .maybeSingle()
-          if (error) throw error
+
+          if (error) {
+            console.error('خطأ في تغيير حالة المصادقة:', error)
+            await supabase.auth.signOut()
+            setUser(null)
+            return
+          }
+
           if (!profile || profile.is_frozen) {
             await supabase.auth.signOut()
             setUser(null)
