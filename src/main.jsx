@@ -533,6 +533,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [classes, setClasses] = useState([])
   const [loading, setLoading] = useState(true)
   const [errorMsg, setErrorMsg] = useState('')
+  const [pendingReviews, setPendingReviews] = useState([])
 
   const [newHomeworkText, setNewHomeworkText] = useState('')
   const [publishType, setPublishType] = useState('now')
@@ -565,10 +566,10 @@ const TeacherPanel = ({ user, onLogout }) => {
       }
 
       if (!existingTeacher) {
-        // إنشاء سجل معلم جديد
+        // إنشاء سجل معلم جديد - lesson_time = null (بدلاً من '')
         const { data: newTeacher, error: insertTeacherError } = await supabase
           .from('teachers')
-          .insert([{ id: user.id, lesson_time: '', homeworks: [] }])
+          .insert([{ id: user.id, lesson_time: null, homeworks: [] }])
           .select()
           .single();
 
@@ -612,7 +613,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         console.error("خطأ في جلب الشعب:", cError);
         setClasses([]);
       } else {
-        // إذا لم توجد شعب، ننشئها فقط إذا كان لدينا سجل معلم (teacherRecord)
         if ((!classesData || classesData.length === 0) && teacherRecord) {
           const defaultClasses = [
             { name: 'أساسيات البرمجة', teacher_id: user.id },
@@ -625,7 +625,6 @@ const TeacherPanel = ({ user, onLogout }) => {
 
           if (insertError) {
             console.error("فشل إنشاء الشعب الافتراضية:", insertError);
-            // نترك المصفوفة فارغة
             setClasses([]);
           } else {
             setClasses(newClasses || []);
@@ -634,6 +633,21 @@ const TeacherPanel = ({ user, onLogout }) => {
           setClasses(classesData || []);
         }
       }
+
+      // 4. جلب طلبات المراجعة (الطلاب الذين لديهم pending_changes)
+      const { data: pendingData, error: pendingError } = await supabase
+        .from('profiles')
+        .select('id, username, name, phone, gender, age, class_id, pending_changes, classes(name)')
+        .not('pending_changes', 'is', null)
+        .eq('role', 'student');
+
+      if (pendingError) {
+        console.error("خطأ في جلب طلبات المراجعة:", pendingError);
+        setPendingReviews([]);
+      } else {
+        setPendingReviews(pendingData || []);
+      }
+
     } catch (err) {
       console.error("خطأ في جلب البيانات:", err);
       setErrorMsg('فشل تحميل البيانات: ' + err.message);
@@ -656,6 +670,59 @@ const TeacherPanel = ({ user, onLogout }) => {
       supabase.removeChannel(channel)
     }
   }, [user.id])
+
+  // قبول طلب المراجعة (تطبيق التغييرات)
+  const acceptReview = async (studentId) => {
+    try {
+      // جلب البيانات الحالية للطالب
+      const { data: student, error: fetchError } = await supabase
+        .from('profiles')
+        .select('pending_changes')
+        .eq('id', studentId)
+        .single();
+
+      if (fetchError) throw fetchError;
+      if (!student.pending_changes) return;
+
+      const newData = {
+        name: student.pending_changes.name || student.name,
+        gender: student.pending_changes.gender || student.gender,
+        age: student.pending_changes.age || student.age,
+        phone: student.pending_changes.phone || student.phone,
+        info_verified: true,
+        pending_changes: null
+      };
+
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update(newData)
+        .eq('id', studentId);
+
+      if (updateError) throw updateError;
+
+      alert('تم قبول التغييرات وتحديث بيانات الطالب بنجاح.');
+      fetchTeacherData();
+    } catch (err) {
+      alert('فشل قبول المراجعة: ' + err.message);
+    }
+  };
+
+  // رفض طلب المراجعة (حذف pending_changes)
+  const rejectReview = async (studentId) => {
+    if (!window.confirm('هل أنت متأكد من رفض هذه التغييرات؟')) return;
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ pending_changes: null })
+        .eq('id', studentId);
+
+      if (error) throw error;
+      alert('تم رفض التغييرات.');
+      fetchTeacherData();
+    } catch (err) {
+      alert('فشل رفض المراجعة: ' + err.message);
+    }
+  };
 
   const saveHomework = async () => {
     if (!newHomeworkText.trim()) return alert('يرجى كتابة نص الواجب أولاً.')
@@ -894,6 +961,48 @@ const TeacherPanel = ({ user, onLogout }) => {
             {lessonTime ? <CountdownTimer targetDate={lessonTime} /> : <p className="text-gray-400 text-center py-2">لم يتم تحديد موعد حصة بعد</p>}
           </div>
         </div>
+
+        {/* قسم مراجعات الملفات الشخصية */}
+        {pendingReviews.length > 0 && (
+          <div className="glass p-6 rounded-2xl border border-yellow-500/30 bg-yellow-500/5">
+            <h3 className="text-xl font-semibold text-yellow-300 mb-3">📋 مراجعات الملفات الشخصية</h3>
+            <p className="text-sm text-gray-400 mb-3">الطلاب الذين طلبوا تعديل بياناتهم ينتظرون موافقتك</p>
+            <div className="space-y-3 max-h-60 overflow-y-auto">
+              {pendingReviews.map(student => (
+                <div key={student.id} className="p-3 bg-black/30 rounded-xl border border-yellow-500/20">
+                  <div className="flex flex-wrap justify-between items-start gap-2">
+                    <div>
+                      <p className="text-white font-medium">{student.name || student.username}</p>
+                      <p className="text-xs text-gray-400">اسم المستخدم: {student.username}</p>
+                      {student.classes && <p className="text-xs text-blue-300">الشعبة: {student.classes.name}</p>}
+                      <div className="mt-1 text-xs text-gray-300 bg-yellow-950/30 p-2 rounded border border-yellow-500/10">
+                        <p className="font-semibold text-yellow-200">التغييرات المطلوبة:</p>
+                        {student.pending_changes?.name && <p>الاسم: {student.pending_changes.name}</p>}
+                        {student.pending_changes?.gender && <p>الجنس: {student.pending_changes.gender}</p>}
+                        {student.pending_changes?.age && <p>العمر: {student.pending_changes.age}</p>}
+                        {student.pending_changes?.phone && <p>رقم الهاتف: {student.pending_changes.phone}</p>}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => acceptReview(student.id)}
+                        className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg transition-colors"
+                      >
+                        قبول ✅
+                      </button>
+                      <button 
+                        onClick={() => rejectReview(student.id)}
+                        className="text-xs bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg transition-colors"
+                      >
+                        رفض ❌
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="glass p-6 rounded-2xl border border-white/5 space-y-4">
           <h3 className="text-xl font-semibold text-pink-300">إدارة ونشر الواجبات المدرسية (متعددة)</h3>
@@ -1190,22 +1299,26 @@ const StudentPanel = ({ user, onLogout }) => {
       return
     }
     try {
+      // تجهيز بيانات التغيير
+      const updates = {
+        name: editData.name,
+        gender: editData.gender,
+        age: parseInt(editData.age) || null,
+        phone: editData.phone,
+      };
+
+      // حفظ التغييرات في pending_changes
       const { error } = await supabase
         .from('profiles')
         .update({
-          name: editData.name,
-          gender: editData.gender,
-          age: parseInt(editData.age) || null,
-          phone: editData.phone,
+          ...updates,
           info_verified: false,
           pending_changes: { 
             updated_at: new Date().toISOString(),
-            old_data: {
-              name: profile?.name,
-              gender: profile?.gender,
-              age: profile?.age,
-              phone: profile?.phone
-            }
+            name: editData.name,
+            gender: editData.gender,
+            age: parseInt(editData.age) || null,
+            phone: editData.phone
           }
         })
         .eq('id', user.id)
