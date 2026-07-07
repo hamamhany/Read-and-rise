@@ -982,7 +982,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // ===== إضافة طالب جديد باستخدام الإدراج المباشر (مع RLS المعدل) =====
+  // ===== إضافة طالب جديد (معدل مع تحسينات) =====
   const handleAddStudent = async (e) => {
     e.preventDefault()
     if (!newStudentName || !newStudentGender || !newStudentAge || !newStudentPhone || !newStudentClass) {
@@ -990,16 +990,23 @@ const TeacherPanel = ({ user, onLogout }) => {
       return
     }
 
-    // التأكد من أن class_id موجود
-    const classExists = classes.some(c => c.id === newStudentClass)
-    if (!classExists) {
-      alert('الشعبة المختارة غير صالحة.')
-      return
-    }
-
     setStudentLoading(true)
     try {
-      // إنشاء اسم مستخدم فريد
+      // 1. التحقق من صحة class_id (جلب الشعبة من قاعدة البيانات)
+      const { data: classData, error: classError } = await supabase
+        .from('classes')
+        .select('id')
+        .eq('id', newStudentClass)
+        .maybeSingle()
+
+      if (classError) throw new Error('خطأ في التحقق من الشعبة: ' + classError.message)
+      if (!classData) {
+        alert('الشعبة المختارة غير صالحة (غير موجودة في قاعدة البيانات). يرجى تحديث الصفحة والمحاولة مرة أخرى.')
+        setStudentLoading(false)
+        return
+      }
+
+      // 2. إنشاء اسم مستخدم فريد
       const baseUsername = newStudentName.trim().replace(/\s+/g, '.').toLowerCase()
       let username = baseUsername
       let counter = 1
@@ -1014,32 +1021,55 @@ const TeacherPanel = ({ user, onLogout }) => {
         if (!data) { exists = false } else { username = `${baseUsername}${counter}`; counter++ }
       }
 
-      // إدراج مباشر
-      const { data, error } = await supabase
+      // 3. تنظيف رقم الهاتف (إزالة الأحرف غير الرقمية)
+      const cleanPhone = newStudentPhone.replace(/[^0-9]/g, '')
+
+      // 4. التحقق من أن age رقم صحيح
+      const ageNum = parseInt(newStudentAge)
+      if (isNaN(ageNum) || ageNum < 1 || ageNum > 99) {
+        alert('العمر يجب أن يكون رقماً بين 1 و 99.')
+        setStudentLoading(false)
+        return
+      }
+
+      // 5. التحقق من أن gender من القيم المسموحة
+      if (!['ذكر', 'أنثى'].includes(newStudentGender)) {
+        alert('الجنس يجب أن يكون ذكر أو أنثى.')
+        setStudentLoading(false)
+        return
+      }
+
+      // 6. إدراج مباشر (بدون .select() لتجنب مشاكل الصلاحيات)
+      const { error } = await supabase
         .from('profiles')
         .insert([{
           username: username,
-          name: newStudentName,
+          name: newStudentName.trim(),
           gender: newStudentGender,
-          age: parseInt(newStudentAge),
-          phone: newStudentPhone,
+          age: ageNum,
+          phone: cleanPhone,
           class_id: newStudentClass,
           role: 'student',
           is_frozen: false,
           info_verified: false
         }])
-        .select()
 
       if (error) {
         console.error('📌 تفاصيل الخطأ من Supabase:', error)
         let errorMessage = 'فشل إضافة الطالب: '
         if (error.code === '42501' || error.message.includes('permission denied')) {
-          errorMessage += 'صلاحية الإدراج ممنوعة. تأكد من إنشاء سياسة RLS للإدراج كما هو موضح في التعليمات.'
-        } else if (error.message.includes('duplicate key')) {
+          errorMessage += 'صلاحية الإدراج ممنوعة. تأكد من إنشاء سياسة RLS للإدراج.'
+        } else if (error.code === '23503') {
+          errorMessage += 'معرف الشعبة غير صالح (مفتاح خارجي). تأكد من اختيار شعبة صحيحة.'
+        } else if (error.code === '23505') {
           errorMessage += 'اسم المستخدم موجود بالفعل. حاول مرة أخرى.'
+        } else if (error.message) {
+          errorMessage += error.message
         } else {
-          errorMessage += error.message || 'خطأ غير معروف'
+          errorMessage += 'خطأ غير معروف'
         }
+        if (error.details) errorMessage += `\nالتفاصيل: ${error.details}`
+        if (error.hint) errorMessage += `\nتلميح: ${error.hint}`
         alert(errorMessage)
         return
       }
@@ -1054,7 +1084,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       await fetchTeacherData()
     } catch (err) {
       console.error('خطأ في إضافة الطالب:', err)
-      alert('فشل إضافة الطالب: ' + (err.message || err.details || 'خطأ غير معروف'))
+      alert('فشل إضافة الطالب: ' + (err.message || 'خطأ غير معروف'))
     } finally {
       setStudentLoading(false)
     }
