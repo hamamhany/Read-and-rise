@@ -584,7 +584,7 @@ const Login = ({ onLogin, onFrozen, onFirstTime }) => {
   )
 }
 
-// ========== لوحة تحكم المعلم (معدلة - تستخدم الإدراج المباشر) ==========
+// ========== لوحة تحكم المعلم (معدلة) ==========
 const TeacherPanel = ({ user, onLogout }) => {
   const [lessonTime, setLessonTime] = useState('')
   const [homeworks, setHomeworks] = useState([])
@@ -982,7 +982,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // ===== إضافة طالب جديد (معدل مع تحسينات) =====
+  // ===== إضافة طالب جديد (معدل مع تحسينات وتوليد ID) =====
   const handleAddStudent = async (e) => {
     e.preventDefault()
     if (!newStudentName || !newStudentGender || !newStudentAge || !newStudentPhone || !newStudentClass) {
@@ -992,7 +992,7 @@ const TeacherPanel = ({ user, onLogout }) => {
 
     setStudentLoading(true)
     try {
-      // 1. التحقق من صحة class_id (جلب الشعبة من قاعدة البيانات)
+      // 1. التحقق من صحة class_id
       const { data: classData, error: classError } = await supabase
         .from('classes')
         .select('id')
@@ -1001,12 +1001,15 @@ const TeacherPanel = ({ user, onLogout }) => {
 
       if (classError) throw new Error('خطأ في التحقق من الشعبة: ' + classError.message)
       if (!classData) {
-        alert('الشعبة المختارة غير صالحة (غير موجودة في قاعدة البيانات). يرجى تحديث الصفحة والمحاولة مرة أخرى.')
+        alert('الشعبة المختارة غير صالحة. يرجى تحديث الصفحة والمحاولة مرة أخرى.')
         setStudentLoading(false)
         return
       }
 
-      // 2. إنشاء اسم مستخدم فريد
+      // 2. توليد ID جديد (UUID)
+      const newId = crypto.randomUUID()
+
+      // 3. إنشاء اسم مستخدم فريد
       const baseUsername = newStudentName.trim().replace(/\s+/g, '.').toLowerCase()
       let username = baseUsername
       let counter = 1
@@ -1021,10 +1024,10 @@ const TeacherPanel = ({ user, onLogout }) => {
         if (!data) { exists = false } else { username = `${baseUsername}${counter}`; counter++ }
       }
 
-      // 3. تنظيف رقم الهاتف (إزالة الأحرف غير الرقمية)
+      // 4. تنظيف رقم الهاتف
       const cleanPhone = newStudentPhone.replace(/[^0-9]/g, '')
 
-      // 4. التحقق من أن age رقم صحيح
+      // 5. التحقق من العمر
       const ageNum = parseInt(newStudentAge)
       if (isNaN(ageNum) || ageNum < 1 || ageNum > 99) {
         alert('العمر يجب أن يكون رقماً بين 1 و 99.')
@@ -1032,17 +1035,18 @@ const TeacherPanel = ({ user, onLogout }) => {
         return
       }
 
-      // 5. التحقق من أن gender من القيم المسموحة
+      // 6. التحقق من الجنس
       if (!['ذكر', 'أنثى'].includes(newStudentGender)) {
         alert('الجنس يجب أن يكون ذكر أو أنثى.')
         setStudentLoading(false)
         return
       }
 
-      // 6. إدراج مباشر (بدون .select() لتجنب مشاكل الصلاحيات)
+      // 7. إدراج مع ID صريح
       const { error } = await supabase
         .from('profiles')
         .insert([{
+          id: newId,            // ← تمت إضافته لحل مشكلة null
           username: username,
           name: newStudentName.trim(),
           gender: newStudentGender,
