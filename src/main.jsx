@@ -982,7 +982,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // ===== إضافة طالب جديد (معدل مع تحسينات وتوليد ID) =====
+  // ===== إضافة طالب جديد (معدل مع إضافة email) =====
   const handleAddStudent = async (e) => {
     e.preventDefault()
     if (!newStudentName || !newStudentGender || !newStudentAge || !newStudentPhone || !newStudentClass) {
@@ -1009,7 +1009,10 @@ const TeacherPanel = ({ user, onLogout }) => {
       // 2. توليد ID جديد (UUID)
       const newId = crypto.randomUUID()
 
-      // 3. إنشاء اسم مستخدم فريد
+      // 3. إنشاء بريد إلكتروني مؤقت وفريد
+      const tempEmail = `student_${newId}@temp.com`
+
+      // 4. إنشاء اسم مستخدم فريد
       const baseUsername = newStudentName.trim().replace(/\s+/g, '.').toLowerCase()
       let username = baseUsername
       let counter = 1
@@ -1024,10 +1027,10 @@ const TeacherPanel = ({ user, onLogout }) => {
         if (!data) { exists = false } else { username = `${baseUsername}${counter}`; counter++ }
       }
 
-      // 4. تنظيف رقم الهاتف
+      // 5. تنظيف رقم الهاتف
       const cleanPhone = newStudentPhone.replace(/[^0-9]/g, '')
 
-      // 5. التحقق من العمر
+      // 6. التحقق من العمر
       const ageNum = parseInt(newStudentAge)
       if (isNaN(ageNum) || ageNum < 1 || ageNum > 99) {
         alert('العمر يجب أن يكون رقماً بين 1 و 99.')
@@ -1035,18 +1038,19 @@ const TeacherPanel = ({ user, onLogout }) => {
         return
       }
 
-      // 6. التحقق من الجنس
+      // 7. التحقق من الجنس
       if (!['ذكر', 'أنثى'].includes(newStudentGender)) {
         alert('الجنس يجب أن يكون ذكر أو أنثى.')
         setStudentLoading(false)
         return
       }
 
-      // 7. إدراج مع ID صريح
+      // 8. إدراج مع ID و email صريحين
       const { error } = await supabase
         .from('profiles')
         .insert([{
-          id: newId,            // ← تمت إضافته لحل مشكلة null
+          id: newId,
+          email: tempEmail,
           username: username,
           name: newStudentName.trim(),
           gender: newStudentGender,
@@ -1066,7 +1070,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         } else if (error.code === '23503') {
           errorMessage += 'معرف الشعبة غير صالح (مفتاح خارجي). تأكد من اختيار شعبة صحيحة.'
         } else if (error.code === '23505') {
-          errorMessage += 'اسم المستخدم موجود بالفعل. حاول مرة أخرى.'
+          errorMessage += 'اسم المستخدم أو البريد الإلكتروني موجود بالفعل. حاول مرة أخرى.'
         } else if (error.message) {
           errorMessage += error.message
         } else {
