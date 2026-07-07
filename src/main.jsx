@@ -185,7 +185,7 @@ const FrozenAccount = ({ user, onLogout }) => {
   )
 }
 
-// ========== تسجيل الدخول لأول مرة (نسخة مبسطة تعمل دائماً) ==========
+// // ========== تسجيل الدخول لأول مرة (نسخة نهائية مع الترتيب الصحيح) ==========
 const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -213,64 +213,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
     setError('')
 
     try {
-      // 1. البحث عن ملف شخصي موجود (إن وجد)
-      let profile = null
-      const { data: existing, error: searchError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('name', cleanName)
-        .eq('phone', cleanPhone)
-        .eq('gender', cleanGender)
-        .eq('age', cleanAge)
-        .maybeSingle()
-
-      if (searchError) throw new Error('خطأ في البحث: ' + searchError.message)
-
-      // 2. إنشاء ملف شخصي جديد إذا لم يوجد
-      if (!existing) {
-        console.log('📝 لم يوجد ملف شخصي، سيتم إنشاؤه')
-        const newId = crypto.randomUUID()
-        const baseUsername = cleanName.replace(/\s+/g, '.').toLowerCase()
-        let username = baseUsername
-        let counter = 1
-        let exists = true
-        while (exists) {
-          const { data, error } = await supabase
-            .from('profiles')
-            .select('username')
-            .eq('username', username)
-            .maybeSingle()
-          if (error) throw error
-          if (!data) { exists = false } else { username = `${baseUsername}${counter}`; counter++ }
-        }
-
-        const { data: newProfile, error: insertError } = await supabase
-          .from('profiles')
-          .insert([{
-            id: newId,
-            username: username,
-            name: cleanName,
-            gender: cleanGender,
-            age: cleanAge,
-            phone: cleanPhone,
-            role: 'student',
-            is_frozen: false,
-            info_verified: false,
-            email: null
-          }])
-          .select()
-          .single()
-
-        if (insertError) {
-          console.error('فشل إنشاء الملف الشخصي:', insertError)
-          throw new Error('تعذر إنشاء الملف الشخصي: ' + insertError.message)
-        }
-        profile = newProfile
-      } else {
-        profile = existing
-      }
-
-      // 3. إنشاء حساب في Auth
+      // 1. إنشاء حساب في Auth أولاً (قبل أي عملية على profiles)
       const uniqueId = crypto.randomUUID()
       const fakeEmail = `student_${uniqueId}@temp.com`
       const tempPassword = Math.random().toString(36).slice(-8)
@@ -282,8 +225,8 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
       })
 
       if (signUpError) {
-        // إذا كان البريد موجوداً مسبقاً (نادراً) نعيد المحاولة ببريد جديد
         if (signUpError.message.includes('User already registered')) {
+          // إعادة المحاولة ببريد جديد (نادراً ما يحدث)
           const newUniqueId = crypto.randomUUID()
           const newFakeEmail = `student_${newUniqueId}@temp.com`
           const { error: retryError } = await supabase.auth.signUp({
@@ -297,14 +240,14 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
         }
       }
 
-      // 4. تسجيل الدخول فوراً باستخدام البريد وكلمة المرور المؤقتة (تجاوز تأكيد البريد)
+      // 2. تسجيل الدخول فوراً باستخدام البريد وكلمة المرور المؤقتة
       const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
         email: fakeEmail,
         password: tempPassword
       })
 
       if (signInError) {
-        // إذا فشل تسجيل الدخول، نحاول جلب الجلسة مباشرة
+        // محاولة جلب الجلسة إذا فشل signIn (قد يكون بسبب تأكيد البريد)
         const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
         if (sessionError || !sessionData.session) {
           throw new Error('تعذر تسجيل الدخول. تأكد من تعطيل تأكيد البريد الإلكتروني أو حاول مرة أخرى.')
@@ -313,42 +256,43 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
         const currentUser = sessionData.session.user
         if (!currentUser) throw new Error('فشل في استرجاع المستخدم.')
 
-        // تحديث الملف الشخصي بالمعرف الصحيح
-        await updateProfile(currentUser, profile)
+        // الآن المستخدم مصادق، نقوم بإنشاء الملف الشخصي
+        await createProfile(currentUser, cleanName, cleanPhone, cleanGender, cleanAge)
+
         onSuccess({
           id: currentUser.id,
           email: currentUser.email,
-          username: profile.username,
+          username: cleanName.replace(/\s+/g, '.').toLowerCase(),
           role: 'student',
-          name: profile.name,
-          gender: profile.gender,
-          age: profile.age,
-          phone: profile.phone,
-          class_id: profile.class_id || null,
+          name: cleanName,
+          gender: cleanGender,
+          age: cleanAge,
+          phone: cleanPhone,
+          class_id: null,
           needsPasswordChange: true
         })
         setLoading(false)
         return
       }
 
-      // 5. بعد نجاح تسجيل الدخول، الحصول على المستخدم
+      // 3. بعد نجاح تسجيل الدخول، الحصول على المستخدم
       const currentUser = signInData.user
       if (!currentUser) throw new Error('فشل في استرجاع المستخدم.')
 
-      // 6. تحديث الملف الشخصي بالمعرف الصحيح
-      await updateProfile(currentUser, profile)
+      // 4. الآن المستخدم مصادق، نقوم بإنشاء الملف الشخصي
+      await createProfile(currentUser, cleanName, cleanPhone, cleanGender, cleanAge)
 
-      // 7. إرسال نجاح
+      // 5. إرسال نجاح
       onSuccess({
         id: currentUser.id,
         email: currentUser.email,
-        username: profile.username,
+        username: cleanName.replace(/\s+/g, '.').toLowerCase(),
         role: 'student',
-        name: profile.name,
-        gender: profile.gender,
-        age: profile.age,
-        phone: profile.phone,
-        class_id: profile.class_id || null,
+        name: cleanName,
+        gender: cleanGender,
+        age: cleanAge,
+        phone: cleanPhone,
+        class_id: null,
         needsPasswordChange: true
       })
 
@@ -360,32 +304,42 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
     }
   }
 
-  // دالة مساعدة لتحديث الملف الشخصي
-  const updateProfile = async (user, profile) => {
-    if (profile.id !== user.id) {
-      // حذف الملف القديم (إن وجد) وإنشاء ملف جديد
-      await supabase.from('profiles').delete().eq('id', profile.id)
-      const { error: insertError } = await supabase.from('profiles').insert([{
+  // دالة مساعدة لإنشاء الملف الشخصي (يتم استدعاؤها بعد تسجيل الدخول)
+  const createProfile = async (user, name, phone, gender, age) => {
+    // توليد اسم مستخدم فريد
+    const baseUsername = name.replace(/\s+/g, '.').toLowerCase()
+    let username = baseUsername
+    let counter = 1
+    let exists = true
+    while (exists) {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('username')
+        .eq('username', username)
+        .maybeSingle()
+      if (error) throw error
+      if (!data) { exists = false } else { username = `${baseUsername}${counter}`; counter++ }
+    }
+
+    // إنشاء الملف الشخصي
+    const { error: insertError } = await supabase
+      .from('profiles')
+      .insert([{
         id: user.id,
-        username: profile.username,
-        name: profile.name,
-        gender: profile.gender,
-        age: profile.age,
-        phone: profile.phone,
-        class_id: profile.class_id || null,
+        username: username,
+        name: name,
+        gender: gender,
+        age: age,
+        phone: phone,
         role: 'student',
         is_frozen: false,
         info_verified: false,
         email: user.email
       }])
-      if (insertError) throw insertError
-    } else {
-      // تحديث البريد الإلكتروني فقط
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ email: user.email, info_verified: false })
-        .eq('id', user.id)
-      if (updateError) throw updateError
+
+    if (insertError) {
+      console.error('فشل إنشاء الملف الشخصي:', insertError)
+      throw new Error('تعذر إنشاء الملف الشخصي: ' + insertError.message)
     }
   }
 
