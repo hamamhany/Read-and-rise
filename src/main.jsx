@@ -59,7 +59,9 @@ const CountdownTimer = ({ targetDate }) => {
 
   useEffect(() => {
     const calculateTime = () => {
-      const distance = new Date(targetDate).getTime() - new Date().getTime()
+      const target = new Date(targetDate).getTime();
+      const now = new Date().getTime();
+      const distance = target - now;
       if (distance < 0) {
         setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 })
         return true
@@ -101,7 +103,9 @@ const HomeworkTextCountdown = ({ targetDate }) => {
 
   useEffect(() => {
     const calculate = () => {
-      const distance = new Date(targetDate).getTime() - new Date().getTime()
+      const target = new Date(targetDate).getTime();
+      const now = new Date().getTime();
+      const distance = target - now;
       if (distance <= 0) {
         setIsPast(true)
         return true
@@ -200,7 +204,6 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
     setError('')
 
     try {
-      // البحث عن الطالب باستخدام الاسم والجنس والعمر والهاتف
       const { data: profile, error: searchError } = await supabase
         .from('profiles')
         .select('id, name, gender, age, phone, username, class_id')
@@ -217,7 +220,6 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
         return
       }
 
-      // إنشاء بريد مؤقت يعتمد على رقم الهاتف (لتجنب التعارض)
       const fakeEmail = `student_${profile.id}@school.temp`
       const tempPassword = Math.random().toString(36).slice(-8)
 
@@ -229,7 +231,6 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
 
       if (signUpError) {
         if (signUpError.message.includes('User already registered')) {
-          // محاولة تسجيل الدخول بكلمة المرور المؤقتة
           const { error: signInError } = await supabase.auth.signInWithPassword({
             email: fakeEmail,
             password: tempPassword
@@ -240,8 +241,6 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
         }
       }
 
-      // لا نعدل info_verified هنا، نتركها false حتى يضع الطالب اسم المستخدم وكلمة المرور
-      // ولكن نحدّث بيانات الطالب للتأكد من تطابق البيانات (قد تكون تغيرت)
       const { error: updateError } = await supabase
         .from('profiles')
         .update({ 
@@ -251,7 +250,6 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
           age: profile.age,
           phone: profile.phone,
           class_id: profile.class_id
-          // لا نغير info_verified
         })
         .eq('id', profile.id)
 
@@ -260,11 +258,10 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
       const { data: { user: currentUser } } = await supabase.auth.getUser()
       if (!currentUser) throw new Error('فشل في استرجاع المستخدم')
 
-      // نمرر البيانات مع username = null (سيُطلب منه لاحقاً)
       onSuccess({
         id: currentUser.id,
         email: currentUser.email,
-        username: null, // لم يتم تعيينه بعد
+        username: null,
         role: 'student',
         name: profile.name,
         gender: profile.gender,
@@ -330,7 +327,6 @@ const ForcePasswordChange = ({ user, onPasswordSet }) => {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  // إذا كان اسم المستخدم موجوداً مسبقاً، لا نطلب إدخاله
   const requireUsername = !user.username
 
   const handleSubmit = async (e) => {
@@ -351,18 +347,15 @@ const ForcePasswordChange = ({ user, onPasswordSet }) => {
     setError('')
 
     try {
-      // 1. تحديث كلمة المرور
       const { error: updatePassError } = await supabase.auth.updateUser({ password })
       if (updatePassError) throw updatePassError
 
-      // 2. تحديث ملف الطالب
       const updates = {
         info_verified: true,
         pending_changes: null,
         is_frozen: false
       }
       if (requireUsername) {
-        // التحقق من عدم تكرار اسم المستخدم
         const { data: existing, error: checkError } = await supabase
           .from('profiles')
           .select('id')
@@ -384,7 +377,6 @@ const ForcePasswordChange = ({ user, onPasswordSet }) => {
 
       if (updateProfileError) throw updateProfileError
 
-      // تحديث user محلياً
       const updatedUser = { 
         ...user, 
         username: requireUsername ? username.trim() : user.username,
@@ -499,13 +491,12 @@ const Login = ({ onLogin, onFrozen, onFirstTime }) => {
         return
       }
 
-      // إذا كانت info_verified = false، نطلب تغيير كلمة المرور (قد يكون اسم المستخدم موجوداً أو لا)
       if (profile.info_verified === false) {
         onLogin({ 
           id: user.id, 
           email: user.email, 
           role: profile.role, 
-          username: profile.username, // قد يكون null
+          username: profile.username,
           name: profile.name,
           gender: profile.gender,
           age: profile.age,
@@ -616,9 +607,14 @@ const TeacherPanel = ({ user, onLogout }) => {
 
   const [newLessonTime, setNewLessonTime] = useState('')
   const [showAddStudentModal, setShowAddStudentModal] = useState(false)
-  const [showStudentsModal, setShowStudentsModal] = useState(false) // مودال عرض الطلاب
+  const [showStudentsModal, setShowStudentsModal] = useState(false)
 
-  // ========== جلب أسماء الشعب ==========
+  // دالة لتنظيف رقم الهاتف (إزالة الأصفار البادئة والأحرف غير الرقمية)
+  const cleanPhoneNumber = (phone) => {
+    if (!phone) return ''
+    return phone.replace(/^0+/, '').replace(/[^0-9]/g, '')
+  }
+
   const fetchClassNames = async (classIds) => {
     if (!classIds || classIds.length === 0) return {}
     const { data, error } = await supabase
@@ -632,7 +628,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     return Object.fromEntries((data || []).map(c => [c.id, c.name]))
   }
 
-  // ========== جلب بيانات المعلم ==========
   const fetchTeacherData = async () => {
     try {
       let teacherRecord;
@@ -765,7 +760,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     return () => { supabase.removeChannel(channel) }
   }, [user.id])
 
-  // ===== قبول طلب المراجعة =====
   const acceptReview = async (studentId) => {
     try {
       const { data: student, error: fetchError } = await supabase
@@ -802,7 +796,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ===== رفض طلب المراجعة =====
   const rejectReview = async (studentId) => {
     if (!window.confirm('هل أنت متأكد من رفض هذه التغييرات؟')) return;
     try {
@@ -819,10 +812,9 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ===== حفظ الواجب =====
   const saveHomework = async () => {
     if (!newHomeworkText.trim()) return alert('يرجى كتابة نص الواجب أولاً.')
-    const revealTime = publishType === 'now' ? new Date().toISOString() : newHomeworkRevealTime
+    const revealTime = publishType === 'now' ? new Date().toISOString() : new Date(newHomeworkRevealTime).toISOString()
     if (publishType === 'schedule' && !newHomeworkRevealTime) {
       return alert('يرجى تحديد تاريخ ووقت نشر الواجب المجدول.')
     }
@@ -859,7 +851,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // ===== زر التجميد =====
   const toggleFreezeStudent = async (student) => {
     const nextStatus = !student.is_frozen
     if (nextStatus) {
@@ -881,7 +872,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // ===== حذف الحسابات المجمدة =====
   const deleteFrozenAccounts = async () => {
     try {
       const { data: frozen, error } = await supabase
@@ -904,7 +894,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // ===== دالة التحذير من عدم النشاط =====
   const checkInactivityWarning = (lastSeenStr) => {
     if (!lastSeenStr) return false;
     const lastSeen = new Date(lastSeenStr);
@@ -913,12 +902,16 @@ const TeacherPanel = ({ user, onLogout }) => {
     return diffDays >= 30;
   }
 
-  // ===== التواصل مع ولي الأمر عبر واتساب =====
   const communicateWithParent = (student) => {
     const phone = student.phone || '';
     if (!phone) {
       alert('رقم الهاتف غير مسجل لهذا الطالب.');
       return;
+    }
+    const cleanedPhone = cleanPhoneNumber(phone)
+    if (!cleanedPhone) {
+      alert('رقم الهاتف غير صالح.')
+      return
     }
     const message = encodeURIComponent(
       `أهلاً بك،\n` +
@@ -927,10 +920,9 @@ const TeacherPanel = ({ user, onLogout }) => {
       `بانتظار ردكم لمتابعة العمل.\n` +
       `تحياتي،`
     );
-    window.open(`https://wa.me/${phone}?text=${message}`, '_blank');
+    window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
   };
 
-  // ===== إعادة تعيين حساب الطالب (كأنه جديد) =====
   const handleResetStudent = async (studentId) => {
     if (!window.confirm('سيتم إعادة تعيين هذا الحساب ليصبح كأنه جديد، وسيُطلب من الطالب تغيير كلمة المرور عند تسجيل الدخول. هل تريد المتابعة؟')) return;
     try {
@@ -950,7 +942,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ===== حذف طالب نهائياً (استعادة الزر) =====
   const handleDeleteStudentPermanently = async (studentId) => {
     if (!window.confirm('إجراء خطير: هل أنت متأكد من حذف حساب هذا الطالب نهائياً وفوراً؟')) return
     try {
@@ -963,16 +954,16 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // ===== تحديث موعد الحصة =====
   const updateLessonTime = async () => {
     if (!newLessonTime) return alert('يرجى اختيار تاريخ ووقت الحصة أولاً.')
     try {
+      const isoTime = new Date(newLessonTime).toISOString()
       const { error } = await supabase
         .from('teachers')
-        .update({ lesson_time: newLessonTime })
+        .update({ lesson_time: isoTime })
         .eq('id', user.id)
       if (error) throw error
-      setLessonTime(newLessonTime)
+      setLessonTime(isoTime)
       setNewLessonTime('')
       alert('تم تحديث موعد الحصة القادمة بنجاح!')
     } catch (err) {
@@ -980,7 +971,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // ===== إضافة طالب جديد =====
   const handleAddStudent = async (e) => {
     e.preventDefault()
     if (!newStudentName || !newStudentGender || !newStudentAge || !newStudentPhone || !newStudentClass) {
@@ -989,7 +979,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
     setStudentLoading(true)
     try {
-      // إنشاء اسم مستخدم مؤقت فريد بناءً على الاسم (سيُطلب من الطالب تغييره لاحقاً)
       const baseUsername = newStudentName.trim().replace(/\s+/g, '.').toLowerCase()
       let username = baseUsername
       let counter = 1
@@ -1007,7 +996,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       const { error: insertError } = await supabase
         .from('profiles')
         .insert([{
-          username: username, // مؤقت، سيُطلب من الطالب تغييره لاحقاً عبر FirstTimeSignUp + ForcePasswordChange
+          username: username,
           name: newStudentName,
           gender: newStudentGender,
           age: parseInt(newStudentAge),
@@ -1015,7 +1004,7 @@ const TeacherPanel = ({ user, onLogout }) => {
           class_id: newStudentClass,
           role: 'student',
           is_frozen: false,
-          info_verified: false, // لم يتم التحقق بعد
+          info_verified: false,
         }])
       if (insertError) throw insertError
 
@@ -1028,7 +1017,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       setShowAddStudentModal(false)
       await fetchTeacherData()
     } catch (err) {
-      alert('فشل إضافة الطالب: ' + err.message)
+      alert('فشل إضافة الطالب: ' + (err.message || err.details || 'خطأ غير معروف'))
     } finally {
       setStudentLoading(false)
     }
@@ -1067,7 +1056,6 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* طلبات المراجعة */}
         {pendingReviews.length > 0 && (
           <div className="glass p-6 rounded-2xl border border-yellow-500/30 bg-yellow-500/5">
             <h3 className="text-xl font-semibold text-yellow-300 mb-3">📋 مراجعات الملفات الشخصية</h3>
@@ -1098,7 +1086,6 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
         )}
 
-        {/* الواجبات */}
         <div className="glass p-6 rounded-2xl border border-white/5 space-y-4">
           <h3 className="text-xl font-semibold text-pink-300">إدارة الواجبات</h3>
           <div className="space-y-3">
@@ -1136,7 +1123,9 @@ const TeacherPanel = ({ user, onLogout }) => {
                         <span className={`text-xs px-2 py-0.5 rounded-full ${isRevealed ? 'bg-green-500/20 text-green-300' : 'bg-yellow-500/20 text-yellow-300'}`}>
                           {isRevealed ? '🟢 متاح' : '📅 مجدول'}
                         </span>
-                        <span className="text-xs text-gray-400">{new Date(hw.reveal_time).toLocaleString('ar-EG')}</span>
+                        <span className="text-xs text-gray-400">
+                          {new Date(hw.reveal_time).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })}
+                        </span>
                       </div>
                     </div>
                     <button onClick={() => deleteHomework(hw.id)} className="p-1.5 bg-red-600/30 text-red-300 rounded-lg border border-red-500/30 hover:bg-red-600/50 text-xs">حذف</button>
@@ -1147,7 +1136,6 @@ const TeacherPanel = ({ user, onLogout }) => {
           )}
         </div>
 
-        {/* إدارة الطلاب - زر عرض القوائم */}
         <div className="glass p-6 rounded-2xl border border-white/5">
           <div className="flex flex-wrap justify-between items-center gap-3">
             <h3 className="text-xl font-semibold text-blue-300">إدارة الطلاب</h3>
@@ -1159,7 +1147,6 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* جدولة حصة */}
         <div className="glass p-6 rounded-2xl border border-white/5 space-y-4">
           <h3 className="text-xl font-semibold text-purple-200">جدولة موعد حصة</h3>
           <div className="flex flex-col sm:flex-row gap-4 items-stretch">
@@ -1211,7 +1198,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* مودال إضافة طالب */}
       {showAddStudentModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowAddStudentModal(false)}>
           <div className="glass p-6 rounded-3xl max-w-md w-full border border-white/20" onClick={(e) => e.stopPropagation()}>
@@ -1256,7 +1242,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   )
 }
 
-// ========== لوحة تحكم الطالب (بدون تغيير) ==========
+// ========== لوحة تحكم الطالب ==========
 const StudentPanel = ({ user, onLogout }) => {
   const [teacherData, setTeacherData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -1475,7 +1461,9 @@ const StudentPanel = ({ user, onLogout }) => {
               {availableHomeworks.map(hw => (
                 <div key={hw.id} className="p-4 bg-black/30 rounded-xl border border-white/5">
                   <p className="text-base font-medium text-gray-100">{hw.text}</p>
-                  <p className="text-xs text-gray-400 mt-1">نشر في: {new Date(hw.reveal_time).toLocaleString('ar-EG')}</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    نشر في: {new Date(hw.reveal_time).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })}
+                  </p>
                 </div>
               ))}
             </div>
@@ -1517,7 +1505,6 @@ const App = () => {
   }
 
   const handlePasswordSet = (userData) => {
-    // تحديث المستخدم بالاسم الجديد ورفع needsPasswordChange
     setUser({ ...userData, needsPasswordChange: false })
     setPendingUser(null)
   }
@@ -1541,7 +1528,7 @@ const App = () => {
             const needsPassChange = profile.info_verified === false
             setUser({ id: session.user.id, email: session.user.email, role: profile.role, username: profile.username, name: profile.name, gender: profile.gender, age: profile.age, phone: profile.phone, class_id: profile.class_id, needsPasswordChange: needsPassChange })
             setFrozenUser(null)
-            if (needsPassChange) setPendingUser(user) // سيؤدي إلى عرض ForcePasswordChange
+            if (needsPassChange) setPendingUser(user)
           }
         } catch (err) {
           console.error(err)
@@ -1590,7 +1577,6 @@ const App = () => {
 
   if (loading) return <div className="container-center min-h-screen text-white"><div className="glass p-8 rounded-2xl border border-white/10 shadow-xl animate-pulse">جاري التحميل...</div></div>
 
-  // إذا كان هناك مستخدم معلق يحتاج لتغيير كلمة المرور (مع أو بدون اسم مستخدم)
   if (pendingUser && pendingUser.needsPasswordChange) return <ForcePasswordChange user={pendingUser} onPasswordSet={handlePasswordSet} />
   if (frozenUser) return <FrozenAccount user={frozenUser} onLogout={handleLogout} />
   if (showFirstTime) return <FirstTimeSignUp onSuccess={handleFirstTimeSuccess} onCancel={() => setShowFirstTime(false)} />
