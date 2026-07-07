@@ -196,10 +196,18 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
 
   const handleVerify = async (e) => {
     e.preventDefault()
-    if (!name || !phone || !gender || !age) {
+    
+    // تنظيف المدخلات
+    const cleanName = name.trim()
+    const cleanPhone = phone.replace(/[^0-9]/g, '')
+    const cleanGender = gender.trim()
+    const cleanAge = parseInt(age)
+
+    if (!cleanName || !cleanPhone || !cleanGender || !cleanAge) {
       setError('جميع الحقول مطلوبة (*)')
       return
     }
+
     setLoading(true)
     setError('')
 
@@ -207,10 +215,10 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
       const { data: profile, error: searchError } = await supabase
         .from('profiles')
         .select('id, name, gender, age, phone, username, class_id')
-        .eq('name', name)
-        .eq('phone', phone)
-        .eq('gender', gender)
-        .eq('age', parseInt(age))
+        .eq('name', cleanName)
+        .eq('phone', cleanPhone)
+        .eq('gender', cleanGender)
+        .eq('age', cleanAge)
         .maybeSingle()
 
       if (searchError) throw searchError
