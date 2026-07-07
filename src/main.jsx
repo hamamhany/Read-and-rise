@@ -185,7 +185,7 @@ const FrozenAccount = ({ user, onLogout }) => {
   )
 }
 
-// ========== تسجيل الدخول لأول مرة (معدل - مطابقة مرنة) ==========
+// ========== تسجيل الدخول لأول مرة (معدل - مع تحسين التحقق) ==========
 const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -197,13 +197,34 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
   const handleVerify = async (e) => {
     e.preventDefault()
 
+    // تنظيف المدخلات
     const cleanName = name.trim()
     const cleanPhone = phone.replace(/[^0-9]/g, '')
     const cleanGender = gender.trim()
-    const cleanAge = parseInt(age)
+    const cleanAge = parseInt(age, 10)
 
-    if (!cleanName || !cleanPhone || !cleanGender || !cleanAge) {
-      setError('جميع الحقول مطلوبة (*)')
+    // طباعة القيم للمساعدة في التصحيح (يمكنك إزالتها بعد التثبيت)
+    console.log('🔍 القيم المدخلة بعد التنظيف:')
+    console.log('الاسم:', cleanName)
+    console.log('الهاتف:', cleanPhone)
+    console.log('الجنس:', cleanGender)
+    console.log('العمر (رقم):', cleanAge)
+
+    // تحقق صارم من جميع الحقول
+    if (!cleanName) {
+      setError('الاسم مطلوب')
+      return
+    }
+    if (!cleanPhone) {
+      setError('رقم الهاتف مطلوب (أرقام فقط)')
+      return
+    }
+    if (!cleanGender) {
+      setError('الجنس مطلوب')
+      return
+    }
+    if (isNaN(cleanAge) || cleanAge <= 0) {
+      setError('العمر يجب أن يكون رقماً أكبر من 0')
       return
     }
 
@@ -228,7 +249,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
       }
 
       if (!profileData) {
-        // محاولة بحث مطابقة أكثر مرونة (إذا فشل البحث الأول)
+        // محاولة بحث مطابقة أكثر مرونة
         const { data: fallbackProfile, error: fallbackError } = await supabase
           .from('profiles')
           .select('id, name, gender, age, phone, username, class_id')
@@ -282,7 +303,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
           .eq('id', profile.id)
 
         if (deleteError) {
-          console.warn('فشل حذف الملف القديم، محاولة التحديث بدلاً من ذلك:', deleteError)
+          console.warn('فشل حذف الملف القديم:', deleteError)
           throw new Error('تعذر حذف الملف الشخصي القديم. يرجى التواصل مع المدير.')
         }
       } catch (deleteErr) {
@@ -346,15 +367,32 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
           <form onSubmit={handleVerify} className="space-y-4">
             <div>
               <label className="text-sm text-gray-300 block mb-1">الاسم الكامل <span className="text-red-400">*</span></label>
-              <input type="text" className="input-glass w-full text-right" value={name} onChange={e => setName(e.target.value)} required />
+              <input
+                type="text"
+                className="input-glass w-full text-right"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                required
+              />
             </div>
             <div>
               <label className="text-sm text-gray-300 block mb-1">رقم الهاتف <span className="text-red-400">*</span></label>
-              <input type="text" className="input-glass w-full text-right" value={phone} onChange={e => setPhone(e.target.value)} required />
+              <input
+                type="text"
+                className="input-glass w-full text-right"
+                value={phone}
+                onChange={e => setPhone(e.target.value)}
+                required
+              />
             </div>
             <div>
               <label className="text-sm text-gray-300 block mb-1">الجنس <span className="text-red-400">*</span></label>
-              <select className="input-glass w-full text-right" value={gender} onChange={e => setGender(e.target.value)} required>
+              <select
+                className="input-glass w-full text-right"
+                value={gender}
+                onChange={e => setGender(e.target.value)}
+                required
+              >
                 <option value="">اختر</option>
                 <option value="ذكر">ذكر</option>
                 <option value="أنثى">أنثى</option>
@@ -362,7 +400,13 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
             </div>
             <div>
               <label className="text-sm text-gray-300 block mb-1">العمر <span className="text-red-400">*</span></label>
-              <input type="number" className="input-glass w-full text-right" value={age} onChange={e => setAge(e.target.value)} required />
+              <input
+                type="number"
+                className="input-glass w-full text-right"
+                value={age}
+                onChange={e => setAge(e.target.value)}
+                required
+              />
             </div>
             {error && <p className="text-red-400 text-sm text-center">{error}</p>}
             <button type="submit" disabled={loading} className="btn-primary w-full py-3">
@@ -375,6 +419,10 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
     </div>
   )
 }
+
+// ========== باقي المكونات (تغيير كلمة المرور، تسجيل الدخول، لوحة المعلم، لوحة الطالب، التطبيق الرئيسي) ==========
+// (يُحتفظ بها كما هي من الكود السابق)
+// ... (ضع باقي الكود هنا، ولكن لتوفير المساحة سأكررها مختصرة، ولكن يمكنك نسخها من الرد السابق)
 
 // ========== تغيير كلمة المرور الإجبارية ==========
 const ForcePasswordChange = ({ user, onPasswordSet }) => {
