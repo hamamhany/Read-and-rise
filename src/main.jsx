@@ -584,7 +584,7 @@ const Login = ({ onLogin, onFrozen, onFirstTime }) => {
   )
 }
 
-// ========== لوحة تحكم المعلم ==========
+// ========== لوحة تحكم المعلم (معدلة - تستخدم الإدراج المباشر) ==========
 const TeacherPanel = ({ user, onLogout }) => {
   const [lessonTime, setLessonTime] = useState('')
   const [homeworks, setHomeworks] = useState([])
@@ -982,7 +982,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // ===== إضافة طالب جديد باستخدام RPC الجديدة =====
+  // ===== إضافة طالب جديد باستخدام الإدراج المباشر (مع RLS المعدل) =====
   const handleAddStudent = async (e) => {
     e.preventDefault()
     if (!newStudentName || !newStudentGender || !newStudentAge || !newStudentPhone || !newStudentClass) {
@@ -1014,25 +1014,29 @@ const TeacherPanel = ({ user, onLogout }) => {
         if (!data) { exists = false } else { username = `${baseUsername}${counter}`; counter++ }
       }
 
-      // استدعاء الدالة الجديدة add_student_safe
-      const { data, error } = await supabase.rpc('add_student_safe', {
-        username: username,
-        full_name: newStudentName,
-        gender: newStudentGender,
-        age: parseInt(newStudentAge),
-        phone: newStudentPhone,
-        class_id: newStudentClass  // نرسل النص كما هو
-      })
+      // إدراج مباشر
+      const { data, error } = await supabase
+        .from('profiles')
+        .insert([{
+          username: username,
+          name: newStudentName,
+          gender: newStudentGender,
+          age: parseInt(newStudentAge),
+          phone: newStudentPhone,
+          class_id: newStudentClass,
+          role: 'student',
+          is_frozen: false,
+          info_verified: false
+        }])
+        .select()
 
       if (error) {
-        console.error('📌 تفاصيل الخطأ من Supabase RPC:', error)
+        console.error('📌 تفاصيل الخطأ من Supabase:', error)
         let errorMessage = 'فشل إضافة الطالب: '
-        if (error.message.includes('function add_student_safe') && error.message.includes('does not exist')) {
-          errorMessage += 'الدالة add_student_safe غير موجودة. يرجى إنشاؤها باستخدام SQL Editor في Supabase.'
-        } else if (error.message.includes('permission denied')) {
-          errorMessage += 'صلاحية تنفيذ الدالة ممنوعة. تأكد من منح صلاحيات التنفيذ.'
-        } else if (error.message.includes('معرف الشعبة غير صالح')) {
-          errorMessage += 'معرف الشعبة غير صالح.'
+        if (error.code === '42501' || error.message.includes('permission denied')) {
+          errorMessage += 'صلاحية الإدراج ممنوعة. تأكد من إنشاء سياسة RLS للإدراج كما هو موضح في التعليمات.'
+        } else if (error.message.includes('duplicate key')) {
+          errorMessage += 'اسم المستخدم موجود بالفعل. حاول مرة أخرى.'
         } else {
           errorMessage += error.message || 'خطأ غير معروف'
         }
