@@ -185,7 +185,7 @@ const FrozenAccount = ({ user, onLogout }) => {
   )
 }
 
-// ========== تسجيل الدخول لأول مرة (معدل - ربط الحساب الجديد بالملف الشخصي) ==========
+// ========== تسجيل الدخول لأول مرة (معدل - مطابقة مرنة) ==========
 const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -211,21 +211,41 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
     setError('')
 
     try {
-      // 1. البحث عن الملف الشخصي باستخدام البيانات
-      const { data: profile, error: searchError } = await supabase
+      let profile = null
+      // 1. البحث عن الملف الشخصي باستخدام بيانات مرنة
+      const { data: profileData, error: searchError } = await supabase
         .from('profiles')
         .select('id, name, gender, age, phone, username, class_id')
-        .eq('name', cleanName)
+        .ilike('name', cleanName)
         .eq('phone', cleanPhone)
-        .eq('gender', cleanGender)
+        .ilike('gender', cleanGender)
         .eq('age', cleanAge)
         .maybeSingle()
 
-      if (searchError) throw searchError
-      if (!profile) {
-        setError('البيانات غير صحيحة. تأكد من الاسم ورقم الهاتف والجنس والعمر.')
-        setLoading(false)
-        return
+      if (searchError) {
+        console.error('خطأ في البحث:', searchError)
+        throw new Error('خطأ في البحث عن البيانات: ' + searchError.message)
+      }
+
+      if (!profileData) {
+        // محاولة بحث مطابقة أكثر مرونة (إذا فشل البحث الأول)
+        const { data: fallbackProfile, error: fallbackError } = await supabase
+          .from('profiles')
+          .select('id, name, gender, age, phone, username, class_id')
+          .ilike('name', `%${cleanName}%`)
+          .eq('phone', cleanPhone)
+          .eq('age', cleanAge)
+          .maybeSingle()
+
+        if (fallbackError) throw fallbackError
+        if (!fallbackProfile) {
+          setError('البيانات غير صحيحة. تأكد من الاسم ورقم الهاتف والجنس والعمر.')
+          setLoading(false)
+          return
+        }
+        profile = fallbackProfile
+      } else {
+        profile = profileData
       }
 
       // 2. إنشاء حساب جديد في auth
@@ -255,12 +275,22 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
       if (!currentUser) throw new Error('فشل في استرجاع المستخدم')
 
       // 4. حذف الملف الشخصي القديم
-      const { error: deleteError } = await supabase
-        .from('profiles')
-        .delete()
-        .eq('id', profile.id)
+      try {
+        const { error: deleteError } = await supabase
+          .from('profiles')
+          .delete()
+          .eq('id', profile.id)
 
-      if (deleteError) throw deleteError
+        if (deleteError) {
+          console.warn('فشل حذف الملف القديم، محاولة التحديث بدلاً من ذلك:', deleteError)
+          throw new Error('تعذر حذف الملف الشخصي القديم. يرجى التواصل مع المدير.')
+        }
+      } catch (deleteErr) {
+        console.error('خطأ في الحذف:', deleteErr)
+        setError('تعذر ربط الحساب. يرجى التواصل مع المدير.')
+        setLoading(false)
+        return
+      }
 
       // 5. إنشاء ملف شخصي جديد بنفس البيانات ولكن بالمعرف الجديد
       const { error: insertError } = await supabase
@@ -279,7 +309,10 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
           email: currentUser.email
         }])
 
-      if (insertError) throw insertError
+      if (insertError) {
+        console.error('خطأ في إدراج الملف الجديد:', insertError)
+        throw insertError
+      }
 
       // 6. إرسال نجاح إلى المكون الأب
       onSuccess({
@@ -296,8 +329,8 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
       })
 
     } catch (err) {
-      console.error(err)
-      setError(err.message)
+      console.error('خطأ عام:', err)
+      setError(err.message || 'حدث خطأ غير متوقع. حاول مرة أخرى.')
     } finally {
       setLoading(false)
     }
@@ -671,102 +704,102 @@ const TeacherPanel = ({ user, onLogout }) => {
           .select()
           .single();
         if (insertError) {
-          console.error('فشل إنشاء سجل المعلم:', insertError);
-          setLessonTime('');
-          setHomeworks([]);
-          teacherRecord = null;
+          console.error('فشل إنشاء سجل المعلم:', insertError)
+          setLessonTime('')
+          setHomeworks([])
+          teacherRecord = null
         } else {
-          teacherRecord = newTeacher;
-          setLessonTime(newTeacher.lesson_time || '');
-          setHomeworks(newTeacher.homeworks || []);
+          teacherRecord = newTeacher
+          setLessonTime(newTeacher.lesson_time || '')
+          setHomeworks(newTeacher.homeworks || [])
         }
       } else {
-        teacherRecord = existingTeacher;
-        setLessonTime(existingTeacher.lesson_time || '');
-        setHomeworks(existingTeacher.homeworks || []);
+        teacherRecord = existingTeacher
+        setLessonTime(existingTeacher.lesson_time || '')
+        setHomeworks(existingTeacher.homeworks || [])
       }
 
-      let profilesData = [];
+      let profilesData = []
       try {
         const { data, error } = await supabase
           .from('profiles')
           .select('*')
-          .eq('role', 'student');
-        if (error) throw error;
-        profilesData = data || [];
+          .eq('role', 'student')
+        if (error) throw error
+        profilesData = data || []
       } catch (err) {
-        console.error("خطأ في جلب الطلاب:", err);
-        setErrorMsg('فشل تحميل الطلاب، لكن سيتم عرض باقي البيانات.');
+        console.error("خطأ في جلب الطلاب:", err)
+        setErrorMsg('فشل تحميل الطلاب، لكن سيتم عرض باقي البيانات.')
       }
 
       if (profilesData.length > 0) {
-        const classIds = profilesData.map(p => p.class_id).filter(Boolean);
-        const classMap = await fetchClassNames(classIds);
+        const classIds = profilesData.map(p => p.class_id).filter(Boolean)
+        const classMap = await fetchClassNames(classIds)
         profilesData.forEach(p => {
-          p.classes = p.class_id ? { name: classMap[p.class_id] || null } : null;
-        });
+          p.classes = p.class_id ? { name: classMap[p.class_id] || null } : null
+        })
       }
-      setStudents(profilesData);
+      setStudents(profilesData)
 
-      let classesData = [];
+      let classesData = []
       try {
         const { data, error } = await supabase
           .from('classes')
           .select('*')
-          .eq('teacher_id', user.id);
-        if (error) throw error;
-        classesData = data || [];
+          .eq('teacher_id', user.id)
+        if (error) throw error
+        classesData = data || []
       } catch (err) {
-        console.error("خطأ في جلب الشعب:", err);
-        classesData = [];
+        console.error("خطأ في جلب الشعب:", err)
+        classesData = []
       }
 
       if (classesData.length === 0 && teacherRecord) {
         const defaultClasses = [
           { name: 'أساسيات البرمجة', teacher_id: user.id },
           { name: 'بايثون (Python)', teacher_id: user.id }
-        ];
+        ]
         const { data: newClasses, error: insertError } = await supabase
           .from('classes')
           .insert(defaultClasses)
-          .select();
+          .select()
         if (insertError) {
-          console.error("فشل إنشاء الشعب الافتراضية:", insertError);
-          setClasses([]);
+          console.error("فشل إنشاء الشعب الافتراضية:", insertError)
+          setClasses([])
         } else {
-          setClasses(newClasses || []);
+          setClasses(newClasses || [])
         }
       } else {
-        setClasses(classesData);
+        setClasses(classesData)
       }
 
-      let pendingData = [];
+      let pendingData = []
       try {
         const { data, error } = await supabase
           .from('profiles')
           .select('id, username, name, phone, gender, age, class_id, pending_changes')
           .not('pending_changes', 'is', null)
-          .eq('role', 'student');
-        if (error) throw error;
-        pendingData = data || [];
+          .eq('role', 'student')
+        if (error) throw error
+        pendingData = data || []
       } catch (err) {
-        console.error("خطأ في جلب طلبات المراجعة:", err);
-        pendingData = [];
+        console.error("خطأ في جلب طلبات المراجعة:", err)
+        pendingData = []
       }
       if (pendingData.length > 0) {
-        const classIds = pendingData.map(p => p.class_id).filter(Boolean);
-        const classMap = await fetchClassNames(classIds);
+        const classIds = pendingData.map(p => p.class_id).filter(Boolean)
+        const classMap = await fetchClassNames(classIds)
         pendingData.forEach(p => {
-          p.classes = p.class_id ? { name: classMap[p.class_id] || null } : null;
-        });
+          p.classes = p.class_id ? { name: classMap[p.class_id] || null } : null
+        })
       }
-      setPendingReviews(pendingData);
+      setPendingReviews(pendingData)
 
     } catch (err) {
-      console.error("خطأ عام في جلب البيانات:", err);
-      setErrorMsg('فشل تحميل البيانات: ' + err.message);
+      console.error("خطأ عام في جلب البيانات:", err)
+      setErrorMsg('فشل تحميل البيانات: ' + err.message)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
   }
 
@@ -789,11 +822,11 @@ const TeacherPanel = ({ user, onLogout }) => {
         .from('profiles')
         .select('pending_changes, name, gender, age, phone')
         .eq('id', studentId)
-        .single();
-      if (fetchError) throw fetchError;
+        .single()
+      if (fetchError) throw fetchError
       if (!student.pending_changes) {
-        alert('لا توجد تغييرات معلقة لهذا الطالب.');
-        return;
+        alert('لا توجد تغييرات معلقة لهذا الطالب.')
+        return
       }
 
       const newData = {
@@ -803,37 +836,37 @@ const TeacherPanel = ({ user, onLogout }) => {
         phone: student.pending_changes.phone ?? student.phone,
         info_verified: true,
         pending_changes: null
-      };
+      }
 
       const { error: updateError } = await supabase
         .from('profiles')
         .update(newData)
-        .eq('id', studentId);
-      if (updateError) throw updateError;
+        .eq('id', studentId)
+      if (updateError) throw updateError
 
-      alert('تم قبول التغييرات وتحديث بيانات الطالب بنجاح.');
-      fetchTeacherData();
+      alert('تم قبول التغييرات وتحديث بيانات الطالب بنجاح.')
+      fetchTeacherData()
     } catch (err) {
-      console.error('خطأ في قبول المراجعة:', err);
-      alert('فشل قبول المراجعة: ' + (err.message || err.details || 'خطأ غير معروف'));
+      console.error('خطأ في قبول المراجعة:', err)
+      alert('فشل قبول المراجعة: ' + (err.message || err.details || 'خطأ غير معروف'))
     }
-  };
+  }
 
   const rejectReview = async (studentId) => {
-    if (!window.confirm('هل أنت متأكد من رفض هذه التغييرات؟')) return;
+    if (!window.confirm('هل أنت متأكد من رفض هذه التغييرات؟')) return
     try {
       const { error } = await supabase
         .from('profiles')
         .update({ pending_changes: null })
-        .eq('id', studentId);
-      if (error) throw error;
-      alert('تم رفض التغييرات.');
-      fetchTeacherData();
+        .eq('id', studentId)
+      if (error) throw error
+      alert('تم رفض التغييرات.')
+      fetchTeacherData()
     } catch (err) {
-      console.error('خطأ في رفض المراجعة:', err);
-      alert('فشل رفض المراجعة: ' + (err.message || err.details || 'خطأ غير معروف'));
+      console.error('خطأ في رفض المراجعة:', err)
+      alert('فشل رفض المراجعة: ' + (err.message || err.details || 'خطأ غير معروف'))
     }
-  };
+  }
 
   const saveHomework = async () => {
     if (!newHomeworkText.trim()) return alert('يرجى كتابة نص الواجب أولاً.')
@@ -900,36 +933,36 @@ const TeacherPanel = ({ user, onLogout }) => {
       const { data: frozen, error } = await supabase
         .from('profiles')
         .select('id')
-        .eq('is_frozen', true);
-      if (error) throw error;
+        .eq('is_frozen', true)
+      if (error) throw error
       if (frozen.length === 0) {
-        alert('لا يوجد حسابات مجمدة.');
-        return;
+        alert('لا يوجد حسابات مجمدة.')
+        return
       }
-      if (!window.confirm(`هل أنت متأكد من حذف ${frozen.length} حساب مجمد نهائياً؟`)) return;
+      if (!window.confirm(`هل أنت متأكد من حذف ${frozen.length} حساب مجمد نهائياً؟`)) return
       for (const student of frozen) {
-        await supabase.from('profiles').delete().eq('id', student.id);
+        await supabase.from('profiles').delete().eq('id', student.id)
       }
-      alert(`تم حذف ${frozen.length} حساب مجمد.`);
-      fetchTeacherData();
+      alert(`تم حذف ${frozen.length} حساب مجمد.`)
+      fetchTeacherData()
     } catch (err) {
       alert('خطأ أثناء الحذف: ' + err.message)
     }
   }
 
   const checkInactivityWarning = (lastSeenStr) => {
-    if (!lastSeenStr) return false;
-    const lastSeen = new Date(lastSeenStr);
-    const diffTime = new Date().getTime() - lastSeen.getTime();
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays >= 30;
+    if (!lastSeenStr) return false
+    const lastSeen = new Date(lastSeenStr)
+    const diffTime = new Date().getTime() - lastSeen.getTime()
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
+    return diffDays >= 30
   }
 
   const communicateWithParent = (student) => {
-    const phone = student.phone || '';
+    const phone = student.phone || ''
     if (!phone) {
-      alert('رقم الهاتف غير مسجل لهذا الطالب.');
-      return;
+      alert('رقم الهاتف غير مسجل لهذا الطالب.')
+      return
     }
     const cleanedPhone = cleanPhoneNumber(phone)
     if (!cleanedPhone) {
@@ -942,12 +975,12 @@ const TeacherPanel = ({ user, onLogout }) => {
       `أتواصل معك بخصوص [........].\n` +
       `بانتظار ردكم لمتابعة العمل.\n` +
       `تحياتي،`
-    );
-    window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
-  };
+    )
+    window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank')
+  }
 
   const handleResetStudent = async (studentId) => {
-    if (!window.confirm('سيتم إعادة تعيين هذا الحساب ليصبح كأنه جديد، وسيُطلب من الطالب تغيير كلمة المرور عند تسجيل الدخول. هل تريد المتابعة؟')) return;
+    if (!window.confirm('سيتم إعادة تعيين هذا الحساب ليصبح كأنه جديد، وسيُطلب من الطالب تغيير كلمة المرور عند تسجيل الدخول. هل تريد المتابعة؟')) return
     try {
       const { error } = await supabase
         .from('profiles')
@@ -956,14 +989,14 @@ const TeacherPanel = ({ user, onLogout }) => {
           is_frozen: false,
           pending_changes: null,
         })
-        .eq('id', studentId);
-      if (error) throw error;
-      alert('تم إعادة تعيين الحساب بنجاح. سيتوجب على الطالب تغيير كلمة المرور عند تسجيل الدخول.');
-      fetchTeacherData();
+        .eq('id', studentId)
+      if (error) throw error
+      alert('تم إعادة تعيين الحساب بنجاح. سيتوجب على الطالب تغيير كلمة المرور عند تسجيل الدخول.')
+      fetchTeacherData()
     } catch (err) {
-      alert('فشل إعادة التعيين: ' + (err.message || err.details || 'خطأ غير معروف'));
+      alert('فشل إعادة التعيين: ' + (err.message || err.details || 'خطأ غير معروف'))
     }
-  };
+  }
 
   const handleDeleteStudentPermanently = async (studentId) => {
     if (!window.confirm('إجراء خطير: هل أنت متأكد من حذف حساب هذا الطالب نهائياً وفوراً؟')) return
@@ -994,7 +1027,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // ===== إضافة طالب جديد (معدل مع إضافة email و id) =====
+  // ===== إضافة طالب جديد =====
   const handleAddStudent = async (e) => {
     e.preventDefault()
     if (!newStudentName || !newStudentGender || !newStudentAge || !newStudentPhone || !newStudentClass) {
@@ -1403,12 +1436,12 @@ const StudentPanel = ({ user, onLogout }) => {
   }, [teacherData?.homeworks])
 
   const changePassword = async () => {
-    const newPass = window.prompt('أدخل كلمة المرور الجديدة');
-    if (!newPass) return;
-    const { error } = await supabase.auth.updateUser({ password: newPass });
-    if (error) alert('فشل التحديث: ' + error.message);
-    else alert('تم تغيير كلمة المرور بنجاح');
-  };
+    const newPass = window.prompt('أدخل كلمة المرور الجديدة')
+    if (!newPass) return
+    const { error } = await supabase.auth.updateUser({ password: newPass })
+    if (error) alert('فشل التحديث: ' + error.message)
+    else alert('تم تغيير كلمة المرور بنجاح')
+  }
 
   const getNextScheduledHomework = () => {
     if (!teacherData?.homeworks) return null
@@ -1441,7 +1474,7 @@ const StudentPanel = ({ user, onLogout }) => {
         gender: editData.gender,
         age: parseInt(editData.age) || null,
         phone: editData.phone,
-      };
+      }
       const { error } = await supabase
         .from('profiles')
         .update({
@@ -1570,7 +1603,7 @@ const App = () => {
   const [showFirstTime, setShowFirstTime] = useState(false)
   const [pendingUser, setPendingUser] = useState(null)
 
-  useDynamicBackground();
+  useDynamicBackground()
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
