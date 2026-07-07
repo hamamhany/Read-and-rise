@@ -185,7 +185,7 @@ const FrozenAccount = ({ user, onLogout }) => {
   )
 }
 
-// ========== تسجيل الدخول لأول مرة (معدل) ==========
+// ========== تسجيل الدخول لأول مرة ==========
 const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -319,7 +319,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
   )
 }
 
-// ========== تغيير كلمة المرور الإجبارية (مع إمكانية تعيين اسم مستخدم) ==========
+// ========== تغيير كلمة المرور الإجبارية ==========
 const ForcePasswordChange = ({ user, onPasswordSet }) => {
   const [username, setUsername] = useState(user.username || '')
   const [password, setPassword] = useState('')
@@ -584,7 +584,7 @@ const Login = ({ onLogin, onFrozen, onFirstTime }) => {
   )
 }
 
-// ========== لوحة تحكم المعلم (معدلة بالكامل) ==========
+// ========== لوحة تحكم المعلم ==========
 const TeacherPanel = ({ user, onLogout }) => {
   const [lessonTime, setLessonTime] = useState('')
   const [homeworks, setHomeworks] = useState([])
@@ -982,7 +982,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // ===== إضافة طالب جديد باستخدام RPC مع معالجة الأخطاء =====
+  // ===== إضافة طالب جديد باستخدام RPC الجديدة =====
   const handleAddStudent = async (e) => {
     e.preventDefault()
     if (!newStudentName || !newStudentGender || !newStudentAge || !newStudentPhone || !newStudentClass) {
@@ -990,6 +990,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       return
     }
 
+    // التأكد من أن class_id موجود
     const classExists = classes.some(c => c.id === newStudentClass)
     if (!classExists) {
       alert('الشعبة المختارة غير صالحة.')
@@ -1013,29 +1014,25 @@ const TeacherPanel = ({ user, onLogout }) => {
         if (!data) { exists = false } else { username = `${baseUsername}${counter}`; counter++ }
       }
 
-      // استدعاء دالة RPC
-      const { data, error } = await supabase.rpc('add_student', {
-        p_username: username,
-        p_name: newStudentName,
-        p_gender: newStudentGender,
-        p_age: parseInt(newStudentAge),
-        p_phone: newStudentPhone,
-        p_class_id: newStudentClass,
-        p_role: 'student',
-        p_is_frozen: false,
-        p_info_verified: false
+      // استدعاء الدالة الجديدة add_student_safe
+      const { data, error } = await supabase.rpc('add_student_safe', {
+        username: username,
+        full_name: newStudentName,
+        gender: newStudentGender,
+        age: parseInt(newStudentAge),
+        phone: newStudentPhone,
+        class_id: newStudentClass  // نرسل النص كما هو
       })
 
       if (error) {
         console.error('📌 تفاصيل الخطأ من Supabase RPC:', error)
-        // عرض رسالة خطأ مفصلة للمستخدم
         let errorMessage = 'فشل إضافة الطالب: '
-        if (error.message.includes('function add_student') && error.message.includes('does not exist')) {
-          errorMessage += 'الدالة add_student غير موجودة في قاعدة البيانات. يرجى إنشاؤها باستخدام SQL Editor في Supabase.'
+        if (error.message.includes('function add_student_safe') && error.message.includes('does not exist')) {
+          errorMessage += 'الدالة add_student_safe غير موجودة. يرجى إنشاؤها باستخدام SQL Editor في Supabase.'
         } else if (error.message.includes('permission denied')) {
-          errorMessage += 'صلاحية تنفيذ الدالة ممنوعة. تأكد من منح صلاحيات التنفيذ للمستخدم المصادق.'
-        } else if (error.message.includes('invalid input syntax for type uuid')) {
-          errorMessage += 'معرف الشعبة (class_id) غير صالح. تأكد من اختيار شعبة صحيحة.'
+          errorMessage += 'صلاحية تنفيذ الدالة ممنوعة. تأكد من منح صلاحيات التنفيذ.'
+        } else if (error.message.includes('معرف الشعبة غير صالح')) {
+          errorMessage += 'معرف الشعبة غير صالح.'
         } else {
           errorMessage += error.message || 'خطأ غير معروف'
         }
