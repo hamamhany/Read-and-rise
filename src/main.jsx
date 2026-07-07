@@ -185,7 +185,7 @@ const FrozenAccount = ({ user, onLogout }) => {
   )
 }
 
-// ========== تسجيل الدخول لأول مرة (معدل - باستخدام RPC) ==========
+// ========== تسجيل الدخول لأول مرة (معدل - مع RPC ومعالجة الجلسة) ==========
 const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -197,20 +197,17 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
   const handleVerify = async (e) => {
     e.preventDefault()
 
-    // تنظيف المدخلات
     const cleanName = name.trim()
     const cleanPhone = phone.replace(/[^0-9]/g, '')
     const cleanGender = gender.trim()
     const cleanAge = parseInt(age, 10)
 
-    // طباعة القيم للتصحيح (ستظهر في الكونسول)
     console.log('🔍 القيم المدخلة بعد التنظيف:')
     console.log('الاسم:', cleanName)
     console.log('الهاتف:', cleanPhone)
     console.log('الجنس:', cleanGender)
     console.log('العمر:', cleanAge)
 
-    // تحقق صارم
     if (!cleanName) {
       setError('الاسم مطلوب')
       return
@@ -232,7 +229,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
     setError('')
 
     try {
-      // استدعاء دالة RPC للتحقق من الملف الشخصي (تتجاوز RLS)
+      // 1. البحث عن الملف الشخصي باستخدام RPC (تتجاوز RLS)
       const { data: profile, error: rpcError } = await supabase
         .rpc('get_profile_for_verification', {
           p_name: cleanName,
@@ -262,21 +259,39 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
         options: { data: { role: 'student' } }
       })
 
+      // إذا كان المستخدم موجوداً بالفعل، حاول تسجيل الدخول
       if (signUpError) {
         if (signUpError.message.includes('User already registered')) {
-          const { error: signInError } = await supabase.auth.signInWithPassword({
+          const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
             email: fakeEmail,
             password: tempPassword
           })
-          if (signInError) throw new Error('تعذر إنشاء الحساب. يرجى التواصل مع المدير.')
+          if (signInError) {
+            throw new Error('تعذر تسجيل الدخول. يرجى استخدام كلمة المرور الصحيحة أو التواصل مع المدير.')
+          }
         } else {
           throw signUpError
         }
       }
 
-      // 3. الحصول على معرف المستخدم الجديد
-      const { data: { user: currentUser } } = await supabase.auth.getUser()
-      if (!currentUser) throw new Error('فشل في استرجاع المستخدم')
+      // 3. الحصول على المستخدم الحالي (بعد إنشاء الحساب أو تسجيل الدخول)
+      let currentUser = null
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+
+      if (userError || !user) {
+        // محاولة الحصول على الجلسة مباشرة
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+        if (sessionError || !sessionData.session) {
+          throw new Error('فشل في استرجاع المستخدم. تأكد من تأكيد البريد الإلكتروني (إذا كان مفعلاً) أو حاول مرة أخرى.')
+        }
+        if (sessionData.session?.user) {
+          currentUser = sessionData.session.user
+        } else {
+          throw new Error('فشل في استرجاع المستخدم.')
+        }
+      } else {
+        currentUser = user
+      }
 
       // 4. حذف الملف الشخصي القديم
       try {
