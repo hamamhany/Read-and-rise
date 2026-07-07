@@ -982,7 +982,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // ===== إضافة طالب جديد باستخدام RPC =====
+  // ===== إضافة طالب جديد باستخدام RPC مع معالجة الأخطاء =====
   const handleAddStudent = async (e) => {
     e.preventDefault()
     if (!newStudentName || !newStudentGender || !newStudentAge || !newStudentPhone || !newStudentClass) {
@@ -1027,12 +1027,19 @@ const TeacherPanel = ({ user, onLogout }) => {
       })
 
       if (error) {
-        console.error('خطأ في RPC add_student:', error)
-        if (error.message.includes('permission denied') || error.code === '42501') {
-          alert('⚠️ فشل الإضافة بسبب صلاحيات قاعدة البيانات. تأكد من أن دالة add_student موجودة وتم منح صلاحيات التنفيذ لها.')
+        console.error('📌 تفاصيل الخطأ من Supabase RPC:', error)
+        // عرض رسالة خطأ مفصلة للمستخدم
+        let errorMessage = 'فشل إضافة الطالب: '
+        if (error.message.includes('function add_student') && error.message.includes('does not exist')) {
+          errorMessage += 'الدالة add_student غير موجودة في قاعدة البيانات. يرجى إنشاؤها باستخدام SQL Editor في Supabase.'
+        } else if (error.message.includes('permission denied')) {
+          errorMessage += 'صلاحية تنفيذ الدالة ممنوعة. تأكد من منح صلاحيات التنفيذ للمستخدم المصادق.'
+        } else if (error.message.includes('invalid input syntax for type uuid')) {
+          errorMessage += 'معرف الشعبة (class_id) غير صالح. تأكد من اختيار شعبة صحيحة.'
         } else {
-          throw error
+          errorMessage += error.message || 'خطأ غير معروف'
         }
+        alert(errorMessage)
         return
       }
 
