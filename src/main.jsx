@@ -185,7 +185,7 @@ const FrozenAccount = ({ user, onLogout }) => {
   )
 }
 
-// ========== تسجيل الدخول لأول مرة (معدل - مع RPC ومعالجة الجلسة) ==========
+// ========== تسجيل الدخول لأول مرة (معدل - مع بريد إلكتروني فريد) ==========
 const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -249,32 +249,36 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
         return
       }
 
-      // 2. إنشاء حساب جديد في auth
-      const fakeEmail = `student_${profile.id}@school.temp`
+      // 2. توليد بريد إلكتروني فريد تمامًا (يضمن عدم التعارض)
+      const uniqueId = crypto.randomUUID()
+      const fakeEmail = `student_${uniqueId}@temp.com`
       const tempPassword = Math.random().toString(36).slice(-8)
 
+      // 3. إنشاء حساب جديد في auth باستخدام البريد الفريد
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: fakeEmail,
         password: tempPassword,
         options: { data: { role: 'student' } }
       })
 
-      // إذا كان المستخدم موجوداً بالفعل، حاول تسجيل الدخول
       if (signUpError) {
+        // إذا فشل signUp (مثلاً البريد موجود رغم uniqueness)، نحاول مرة أخرى ببريد آخر
         if (signUpError.message.includes('User already registered')) {
-          const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-            email: fakeEmail,
-            password: tempPassword
+          // نعيد المحاولة ببريد جديد (مرة واحدة فقط)
+          const newUniqueId = crypto.randomUUID()
+          const newFakeEmail = `student_${newUniqueId}@temp.com`
+          const { error: retryError } = await supabase.auth.signUp({
+            email: newFakeEmail,
+            password: tempPassword,
+            options: { data: { role: 'student' } }
           })
-          if (signInError) {
-            throw new Error('تعذر تسجيل الدخول. يرجى استخدام كلمة المرور الصحيحة أو التواصل مع المدير.')
-          }
+          if (retryError) throw new Error('تعذر إنشاء الحساب. يرجى المحاولة مرة أخرى.')
         } else {
           throw signUpError
         }
       }
 
-      // 3. الحصول على المستخدم الحالي (بعد إنشاء الحساب أو تسجيل الدخول)
+      // 4. الحصول على المستخدم الحالي
       let currentUser = null
       const { data: { user }, error: userError } = await supabase.auth.getUser()
 
@@ -282,7 +286,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
         // محاولة الحصول على الجلسة مباشرة
         const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
         if (sessionError || !sessionData.session) {
-          throw new Error('فشل في استرجاع المستخدم. تأكد من تأكيد البريد الإلكتروني (إذا كان مفعلاً) أو حاول مرة أخرى.')
+          throw new Error('فشل في استرجاع المستخدم. تأكد من تعطيل تأكيد البريد الإلكتروني في إعدادات Supabase.')
         }
         if (sessionData.session?.user) {
           currentUser = sessionData.session.user
@@ -293,7 +297,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
         currentUser = user
       }
 
-      // 4. حذف الملف الشخصي القديم
+      // 5. حذف الملف الشخصي القديم
       try {
         const { error: deleteError } = await supabase
           .from('profiles')
@@ -311,7 +315,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
         return
       }
 
-      // 5. إنشاء ملف شخصي جديد بالمعرف الجديد
+      // 6. إنشاء ملف شخصي جديد بالمعرف الجديد
       const { error: insertError } = await supabase
         .from('profiles')
         .insert([{
@@ -333,7 +337,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
         throw insertError
       }
 
-      // 6. إرسال نجاح
+      // 7. إرسال نجاح
       onSuccess({
         id: currentUser.id,
         email: currentUser.email,
@@ -417,6 +421,8 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
     </div>
   )
 }
+
+// ========== باقي المكونات (بدون تغيير) ==========
 
 // ========== تغيير كلمة المرور الإجبارية ==========
 const ForcePasswordChange = ({ user, onPasswordSet }) => {
