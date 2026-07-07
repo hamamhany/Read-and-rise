@@ -185,7 +185,7 @@ const FrozenAccount = ({ user, onLogout }) => {
   )
 }
 
-// ========== تسجيل الدخول لأول مرة (معدل - مع تحسين التحقق) ==========
+// ========== تسجيل الدخول لأول مرة (معدل - باستخدام RPC) ==========
 const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -203,14 +203,14 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
     const cleanGender = gender.trim()
     const cleanAge = parseInt(age, 10)
 
-    // طباعة القيم للمساعدة في التصحيح (يمكنك إزالتها بعد التثبيت)
+    // طباعة القيم للتصحيح (ستظهر في الكونسول)
     console.log('🔍 القيم المدخلة بعد التنظيف:')
     console.log('الاسم:', cleanName)
     console.log('الهاتف:', cleanPhone)
     console.log('الجنس:', cleanGender)
-    console.log('العمر (رقم):', cleanAge)
+    console.log('العمر:', cleanAge)
 
-    // تحقق صارم من جميع الحقول
+    // تحقق صارم
     if (!cleanName) {
       setError('الاسم مطلوب')
       return
@@ -232,41 +232,24 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
     setError('')
 
     try {
-      let profile = null
-      // 1. البحث عن الملف الشخصي باستخدام بيانات مرنة
-      const { data: profileData, error: searchError } = await supabase
-        .from('profiles')
-        .select('id, name, gender, age, phone, username, class_id')
-        .ilike('name', cleanName)
-        .eq('phone', cleanPhone)
-        .ilike('gender', cleanGender)
-        .eq('age', cleanAge)
-        .maybeSingle()
+      // استدعاء دالة RPC للتحقق من الملف الشخصي (تتجاوز RLS)
+      const { data: profile, error: rpcError } = await supabase
+        .rpc('get_profile_for_verification', {
+          p_name: cleanName,
+          p_phone: cleanPhone,
+          p_gender: cleanGender,
+          p_age: cleanAge
+        })
 
-      if (searchError) {
-        console.error('خطأ في البحث:', searchError)
-        throw new Error('خطأ في البحث عن البيانات: ' + searchError.message)
+      if (rpcError) {
+        console.error('خطأ في RPC:', rpcError)
+        throw new Error('خطأ في التحقق من البيانات: ' + rpcError.message)
       }
 
-      if (!profileData) {
-        // محاولة بحث مطابقة أكثر مرونة
-        const { data: fallbackProfile, error: fallbackError } = await supabase
-          .from('profiles')
-          .select('id, name, gender, age, phone, username, class_id')
-          .ilike('name', `%${cleanName}%`)
-          .eq('phone', cleanPhone)
-          .eq('age', cleanAge)
-          .maybeSingle()
-
-        if (fallbackError) throw fallbackError
-        if (!fallbackProfile) {
-          setError('البيانات غير صحيحة. تأكد من الاسم ورقم الهاتف والجنس والعمر.')
-          setLoading(false)
-          return
-        }
-        profile = fallbackProfile
-      } else {
-        profile = profileData
+      if (!profile) {
+        setError('البيانات غير صحيحة. تأكد من الاسم ورقم الهاتف والجنس والعمر.')
+        setLoading(false)
+        return
       }
 
       // 2. إنشاء حساب جديد في auth
@@ -313,7 +296,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
         return
       }
 
-      // 5. إنشاء ملف شخصي جديد بنفس البيانات ولكن بالمعرف الجديد
+      // 5. إنشاء ملف شخصي جديد بالمعرف الجديد
       const { error: insertError } = await supabase
         .from('profiles')
         .insert([{
@@ -335,7 +318,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
         throw insertError
       }
 
-      // 6. إرسال نجاح إلى المكون الأب
+      // 6. إرسال نجاح
       onSuccess({
         id: currentUser.id,
         email: currentUser.email,
@@ -419,10 +402,6 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
     </div>
   )
 }
-
-// ========== باقي المكونات (تغيير كلمة المرور، تسجيل الدخول، لوحة المعلم، لوحة الطالب، التطبيق الرئيسي) ==========
-// (يُحتفظ بها كما هي من الكود السابق)
-// ... (ضع باقي الكود هنا، ولكن لتوفير المساحة سأكررها مختصرة، ولكن يمكنك نسخها من الرد السابق)
 
 // ========== تغيير كلمة المرور الإجبارية ==========
 const ForcePasswordChange = ({ user, onPasswordSet }) => {
