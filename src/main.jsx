@@ -185,7 +185,7 @@ const FrozenAccount = ({ user, onLogout }) => {
   )
 }
 
-// ========== تسجيل الدخول لأول مرة (معدل) ==========
+// ========== تسجيل الدخول لأول مرة (معدل: يستخدم الاسم بدلاً من اسم المستخدم) ==========
 const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -243,7 +243,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
 
       const { error: updateError } = await supabase
         .from('profiles')
-        .update({ 
+        .update({
           is_frozen: false,
           name: profile.name,
           gender: profile.gender,
@@ -261,7 +261,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
       onSuccess({
         id: currentUser.id,
         email: currentUser.email,
-        username: null,
+        username: null, // لم يتم تعيينه بعد
         role: 'student',
         name: profile.name,
         gender: profile.gender,
@@ -319,7 +319,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
   )
 }
 
-// ========== تغيير كلمة المرور الإجبارية (معدل) ==========
+// ========== تغيير كلمة المرور الإجبارية (مع إمكانية تعيين اسم مستخدم) ==========
 const ForcePasswordChange = ({ user, onPasswordSet }) => {
   const [username, setUsername] = useState(user.username || '')
   const [password, setPassword] = useState('')
@@ -377,10 +377,10 @@ const ForcePasswordChange = ({ user, onPasswordSet }) => {
 
       if (updateProfileError) throw updateProfileError
 
-      const updatedUser = { 
-        ...user, 
+      const updatedUser = {
+        ...user,
         username: requireUsername ? username.trim() : user.username,
-        needsPasswordChange: false 
+        needsPasswordChange: false
       }
       onPasswordSet(updatedUser)
 
@@ -400,7 +400,7 @@ const ForcePasswordChange = ({ user, onPasswordSet }) => {
             {requireUsername ? 'تعيين اسم المستخدم وكلمة المرور' : 'تغيير كلمة المرور'}
           </h2>
           <p className="text-gray-400 text-sm text-center">
-            {requireUsername 
+            {requireUsername
               ? 'اختر اسم مستخدم فريد وكلمة مرور جديدة لتفعيل حسابك'
               : 'أدخل كلمة مرور جديدة لحسابك'
             }
@@ -409,12 +409,12 @@ const ForcePasswordChange = ({ user, onPasswordSet }) => {
             {requireUsername && (
               <div>
                 <label className="text-sm text-gray-300 block mb-1">اسم المستخدم الجديد <span className="text-red-400">*</span></label>
-                <input 
-                  type="text" 
-                  className="input-glass w-full text-right" 
-                  value={username} 
-                  onChange={e => setUsername(e.target.value)} 
-                  required 
+                <input
+                  type="text"
+                  className="input-glass w-full text-right"
+                  value={username}
+                  onChange={e => setUsername(e.target.value)}
+                  required
                 />
               </div>
             )}
@@ -477,11 +477,11 @@ const Login = ({ onLogin, onFrozen, onFirstTime }) => {
 
       if (profileError) throw new Error('خطأ في التحقق من الملف الشخصي')
       if (!profile) throw new Error('لا يوجد ملف شخصي لهذا الحساب، يرجى التواصل مع المدير')
-      
+
       if (profile.is_frozen) {
-        onFrozen({ 
-          id: user.id, 
-          email: user.email, 
+        onFrozen({
+          id: user.id,
+          email: user.email,
           username: profile.username,
           role: profile.role,
           name: profile.name,
@@ -492,10 +492,10 @@ const Login = ({ onLogin, onFrozen, onFirstTime }) => {
       }
 
       if (profile.info_verified === false) {
-        onLogin({ 
-          id: user.id, 
-          email: user.email, 
-          role: profile.role, 
+        onLogin({
+          id: user.id,
+          email: user.email,
+          role: profile.role,
           username: profile.username,
           name: profile.name,
           gender: profile.gender,
@@ -507,10 +507,10 @@ const Login = ({ onLogin, onFrozen, onFirstTime }) => {
         return
       }
 
-      onLogin({ 
-        id: user.id, 
-        email: user.email, 
-        role: profile.role, 
+      onLogin({
+        id: user.id,
+        email: user.email,
+        role: profile.role,
         username: profile.username,
         name: profile.name,
         gender: profile.gender,
@@ -533,9 +533,9 @@ const Login = ({ onLogin, onFrozen, onFirstTime }) => {
       <div className="relative z-10 w-full max-w-md px-4">
         <div className="glass p-6 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl flex flex-col items-center relative overflow-hidden min-h-[440px] justify-center">
           <div className="absolute inset-0 flex items-start justify-center pt-6 pointer-events-none z-0 overflow-hidden">
-            <img 
-              src="/images/logo.png" 
-              alt="" 
+            <img
+              src="/images/logo.png"
+              alt=""
               className="w-96 h-96 md:w-[420px] md:h-[420px] object-contain opacity-15 animate-logo-bg select-none"
               onError={(e) => e.target.style.display = 'none'}
             />
@@ -568,7 +568,7 @@ const Login = ({ onLogin, onFrozen, onFirstTime }) => {
                 {loading ? 'جاري التحميل...' : 'تسجيل الدخول'}
               </button>
             </form>
-            <button 
+            <button
               onClick={onFirstTime}
               className="text-sm text-blue-400 hover:text-blue-300 transition-colors underline-offset-2"
             >
@@ -584,7 +584,7 @@ const Login = ({ onLogin, onFrozen, onFirstTime }) => {
   )
 }
 
-// ========== لوحة تحكم المعلم (معدلة) ==========
+// ========== لوحة تحكم المعلم (معدلة بالكامل) ==========
 const TeacherPanel = ({ user, onLogout }) => {
   const [lessonTime, setLessonTime] = useState('')
   const [homeworks, setHomeworks] = useState([])
@@ -760,6 +760,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     return () => { supabase.removeChannel(channel) }
   }, [user.id])
 
+  // قبول المراجعة
   const acceptReview = async (studentId) => {
     try {
       const { data: student, error: fetchError } = await supabase
@@ -796,6 +797,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
+  // رفض المراجعة
   const rejectReview = async (studentId) => {
     if (!window.confirm('هل أنت متأكد من رفض هذه التغييرات؟')) return;
     try {
@@ -812,6 +814,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
+  // حفظ الواجب
   const saveHomework = async () => {
     if (!newHomeworkText.trim()) return alert('يرجى كتابة نص الواجب أولاً.')
     const revealTime = publishType === 'now' ? new Date().toISOString() : new Date(newHomeworkRevealTime).toISOString()
@@ -840,6 +843,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
+  // حذف واجب
   const deleteHomework = async (hwId) => {
     if (!window.confirm('هل تريد حذف هذا الواجب نهائياً؟')) return
     const filtered = homeworks.filter(h => h.id !== hwId)
@@ -851,6 +855,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
+  // تبديل تجميد الطالب
   const toggleFreezeStudent = async (student) => {
     const nextStatus = !student.is_frozen
     if (nextStatus) {
@@ -872,6 +877,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
+  // حذف الحسابات المجمدة بشكل جماعي
   const deleteFrozenAccounts = async () => {
     try {
       const { data: frozen, error } = await supabase
@@ -894,6 +900,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
+  // التحذير من عدم النشاط
   const checkInactivityWarning = (lastSeenStr) => {
     if (!lastSeenStr) return false;
     const lastSeen = new Date(lastSeenStr);
@@ -902,6 +909,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     return diffDays >= 30;
   }
 
+  // التواصل مع ولي الأمر عبر واتساب
   const communicateWithParent = (student) => {
     const phone = student.phone || '';
     if (!phone) {
@@ -923,6 +931,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
   };
 
+  // إعادة تعيين الحساب (كأنه جديد)
   const handleResetStudent = async (studentId) => {
     if (!window.confirm('سيتم إعادة تعيين هذا الحساب ليصبح كأنه جديد، وسيُطلب من الطالب تغيير كلمة المرور عند تسجيل الدخول. هل تريد المتابعة؟')) return;
     try {
@@ -942,6 +951,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
+  // حذف طالب نهائياً (استعادة الزر)
   const handleDeleteStudentPermanently = async (studentId) => {
     if (!window.confirm('إجراء خطير: هل أنت متأكد من حذف حساب هذا الطالب نهائياً وفوراً؟')) return
     try {
@@ -954,6 +964,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
+  // تحديث موعد الحصة
   const updateLessonTime = async () => {
     if (!newLessonTime) return alert('يرجى اختيار تاريخ ووقت الحصة أولاً.')
     try {
@@ -971,12 +982,21 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
+  // ===== إضافة طالب جديد (معدل مع رسائل خطأ واضحة) =====
   const handleAddStudent = async (e) => {
     e.preventDefault()
     if (!newStudentName || !newStudentGender || !newStudentAge || !newStudentPhone || !newStudentClass) {
       alert('جميع الحقول مطلوبة')
       return
     }
+
+    // التحقق من صحة class_id
+    const classExists = classes.some(c => c.id === newStudentClass)
+    if (!classExists) {
+      alert('الشعبة المختارة غير صالحة.')
+      return
+    }
+
     setStudentLoading(true)
     try {
       const baseUsername = newStudentName.trim().replace(/\s+/g, '.').toLowerCase()
@@ -993,20 +1013,33 @@ const TeacherPanel = ({ user, onLogout }) => {
         if (!data) { exists = false } else { username = `${baseUsername}${counter}`; counter++ }
       }
 
-      const { error: insertError } = await supabase
+      const newStudent = {
+        username: username,
+        name: newStudentName,
+        gender: newStudentGender,
+        age: parseInt(newStudentAge),
+        phone: newStudentPhone,
+        class_id: newStudentClass,
+        role: 'student',
+        is_frozen: false,
+        info_verified: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }
+
+      const { data, error: insertError } = await supabase
         .from('profiles')
-        .insert([{
-          username: username,
-          name: newStudentName,
-          gender: newStudentGender,
-          age: parseInt(newStudentAge),
-          phone: newStudentPhone,
-          class_id: newStudentClass,
-          role: 'student',
-          is_frozen: false,
-          info_verified: false,
-        }])
-      if (insertError) throw insertError
+        .insert([newStudent])
+        .select()
+
+      if (insertError) {
+        if (insertError.code === '42501' || insertError.message.includes('permission denied')) {
+          alert('⚠️ فشل الإضافة بسبب صلاحيات قاعدة البيانات (RLS). يرجى التواصل مع مسؤول النظام لتعديل سياسات RLS في جدول profiles.')
+        } else {
+          throw insertError
+        }
+        return
+      }
 
       alert(`تم تسجيل الطالب ${newStudentName} بنجاح.\nاسم المستخدم المؤقت: ${username}\nسيتمكن الطالب من تعيين اسم مستخدم جديد عند تسجيل الدخول لأول مرة.`)
       setNewStudentName('')
@@ -1017,6 +1050,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       setShowAddStudentModal(false)
       await fetchTeacherData()
     } catch (err) {
+      console.error('خطأ في إضافة الطالب:', err)
       alert('فشل إضافة الطالب: ' + (err.message || err.details || 'خطأ غير معروف'))
     } finally {
       setStudentLoading(false)
@@ -1042,7 +1076,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
 
         {errorMsg && <p className="text-red-400 text-sm bg-red-500/10 p-3 rounded-xl border border-red-500/20">{errorMsg}</p>}
-        
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="glass-glow p-6 rounded-2xl border border-purple-500/20 flex flex-col justify-center">
             <h3 className="text-lg font-semibold text-purple-200">عدد الطلاب</h3>
@@ -1089,7 +1123,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         <div className="glass p-6 rounded-2xl border border-white/5 space-y-4">
           <h3 className="text-xl font-semibold text-pink-300">إدارة الواجبات</h3>
           <div className="space-y-3">
-            <textarea placeholder="نص الواجب..." className="input-glass w-full h-24 text-right resize-none" value={newHomeworkText} onChange={(e) => setNewHomeworkText(e.target.value)}/>
+            <textarea placeholder="نص الواجب..." className="input-glass w-full h-24 text-right resize-none" value={newHomeworkText} onChange={(e) => setNewHomeworkText(e.target.value)} />
             <div className="flex gap-6 items-center bg-white/5 p-3 rounded-xl border border-white/5 text-sm flex-wrap">
               <span className="text-gray-300 font-medium">النشر:</span>
               <label className="flex items-center gap-1.5 cursor-pointer text-gray-200">
@@ -1198,6 +1232,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
+      {/* مودال إضافة طالب */}
       {showAddStudentModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowAddStudentModal(false)}>
           <div className="glass p-6 rounded-3xl max-w-md w-full border border-white/20" onClick={(e) => e.stopPropagation()}>
@@ -1404,7 +1439,7 @@ const StudentPanel = ({ user, onLogout }) => {
         </div>
 
         {errorMsg && <p className="text-red-400 text-sm bg-red-500/10 p-3 rounded-xl border border-red-500/20">{errorMsg}</p>}
-        
+
         <div className="glass p-6 rounded-2xl border border-blue-500/20">
           <div className="flex justify-between items-center">
             <h3 className="text-xl font-semibold text-blue-200">معلوماتي الشخصية</h3>
@@ -1414,11 +1449,11 @@ const StudentPanel = ({ user, onLogout }) => {
             <div className="mt-4 space-y-3">
               <div>
                 <label className="text-sm text-gray-300">الاسم الكامل <span className="text-red-400">*</span></label>
-                <input type="text" className="input-glass w-full text-right" value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})} />
+                <input type="text" className="input-glass w-full text-right" value={editData.name} onChange={e => setEditData({ ...editData, name: e.target.value })} />
               </div>
               <div>
                 <label className="text-sm text-gray-300">الجنس</label>
-                <select className="input-glass w-full text-right" value={editData.gender} onChange={e => setEditData({...editData, gender: e.target.value})}>
+                <select className="input-glass w-full text-right" value={editData.gender} onChange={e => setEditData({ ...editData, gender: e.target.value })}>
                   <option value="">اختر</option>
                   <option value="ذكر">ذكر</option>
                   <option value="أنثى">أنثى</option>
@@ -1426,11 +1461,11 @@ const StudentPanel = ({ user, onLogout }) => {
               </div>
               <div>
                 <label className="text-sm text-gray-300">العمر</label>
-                <input type="number" className="input-glass w-full text-right" value={editData.age} onChange={e => setEditData({...editData, age: e.target.value})} />
+                <input type="number" className="input-glass w-full text-right" value={editData.age} onChange={e => setEditData({ ...editData, age: e.target.value })} />
               </div>
               <div>
                 <label className="text-sm text-gray-300">رقم الهاتف <span className="text-red-400">*</span></label>
-                <input type="text" className="input-glass w-full text-right" value={editData.phone} onChange={e => setEditData({...editData, phone: e.target.value})} />
+                <input type="text" className="input-glass w-full text-right" value={editData.phone} onChange={e => setEditData({ ...editData, phone: e.target.value })} />
               </div>
               <div className="flex gap-3">
                 <button onClick={saveChanges} className="btn-primary bg-green-600 hover:bg-green-700">حفظ</button>
