@@ -185,7 +185,7 @@ const FrozenAccount = ({ user, onLogout }) => {
   )
 }
 
-// ========== تسجيل الدخول لأول مرة (معدل - مع بريد إلكتروني فريد) ==========
+// ========== تسجيل الدخول لأول مرة (مع إنشاء تلقائي إذا لم يوجد ملف) ==========
 const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -229,8 +229,9 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
     setError('')
 
     try {
-      // 1. البحث عن الملف الشخصي باستخدام RPC (تتجاوز RLS)
-      const { data: profile, error: rpcError } = await supabase
+      // 1. محاولة البحث عن ملف شخصي موجود (عبر RPC)
+      let profile = null
+      const { data: existingProfile, error: rpcError } = await supabase
         .rpc('get_profile_for_verification', {
           p_name: cleanName,
           p_phone: cleanPhone,
@@ -238,23 +239,64 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
           p_age: cleanAge
         })
 
-      if (rpcError) {
+      if (rpcError && !rpcError.message.includes('not found')) {
         console.error('خطأ في RPC:', rpcError)
         throw new Error('خطأ في التحقق من البيانات: ' + rpcError.message)
       }
 
-      if (!profile) {
-        setError('البيانات غير صحيحة. تأكد من الاسم ورقم الهاتف والجنس والعمر.')
-        setLoading(false)
-        return
+      if (existingProfile) {
+        profile = existingProfile
+      } else {
+        // 2. إذا لم يوجد، نقوم بإنشاء ملف شخصي جديد
+        console.log('📝 لم يتم العثور على ملف شخصي، سنقوم بإنشاء واحد جديد.')
+
+        // توليد معرف جديد واسم مستخدم مؤقت
+        const newId = crypto.randomUUID()
+        const baseUsername = cleanName.replace(/\s+/g, '.').toLowerCase()
+        let username = baseUsername
+        let counter = 1
+        let exists = true
+        while (exists) {
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('username')
+            .eq('username', username)
+            .maybeSingle()
+          if (error) throw error
+          if (!data) { exists = false } else { username = `${baseUsername}${counter}`; counter++ }
+        }
+
+        // إدراج الملف الشخصي الجديد
+        const { data: newProfile, error: insertError } = await supabase
+          .from('profiles')
+          .insert([{
+            id: newId,
+            username: username,
+            name: cleanName,
+            gender: cleanGender,
+            age: cleanAge,
+            phone: cleanPhone,
+            role: 'student',
+            is_frozen: false,
+            info_verified: false,
+            email: null  // سيتم تحديثه لاحقاً بالبريد الفعلي
+          }])
+          .select()
+          .single()
+
+        if (insertError) {
+          console.error('خطأ في إنشاء الملف الشخصي:', insertError)
+          throw new Error('تعذر إنشاء الملف الشخصي: ' + insertError.message)
+        }
+        profile = newProfile
       }
 
-      // 2. توليد بريد إلكتروني فريد تمامًا (يضمن عدم التعارض)
+      // 3. توليد بريد إلكتروني فريد للحساب
       const uniqueId = crypto.randomUUID()
       const fakeEmail = `student_${uniqueId}@temp.com`
       const tempPassword = Math.random().toString(36).slice(-8)
 
-      // 3. إنشاء حساب جديد في auth باستخدام البريد الفريد
+      // 4. إنشاء حساب في auth
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: fakeEmail,
         password: tempPassword,
@@ -262,9 +304,8 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
       })
 
       if (signUpError) {
-        // إذا فشل signUp (مثلاً البريد موجود رغم uniqueness)، نحاول مرة أخرى ببريد آخر
+        // إذا فشل signUp (نادراً)، نحاول مرة أخرى ببريد جديد
         if (signUpError.message.includes('User already registered')) {
-          // نعيد المحاولة ببريد جديد (مرة واحدة فقط)
           const newUniqueId = crypto.randomUUID()
           const newFakeEmail = `student_${newUniqueId}@temp.com`
           const { error: retryError } = await supabase.auth.signUp({
@@ -278,12 +319,11 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
         }
       }
 
-      // 4. الحصول على المستخدم الحالي
+      // 5. الحصول على المستخدم الحالي
       let currentUser = null
       const { data: { user }, error: userError } = await supabase.auth.getUser()
 
       if (userError || !user) {
-        // محاولة الحصول على الجلسة مباشرة
         const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
         if (sessionError || !sessionData.session) {
           throw new Error('فشل في استرجاع المستخدم. تأكد من تعطيل تأكيد البريد الإلكتروني في إعدادات Supabase.')
@@ -297,8 +337,12 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
         currentUser = user
       }
 
-      // 5. حذف الملف الشخصي القديم
-      try {
+      // 6. تحديث الملف الشخصي بالمعرف الجديد
+      // إذا كان الملف الشخصي موجوداً مسبقاً (old) نحتاج إلى حذفه واستبداله، أو تحديث المعرف
+      // ولكن بما أننا قد أنشأنا ملفاً جديداً (في حالة عدم وجوده)، فإن معرفه مختلف عن معرف المستخدم الجديد.
+      // لذا يجب حذف الملف القديم (إن وجد) وإنشاء ملف جديد بالمعرف الصحيح.
+      if (profile.id !== currentUser.id) {
+        // حذف الملف الشخصي القديم (الذي قد يكون أنشأناه للتو أو كان موجوداً)
         const { error: deleteError } = await supabase
           .from('profiles')
           .delete()
@@ -306,35 +350,48 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
 
         if (deleteError) {
           console.warn('فشل حذف الملف القديم:', deleteError)
-          throw new Error('تعذر حذف الملف الشخصي القديم. يرجى التواصل مع المدير.')
+          // إذا فشل الحذف (ربما بسبب RLS)، نحاول التحديث بدلاً من الحذف
+          // لكن التحديث لا يسمح بتغيير المعرف، لذا نحاول إدراج جديد وتجاهل القديم (قد يسبب تضارب)
+          // أفضل حل: إدراج جديد ثم حذف القديم إذا نجح الإدراج
         }
-      } catch (deleteErr) {
-        console.error('خطأ في الحذف:', deleteErr)
-        setError('تعذر ربط الحساب. يرجى التواصل مع المدير.')
-        setLoading(false)
-        return
-      }
 
-      // 6. إنشاء ملف شخصي جديد بالمعرف الجديد
-      const { error: insertError } = await supabase
-        .from('profiles')
-        .insert([{
-          id: currentUser.id,
-          username: profile.username,
-          name: profile.name,
-          gender: profile.gender,
-          age: profile.age,
-          phone: profile.phone,
-          class_id: profile.class_id,
-          role: 'student',
-          is_frozen: false,
-          info_verified: false,
-          email: currentUser.email
-        }])
+        // إنشاء ملف شخصي جديد بالمعرف الصحيح
+        const { error: insertNewError } = await supabase
+          .from('profiles')
+          .insert([{
+            id: currentUser.id,
+            username: profile.username,
+            name: profile.name,
+            gender: profile.gender,
+            age: profile.age,
+            phone: profile.phone,
+            class_id: profile.class_id || null,
+            role: 'student',
+            is_frozen: false,
+            info_verified: false,
+            email: currentUser.email
+          }])
 
-      if (insertError) {
-        console.error('خطأ في إدراج الملف الجديد:', insertError)
-        throw insertError
+        if (insertNewError) {
+          console.error('خطأ في إدراج الملف الجديد:', insertNewError)
+          throw insertNewError
+        }
+
+        // حذف الملف القديم (إذا كان لا يزال موجوداً)
+        // قد يكون الحذف قد فشل سابقاً، ولكننا نحاول مرة أخرى
+        await supabase
+          .from('profiles')
+          .delete()
+          .eq('id', profile.id)
+          .then(() => {})
+          .catch(() => {}) // تجاهل الأخطاء
+      } else {
+        // إذا كان المعرف مطابقاً، نقوم بتحديث البريد الإلكتروني فقط
+        const { error: updateError } = await supabase
+          .from('profiles')
+          .update({ email: currentUser.email, info_verified: false })
+          .eq('id', currentUser.id)
+        if (updateError) console.warn('فشل تحديث البريد الإلكتروني:', updateError)
       }
 
       // 7. إرسال نجاح
@@ -347,7 +404,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
         gender: profile.gender,
         age: profile.age,
         phone: profile.phone,
-        class_id: profile.class_id,
+        class_id: profile.class_id || null,
         needsPasswordChange: true
       })
 
