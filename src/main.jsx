@@ -847,18 +847,42 @@ const TeacherPanel = ({ user, onLogout }) => {
     return diffDays >= 30;
   }
 
-  // ===== حذف الطالب نهائياً =====
-  const handleDeleteStudentPermanently = async (studentId) => {
-    if (!window.confirm('إجراء خطير: هل أنت متأكد من حذف حساب هذا الطالب نهائياً وفوراً؟')) return
-    try {
-      const { error } = await supabase.from('profiles').delete().eq('id', studentId)
-      if (error) throw error
-      alert('تم حذف الطالب من النظام.')
-      fetchTeacherData()
-    } catch (err) {
-      alert('فشل حذف الطالب: ' + err.message)
+  // ===== التواصل مع ولي الأمر عبر واتساب =====
+  const communicateWithParent = (student) => {
+    const phone = student.phone || '';
+    if (!phone) {
+      alert('رقم الهاتف غير مسجل لهذا الطالب.');
+      return;
     }
-  }
+    const message = encodeURIComponent(
+      `أهلاً بك،\n` +
+      `معكم همام هاني محمد علي، معلم تطوير البرمجيات ورئيس قسم التكنولوجيا وأمن المعلومات.\n` +
+      `أتواصل معك بخصوص [........].\n` +
+      `بانتظار ردكم لمتابعة العمل.\n` +
+      `تحياتي،`
+    );
+    window.open(`https://wa.me/${phone}?text=${message}`, '_blank');
+  };
+
+  // ===== إعادة تعيين حساب الطالب (كأنه جديد) =====
+  const handleResetStudent = async (studentId) => {
+    if (!window.confirm('سيتم إعادة تعيين هذا الحساب ليصبح كأنه جديد، وسيُطلب من الطالب تغيير كلمة المرور عند تسجيل الدخول. هل تريد المتابعة؟')) return;
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          info_verified: false,
+          is_frozen: false,
+          pending_changes: null,
+        })
+        .eq('id', studentId);
+      if (error) throw error;
+      alert('تم إعادة تعيين الحساب بنجاح. سيتوجب على الطالب تغيير كلمة المرور عند تسجيل الدخول.');
+      fetchTeacherData();
+    } catch (err) {
+      alert('فشل إعادة التعيين: ' + (err.message || err.details || 'خطأ غير معروف'));
+    }
+  };
 
   // ===== تحديث موعد الحصة =====
   const updateLessonTime = async () => {
@@ -927,22 +951,6 @@ const TeacherPanel = ({ user, onLogout }) => {
       alert('فشل إضافة الطالب: ' + err.message)
     } finally {
       setStudentLoading(false)
-    }
-  }
-
-  const updateWhatsapp = async (studentId, currentWhatsapp) => {
-    const newWhatsapp = window.prompt('أدخل رقم واتساب الجديد:', currentWhatsapp || '');
-    if (newWhatsapp === null) return;
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ phone: newWhatsapp })
-        .eq('id', studentId)
-      if (error) throw error
-      alert('تم تحديث رقم الهاتف.')
-      fetchTeacherData()
-    } catch (err) {
-      alert('فشل التحديث: ' + err.message)
     }
   }
 
@@ -1098,12 +1106,27 @@ const TeacherPanel = ({ user, onLogout }) => {
                   )}
                 </div>
                 <div className="flex items-center gap-4 flex-wrap">
-                  <button onClick={() => updateWhatsapp(s.id, s.phone)} className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-lg hover:bg-green-500/30">📞 تحديث الهاتف</button>
-                  <button onClick={() => alert('يمكن للطالب تغيير كلمة المرور من لوحته.')} className="text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-1 rounded-lg">⚙️ كلمة المرور</button>
-                  <button onClick={() => handleDeleteStudentPermanently(s.id)} className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg hover:bg-red-500/30">❌ حذف</button>
+                  {/* زر التواصل مع ولي الأمر */}
+                  <button
+                    onClick={() => communicateWithParent(s)}
+                    className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-lg hover:bg-green-500/30"
+                  >
+                    📞 تواصل مع ولي الأمر
+                  </button>
+                  {/* زر إعادة التعيين (بدلاً من حذف) */}
+                  <button
+                    onClick={() => handleResetStudent(s.id)}
+                    className="text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-2 py-1 rounded-lg hover:bg-yellow-500/30"
+                  >
+                    🔄 إعادة تعيين
+                  </button>
+                  {/* زر التجميد (التبديل) */}
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-gray-400">{s.is_frozen ? 'مجمد' : 'مفعل'}</span>
-                    <div onClick={() => toggleFreezeStudent(s)} className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-300 ${s.is_frozen ? 'bg-gray-600' : 'bg-green-500'}`}>
+                    <div
+                      onClick={() => toggleFreezeStudent(s)}
+                      className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-300 ${s.is_frozen ? 'bg-gray-600' : 'bg-green-500'}`}
+                    >
                       <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-300 ${s.is_frozen ? 'translate-x-0' : '-translate-x-6'}`} />
                     </div>
                   </div>
