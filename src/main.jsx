@@ -181,9 +181,9 @@ const FrozenAccount = ({ user, onLogout }) => {
   )
 }
 
-// ========== تسجيل الدخول لأول مرة ==========
+// ========== تسجيل الدخول لأول مرة (معدل) ==========
 const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
-  const [username, setUsername] = useState('')
+  const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [gender, setGender] = useState('')
   const [age, setAge] = useState('')
@@ -192,7 +192,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
 
   const handleVerify = async (e) => {
     e.preventDefault()
-    if (!username || !phone || !gender || !age) {
+    if (!name || !phone || !gender || !age) {
       setError('جميع الحقول مطلوبة (*)')
       return
     }
@@ -200,10 +200,11 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
     setError('')
 
     try {
+      // البحث عن الطالب باستخدام الاسم والجنس والعمر والهاتف
       const { data: profile, error: searchError } = await supabase
         .from('profiles')
         .select('id, name, gender, age, phone, username, class_id')
-        .eq('username', username)
+        .eq('name', name)
         .eq('phone', phone)
         .eq('gender', gender)
         .eq('age', parseInt(age))
@@ -211,23 +212,25 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
 
       if (searchError) throw searchError
       if (!profile) {
-        setError('البيانات غير صحيحة. تأكد من اسم المستخدم ورقم الهاتف والجنس والعمر.')
+        setError('البيانات غير صحيحة. تأكد من الاسم ورقم الهاتف والجنس والعمر.')
         setLoading(false)
         return
       }
 
-      const fakeEmail = `${username}@school.temp`
+      // إنشاء بريد مؤقت يعتمد على رقم الهاتف (لتجنب التعارض)
+      const fakeEmail = `student_${profile.id}@school.temp`
       const tempPassword = Math.random().toString(36).slice(-8)
 
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: fakeEmail,
         password: tempPassword,
-        options: { data: { role: 'student', username: username } }
+        options: { data: { role: 'student' } }
       })
 
       if (signUpError) {
         if (signUpError.message.includes('User already registered')) {
-          const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          // محاولة تسجيل الدخول بكلمة المرور المؤقتة
+          const { error: signInError } = await supabase.auth.signInWithPassword({
             email: fakeEmail,
             password: tempPassword
           })
@@ -237,16 +240,18 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
         }
       }
 
+      // لا نعدل info_verified هنا، نتركها false حتى يضع الطالب اسم المستخدم وكلمة المرور
+      // ولكن نحدّث بيانات الطالب للتأكد من تطابق البيانات (قد تكون تغيرت)
       const { error: updateError } = await supabase
         .from('profiles')
         .update({ 
           is_frozen: false,
-          info_verified: true,
           name: profile.name,
           gender: profile.gender,
           age: profile.age,
           phone: profile.phone,
           class_id: profile.class_id
+          // لا نغير info_verified
         })
         .eq('id', profile.id)
 
@@ -255,10 +260,11 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
       const { data: { user: currentUser } } = await supabase.auth.getUser()
       if (!currentUser) throw new Error('فشل في استرجاع المستخدم')
 
+      // نمرر البيانات مع username = null (سيُطلب منه لاحقاً)
       onSuccess({
         id: currentUser.id,
         email: currentUser.email,
-        username: username,
+        username: null, // لم يتم تعيينه بعد
         role: 'student',
         name: profile.name,
         gender: profile.gender,
@@ -285,8 +291,8 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
           <p className="text-gray-400 text-sm text-center">أدخل البيانات التي قمت بتسجيلها عن طريق الإستبيان</p>
           <form onSubmit={handleVerify} className="space-y-4">
             <div>
-              <label className="text-sm text-gray-300 block mb-1">اسم المستخدم <span className="text-red-400">*</span></label>
-              <input type="text" className="input-glass w-full text-right" value={username} onChange={e => setUsername(e.target.value)} required />
+              <label className="text-sm text-gray-300 block mb-1">الاسم الكامل <span className="text-red-400">*</span></label>
+              <input type="text" className="input-glass w-full text-right" value={name} onChange={e => setName(e.target.value)} required />
             </div>
             <div>
               <label className="text-sm text-gray-300 block mb-1">رقم الهاتف <span className="text-red-400">*</span></label>
@@ -316,15 +322,23 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
   )
 }
 
-// ========== تغيير كلمة المرور الإجبارية ==========
+// ========== تغيير كلمة المرور الإجبارية (معدل) ==========
 const ForcePasswordChange = ({ user, onPasswordSet }) => {
+  const [username, setUsername] = useState(user.username || '')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
+  // إذا كان اسم المستخدم موجوداً مسبقاً، لا نطلب إدخاله
+  const requireUsername = !user.username
+
   const handleSubmit = async (e) => {
     e.preventDefault()
+    if (requireUsername && !username.trim()) {
+      setError('يرجى إدخال اسم مستخدم')
+      return
+    }
     if (password.length < 6) {
       setError('كلمة المرور يجب أن تكون 6 أحرف على الأقل')
       return
@@ -335,10 +349,49 @@ const ForcePasswordChange = ({ user, onPasswordSet }) => {
     }
     setLoading(true)
     setError('')
+
     try {
-      const { error: updateError } = await supabase.auth.updateUser({ password })
-      if (updateError) throw updateError
-      onPasswordSet(user)
+      // 1. تحديث كلمة المرور
+      const { error: updatePassError } = await supabase.auth.updateUser({ password })
+      if (updatePassError) throw updatePassError
+
+      // 2. تحديث ملف الطالب
+      const updates = {
+        info_verified: true,
+        pending_changes: null,
+        is_frozen: false
+      }
+      if (requireUsername) {
+        // التحقق من عدم تكرار اسم المستخدم
+        const { data: existing, error: checkError } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('username', username.trim())
+          .maybeSingle()
+        if (checkError) throw checkError
+        if (existing) {
+          setError('اسم المستخدم موجود بالفعل، اختر اسماً آخر')
+          setLoading(false)
+          return
+        }
+        updates.username = username.trim()
+      }
+
+      const { error: updateProfileError } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('id', user.id)
+
+      if (updateProfileError) throw updateProfileError
+
+      // تحديث user محلياً
+      const updatedUser = { 
+        ...user, 
+        username: requireUsername ? username.trim() : user.username,
+        needsPasswordChange: false 
+      }
+      onPasswordSet(updatedUser)
+
     } catch (err) {
       setError(err.message)
     } finally {
@@ -351,9 +404,28 @@ const ForcePasswordChange = ({ user, onPasswordSet }) => {
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
       <div className="relative z-10 w-full max-w-md px-4">
         <div className="glass p-6 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl space-y-4">
-          <h2 className="text-2xl font-bold text-center text-blue-300">تعيين كلمة مرور جديدة</h2>
-          <p className="text-gray-400 text-sm text-center">لتفعيل حسابك، يجب تعيين كلمة مرور جديدة</p>
+          <h2 className="text-2xl font-bold text-center text-blue-300">
+            {requireUsername ? 'تعيين اسم المستخدم وكلمة المرور' : 'تغيير كلمة المرور'}
+          </h2>
+          <p className="text-gray-400 text-sm text-center">
+            {requireUsername 
+              ? 'اختر اسم مستخدم فريد وكلمة مرور جديدة لتفعيل حسابك'
+              : 'أدخل كلمة مرور جديدة لحسابك'
+            }
+          </p>
           <form onSubmit={handleSubmit} className="space-y-4">
+            {requireUsername && (
+              <div>
+                <label className="text-sm text-gray-300 block mb-1">اسم المستخدم الجديد <span className="text-red-400">*</span></label>
+                <input 
+                  type="text" 
+                  className="input-glass w-full text-right" 
+                  value={username} 
+                  onChange={e => setUsername(e.target.value)} 
+                  required 
+                />
+              </div>
+            )}
             <div>
               <label className="text-sm text-gray-300 block mb-1">كلمة المرور الجديدة <span className="text-red-400">*</span></label>
               <input type="password" className="input-glass w-full text-right" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} />
@@ -364,7 +436,7 @@ const ForcePasswordChange = ({ user, onPasswordSet }) => {
             </div>
             {error && <p className="text-red-400 text-sm text-center">{error}</p>}
             <button type="submit" disabled={loading} className="btn-primary w-full py-3 bg-blue-600 hover:bg-blue-700">
-              {loading ? 'جاري التحديث...' : 'تعيين كلمة المرور'}
+              {loading ? 'جاري التحديث...' : 'حفظ التغييرات'}
             </button>
           </form>
         </div>
@@ -427,12 +499,13 @@ const Login = ({ onLogin, onFrozen, onFirstTime }) => {
         return
       }
 
-      if (profile.info_verified === false && profile.is_frozen === false) {
+      // إذا كانت info_verified = false، نطلب تغيير كلمة المرور (قد يكون اسم المستخدم موجوداً أو لا)
+      if (profile.info_verified === false) {
         onLogin({ 
           id: user.id, 
           email: user.email, 
           role: profile.role, 
-          username: profile.username,
+          username: profile.username, // قد يكون null
           name: profile.name,
           gender: profile.gender,
           age: profile.age,
@@ -520,7 +593,7 @@ const Login = ({ onLogin, onFrozen, onFirstTime }) => {
   )
 }
 
-// ========== لوحة تحكم المعلم ==========
+// ========== لوحة تحكم المعلم (معدلة) ==========
 const TeacherPanel = ({ user, onLogout }) => {
   const [lessonTime, setLessonTime] = useState('')
   const [homeworks, setHomeworks] = useState([])
@@ -543,8 +616,9 @@ const TeacherPanel = ({ user, onLogout }) => {
 
   const [newLessonTime, setNewLessonTime] = useState('')
   const [showAddStudentModal, setShowAddStudentModal] = useState(false)
+  const [showStudentsModal, setShowStudentsModal] = useState(false) // مودال عرض الطلاب
 
-  // ========== جلب أسماء الشعب بشكل منفصل ==========
+  // ========== جلب أسماء الشعب ==========
   const fetchClassNames = async (classIds) => {
     if (!classIds || classIds.length === 0) return {}
     const { data, error } = await supabase
@@ -558,10 +632,9 @@ const TeacherPanel = ({ user, onLogout }) => {
     return Object.fromEntries((data || []).map(c => [c.id, c.name]))
   }
 
-  // ========== دالة جلب البيانات (معدلة) ==========
+  // ========== جلب بيانات المعلم ==========
   const fetchTeacherData = async () => {
     try {
-      // 1. جلب بيانات المعلم
       let teacherRecord;
       const { data: existingTeacher, error: teacherFetchError } = await supabase
         .from('teachers')
@@ -595,7 +668,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         setHomeworks(existingTeacher.homeworks || []);
       }
 
-      // 2. جلب الطلاب
       let profilesData = [];
       try {
         const { data, error } = await supabase
@@ -618,7 +690,6 @@ const TeacherPanel = ({ user, onLogout }) => {
       }
       setStudents(profilesData);
 
-      // 3. جلب الشعب
       let classesData = [];
       try {
         const { data, error } = await supabase
@@ -651,7 +722,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         setClasses(classesData);
       }
 
-      // 4. جلب طلبات المراجعة
       let pendingData = [];
       try {
         const { data, error } = await supabase
@@ -695,7 +765,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     return () => { supabase.removeChannel(channel) }
   }, [user.id])
 
-  // ===== قبول طلب المراجعة (معدل) =====
+  // ===== قبول طلب المراجعة =====
   const acceptReview = async (studentId) => {
     try {
       const { data: student, error: fetchError } = await supabase
@@ -709,17 +779,14 @@ const TeacherPanel = ({ user, onLogout }) => {
         return;
       }
 
-      // تحضير البيانات مع التأكد من صحة الأنواع
       const newData = {
         name: student.pending_changes.name ?? student.name,
         gender: student.pending_changes.gender ?? student.gender,
         age: student.pending_changes.age != null ? Number(student.pending_changes.age) : student.age,
         phone: student.pending_changes.phone ?? student.phone,
         info_verified: true,
-        pending_changes: null  // أو استخدم {} إذا كان العمود not null
+        pending_changes: null
       };
-
-      console.log('بيانات التحديث في قبول المراجعة:', newData); // للتصحيح
 
       const { error: updateError } = await supabase
         .from('profiles')
@@ -735,13 +802,13 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ===== رفض طلب المراجعة (معدل) =====
+  // ===== رفض طلب المراجعة =====
   const rejectReview = async (studentId) => {
     if (!window.confirm('هل أنت متأكد من رفض هذه التغييرات؟')) return;
     try {
       const { error } = await supabase
         .from('profiles')
-        .update({ pending_changes: null })  // استخدم {} إذا كان null غير مسموح
+        .update({ pending_changes: null })
         .eq('id', studentId);
       if (error) throw error;
       alert('تم رفض التغييرات.');
@@ -792,7 +859,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // ===== زر التجميد (معدل) =====
+  // ===== زر التجميد =====
   const toggleFreezeStudent = async (student) => {
     const nextStatus = !student.is_frozen
     if (nextStatus) {
@@ -802,7 +869,6 @@ const TeacherPanel = ({ user, onLogout }) => {
       if (!confirmFreeze) return
     }
     try {
-      console.log(`تحديث is_frozen إلى ${nextStatus} للطالب ${student.id}`); // للتصحيح
       const { error } = await supabase
         .from('profiles')
         .update({ is_frozen: nextStatus })
@@ -884,6 +950,19 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
+  // ===== حذف طالب نهائياً (استعادة الزر) =====
+  const handleDeleteStudentPermanently = async (studentId) => {
+    if (!window.confirm('إجراء خطير: هل أنت متأكد من حذف حساب هذا الطالب نهائياً وفوراً؟')) return
+    try {
+      const { error } = await supabase.from('profiles').delete().eq('id', studentId)
+      if (error) throw error
+      alert('تم حذف الطالب من النظام.')
+      fetchTeacherData()
+    } catch (err) {
+      alert('فشل حذف الطالب: ' + err.message)
+    }
+  }
+
   // ===== تحديث موعد الحصة =====
   const updateLessonTime = async () => {
     if (!newLessonTime) return alert('يرجى اختيار تاريخ ووقت الحصة أولاً.')
@@ -910,6 +989,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
     setStudentLoading(true)
     try {
+      // إنشاء اسم مستخدم مؤقت فريد بناءً على الاسم (سيُطلب من الطالب تغييره لاحقاً)
       const baseUsername = newStudentName.trim().replace(/\s+/g, '.').toLowerCase()
       let username = baseUsername
       let counter = 1
@@ -927,7 +1007,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       const { error: insertError } = await supabase
         .from('profiles')
         .insert([{
-          username: username,
+          username: username, // مؤقت، سيُطلب من الطالب تغييره لاحقاً عبر FirstTimeSignUp + ForcePasswordChange
           name: newStudentName,
           gender: newStudentGender,
           age: parseInt(newStudentAge),
@@ -935,11 +1015,11 @@ const TeacherPanel = ({ user, onLogout }) => {
           class_id: newStudentClass,
           role: 'student',
           is_frozen: false,
-          info_verified: false,
+          info_verified: false, // لم يتم التحقق بعد
         }])
       if (insertError) throw insertError
 
-      alert(`تم تسجيل الطالب ${newStudentName} بنجاح.\nاسم المستخدم: ${username}\nيرجى إبلاغ الطالب بهذا الاسم.`)
+      alert(`تم تسجيل الطالب ${newStudentName} بنجاح.\nاسم المستخدم المؤقت: ${username}\nسيتمكن الطالب من تعيين اسم مستخدم جديد عند تسجيل الدخول لأول مرة.`)
       setNewStudentName('')
       setNewStudentGender('')
       setNewStudentAge('')
@@ -1067,13 +1147,14 @@ const TeacherPanel = ({ user, onLogout }) => {
           )}
         </div>
 
-        {/* إضافة طالب وحذف المجمدين */}
+        {/* إدارة الطلاب - زر عرض القوائم */}
         <div className="glass p-6 rounded-2xl border border-white/5">
           <div className="flex flex-wrap justify-between items-center gap-3">
             <h3 className="text-xl font-semibold text-blue-300">إدارة الطلاب</h3>
             <div className="flex flex-wrap gap-2">
               <button onClick={() => setShowAddStudentModal(true)} className="btn-primary bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 py-2 px-4 text-sm">+ إضافة طالب</button>
               <button onClick={deleteFrozenAccounts} className="btn-primary bg-red-600 hover:bg-red-700 py-2 px-4 text-sm">🗑️ حذف المجمدين</button>
+              <button onClick={() => setShowStudentsModal(true)} className="btn-primary bg-purple-600 hover:bg-purple-700 py-2 px-4 text-sm">📋 عرض قوائم الطلبة</button>
             </div>
           </div>
         </div>
@@ -1086,57 +1167,49 @@ const TeacherPanel = ({ user, onLogout }) => {
             <button onClick={updateLessonTime} className="btn-primary py-3 px-6">حفظ الحصة</button>
           </div>
         </div>
+      </div>
 
-        {/* قائمة الطلاب مع زر التجميد */}
-        <div className="glass p-6 rounded-2xl border border-white/5">
-          <h3 className="text-xl font-semibold text-purple-200 mb-4">الطلاب المسجلين ({students.length})</h3>
-          <div className="space-y-3 max-h-80 overflow-y-auto pl-1">
-            {sortedStudents.map(s => (
-              <div key={s.id} className={`p-3 rounded-xl border flex flex-wrap justify-between items-center gap-3 ${s.is_frozen ? 'bg-gray-900/60 border-gray-700 opacity-60' : 'bg-white/5 border-white/5'}`}>
-                <div className="flex items-center gap-3 flex-wrap">
-                  <span className="text-white text-sm font-medium">{s.name || s.username}</span>
-                  <span className="text-xs text-gray-400">({s.username})</span>
-                  {s.classes && <span className="text-xs text-blue-300 bg-blue-950/40 px-2 py-0.5 rounded border border-blue-500/20">{s.classes.name}</span>}
-                  {s.phone && <span className="text-xs text-gray-400">📱 {s.phone}</span>}
-                  {s.gender && <span className="text-xs text-gray-400">{s.gender}</span>}
-                  {s.age && <span className="text-xs text-gray-400">عمر {s.age}</span>}
-                  {s.is_frozen && <span className="text-xs text-orange-400 bg-orange-950/40 px-2 py-0.5 rounded border border-orange-500/20">⏳ مجمد</span>}
-                  {checkInactivityWarning(s.last_seen) && !s.is_frozen && (
-                    <span className="text-xs text-red-400 bg-red-950/40 px-2 py-0.5 rounded border border-red-500/30 animate-bounce">🚨 لم يفتح منذ 30 يوم!</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-4 flex-wrap">
-                  {/* زر التواصل مع ولي الأمر */}
-                  <button
-                    onClick={() => communicateWithParent(s)}
-                    className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-lg hover:bg-green-500/30"
-                  >
-                    📞 تواصل مع ولي الأمر
-                  </button>
-                  {/* زر إعادة التعيين (بدلاً من حذف) */}
-                  <button
-                    onClick={() => handleResetStudent(s.id)}
-                    className="text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-2 py-1 rounded-lg hover:bg-yellow-500/30"
-                  >
-                    🔄 إعادة تعيين
-                  </button>
-                  {/* زر التجميد (التبديل) */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-400">{s.is_frozen ? 'مجمد' : 'مفعل'}</span>
-                    <div
-                      onClick={() => toggleFreezeStudent(s)}
-                      className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-300 ${s.is_frozen ? 'bg-gray-600' : 'bg-green-500'}`}
-                    >
-                      <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-300 ${s.is_frozen ? 'translate-x-0' : '-translate-x-6'}`} />
+      {/* مودال عرض قوائم الطلاب */}
+      {showStudentsModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowStudentsModal(false)}>
+          <div className="glass p-6 rounded-3xl max-w-4xl w-full max-h-[80vh] overflow-y-auto border border-white/20" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold text-blue-300">قائمة الطلاب المسجلين ({students.length})</h3>
+              <button onClick={() => setShowStudentsModal(false)} className="text-gray-400 hover:text-white text-2xl">✕</button>
+            </div>
+            <div className="space-y-3">
+              {sortedStudents.map(s => (
+                <div key={s.id} className={`p-3 rounded-xl border flex flex-wrap justify-between items-center gap-3 ${s.is_frozen ? 'bg-gray-900/60 border-gray-700 opacity-60' : 'bg-white/5 border-white/5'}`}>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className="text-white text-sm font-medium">{s.name || s.username}</span>
+                    <span className="text-xs text-gray-400">({s.username})</span>
+                    {s.classes && <span className="text-xs text-blue-300 bg-blue-950/40 px-2 py-0.5 rounded border border-blue-500/20">{s.classes.name}</span>}
+                    {s.phone && <span className="text-xs text-gray-400">📱 {s.phone}</span>}
+                    {s.gender && <span className="text-xs text-gray-400">{s.gender}</span>}
+                    {s.age && <span className="text-xs text-gray-400">عمر {s.age}</span>}
+                    {s.is_frozen && <span className="text-xs text-orange-400 bg-orange-950/40 px-2 py-0.5 rounded border border-orange-500/20">⏳ مجمد</span>}
+                    {checkInactivityWarning(s.last_seen) && !s.is_frozen && (
+                      <span className="text-xs text-red-400 bg-red-950/40 px-2 py-0.5 rounded border border-red-500/30 animate-bounce">🚨 لم يفتح منذ 30 يوم!</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <button onClick={() => communicateWithParent(s)} className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-lg hover:bg-green-500/30">📞 تواصل مع ولي الأمر</button>
+                    <button onClick={() => handleResetStudent(s.id)} className="text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-2 py-1 rounded-lg hover:bg-yellow-500/30">🔄 إعادة تعيين</button>
+                    <button onClick={() => handleDeleteStudentPermanently(s.id)} className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg hover:bg-red-500/30">❌ حذف</button>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400">{s.is_frozen ? 'مجمد' : 'مفعل'}</span>
+                      <div onClick={() => toggleFreezeStudent(s)} className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-300 ${s.is_frozen ? 'bg-gray-600' : 'bg-green-500'}`}>
+                        <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-300 ${s.is_frozen ? 'translate-x-0' : '-translate-x-6'}`} />
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
-            {students.length === 0 && <p className="text-gray-400 text-center py-2">لا يوجد طلاب مسجلين.</p>}
+              ))}
+              {students.length === 0 && <p className="text-gray-400 text-center py-2">لا يوجد طلاب مسجلين.</p>}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* مودال إضافة طالب */}
       {showAddStudentModal && (
@@ -1183,7 +1256,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   )
 }
 
-// ========== لوحة تحكم الطالب ==========
+// ========== لوحة تحكم الطالب (بدون تغيير) ==========
 const StudentPanel = ({ user, onLogout }) => {
   const [teacherData, setTeacherData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -1444,6 +1517,7 @@ const App = () => {
   }
 
   const handlePasswordSet = (userData) => {
+    // تحديث المستخدم بالاسم الجديد ورفع needsPasswordChange
     setUser({ ...userData, needsPasswordChange: false })
     setPendingUser(null)
   }
@@ -1467,7 +1541,7 @@ const App = () => {
             const needsPassChange = profile.info_verified === false
             setUser({ id: session.user.id, email: session.user.email, role: profile.role, username: profile.username, name: profile.name, gender: profile.gender, age: profile.age, phone: profile.phone, class_id: profile.class_id, needsPasswordChange: needsPassChange })
             setFrozenUser(null)
-            if (needsPassChange) setPendingUser(user)
+            if (needsPassChange) setPendingUser(user) // سيؤدي إلى عرض ForcePasswordChange
           }
         } catch (err) {
           console.error(err)
@@ -1516,6 +1590,7 @@ const App = () => {
 
   if (loading) return <div className="container-center min-h-screen text-white"><div className="glass p-8 rounded-2xl border border-white/10 shadow-xl animate-pulse">جاري التحميل...</div></div>
 
+  // إذا كان هناك مستخدم معلق يحتاج لتغيير كلمة المرور (مع أو بدون اسم مستخدم)
   if (pendingUser && pendingUser.needsPasswordChange) return <ForcePasswordChange user={pendingUser} onPasswordSet={handlePasswordSet} />
   if (frozenUser) return <FrozenAccount user={frozenUser} onLogout={handleLogout} />
   if (showFirstTime) return <FirstTimeSignUp onSuccess={handleFirstTimeSuccess} onCancel={() => setShowFirstTime(false)} />
