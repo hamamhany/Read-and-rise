@@ -185,7 +185,7 @@ const FrozenAccount = ({ user, onLogout }) => {
   )
 }
 
-// ========== تسجيل الدخول لأول مرة ==========
+// ========== تسجيل الدخول لأول مرة (معدل - ربط الحساب الجديد بالملف الشخصي) ==========
 const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -196,8 +196,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
 
   const handleVerify = async (e) => {
     e.preventDefault()
-    
-    // تنظيف المدخلات
+
     const cleanName = name.trim()
     const cleanPhone = phone.replace(/[^0-9]/g, '')
     const cleanGender = gender.trim()
@@ -212,6 +211,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
     setError('')
 
     try {
+      // 1. البحث عن الملف الشخصي باستخدام البيانات
       const { data: profile, error: searchError } = await supabase
         .from('profiles')
         .select('id, name, gender, age, phone, username, class_id')
@@ -228,6 +228,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
         return
       }
 
+      // 2. إنشاء حساب جديد في auth
       const fakeEmail = `student_${profile.id}@school.temp`
       const tempPassword = Math.random().toString(36).slice(-8)
 
@@ -249,27 +250,42 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
         }
       }
 
-      const { error: updateError } = await supabase
+      // 3. الحصول على معرف المستخدم الجديد
+      const { data: { user: currentUser } } = await supabase.auth.getUser()
+      if (!currentUser) throw new Error('فشل في استرجاع المستخدم')
+
+      // 4. حذف الملف الشخصي القديم
+      const { error: deleteError } = await supabase
         .from('profiles')
-        .update({
-          is_frozen: false,
+        .delete()
+        .eq('id', profile.id)
+
+      if (deleteError) throw deleteError
+
+      // 5. إنشاء ملف شخصي جديد بنفس البيانات ولكن بالمعرف الجديد
+      const { error: insertError } = await supabase
+        .from('profiles')
+        .insert([{
+          id: currentUser.id,
+          username: profile.username,
           name: profile.name,
           gender: profile.gender,
           age: profile.age,
           phone: profile.phone,
-          class_id: profile.class_id
-        })
-        .eq('id', profile.id)
+          class_id: profile.class_id,
+          role: 'student',
+          is_frozen: false,
+          info_verified: false,
+          email: currentUser.email
+        }])
 
-      if (updateError) throw updateError
+      if (insertError) throw insertError
 
-      const { data: { user: currentUser } } = await supabase.auth.getUser()
-      if (!currentUser) throw new Error('فشل في استرجاع المستخدم')
-
+      // 6. إرسال نجاح إلى المكون الأب
       onSuccess({
         id: currentUser.id,
         email: currentUser.email,
-        username: null,
+        username: profile.username,
         role: 'student',
         name: profile.name,
         gender: profile.gender,
@@ -592,7 +608,7 @@ const Login = ({ onLogin, onFrozen, onFirstTime }) => {
   )
 }
 
-// ========== لوحة تحكم المعلم (معدلة) ==========
+// ========== لوحة تحكم المعلم ==========
 const TeacherPanel = ({ user, onLogout }) => {
   const [lessonTime, setLessonTime] = useState('')
   const [homeworks, setHomeworks] = useState([])
@@ -617,7 +633,6 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [showAddStudentModal, setShowAddStudentModal] = useState(false)
   const [showStudentsModal, setShowStudentsModal] = useState(false)
 
-  // دالة لتنظيف رقم الهاتف
   const cleanPhoneNumber = (phone) => {
     if (!phone) return ''
     return phone.replace(/^0+/, '').replace(/[^0-9]/g, '')
@@ -768,7 +783,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     return () => { supabase.removeChannel(channel) }
   }, [user.id])
 
-  // قبول المراجعة
   const acceptReview = async (studentId) => {
     try {
       const { data: student, error: fetchError } = await supabase
@@ -805,7 +819,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // رفض المراجعة
   const rejectReview = async (studentId) => {
     if (!window.confirm('هل أنت متأكد من رفض هذه التغييرات؟')) return;
     try {
@@ -822,7 +835,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // حفظ الواجب
   const saveHomework = async () => {
     if (!newHomeworkText.trim()) return alert('يرجى كتابة نص الواجب أولاً.')
     const revealTime = publishType === 'now' ? new Date().toISOString() : new Date(newHomeworkRevealTime).toISOString()
@@ -851,7 +863,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // حذف واجب
   const deleteHomework = async (hwId) => {
     if (!window.confirm('هل تريد حذف هذا الواجب نهائياً؟')) return
     const filtered = homeworks.filter(h => h.id !== hwId)
@@ -863,7 +874,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // تبديل تجميد الطالب
   const toggleFreezeStudent = async (student) => {
     const nextStatus = !student.is_frozen
     if (nextStatus) {
@@ -885,7 +895,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // حذف الحسابات المجمدة
   const deleteFrozenAccounts = async () => {
     try {
       const { data: frozen, error } = await supabase
@@ -908,7 +917,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // التحذير من عدم النشاط
   const checkInactivityWarning = (lastSeenStr) => {
     if (!lastSeenStr) return false;
     const lastSeen = new Date(lastSeenStr);
@@ -917,7 +925,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     return diffDays >= 30;
   }
 
-  // التواصل مع ولي الأمر
   const communicateWithParent = (student) => {
     const phone = student.phone || '';
     if (!phone) {
@@ -939,7 +946,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
   };
 
-  // إعادة تعيين الحساب
   const handleResetStudent = async (studentId) => {
     if (!window.confirm('سيتم إعادة تعيين هذا الحساب ليصبح كأنه جديد، وسيُطلب من الطالب تغيير كلمة المرور عند تسجيل الدخول. هل تريد المتابعة؟')) return;
     try {
@@ -959,7 +965,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // حذف طالب نهائياً
   const handleDeleteStudentPermanently = async (studentId) => {
     if (!window.confirm('إجراء خطير: هل أنت متأكد من حذف حساب هذا الطالب نهائياً وفوراً؟')) return
     try {
@@ -972,7 +977,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // تحديث موعد الحصة
   const updateLessonTime = async () => {
     if (!newLessonTime) return alert('يرجى اختيار تاريخ ووقت الحصة أولاً.')
     try {
@@ -990,7 +994,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // ===== إضافة طالب جديد (معدل مع إضافة email) =====
+  // ===== إضافة طالب جديد (معدل مع إضافة email و id) =====
   const handleAddStudent = async (e) => {
     e.preventDefault()
     if (!newStudentName || !newStudentGender || !newStudentAge || !newStudentPhone || !newStudentClass) {
@@ -1000,7 +1004,6 @@ const TeacherPanel = ({ user, onLogout }) => {
 
     setStudentLoading(true)
     try {
-      // 1. التحقق من صحة class_id
       const { data: classData, error: classError } = await supabase
         .from('classes')
         .select('id')
@@ -1014,13 +1017,9 @@ const TeacherPanel = ({ user, onLogout }) => {
         return
       }
 
-      // 2. توليد ID جديد (UUID)
       const newId = crypto.randomUUID()
-
-      // 3. إنشاء بريد إلكتروني مؤقت وفريد
       const tempEmail = `student_${newId}@temp.com`
 
-      // 4. إنشاء اسم مستخدم فريد
       const baseUsername = newStudentName.trim().replace(/\s+/g, '.').toLowerCase()
       let username = baseUsername
       let counter = 1
@@ -1035,10 +1034,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         if (!data) { exists = false } else { username = `${baseUsername}${counter}`; counter++ }
       }
 
-      // 5. تنظيف رقم الهاتف
       const cleanPhone = newStudentPhone.replace(/[^0-9]/g, '')
-
-      // 6. التحقق من العمر
       const ageNum = parseInt(newStudentAge)
       if (isNaN(ageNum) || ageNum < 1 || ageNum > 99) {
         alert('العمر يجب أن يكون رقماً بين 1 و 99.')
@@ -1046,14 +1042,12 @@ const TeacherPanel = ({ user, onLogout }) => {
         return
       }
 
-      // 7. التحقق من الجنس
       if (!['ذكر', 'أنثى'].includes(newStudentGender)) {
         alert('الجنس يجب أن يكون ذكر أو أنثى.')
         setStudentLoading(false)
         return
       }
 
-      // 8. إدراج مع ID و email صريحين
       const { error } = await supabase
         .from('profiles')
         .insert([{
