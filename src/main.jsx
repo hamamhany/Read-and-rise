@@ -185,7 +185,7 @@ const FrozenAccount = ({ user, onLogout }) => {
   )
 }
 
-// ========== تسجيل الدخول لأول مرة (النسخة النهائية) ==========
+// ========== تسجيل الدخول لأول مرة (نسخة آمنة - تتحقق من وجود الملف الشخصي) ==========
 const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -213,7 +213,34 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
     setError('')
 
     try {
-      // 1. إنشاء حساب في Auth
+      // 1. البحث عن ملف شخصي مطابق للبيانات المدخلة (يجب أن يكون موجوداً مسبقاً)
+      const { data: existingProfile, error: searchError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('name', cleanName)
+        .eq('phone', cleanPhone)
+        .eq('gender', cleanGender)
+        .eq('age', cleanAge)
+        .maybeSingle()
+
+      if (searchError) throw new Error('خطأ في البحث: ' + searchError.message)
+
+      // 2. إذا لم يوجد ملف شخصي، نرفض الطلب فوراً
+      if (!existingProfile) {
+        setError('البيانات غير صحيحة. تأكد من الاسم ورقم الهاتف والجنس والعمر.')
+        setLoading(false)
+        return
+      }
+
+      // 3. التأكد من أن هذا الملف الشخصي ليس مرتبطاً بحساب Auth موجود مسبقاً
+      // (يمكنك إضافة فحص للتأكد من أن البريد الإلكتروني في الملف الشخصي ليس فارغاً)
+      if (existingProfile.email && existingProfile.email !== '') {
+        setError('هذا الطالب لديه حساب بالفعل. يرجى تسجيل الدخول باستخدام اسم المستخدم وكلمة المرور.')
+        setLoading(false)
+        return
+      }
+
+      // 4. إنشاء حساب في Auth
       const uniqueId = crypto.randomUUID()
       const fakeEmail = `student_${uniqueId}@temp.com`
       const tempPassword = Math.random().toString(36).slice(-8)
@@ -226,6 +253,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
 
       if (signUpError) {
         if (signUpError.message.includes('User already registered')) {
+          // إعادة المحاولة ببريد جديد (نادراً ما يحدث)
           const newUniqueId = crypto.randomUUID()
           const newFakeEmail = `student_${newUniqueId}@temp.com`
           const { error: retryError } = await supabase.auth.signUp({
@@ -239,7 +267,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
         }
       }
 
-      // 2. تسجيل الدخول فوراً
+      // 5. تسجيل الدخول فوراً
       const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
         email: fakeEmail,
         password: tempPassword
@@ -257,53 +285,54 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
         currentUser = signInData.user
       }
 
-      // 3. إنشاء اسم مستخدم فريد
-      const baseUsername = cleanName.replace(/\s+/g, '.').toLowerCase()
-      let username = baseUsername
-      let counter = 1
-      let exists = true
-      while (exists) {
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('username')
-          .eq('username', username)
-          .maybeSingle()
-        if (error) throw error
-        if (!data) { exists = false } else { username = `${baseUsername}${counter}`; counter++ }
-      }
-
-      // 4. إنشاء الملف الشخصي
-      const { error: insertError } = await supabase
+      // 6. تحديث الملف الشخصي بربطه بالحساب الجديد (تحديث البريد الإلكتروني والمعلومات الأخرى)
+      const { error: updateError } = await supabase
         .from('profiles')
-        .insert([{
-          id: currentUser.id,
-          username: username,
-          name: cleanName,
-          gender: cleanGender,
-          age: cleanAge,
-          phone: cleanPhone,
-          role: 'student',
-          is_frozen: false,
-          info_verified: false,
-          email: currentUser.email
-        }])
+        .update({
+          id: currentUser.id,           // تغيير المعرف ليطابق معرف المستخدم في Auth
+          email: currentUser.email,     // تحديث البريد الإلكتروني
+          info_verified: false,         // جعل الطالب بحاجة لتغيير كلمة المرور
+          is_frozen: false
+        })
+        .eq('id', existingProfile.id)   // نستخدم المعرف القديم للملف الشخصي
 
-      if (insertError) {
-        console.error('فشل إنشاء الملف الشخصي:', insertError)
-        throw new Error('تعذر إنشاء الملف الشخصي: ' + insertError.message)
+      if (updateError) {
+        // إذا فشل التحديث (لأن المعرف القديم مختلف)، نقوم بحذف الملف القديم وإنشاء جديد
+        console.warn('فشل تحديث الملف الشخصي، سيتم حذفه وإعادة إنشائه:', updateError)
+        
+        // حذف الملف القديم
+        await supabase.from('profiles').delete().eq('id', existingProfile.id)
+        
+        // إنشاء ملف جديد بالمعرف الصحيح
+        const { error: insertError } = await supabase
+          .from('profiles')
+          .insert([{
+            id: currentUser.id,
+            username: existingProfile.username,
+            name: existingProfile.name,
+            gender: existingProfile.gender,
+            age: existingProfile.age,
+            phone: existingProfile.phone,
+            class_id: existingProfile.class_id || null,
+            role: 'student',
+            is_frozen: false,
+            info_verified: false,
+            email: currentUser.email
+          }])
+        if (insertError) throw insertError
       }
 
-      // 5. إرسال نجاح
+      // 7. إرسال نجاح
       onSuccess({
         id: currentUser.id,
         email: currentUser.email,
-        username: username,
+        username: existingProfile.username,
         role: 'student',
-        name: cleanName,
-        gender: cleanGender,
-        age: cleanAge,
-        phone: cleanPhone,
-        class_id: null,
+        name: existingProfile.name,
+        gender: existingProfile.gender,
+        age: existingProfile.age,
+        phone: existingProfile.phone,
+        class_id: existingProfile.class_id || null,
         needsPasswordChange: true
       })
 
