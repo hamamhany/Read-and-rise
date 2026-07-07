@@ -185,7 +185,7 @@ const FrozenAccount = ({ user, onLogout }) => {
   )
 }
 
-// ========== تسجيل الدخول لأول مرة (نسخة آمنة - تتحقق من وجود الملف الشخصي) ==========
+// // ========== تسجيل الدخول لأول مرة (باستخدام RPC لتجاوز RLS) ==========
 const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -213,19 +213,21 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
     setError('')
 
     try {
-      // 1. البحث عن ملف شخصي مطابق للبيانات المدخلة (يجب أن يكون موجوداً مسبقاً)
-      const { data: existingProfile, error: searchError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('name', cleanName)
-        .eq('phone', cleanPhone)
-        .eq('gender', cleanGender)
-        .eq('age', cleanAge)
-        .maybeSingle()
+      // 1. البحث عن ملف شخصي باستخدام RPC (تتجاوز RLS)
+      const { data: existingProfile, error: rpcError } = await supabase
+        .rpc('get_profile_for_verification', {
+          p_name: cleanName,
+          p_phone: cleanPhone,
+          p_gender: cleanGender,
+          p_age: cleanAge
+        })
 
-      if (searchError) throw new Error('خطأ في البحث: ' + searchError.message)
+      if (rpcError) {
+        console.error('خطأ في RPC:', rpcError)
+        throw new Error('خطأ في التحقق من البيانات: ' + rpcError.message)
+      }
 
-      // 2. إذا لم يوجد ملف شخصي، نرفض الطلب فوراً
+      // 2. إذا لم يوجد ملف شخصي، نرفض الطلب
       if (!existingProfile) {
         setError('البيانات غير صحيحة. تأكد من الاسم ورقم الهاتف والجنس والعمر.')
         setLoading(false)
@@ -253,7 +255,6 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
 
       if (signUpError) {
         if (signUpError.message.includes('User already registered')) {
-          // إعادة المحاولة ببريد جديد (نادراً ما يحدث)
           const newUniqueId = crypto.randomUUID()
           const newFakeEmail = `student_${newUniqueId}@temp.com`
           const { error: retryError } = await supabase.auth.signUp({
@@ -285,24 +286,16 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
         currentUser = signInData.user
       }
 
-      // 6. تحديث الملف الشخصي بربطه بالحساب الجديد (تحديث البريد الإلكتروني والمعلومات الأخرى)
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({
-          id: currentUser.id,           // تغيير المعرف ليطابق معرف المستخدم في Auth
-          email: currentUser.email,     // تحديث البريد الإلكتروني
-          info_verified: false,         // جعل الطالب بحاجة لتغيير كلمة المرور
-          is_frozen: false
-        })
-        .eq('id', existingProfile.id)   // نستخدم المعرف القديم للملف الشخصي
-
-      if (updateError) {
-        // إذا فشل التحديث (لأن المعرف القديم مختلف)، نقوم بحذف الملف القديم وإنشاء جديد
-        console.warn('فشل تحديث الملف الشخصي، سيتم حذفه وإعادة إنشائه:', updateError)
-        
+      // 6. تحديث الملف الشخصي بربطه بالحساب الجديد
+      // إذا كان المعرف مختلفاً، نقوم بحذف الملف القديم وإنشاء ملف جديد بالمعرف الصحيح
+      if (existingProfile.id !== currentUser.id) {
         // حذف الملف القديم
-        await supabase.from('profiles').delete().eq('id', existingProfile.id)
-        
+        const { error: deleteError } = await supabase
+          .from('profiles')
+          .delete()
+          .eq('id', existingProfile.id)
+        if (deleteError) console.warn('فشل حذف الملف القديم:', deleteError)
+
         // إنشاء ملف جديد بالمعرف الصحيح
         const { error: insertError } = await supabase
           .from('profiles')
@@ -320,6 +313,17 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
             email: currentUser.email
           }])
         if (insertError) throw insertError
+      } else {
+        // تحديث البريد الإلكتروني فقط
+        const { error: updateError } = await supabase
+          .from('profiles')
+          .update({
+            email: currentUser.email,
+            info_verified: false,
+            is_frozen: false
+          })
+          .eq('id', currentUser.id)
+        if (updateError) throw updateError
       }
 
       // 7. إرسال نجاح
@@ -406,7 +410,6 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
     </div>
   )
 }
-
 // ========== تغيير كلمة المرور الإجبارية ==========
 const ForcePasswordChange = ({ user, onPasswordSet }) => {
   const [username, setUsername] = useState(user.username || '')
