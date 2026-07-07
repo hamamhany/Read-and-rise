@@ -185,7 +185,7 @@ const FrozenAccount = ({ user, onLogout }) => {
   )
 }
 
-// ========== تسجيل الدخول لأول مرة (معدل: يستخدم الاسم بدلاً من اسم المستخدم) ==========
+// ========== تسجيل الدخول لأول مرة (معدل) ==========
 const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -261,7 +261,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
       onSuccess({
         id: currentUser.id,
         email: currentUser.email,
-        username: null, // لم يتم تعيينه بعد
+        username: null,
         role: 'student',
         name: profile.name,
         gender: profile.gender,
@@ -609,7 +609,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [showAddStudentModal, setShowAddStudentModal] = useState(false)
   const [showStudentsModal, setShowStudentsModal] = useState(false)
 
-  // دالة لتنظيف رقم الهاتف (إزالة الأصفار البادئة والأحرف غير الرقمية)
+  // دالة لتنظيف رقم الهاتف
   const cleanPhoneNumber = (phone) => {
     if (!phone) return ''
     return phone.replace(/^0+/, '').replace(/[^0-9]/g, '')
@@ -877,7 +877,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // حذف الحسابات المجمدة بشكل جماعي
+  // حذف الحسابات المجمدة
   const deleteFrozenAccounts = async () => {
     try {
       const { data: frozen, error } = await supabase
@@ -909,7 +909,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     return diffDays >= 30;
   }
 
-  // التواصل مع ولي الأمر عبر واتساب
+  // التواصل مع ولي الأمر
   const communicateWithParent = (student) => {
     const phone = student.phone || '';
     if (!phone) {
@@ -931,7 +931,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
   };
 
-  // إعادة تعيين الحساب (كأنه جديد)
+  // إعادة تعيين الحساب
   const handleResetStudent = async (studentId) => {
     if (!window.confirm('سيتم إعادة تعيين هذا الحساب ليصبح كأنه جديد، وسيُطلب من الطالب تغيير كلمة المرور عند تسجيل الدخول. هل تريد المتابعة؟')) return;
     try {
@@ -951,7 +951,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // حذف طالب نهائياً (استعادة الزر)
+  // حذف طالب نهائياً
   const handleDeleteStudentPermanently = async (studentId) => {
     if (!window.confirm('إجراء خطير: هل أنت متأكد من حذف حساب هذا الطالب نهائياً وفوراً؟')) return
     try {
@@ -982,7 +982,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // ===== إضافة طالب جديد (معدل مع رسائل خطأ واضحة) =====
+  // ===== إضافة طالب جديد باستخدام RPC =====
   const handleAddStudent = async (e) => {
     e.preventDefault()
     if (!newStudentName || !newStudentGender || !newStudentAge || !newStudentPhone || !newStudentClass) {
@@ -990,7 +990,6 @@ const TeacherPanel = ({ user, onLogout }) => {
       return
     }
 
-    // التحقق من صحة class_id
     const classExists = classes.some(c => c.id === newStudentClass)
     if (!classExists) {
       alert('الشعبة المختارة غير صالحة.')
@@ -999,6 +998,7 @@ const TeacherPanel = ({ user, onLogout }) => {
 
     setStudentLoading(true)
     try {
+      // إنشاء اسم مستخدم فريد
       const baseUsername = newStudentName.trim().replace(/\s+/g, '.').toLowerCase()
       let username = baseUsername
       let counter = 1
@@ -1013,30 +1013,25 @@ const TeacherPanel = ({ user, onLogout }) => {
         if (!data) { exists = false } else { username = `${baseUsername}${counter}`; counter++ }
       }
 
-      const newStudent = {
-        username: username,
-        name: newStudentName,
-        gender: newStudentGender,
-        age: parseInt(newStudentAge),
-        phone: newStudentPhone,
-        class_id: newStudentClass,
-        role: 'student',
-        is_frozen: false,
-        info_verified: false,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }
+      // استدعاء دالة RPC
+      const { data, error } = await supabase.rpc('add_student', {
+        p_username: username,
+        p_name: newStudentName,
+        p_gender: newStudentGender,
+        p_age: parseInt(newStudentAge),
+        p_phone: newStudentPhone,
+        p_class_id: newStudentClass,
+        p_role: 'student',
+        p_is_frozen: false,
+        p_info_verified: false
+      })
 
-      const { data, error: insertError } = await supabase
-        .from('profiles')
-        .insert([newStudent])
-        .select()
-
-      if (insertError) {
-        if (insertError.code === '42501' || insertError.message.includes('permission denied')) {
-          alert('⚠️ فشل الإضافة بسبب صلاحيات قاعدة البيانات (RLS). يرجى التواصل مع مسؤول النظام لتعديل سياسات RLS في جدول profiles.')
+      if (error) {
+        console.error('خطأ في RPC add_student:', error)
+        if (error.message.includes('permission denied') || error.code === '42501') {
+          alert('⚠️ فشل الإضافة بسبب صلاحيات قاعدة البيانات. تأكد من أن دالة add_student موجودة وتم منح صلاحيات التنفيذ لها.')
         } else {
-          throw insertError
+          throw error
         }
         return
       }
