@@ -185,7 +185,7 @@ const FrozenAccount = ({ user, onLogout }) => {
   )
 }
 
-// ========== تسجيل الدخول لأول مرة (نسخة آمنة - تتحقق من وجود الملف الشخصي وتعرض اسم المستخدم) ==========
+// ========== تسجيل الدخول لأول مرة (نسخة آمنة - تستخدم RPC فقط للبحث) ==========
 const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -197,6 +197,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
   const handleVerify = async (e) => {
     e.preventDefault()
 
+    // تنظيف المدخلات
     const cleanName = name.trim()
     const cleanPhone = phone.replace(/[^0-9]/g, '')
     const cleanGender = gender.trim()
@@ -204,6 +205,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
 
     console.log('🔍 القيم المدخلة:', { cleanName, cleanPhone, cleanGender, cleanAge })
 
+    // التحقق من صحة المدخلات
     if (!cleanName || !cleanPhone || !cleanGender || isNaN(cleanAge) || cleanAge <= 0) {
       setError('جميع الحقول مطلوبة وبصيغة صحيحة')
       return
@@ -213,7 +215,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
     setError('')
 
     try {
-      // 1. البحث عن ملف شخصي باستخدام RPC (تتجاوز RLS)
+      // 1️⃣ البحث عن ملف شخصي باستخدام RPC (تتجاوز RLS)
       const { data: existingProfile, error: rpcError } = await supabase
         .rpc('get_profile_for_verification', {
           p_name: cleanName,
@@ -222,27 +224,30 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
           p_age: cleanAge
         })
 
+      console.log('📦 نتيجة RPC:', existingProfile) // لمعرفة ما إذا كانت الدالة تعيد بيانات أم لا
+
       if (rpcError) {
         console.error('خطأ في RPC:', rpcError)
         throw new Error('خطأ في التحقق من البيانات: ' + rpcError.message)
       }
 
-      // 2. إذا لم يوجد ملف شخصي، نرفض الطلب
+      // 2️⃣ إذا لم يوجد ملف شخصي → نرفض الطلب
       if (!existingProfile) {
         setError('البيانات غير صحيحة. تأكد من الاسم ورقم الهاتف والجنس والعمر.')
         setLoading(false)
         return
       }
 
-      // 3. التأكد من أن هذا الملف الشخصي ليس مرتبطاً بحساب Auth موجود مسبقاً
+      // 3️⃣ إذا كان للملف الشخصي بريد إلكتروني → لديه حساب مسبق
       if (existingProfile.email && existingProfile.email !== '') {
-        // 🔥 التعديل الجديد: عرض اسم المستخدم في رسالة الخطأ
-        setError(`هذا الطالب لديه حساب بالفعل (اسم المستخدم: ${existingProfile.username || 'غير معروف'}). يرجى تسجيل الدخول باستخدام اسم المستخدم وكلمة المرور.`)
+        setError(
+          `هذا الطالب لديه حساب بالفعل (اسم المستخدم: ${existingProfile.username || 'غير معروف'}). يرجى تسجيل الدخول.`
+        )
         setLoading(false)
         return
       }
 
-      // 4. إنشاء حساب في Auth
+      // 4️⃣ إنشاء حساب جديد في Auth
       const uniqueId = crypto.randomUUID()
       const fakeEmail = `student_${uniqueId}@temp.com`
       const tempPassword = Math.random().toString(36).slice(-8)
@@ -255,6 +260,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
 
       if (signUpError) {
         if (signUpError.message.includes('User already registered')) {
+          // محاولة ببريد آخر (نادراً ما يحدث)
           const newUniqueId = crypto.randomUUID()
           const newFakeEmail = `student_${newUniqueId}@temp.com`
           const { error: retryError } = await supabase.auth.signUp({
@@ -268,7 +274,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
         }
       }
 
-      // 5. تسجيل الدخول فوراً
+      // 5️⃣ تسجيل الدخول فوراً (لتصبح الجلسة نشطة)
       const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
         email: fakeEmail,
         password: tempPassword
@@ -276,6 +282,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
 
       let currentUser = null
       if (signInError) {
+        // محاولة جلب الجلسة كحل بديل
         const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
         if (sessionError || !sessionData.session) {
           throw new Error('تعذر تسجيل الدخول. يرجى المحاولة مرة أخرى.')
@@ -286,12 +293,9 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
         currentUser = signInData.user
       }
 
-      // 6. تحديث الملف الشخصي بربطه بالحساب الجديد
+      // 6️⃣ بعد المصادقة، نقوم بإنشاء/تحديث الملف الشخصي
       if (existingProfile.id !== currentUser.id) {
-        // حذف الملف القديم
-        await supabase.from('profiles').delete().eq('id', existingProfile.id)
-
-        // إنشاء ملف جديد بالمعرف الصحيح
+        // إنشاء ملف شخصي جديد بالمعرف الصحيح
         const { error: insertError } = await supabase
           .from('profiles')
           .insert([{
@@ -307,21 +311,28 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
             info_verified: false,
             email: currentUser.email
           }])
-        if (insertError) throw insertError
+
+        if (insertError) {
+          console.error('فشل إنشاء الملف الشخصي الجديد:', insertError)
+          throw new Error('تعذر إنشاء الملف الشخصي: ' + insertError.message)
+        }
+
+        // محاولة حذف الملف القديم (إن فشل الحذف لا مشكلة)
+        await supabase
+          .from('profiles')
+          .delete()
+          .eq('id', existingProfile.id)
+          .catch(err => console.warn('⚠️ فشل حذف الملف القديم (يمكن تجاهله):', err))
       } else {
         // تحديث البريد الإلكتروني فقط
         const { error: updateError } = await supabase
           .from('profiles')
-          .update({
-            email: currentUser.email,
-            info_verified: false,
-            is_frozen: false
-          })
+          .update({ email: currentUser.email, info_verified: false })
           .eq('id', currentUser.id)
         if (updateError) throw updateError
       }
 
-      // 7. إرسال نجاح
+      // 7️⃣ إرسال نجاح إلى المكون الأب
       onSuccess({
         id: currentUser.id,
         email: currentUser.email,
@@ -336,7 +347,7 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
       })
 
     } catch (err) {
-      console.error('خطأ:', err)
+      console.error('❌ خطأ:', err)
       setError(err.message || 'حدث خطأ غير متوقع.')
     } finally {
       setLoading(false)
