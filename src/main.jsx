@@ -185,7 +185,7 @@ const FrozenAccount = ({ user, onLogout }) => {
   )
 }
 
-// ========== تسجيل الدخول لأول مرة (نسخة نهائية - تتحقق فقط من البيانات المسجلة مسبقاً) ==========
+// ========== تسجيل الدخول لأول مرة (نسخة آمنة - تتحقق من وجود الملف الشخصي وتعرض اسم المستخدم) ==========
 const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -202,6 +202,8 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
     const cleanGender = gender.trim()
     const cleanAge = parseInt(age, 10)
 
+    console.log('🔍 القيم المدخلة:', { cleanName, cleanPhone, cleanGender, cleanAge })
+
     if (!cleanName || !cleanPhone || !cleanGender || isNaN(cleanAge) || cleanAge <= 0) {
       setError('جميع الحقول مطلوبة وبصيغة صحيحة')
       return
@@ -211,8 +213,8 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
     setError('')
 
     try {
-      // 1. البحث عن ملف شخصي مطابق باستخدام RPC (هذه الدالة تتجاوز RLS)
-      const { data: profile, error: rpcError } = await supabase
+      // 1. البحث عن ملف شخصي باستخدام RPC (تتجاوز RLS)
+      const { data: existingProfile, error: rpcError } = await supabase
         .rpc('get_profile_for_verification', {
           p_name: cleanName,
           p_phone: cleanPhone,
@@ -225,22 +227,24 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
         throw new Error('خطأ في التحقق من البيانات: ' + rpcError.message)
       }
 
-      // 2. إذا لم يوجد ملف شخصي → نرفض الطلب فوراً
-      if (!profile) {
+      // 2. إذا لم يوجد ملف شخصي، نرفض الطلب
+      if (!existingProfile) {
         setError('البيانات غير صحيحة. تأكد من الاسم ورقم الهاتف والجنس والعمر.')
         setLoading(false)
         return
       }
 
-      // 3. التأكد من أن هذا الطالب ليس لديه حساب مسبقاً
-      if (profile.email && profile.email !== '') {
-        setError('هذا الطالب لديه حساب بالفعل. يرجى تسجيل الدخول باستخدام اسم المستخدم وكلمة المرور.')
+      // 3. التأكد من أن هذا الملف الشخصي ليس مرتبطاً بحساب Auth موجود مسبقاً
+      if (existingProfile.email && existingProfile.email !== '') {
+        // 🔥 التعديل الجديد: عرض اسم المستخدم في رسالة الخطأ
+        setError(`هذا الطالب لديه حساب بالفعل (اسم المستخدم: ${existingProfile.username || 'غير معروف'}). يرجى تسجيل الدخول باستخدام اسم المستخدم وكلمة المرور.`)
         setLoading(false)
         return
       }
 
       // 4. إنشاء حساب في Auth
-      const fakeEmail = `student_${profile.id}@school.temp`
+      const uniqueId = crypto.randomUUID()
+      const fakeEmail = `student_${uniqueId}@temp.com`
       const tempPassword = Math.random().toString(36).slice(-8)
 
       const { error: signUpError } = await supabase.auth.signUp({
@@ -251,7 +255,14 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
 
       if (signUpError) {
         if (signUpError.message.includes('User already registered')) {
-          throw new Error('هذا الطالب لديه حساب بالفعل. يرجى تسجيل الدخول.')
+          const newUniqueId = crypto.randomUUID()
+          const newFakeEmail = `student_${newUniqueId}@temp.com`
+          const { error: retryError } = await supabase.auth.signUp({
+            email: newFakeEmail,
+            password: tempPassword,
+            options: { data: { role: 'student' } }
+          })
+          if (retryError) throw retryError
         } else {
           throw signUpError
         }
@@ -275,22 +286,22 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
         currentUser = signInData.user
       }
 
-      // 6. إذا كان معرف الملف الشخصي مختلفاً عن معرف المستخدم، نحدث الملف الشخصي
-      if (profile.id !== currentUser.id) {
+      // 6. تحديث الملف الشخصي بربطه بالحساب الجديد
+      if (existingProfile.id !== currentUser.id) {
         // حذف الملف القديم
-        await supabase.from('profiles').delete().eq('id', profile.id)
-        
+        await supabase.from('profiles').delete().eq('id', existingProfile.id)
+
         // إنشاء ملف جديد بالمعرف الصحيح
         const { error: insertError } = await supabase
           .from('profiles')
           .insert([{
             id: currentUser.id,
-            username: profile.username,
-            name: profile.name,
-            gender: profile.gender,
-            age: profile.age,
-            phone: profile.phone,
-            class_id: profile.class_id,
+            username: existingProfile.username,
+            name: existingProfile.name,
+            gender: existingProfile.gender,
+            age: existingProfile.age,
+            phone: existingProfile.phone,
+            class_id: existingProfile.class_id || null,
             role: 'student',
             is_frozen: false,
             info_verified: false,
@@ -301,7 +312,11 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
         // تحديث البريد الإلكتروني فقط
         const { error: updateError } = await supabase
           .from('profiles')
-          .update({ email: currentUser.email })
+          .update({
+            email: currentUser.email,
+            info_verified: false,
+            is_frozen: false
+          })
           .eq('id', currentUser.id)
         if (updateError) throw updateError
       }
@@ -310,13 +325,13 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
       onSuccess({
         id: currentUser.id,
         email: currentUser.email,
-        username: profile.username,
+        username: existingProfile.username,
         role: 'student',
-        name: profile.name,
-        gender: profile.gender,
-        age: profile.age,
-        phone: profile.phone,
-        class_id: profile.class_id,
+        name: existingProfile.name,
+        gender: existingProfile.gender,
+        age: existingProfile.age,
+        phone: existingProfile.phone,
+        class_id: existingProfile.class_id || null,
         needsPasswordChange: true
       })
 
