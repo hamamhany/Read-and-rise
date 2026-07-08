@@ -185,246 +185,31 @@ const FrozenAccount = ({ user, onLogout }) => {
   )
 }
 
-// ========== تسجيل الدخول لأول مرة (نسخة آمنة - تتحقق من وجود الملف الشخصي وتعرض اسم المستخدم) ==========
-const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
-  const [name, setName] = useState('')
+// ========== صفحة تسجيل حساب جديد ==========
+const SignUp = ({ onSuccess, onCancel }) => {
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [phone, setPhone] = useState('')
-  const [gender, setGender] = useState('')
-  const [age, setAge] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-
-  const handleVerify = async (e) => {
-    e.preventDefault()
-
-    const cleanName = name.trim()
-    const cleanPhone = phone.replace(/[^0-9]/g, '')
-    const cleanGender = gender.trim()
-    const cleanAge = parseInt(age, 10)
-
-    console.log('🔍 القيم المدخلة:', { cleanName, cleanPhone, cleanGender, cleanAge })
-
-    if (!cleanName || !cleanPhone || !cleanGender || isNaN(cleanAge) || cleanAge <= 0) {
-      setError('جميع الحقول مطلوبة وبصيغة صحيحة')
-      return
-    }
-
-    setLoading(true)
-    setError('')
-
-    try {
-      // 1. البحث عن ملف شخصي باستخدام RPC (تتجاوز RLS)
-      const { data: existingProfile, error: rpcError } = await supabase
-        .rpc('get_profile_for_verification', {
-          p_name: cleanName,
-          p_phone: cleanPhone,
-          p_gender: cleanGender,
-          p_age: cleanAge
-        })
-
-      if (rpcError) {
-        console.error('خطأ في RPC:', rpcError)
-        throw new Error('خطأ في التحقق من البيانات: ' + rpcError.message)
-      }
-
-      // 2. إذا لم يوجد ملف شخصي، نرفض الطلب
-      if (!existingProfile) {
-        setError('البيانات غير صحيحة. تأكد من الاسم ورقم الهاتف والجنس والعمر.')
-        setLoading(false)
-        return
-      }
-
-      // 3. التأكد من أن هذا الملف الشخصي ليس مرتبطاً بحساب Auth موجود مسبقاً
-      if (existingProfile.email && existingProfile.email !== '') {
-        // 🔥 التعديل الجديد: عرض اسم المستخدم في رسالة الخطأ
-        setError(`هذا الطالب لديه حساب بالفعل (اسم المستخدم: ${existingProfile.username || 'غير معروف'}). يرجى تسجيل الدخول باستخدام اسم المستخدم وكلمة المرور.`)
-        setLoading(false)
-        return
-      }
-
-      // 4. إنشاء حساب في Auth
-      const uniqueId = crypto.randomUUID()
-      const fakeEmail = `student_${uniqueId}@temp.com`
-      const tempPassword = Math.random().toString(36).slice(-8)
-
-      const { error: signUpError } = await supabase.auth.signUp({
-        email: fakeEmail,
-        password: tempPassword,
-        options: { data: { role: 'student' } }
-      })
-
-      if (signUpError) {
-        if (signUpError.message.includes('User already registered')) {
-          const newUniqueId = crypto.randomUUID()
-          const newFakeEmail = `student_${newUniqueId}@temp.com`
-          const { error: retryError } = await supabase.auth.signUp({
-            email: newFakeEmail,
-            password: tempPassword,
-            options: { data: { role: 'student' } }
-          })
-          if (retryError) throw retryError
-        } else {
-          throw signUpError
-        }
-      }
-
-      // 5. تسجيل الدخول فوراً
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email: fakeEmail,
-        password: tempPassword
-      })
-
-      let currentUser = null
-      if (signInError) {
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-        if (sessionError || !sessionData.session) {
-          throw new Error('تعذر تسجيل الدخول. يرجى المحاولة مرة أخرى.')
-        }
-        currentUser = sessionData.session.user
-        if (!currentUser) throw new Error('فشل في استرجاع المستخدم.')
-      } else {
-        currentUser = signInData.user
-      }
-
-      // 6. تحديث الملف الشخصي بربطه بالحساب الجديد
-      if (existingProfile.id !== currentUser.id) {
-        // حذف الملف القديم
-        await supabase.from('profiles').delete().eq('id', existingProfile.id)
-
-        // إنشاء ملف جديد بالمعرف الصحيح
-        const { error: insertError } = await supabase
-          .from('profiles')
-          .insert([{
-            id: currentUser.id,
-            username: existingProfile.username,
-            name: existingProfile.name,
-            gender: existingProfile.gender,
-            age: existingProfile.age,
-            phone: existingProfile.phone,
-            class_id: existingProfile.class_id || null,
-            role: 'student',
-            is_frozen: false,
-            info_verified: false,
-            email: currentUser.email
-          }])
-        if (insertError) throw insertError
-      } else {
-        // تحديث البريد الإلكتروني فقط
-        const { error: updateError } = await supabase
-          .from('profiles')
-          .update({
-            email: currentUser.email,
-            info_verified: false,
-            is_frozen: false
-          })
-          .eq('id', currentUser.id)
-        if (updateError) throw updateError
-      }
-
-      // 7. إرسال نجاح
-      onSuccess({
-        id: currentUser.id,
-        email: currentUser.email,
-        username: existingProfile.username,
-        role: 'student',
-        name: existingProfile.name,
-        gender: existingProfile.gender,
-        age: existingProfile.age,
-        phone: existingProfile.phone,
-        class_id: existingProfile.class_id || null,
-        needsPasswordChange: true
-      })
-
-    } catch (err) {
-      console.error('خطأ:', err)
-      setError(err.message || 'حدث خطأ غير متوقع.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="container-center min-h-screen relative" dir="rtl">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-      <div className="relative z-10 w-full max-w-md px-4">
-        <div className="glass p-6 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl space-y-4">
-          <h2 className="text-2xl font-bold text-center text-purple-300">تسجيل الدخول لأول مرة</h2>
-          <p className="text-gray-400 text-sm text-center">أدخل البيانات التي قمت بتسجيلها عن طريق الإستبيان</p>
-          <form onSubmit={handleVerify} className="space-y-4">
-            <div>
-              <label className="text-sm text-gray-300 block mb-1">الاسم الكامل <span className="text-red-400">*</span></label>
-              <input
-                type="text"
-                className="input-glass w-full text-right"
-                value={name}
-                onChange={e => setName(e.target.value)}
-                required
-              />
-            </div>
-            <div>
-              <label className="text-sm text-gray-300 block mb-1">رقم الهاتف <span className="text-red-400">*</span></label>
-              <input
-                type="text"
-                className="input-glass w-full text-right"
-                value={phone}
-                onChange={e => setPhone(e.target.value)}
-                required
-              />
-            </div>
-            <div>
-              <label className="text-sm text-gray-300 block mb-1">الجنس <span className="text-red-400">*</span></label>
-              <select
-                className="input-glass w-full text-right"
-                value={gender}
-                onChange={e => setGender(e.target.value)}
-                required
-              >
-                <option value="">اختر</option>
-                <option value="ذكر">ذكر</option>
-                <option value="أنثى">أنثى</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-sm text-gray-300 block mb-1">العمر <span className="text-red-400">*</span></label>
-              <input
-                type="number"
-                className="input-glass w-full text-right"
-                value={age}
-                onChange={e => setAge(e.target.value)}
-                required
-              />
-            </div>
-            {error && <p className="text-red-400 text-sm text-center">{error}</p>}
-            <button type="submit" disabled={loading} className="btn-primary w-full py-3">
-              {loading ? 'جاري التحقق...' : 'تحقق من البيانات'}
-            </button>
-          </form>
-          <button onClick={onCancel} className="text-sm text-gray-400 hover:text-white w-full text-center mt-2">رجوع</button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ========== مكون إكمال البيانات (للمستخدمين الذين لديهم حساب Auth لكن لا يوجد ملف شخصي) ==========
-const CompleteProfile = ({ user, onSuccess, onCancel }) => {
-  const [name, setName] = useState('')
-  const [phone, setPhone] = useState('')
-  const [gender, setGender] = useState('')
-  const [age, setAge] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
   const handleSubmit = async (e) => {
     e.preventDefault()
 
-    const cleanName = name.trim()
+    const cleanUsername = username.trim().toLowerCase()
     const cleanPhone = phone.replace(/[^0-9]/g, '')
-    const cleanGender = gender.trim()
-    const cleanAge = parseInt(age, 10)
 
-    if (!cleanName || !cleanPhone || !cleanGender || isNaN(cleanAge) || cleanAge <= 0) {
-      setError('جميع الحقول مطلوبة وبصيغة صحيحة')
+    if (!cleanUsername || cleanUsername.length < 3) {
+      setError('اسم المستخدم يجب أن يكون 3 أحرف على الأقل')
+      return
+    }
+    if (password.length < 6) {
+      setError('كلمة المرور يجب أن تكون 6 أحرف على الأقل')
+      return
+    }
+    if (password !== confirmPassword) {
+      setError('كلمة المرور غير متطابقة')
       return
     }
 
@@ -432,38 +217,44 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
     setError('')
 
     try {
-      // إنشاء ملف شخصي جديد للمستخدم الحالي
-      const newProfile = {
-        id: user.id,
-        email: user.email,
-        username: user.username || `user_${Date.now()}`, // في حال لم يكن هناك اسم مستخدم
-        name: cleanName,
-        gender: cleanGender,
-        age: cleanAge,
-        phone: cleanPhone,
-        role: 'student', // يمكن تغييره حسب الحاجة
-        is_frozen: false,
-        info_verified: false, // سيتطلب تغيير كلمة المرور
-        class_id: null,
-        pending_changes: null,
-        last_seen: new Date().toISOString()
-      }
+      const email = `${cleanUsername}@readandrise.com`
 
-      const { error: insertError } = await supabase
-        .from('profiles')
-        .insert([newProfile])
-
-      if (insertError) {
-        console.error('فشل إنشاء الملف الشخصي:', insertError)
-        throw new Error('تعذر إنشاء الملف الشخصي: ' + insertError.message)
-      }
-
-      // نجاح
-      onSuccess({
-        ...user,
-        ...newProfile,
-        needsPasswordChange: true
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            username: cleanUsername,
+            phone: cleanPhone,
+            whatsapp: cleanPhone
+          }
+        }
       })
+
+      if (signUpError) {
+        if (signUpError.message.includes('User already registered')) {
+          setError('اسم المستخدم موجود بالفعل، اختر اسماً آخر')
+        } else {
+          throw signUpError
+        }
+        setLoading(false)
+        return
+      }
+
+      // تسجيل الدخول تلقائياً
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      })
+
+      if (signInError) {
+        alert('تم إنشاء الحساب، يرجى تسجيل الدخول الآن.')
+        onCancel()
+        return
+      }
+
+      onSuccess()
+
     } catch (err) {
       console.error(err)
       setError(err.message || 'حدث خطأ غير متوقع.')
@@ -477,10 +268,145 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
       <div className="relative z-10 w-full max-w-md px-4">
         <div className="glass p-6 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl space-y-4">
-          <h2 className="text-2xl font-bold text-center text-blue-300">إكمال البيانات</h2>
-          <p className="text-gray-400 text-sm text-center">
-            يبدو أن حسابك غير مكتمل. الرجاء إدخال بياناتك الأساسية لإكمال التسجيل.
-          </p>
+          <h2 className="text-2xl font-bold text-center text-green-300">إنشاء حساب جديد</h2>
+          <p className="text-gray-400 text-sm text-center">أدخل بياناتك لإنشاء حساب في المنصة</p>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="text-sm text-gray-300 block mb-1">اسم المستخدم <span className="text-red-400">*</span></label>
+              <input
+                type="text"
+                className="input-glass w-full text-right"
+                value={username}
+                onChange={e => setUsername(e.target.value)}
+                required
+                minLength={3}
+              />
+              <p className="text-xs text-gray-500 mt-1">سيتم استخدامه لتسجيل الدخول (مثل: student1)</p>
+            </div>
+            <div>
+              <label className="text-sm text-gray-300 block mb-1">رقم الهاتف (واتساب) <span className="text-red-400">*</span></label>
+              <input
+                type="text"
+                className="input-glass w-full text-right"
+                value={phone}
+                onChange={e => setPhone(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label className="text-sm text-gray-300 block mb-1">كلمة المرور <span className="text-red-400">*</span></label>
+              <input
+                type="password"
+                className="input-glass w-full text-right"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                required
+                minLength={6}
+              />
+            </div>
+            <div>
+              <label className="text-sm text-gray-300 block mb-1">تأكيد كلمة المرور <span className="text-red-400">*</span></label>
+              <input
+                type="password"
+                className="input-glass w-full text-right"
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
+                required
+              />
+            </div>
+            {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+            <button type="submit" disabled={loading} className="btn-primary w-full py-3 bg-green-600 hover:bg-green-700">
+              {loading ? 'جاري التسجيل...' : 'إنشاء حساب'}
+            </button>
+          </form>
+          <button onClick={onCancel} className="text-sm text-gray-400 hover:text-white w-full text-center mt-2">
+            لديك حساب بالفعل؟ تسجيل الدخول
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ========== صفحة إكمال البيانات ==========
+const CompleteProfile = ({ user, onSuccess, onCancel }) => {
+  const [name, setName] = useState('')
+  const [gender, setGender] = useState('')
+  const [age, setAge] = useState('')
+  const [phone, setPhone] = useState('')
+  const [classId, setClassId] = useState('')
+  const [classes, setClasses] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    const fetchClasses = async () => {
+      const { data, error } = await supabase
+        .from('classes')
+        .select('id, name')
+      if (!error) setClasses(data || [])
+    }
+    fetchClasses()
+  }, [])
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+
+    const cleanName = name.trim()
+    const cleanPhone = phone.replace(/[^0-9]/g, '')
+    const cleanAge = parseInt(age, 10)
+
+    if (!cleanName || !cleanPhone || isNaN(cleanAge) || cleanAge < 1) {
+      setError('يرجى ملء جميع الحقول بشكل صحيح')
+      return
+    }
+
+    setLoading(true)
+    setError('')
+
+    try {
+      const updates = {
+        name: cleanName,
+        gender: gender || null,
+        age: cleanAge,
+        phone: cleanPhone,
+        class_id: classId || null,
+        is_profile_complete: true,
+        info_verified: true
+      }
+
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('id', user.id)
+
+      if (updateError) throw updateError
+
+      const { data: profile, error: fetchError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single()
+
+      if (fetchError) throw fetchError
+
+      onSuccess({ ...user, ...profile })
+
+    } catch (err) {
+      console.error(err)
+      setError(err.message || 'حدث خطأ غير متوقع.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="container-center min-h-screen relative" dir="rtl">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+      <div className="relative z-10 w-full max-w-md px-4">
+        <div className="glass p-6 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl space-y-4">
+          <h2 className="text-2xl font-bold text-center text-blue-300">إكمال البيانات الشخصية</h2>
+          <p className="text-gray-400 text-sm text-center">يرجى إدخال معلوماتك الأساسية لإكمال التسجيل</p>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="text-sm text-gray-300 block mb-1">الاسم الكامل <span className="text-red-400">*</span></label>
@@ -493,22 +419,11 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
               />
             </div>
             <div>
-              <label className="text-sm text-gray-300 block mb-1">رقم الهاتف <span className="text-red-400">*</span></label>
-              <input
-                type="text"
-                className="input-glass w-full text-right"
-                value={phone}
-                onChange={e => setPhone(e.target.value)}
-                required
-              />
-            </div>
-            <div>
-              <label className="text-sm text-gray-300 block mb-1">الجنس <span className="text-red-400">*</span></label>
+              <label className="text-sm text-gray-300 block mb-1">الجنس</label>
               <select
                 className="input-glass w-full text-right"
                 value={gender}
                 onChange={e => setGender(e.target.value)}
-                required
               >
                 <option value="">اختر</option>
                 <option value="ذكر">ذكر</option>
@@ -525,9 +440,32 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
                 required
               />
             </div>
+            <div>
+              <label className="text-sm text-gray-300 block mb-1">رقم الهاتف <span className="text-red-400">*</span></label>
+              <input
+                type="text"
+                className="input-glass w-full text-right"
+                value={phone}
+                onChange={e => setPhone(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label className="text-sm text-gray-300 block mb-1">الشعبة</label>
+              <select
+                className="input-glass w-full text-right"
+                value={classId}
+                onChange={e => setClassId(e.target.value)}
+              >
+                <option value="">اختر الشعبة</option>
+                {classes.map(cls => (
+                  <option key={cls.id} value={cls.id}>{cls.name}</option>
+                ))}
+              </select>
+            </div>
             {error && <p className="text-red-400 text-sm text-center">{error}</p>}
             <button type="submit" disabled={loading} className="btn-primary w-full py-3 bg-blue-600 hover:bg-blue-700">
-              {loading ? 'جاري الإكمال...' : 'إكمال البيانات'}
+              {loading ? 'جاري الحفظ...' : 'حفظ البيانات'}
             </button>
           </form>
           <button onClick={onCancel} className="text-sm text-gray-400 hover:text-white w-full text-center mt-2">تسجيل الخروج</button>
@@ -537,126 +475,8 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
   )
 }
 
-// ========== تغيير كلمة المرور الإجبارية ==========
-const ForcePasswordChange = ({ user, onPasswordSet }) => {
-  const [username, setUsername] = useState(user.username || '')
-  const [password, setPassword] = useState('')
-  const [confirm, setConfirm] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
-
-  const requireUsername = !user.username
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (requireUsername && !username.trim()) {
-      setError('يرجى إدخال اسم مستخدم')
-      return
-    }
-    if (password.length < 6) {
-      setError('كلمة المرور يجب أن تكون 6 أحرف على الأقل')
-      return
-    }
-    if (password !== confirm) {
-      setError('كلمة المرور غير متطابقة')
-      return
-    }
-    setLoading(true)
-    setError('')
-
-    try {
-      const { error: updatePassError } = await supabase.auth.updateUser({ password })
-      if (updatePassError) throw updatePassError
-
-      const updates = {
-        info_verified: true,
-        pending_changes: null,
-        is_frozen: false
-      }
-      if (requireUsername) {
-        const { data: existing, error: checkError } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('username', username.trim())
-          .maybeSingle()
-        if (checkError) throw checkError
-        if (existing) {
-          setError('اسم المستخدم موجود بالفعل، اختر اسماً آخر')
-          setLoading(false)
-          return
-        }
-        updates.username = username.trim()
-      }
-
-      const { error: updateProfileError } = await supabase
-        .from('profiles')
-        .update(updates)
-        .eq('id', user.id)
-
-      if (updateProfileError) throw updateProfileError
-
-      const updatedUser = {
-        ...user,
-        username: requireUsername ? username.trim() : user.username,
-        needsPasswordChange: false
-      }
-      onPasswordSet(updatedUser)
-
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="container-center min-h-screen relative" dir="rtl">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-      <div className="relative z-10 w-full max-w-md px-4">
-        <div className="glass p-6 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl space-y-4">
-          <h2 className="text-2xl font-bold text-center text-blue-300">
-            {requireUsername ? 'تعيين اسم المستخدم وكلمة المرور' : 'تغيير كلمة المرور'}
-          </h2>
-          <p className="text-gray-400 text-sm text-center">
-            {requireUsername
-              ? 'اختر اسم مستخدم فريد وكلمة مرور جديدة لتفعيل حسابك'
-              : 'أدخل كلمة مرور جديدة لحسابك'
-            }
-          </p>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {requireUsername && (
-              <div>
-                <label className="text-sm text-gray-300 block mb-1">اسم المستخدم الجديد <span className="text-red-400">*</span></label>
-                <input
-                  type="text"
-                  className="input-glass w-full text-right"
-                  value={username}
-                  onChange={e => setUsername(e.target.value)}
-                  required
-                />
-              </div>
-            )}
-            <div>
-              <label className="text-sm text-gray-300 block mb-1">كلمة المرور الجديدة <span className="text-red-400">*</span></label>
-              <input type="password" className="input-glass w-full text-right" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} />
-            </div>
-            <div>
-              <label className="text-sm text-gray-300 block mb-1">تأكيد كلمة المرور <span className="text-red-400">*</span></label>
-              <input type="password" className="input-glass w-full text-right" value={confirm} onChange={e => setConfirm(e.target.value)} required />
-            </div>
-            {error && <p className="text-red-400 text-sm text-center">{error}</p>}
-            <button type="submit" disabled={loading} className="btn-primary w-full py-3 bg-blue-600 hover:bg-blue-700">
-              {loading ? 'جاري التحديث...' : 'حفظ التغييرات'}
-            </button>
-          </form>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // ========== واجهة تسجيل الدخول الرئيسية ==========
-const Login = ({ onLogin, onFrozen, onFirstTime, onCompleteProfile }) => {
+const Login = ({ onLogin, onFrozen, onSignUp, onCompleteProfile }) => {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -667,38 +487,55 @@ const Login = ({ onLogin, onFrozen, onFirstTime, onCompleteProfile }) => {
     e.preventDefault()
     setLoading(true)
     setError('')
-    try {
-      const { data: email, error: fetchError } = await supabase
-        .rpc('get_email_by_username', { username_input: username })
 
-      if (fetchError) {
-        console.error('خطأ في RPC:', fetchError)
-        throw new Error('خطأ في البحث عن المستخدم: ' + fetchError.message)
+    try {
+      const cleanUsername = username.trim().toLowerCase()
+      if (!cleanUsername) {
+        setError('يرجى إدخال اسم المستخدم')
+        setLoading(false)
+        return
       }
-      if (!email) throw new Error('اسم المستخدم غير موجود')
+
+      const email = `${cleanUsername}@readandrise.com`
 
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: email,
-        password: password
+        email,
+        password
       })
 
-      if (authError) throw new Error('اسم المستخدم أو كلمة المرور غير صحيحة')
+      if (authError) {
+        if (authError.message.includes('Invalid login credentials')) {
+          setError('اسم المستخدم أو كلمة المرور غير صحيحة')
+        } else {
+          setError(authError.message)
+        }
+        setLoading(false)
+        return
+      }
 
       const user = authData.user
-      if (!user) throw new Error('فشل تسجيل الدخول')
+      if (!user) {
+        setError('فشل تسجيل الدخول')
+        setLoading(false)
+        return
+      }
 
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('role, is_frozen, username, name, gender, age, phone, class_id, info_verified')
+        .select('role, is_frozen, username, name, gender, age, phone, class_id, info_verified, is_profile_complete')
         .eq('id', user.id)
         .maybeSingle()
 
-      if (profileError) throw new Error('خطأ في التحقق من الملف الشخصي')
+      if (profileError) {
+        console.error(profileError)
+        setError('خطأ في التحقق من الملف الشخصي')
+        setLoading(false)
+        return
+      }
 
-      // 🔥 التعديل: بدلاً من إلقاء خطأ، نقوم بتوجيه المستخدم لإكمال البيانات
       if (!profile) {
-        console.warn("الملف الشخصي غير موجود، يتم التوجيه لصفحة إكمال البيانات...")
-        onCompleteProfile({ id: user.id, email: user.email, username: username })
+        onCompleteProfile({ id: user.id, email: user.email, username: cleanUsername })
+        setLoading(false)
         return
       }
 
@@ -712,22 +549,18 @@ const Login = ({ onLogin, onFrozen, onFirstTime, onCompleteProfile }) => {
           phone: profile.phone,
           class_name: 'غير محدد'
         })
+        setLoading(false)
         return
       }
 
-      if (profile.info_verified === false) {
-        onLogin({
+      if (!profile.is_profile_complete) {
+        onCompleteProfile({
           id: user.id,
           email: user.email,
-          role: profile.role,
-          username: profile.username,
-          name: profile.name,
-          gender: profile.gender,
-          age: profile.age,
-          phone: profile.phone,
-          class_id: profile.class_id,
-          needsPasswordChange: true
+          username: profile.username || cleanUsername,
+          ...profile
         })
+        setLoading(false)
         return
       }
 
@@ -741,11 +574,13 @@ const Login = ({ onLogin, onFrozen, onFirstTime, onCompleteProfile }) => {
         age: profile.age,
         phone: profile.phone,
         class_id: profile.class_id,
-        needsPasswordChange: false
+        needsPasswordChange: profile.info_verified === false,
+        is_profile_complete: true
       })
+
     } catch (err) {
       console.error(err)
-      setError(err.message)
+      setError(err.message || 'حدث خطأ غير متوقع.')
     } finally {
       setLoading(false)
     }
@@ -793,10 +628,10 @@ const Login = ({ onLogin, onFrozen, onFirstTime, onCompleteProfile }) => {
               </button>
             </form>
             <button
-              onClick={onFirstTime}
+              onClick={onSignUp}
               className="text-sm text-blue-400 hover:text-blue-300 transition-colors underline-offset-2"
             >
-              تسجيل الدخول لأول مرة (ليس لديك كلمة مرور؟)
+              ليس لديك حساب؟ أنشئ حساباً جديداً
             </button>
             <div className="pt-2 border-t border-white/10 text-center text-xs text-gray-400 w-full">
               <p>جميع الحقوق محفوظة © 2026 لصالح المبرمج همام هاني محمد علي</p>
@@ -1194,7 +1029,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // ===== إضافة طالب جديد =====
   const handleAddStudent = async (e) => {
     e.preventDefault()
     if (!newStudentName || !newStudentGender || !newStudentAge || !newStudentPhone || !newStudentClass) {
@@ -1261,7 +1095,8 @@ const TeacherPanel = ({ user, onLogout }) => {
           class_id: newStudentClass,
           role: 'student',
           is_frozen: false,
-          info_verified: false
+          info_verified: false,
+          is_profile_complete: false
         }])
 
       if (error) {
@@ -1767,113 +1602,175 @@ const App = () => {
   const [user, setUser] = useState(null)
   const [frozenUser, setFrozenUser] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [showFirstTime, setShowFirstTime] = useState(false)
-  const [pendingUser, setPendingUser] = useState(null)
-
-  // 🔥 حالات جديدة لإكمال البيانات
-  const [showCompleteProfile, setShowCompleteProfile] = useState(false)
+  const [showSignUp, setShowSignUp] = useState(false)
   const [pendingUserForComplete, setPendingUserForComplete] = useState(null)
 
   useDynamicBackground()
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
-    setUser(null); setFrozenUser(null); setPendingUser(null); setShowFirstTime(false); setShowCompleteProfile(false); setPendingUserForComplete(null)
+    setUser(null); setFrozenUser(null); setPendingUserForComplete(null); setShowSignUp(false)
   }
 
-  const handleFirstTimeSuccess = (userData) => {
-    setPendingUser(userData)
-    setShowFirstTime(false)
+  const handleLogin = (userData) => {
+    setUser(userData)
+    setFrozenUser(null)
+    setPendingUserForComplete(null)
+    setShowSignUp(false)
   }
 
-  const handlePasswordSet = (userData) => {
-    setUser({ ...userData, needsPasswordChange: false })
-    setPendingUser(null)
-  }
-
-  // 🔥 معالج إكمال البيانات
-  const handleCompleteProfile = (userData) => {
-    setPendingUserForComplete(userData)
-    setShowCompleteProfile(true)
-  }
-
-  // 🔥 معالج نجاح إكمال البيانات (يُمرر إلى CompleteProfile)
-  const handleCompleteProfileSuccess = (userData) => {
-    setPendingUser(userData) // يعرض ForcePasswordChange
-    setShowCompleteProfile(false)
+  const handleFrozen = (frozenData) => {
+    setFrozenUser(frozenData)
+    setUser(null)
     setPendingUserForComplete(null)
   }
 
-  useEffect(() => {
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session?.user) {
-        try {
-          const { data: profile, error } = await supabase
-            .from('profiles')
-            .select('role, is_frozen, username, name, gender, age, phone, class_id, info_verified')
-            .eq('id', session.user.id)
-            .maybeSingle()
-          if (error) throw error
-          if (!profile) {
-            // 🔥 لا يوجد ملف شخصي: التوجيه لإكمال البيانات
-            console.warn("الملف الشخصي غير موجود، يتم التوجيه لصفحة إكمال البيانات...")
-            handleCompleteProfile({ id: session.user.id, email: session.user.email, username: session.user.user_metadata?.username || '' })
-            return
-          }
-          if (profile.is_frozen) {
-            setFrozenUser({ id: session.user.id, email: session.user.email, username: profile.username, role: profile.role, name: profile.name, phone: profile.phone, class_name: 'غير محدد' })
-            setUser(null)
-          } else {
-            const needsPassChange = profile.info_verified === false
-            setUser({ id: session.user.id, email: session.user.email, role: profile.role, username: profile.username, name: profile.name, gender: profile.gender, age: profile.age, phone: profile.phone, class_id: profile.class_id, needsPasswordChange: needsPassChange })
-            setFrozenUser(null)
-            if (needsPassChange) setPendingUser(user)
-          }
-        } catch (err) {
-          console.error(err)
-          await supabase.auth.signOut()
-          setUser(null); setFrozenUser(null)
-        }
-      } else {
-        setUser(null); setFrozenUser(null)
-      }
-      setLoading(false)
-    }
+  const handleCompleteProfile = (userData) => {
+    setPendingUserForComplete(userData)
+    setShowSignUp(false)
+  }
 
+  const handleCompleteProfileSuccess = (updatedUser) => {
+    setUser(updatedUser)
+    setPendingUserForComplete(null)
+  }
+
+  const handleSignUpSuccess = () => {
+    setShowSignUp(false)
+    // سوف يتم تحديث الجلسة عبر onAuthStateChange
+  }
+
+  const checkSession = async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session?.user) {
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('role, is_frozen, username, name, gender, age, phone, class_id, info_verified, is_profile_complete')
+        .eq('id', session.user.id)
+        .maybeSingle()
+
+      if (error) {
+        console.error(error)
+        await supabase.auth.signOut()
+        setUser(null)
+        setFrozenUser(null)
+        setLoading(false)
+        return
+      }
+
+      if (!profile) {
+        setPendingUserForComplete({ id: session.user.id, email: session.user.email, username: session.user.user_metadata?.username || '' })
+        setUser(null)
+        setFrozenUser(null)
+        setLoading(false)
+        return
+      }
+
+      if (profile.is_frozen) {
+        setFrozenUser({
+          id: session.user.id,
+          email: session.user.email,
+          username: profile.username,
+          role: profile.role,
+          name: profile.name,
+          phone: profile.phone,
+          class_name: 'غير محدد'
+        })
+        setUser(null)
+        setLoading(false)
+        return
+      }
+
+      if (!profile.is_profile_complete) {
+        setPendingUserForComplete({ id: session.user.id, email: session.user.email, username: profile.username || '', ...profile })
+        setUser(null)
+        setFrozenUser(null)
+        setLoading(false)
+        return
+      }
+
+      setUser({
+        id: session.user.id,
+        email: session.user.email,
+        role: profile.role,
+        username: profile.username,
+        name: profile.name,
+        gender: profile.gender,
+        age: profile.age,
+        phone: profile.phone,
+        class_id: profile.class_id,
+        needsPasswordChange: profile.info_verified === false,
+        is_profile_complete: true
+      })
+      setFrozenUser(null)
+      setPendingUserForComplete(null)
+    } else {
+      setUser(null)
+      setFrozenUser(null)
+      setPendingUserForComplete(null)
+    }
+    setLoading(false)
+  }
+
+  useEffect(() => {
     checkSession()
 
     const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
-        try {
-          const { data: profile, error } = await supabase
-            .from('profiles')
-            .select('role, is_frozen, username, name, gender, age, phone, class_id, info_verified')
-            .eq('id', session.user.id)
-            .maybeSingle()
-          if (error) throw error
-          if (!profile) {
-            // 🔥 لا يوجد ملف شخصي: التوجيه لإكمال البيانات
-            console.warn("الملف الشخصي غير موجود، يتم التوجيه لصفحة إكمال البيانات...")
-            handleCompleteProfile({ id: session.user.id, email: session.user.email, username: session.user.user_metadata?.username || '' })
-            return
-          }
-          if (profile.is_frozen) {
-            setFrozenUser({ id: session.user.id, email: session.user.email, username: profile.username, role: profile.role, name: profile.name, phone: profile.phone, class_name: 'غير محدد' })
-            setUser(null)
-          } else {
-            const needsPassChange = profile.info_verified === false
-            setUser({ id: session.user.id, email: session.user.email, role: profile.role, username: profile.username, name: profile.name, gender: profile.gender, age: profile.age, phone: profile.phone, class_id: profile.class_id, needsPasswordChange: needsPassChange })
-            setFrozenUser(null)
-            if (needsPassChange) setPendingUser(user)
-          }
-        } catch (err) {
-          console.error(err)
-          await supabase.auth.signOut()
-          setUser(null); setFrozenUser(null)
+        const { data: profile, error } = await supabase
+          .from('profiles')
+          .select('role, is_frozen, username, name, gender, age, phone, class_id, info_verified, is_profile_complete')
+          .eq('id', session.user.id)
+          .maybeSingle()
+
+        if (error || !profile) {
+          setUser(null)
+          setFrozenUser(null)
+          setPendingUserForComplete(null)
+          return
         }
+
+        if (profile.is_frozen) {
+          setFrozenUser({
+            id: session.user.id,
+            email: session.user.email,
+            username: profile.username,
+            role: profile.role,
+            name: profile.name,
+            phone: profile.phone,
+            class_name: 'غير محدد'
+          })
+          setUser(null)
+          setPendingUserForComplete(null)
+          return
+        }
+
+        if (!profile.is_profile_complete) {
+          setPendingUserForComplete({ id: session.user.id, email: session.user.email, username: profile.username || '', ...profile })
+          setUser(null)
+          setFrozenUser(null)
+          return
+        }
+
+        setUser({
+          id: session.user.id,
+          email: session.user.email,
+          role: profile.role,
+          username: profile.username,
+          name: profile.name,
+          gender: profile.gender,
+          age: profile.age,
+          phone: profile.phone,
+          class_id: profile.class_id,
+          needsPasswordChange: profile.info_verified === false,
+          is_profile_complete: true
+        })
+        setFrozenUser(null)
+        setPendingUserForComplete(null)
       } else {
-        setUser(null); setFrozenUser(null); setPendingUser(null)
+        setUser(null)
+        setFrozenUser(null)
+        setPendingUserForComplete(null)
       }
     })
 
@@ -1882,8 +1779,7 @@ const App = () => {
 
   if (loading) return <div className="container-center min-h-screen text-white"><div className="glass p-8 rounded-2xl border border-white/10 shadow-xl animate-pulse">جاري التحميل...</div></div>
 
-  // عرض صفحة إكمال البيانات إذا كانت مفعلة
-  if (showCompleteProfile && pendingUserForComplete) {
+  if (pendingUserForComplete) {
     return (
       <CompleteProfile
         user={pendingUserForComplete}
@@ -1893,17 +1789,24 @@ const App = () => {
     )
   }
 
-  if (pendingUser && pendingUser.needsPasswordChange) return <ForcePasswordChange user={pendingUser} onPasswordSet={handlePasswordSet} />
-  if (frozenUser) return <FrozenAccount user={frozenUser} onLogout={handleLogout} />
-  if (showFirstTime) return <FirstTimeSignUp onSuccess={handleFirstTimeSuccess} onCancel={() => setShowFirstTime(false)} />
-  if (!user) return (
-    <Login
-      onLogin={setUser}
-      onFrozen={setFrozenUser}
-      onFirstTime={() => setShowFirstTime(true)}
-      onCompleteProfile={handleCompleteProfile}
-    />
-  )
+  if (frozenUser) {
+    return <FrozenAccount user={frozenUser} onLogout={handleLogout} />
+  }
+
+  if (showSignUp) {
+    return <SignUp onSuccess={handleSignUpSuccess} onCancel={() => setShowSignUp(false)} />
+  }
+
+  if (!user) {
+    return (
+      <Login
+        onLogin={handleLogin}
+        onFrozen={handleFrozen}
+        onSignUp={() => setShowSignUp(true)}
+        onCompleteProfile={handleCompleteProfile}
+      />
+    )
+  }
 
   return user.role === 'teacher' ? <TeacherPanel user={user} onLogout={handleLogout} /> : <StudentPanel user={user} onLogout={handleLogout} />
 }
