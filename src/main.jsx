@@ -405,6 +405,138 @@ const FirstTimeSignUp = ({ onSuccess, onCancel }) => {
     </div>
   )
 }
+
+// ========== مكون إكمال البيانات (للمستخدمين الذين لديهم حساب Auth لكن لا يوجد ملف شخصي) ==========
+const CompleteProfile = ({ user, onSuccess, onCancel }) => {
+  const [name, setName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [gender, setGender] = useState('')
+  const [age, setAge] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+
+    const cleanName = name.trim()
+    const cleanPhone = phone.replace(/[^0-9]/g, '')
+    const cleanGender = gender.trim()
+    const cleanAge = parseInt(age, 10)
+
+    if (!cleanName || !cleanPhone || !cleanGender || isNaN(cleanAge) || cleanAge <= 0) {
+      setError('جميع الحقول مطلوبة وبصيغة صحيحة')
+      return
+    }
+
+    setLoading(true)
+    setError('')
+
+    try {
+      // إنشاء ملف شخصي جديد للمستخدم الحالي
+      const newProfile = {
+        id: user.id,
+        email: user.email,
+        username: user.username || `user_${Date.now()}`, // في حال لم يكن هناك اسم مستخدم
+        name: cleanName,
+        gender: cleanGender,
+        age: cleanAge,
+        phone: cleanPhone,
+        role: 'student', // يمكن تغييره حسب الحاجة
+        is_frozen: false,
+        info_verified: false, // سيتطلب تغيير كلمة المرور
+        class_id: null,
+        pending_changes: null,
+        last_seen: new Date().toISOString()
+      }
+
+      const { error: insertError } = await supabase
+        .from('profiles')
+        .insert([newProfile])
+
+      if (insertError) {
+        console.error('فشل إنشاء الملف الشخصي:', insertError)
+        throw new Error('تعذر إنشاء الملف الشخصي: ' + insertError.message)
+      }
+
+      // نجاح
+      onSuccess({
+        ...user,
+        ...newProfile,
+        needsPasswordChange: true
+      })
+    } catch (err) {
+      console.error(err)
+      setError(err.message || 'حدث خطأ غير متوقع.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="container-center min-h-screen relative" dir="rtl">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+      <div className="relative z-10 w-full max-w-md px-4">
+        <div className="glass p-6 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl space-y-4">
+          <h2 className="text-2xl font-bold text-center text-blue-300">إكمال البيانات</h2>
+          <p className="text-gray-400 text-sm text-center">
+            يبدو أن حسابك غير مكتمل. الرجاء إدخال بياناتك الأساسية لإكمال التسجيل.
+          </p>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="text-sm text-gray-300 block mb-1">الاسم الكامل <span className="text-red-400">*</span></label>
+              <input
+                type="text"
+                className="input-glass w-full text-right"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label className="text-sm text-gray-300 block mb-1">رقم الهاتف <span className="text-red-400">*</span></label>
+              <input
+                type="text"
+                className="input-glass w-full text-right"
+                value={phone}
+                onChange={e => setPhone(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label className="text-sm text-gray-300 block mb-1">الجنس <span className="text-red-400">*</span></label>
+              <select
+                className="input-glass w-full text-right"
+                value={gender}
+                onChange={e => setGender(e.target.value)}
+                required
+              >
+                <option value="">اختر</option>
+                <option value="ذكر">ذكر</option>
+                <option value="أنثى">أنثى</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-sm text-gray-300 block mb-1">العمر <span className="text-red-400">*</span></label>
+              <input
+                type="number"
+                className="input-glass w-full text-right"
+                value={age}
+                onChange={e => setAge(e.target.value)}
+                required
+              />
+            </div>
+            {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+            <button type="submit" disabled={loading} className="btn-primary w-full py-3 bg-blue-600 hover:bg-blue-700">
+              {loading ? 'جاري الإكمال...' : 'إكمال البيانات'}
+            </button>
+          </form>
+          <button onClick={onCancel} className="text-sm text-gray-400 hover:text-white w-full text-center mt-2">تسجيل الخروج</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ========== تغيير كلمة المرور الإجبارية ==========
 const ForcePasswordChange = ({ user, onPasswordSet }) => {
   const [username, setUsername] = useState(user.username || '')
@@ -524,7 +656,7 @@ const ForcePasswordChange = ({ user, onPasswordSet }) => {
 }
 
 // ========== واجهة تسجيل الدخول الرئيسية ==========
-const Login = ({ onLogin, onFrozen, onFirstTime }) => {
+const Login = ({ onLogin, onFrozen, onFirstTime, onCompleteProfile }) => {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -562,7 +694,13 @@ const Login = ({ onLogin, onFrozen, onFirstTime }) => {
         .maybeSingle()
 
       if (profileError) throw new Error('خطأ في التحقق من الملف الشخصي')
-      if (!profile) throw new Error('لا يوجد ملف شخصي لهذا الحساب، يرجى التواصل مع المدير')
+
+      // 🔥 التعديل: بدلاً من إلقاء خطأ، نقوم بتوجيه المستخدم لإكمال البيانات
+      if (!profile) {
+        console.warn("الملف الشخصي غير موجود، يتم التوجيه لصفحة إكمال البيانات...")
+        onCompleteProfile({ id: user.id, email: user.email, username: username })
+        return
+      }
 
       if (profile.is_frozen) {
         onFrozen({
@@ -1632,11 +1770,15 @@ const App = () => {
   const [showFirstTime, setShowFirstTime] = useState(false)
   const [pendingUser, setPendingUser] = useState(null)
 
+  // 🔥 حالات جديدة لإكمال البيانات
+  const [showCompleteProfile, setShowCompleteProfile] = useState(false)
+  const [pendingUserForComplete, setPendingUserForComplete] = useState(null)
+
   useDynamicBackground()
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
-    setUser(null); setFrozenUser(null); setPendingUser(null); setShowFirstTime(false)
+    setUser(null); setFrozenUser(null); setPendingUser(null); setShowFirstTime(false); setShowCompleteProfile(false); setPendingUserForComplete(null)
   }
 
   const handleFirstTimeSuccess = (userData) => {
@@ -1647,6 +1789,19 @@ const App = () => {
   const handlePasswordSet = (userData) => {
     setUser({ ...userData, needsPasswordChange: false })
     setPendingUser(null)
+  }
+
+  // 🔥 معالج إكمال البيانات
+  const handleCompleteProfile = (userData) => {
+    setPendingUserForComplete(userData)
+    setShowCompleteProfile(true)
+  }
+
+  // 🔥 معالج نجاح إكمال البيانات (يُمرر إلى CompleteProfile)
+  const handleCompleteProfileSuccess = (userData) => {
+    setPendingUser(userData) // يعرض ForcePasswordChange
+    setShowCompleteProfile(false)
+    setPendingUserForComplete(null)
   }
 
   useEffect(() => {
@@ -1660,7 +1815,12 @@ const App = () => {
             .eq('id', session.user.id)
             .maybeSingle()
           if (error) throw error
-          if (!profile) throw new Error('لا يوجد ملف شخصي')
+          if (!profile) {
+            // 🔥 لا يوجد ملف شخصي: التوجيه لإكمال البيانات
+            console.warn("الملف الشخصي غير موجود، يتم التوجيه لصفحة إكمال البيانات...")
+            handleCompleteProfile({ id: session.user.id, email: session.user.email, username: session.user.user_metadata?.username || '' })
+            return
+          }
           if (profile.is_frozen) {
             setFrozenUser({ id: session.user.id, email: session.user.email, username: profile.username, role: profile.role, name: profile.name, phone: profile.phone, class_name: 'غير محدد' })
             setUser(null)
@@ -1692,7 +1852,12 @@ const App = () => {
             .eq('id', session.user.id)
             .maybeSingle()
           if (error) throw error
-          if (!profile) throw new Error('لا يوجد ملف شخصي')
+          if (!profile) {
+            // 🔥 لا يوجد ملف شخصي: التوجيه لإكمال البيانات
+            console.warn("الملف الشخصي غير موجود، يتم التوجيه لصفحة إكمال البيانات...")
+            handleCompleteProfile({ id: session.user.id, email: session.user.email, username: session.user.user_metadata?.username || '' })
+            return
+          }
           if (profile.is_frozen) {
             setFrozenUser({ id: session.user.id, email: session.user.email, username: profile.username, role: profile.role, name: profile.name, phone: profile.phone, class_name: 'غير محدد' })
             setUser(null)
@@ -1717,10 +1882,28 @@ const App = () => {
 
   if (loading) return <div className="container-center min-h-screen text-white"><div className="glass p-8 rounded-2xl border border-white/10 shadow-xl animate-pulse">جاري التحميل...</div></div>
 
+  // عرض صفحة إكمال البيانات إذا كانت مفعلة
+  if (showCompleteProfile && pendingUserForComplete) {
+    return (
+      <CompleteProfile
+        user={pendingUserForComplete}
+        onSuccess={handleCompleteProfileSuccess}
+        onCancel={handleLogout}
+      />
+    )
+  }
+
   if (pendingUser && pendingUser.needsPasswordChange) return <ForcePasswordChange user={pendingUser} onPasswordSet={handlePasswordSet} />
   if (frozenUser) return <FrozenAccount user={frozenUser} onLogout={handleLogout} />
   if (showFirstTime) return <FirstTimeSignUp onSuccess={handleFirstTimeSuccess} onCancel={() => setShowFirstTime(false)} />
-  if (!user) return <Login onLogin={setUser} onFrozen={setFrozenUser} onFirstTime={() => setShowFirstTime(true)} />
+  if (!user) return (
+    <Login
+      onLogin={setUser}
+      onFrozen={setFrozenUser}
+      onFirstTime={() => setShowFirstTime(true)}
+      onCompleteProfile={handleCompleteProfile}
+    />
+  )
 
   return user.role === 'teacher' ? <TeacherPanel user={user} onLogout={handleLogout} /> : <StudentPanel user={user} onLogout={handleLogout} />
 }
