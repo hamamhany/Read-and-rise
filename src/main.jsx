@@ -27,7 +27,7 @@ import {
   arrayRemove
 } from 'firebase/firestore'
 
-// ========== Utility: generateId (unchanged) ==========
+// ========== Utility: generateId ==========
 const generateId = () => {
   try {
     return crypto.randomUUID()
@@ -36,7 +36,7 @@ const generateId = () => {
   }
 }
 
-// ========== Hook: dynamic background (unchanged) ==========
+// ========== Hook: dynamic background ==========
 const useDynamicBackground = () => {
   useEffect(() => {
     const style = document.createElement('style')
@@ -77,7 +77,7 @@ const useDynamicBackground = () => {
   }, [])
 }
 
-// ========== CountdownTimer (unchanged) ==========
+// ========== CountdownTimer ==========
 const CountdownTimer = ({ targetDate }) => {
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
 
@@ -121,6 +121,7 @@ const CountdownTimer = ({ targetDate }) => {
   )
 }
 
+// ========== HomeworkTextCountdown ==========
 const HomeworkTextCountdown = ({ targetDate }) => {
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
   const [isPast, setIsPast] = useState(false)
@@ -161,7 +162,7 @@ const HomeworkTextCountdown = ({ targetDate }) => {
   )
 }
 
-// ========== FrozenAccount (unchanged) ==========
+// ========== FrozenAccount ==========
 const FrozenAccount = ({ user, onLogout }) => {
   const studentName = user?.name || user?.username || 'الطالب'
   const studentClass = user?.class_name || 'غير محدد'
@@ -210,7 +211,7 @@ const FrozenAccount = ({ user, onLogout }) => {
   )
 }
 
-// ========== CompleteProfile (unchanged) ==========
+// ========== CompleteProfile ==========
 const CompleteProfile = ({ user, onSuccess, onCancel }) => {
   const [name, setName] = useState('')
   const [gender, setGender] = useState('')
@@ -353,7 +354,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
   )
 }
 
-// ========== Login (تعديل: حذف onSignUp وإضافة منطق إنشاء الحساب لأول مرة) ==========
+// ========== Login (مع زر "تسجيل الدخول لأول مرة") ==========
 const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -361,7 +362,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const handleAuth = async (e) => {
+  const handleAuth = async (e, isFirstTime = false) => {
     e.preventDefault()
     setLoading(true)
     setError('')
@@ -374,11 +375,11 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
         return
       }
 
-      // 1. البحث عن المستخدم في Firestore
+      // البحث عن المستخدم في Firestore
       const q = query(collection(db, 'profiles'), where('username', '==', cleanUsername))
       const querySnapshot = await getDocs(q)
       if (querySnapshot.empty) {
-        setError('اسم المستخدم غير موجود')
+        setError('اسم المستخدم غير موجود. تأكد من أن المعلم قام بإضافتك.')
         setLoading(false)
         return
       }
@@ -395,7 +396,12 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
         firebaseUser = userCredential.user
       } catch (loginErr) {
         if (loginErr.code === 'auth/user-not-found') {
-          // إنشاء حساب جديد
+          // إنشاء حساب جديد (تسجيل الدخول لأول مرة)
+          if (!isFirstTime) {
+            setError('هذا الحساب غير مسجل في النظام. استخدم زر "تسجيل الدخول لأول مرة" إذا كنت جديداً.')
+            setLoading(false)
+            return
+          }
           const userCredential = await createUserWithEmailAndPassword(auth, email, password)
           firebaseUser = userCredential.user
           // نقل الوثيقة من oldId إلى uid الجديد
@@ -408,10 +414,9 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
         }
       }
 
-      // الآن لدينا firebaseUser
+      // جلب الملف الشخصي
       const docSnap = await getDoc(doc(db, 'profiles', firebaseUser.uid))
       if (!docSnap.exists()) {
-        // في حالة نادرة، نكمل بإنشاء ملف جديد
         onCompleteProfile({
           id: firebaseUser.uid,
           email: firebaseUser.email,
@@ -499,7 +504,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
                 </span>
               </div>
             </div>
-            <form onSubmit={handleAuth} className="space-y-3.5 w-full">
+            <form onSubmit={(e) => handleAuth(e, false)} className="space-y-3.5 w-full">
               <div className="relative flex items-center">
                 <span className="absolute right-4 text-gray-400 pointer-events-none text-sm font-medium">اسم المستخدم</span>
                 <input type="text" className="input-glass w-full text-right pr-24 pl-4 text-base bg-black/20" value={username} onChange={(e) => setUsername(e.target.value)} required />
@@ -512,9 +517,19 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
                 </button>
               </div>
               {error && <p className="text-red-400 text-sm text-center whitespace-pre-wrap">{error}</p>}
-              <button type="submit" className="btn-primary w-full py-2.5 text-lg font-semibold tracking-wide shadow-lg" disabled={loading}>
-                {loading ? 'جاري التحميل...' : 'تسجيل الدخول'}
-              </button>
+              <div className="flex gap-3">
+                <button type="submit" className="btn-primary flex-1 py-2.5 text-lg font-semibold tracking-wide shadow-lg" disabled={loading}>
+                  {loading ? 'جاري التحميل...' : 'تسجيل الدخول'}
+                </button>
+                <button 
+                  type="button" 
+                  onClick={(e) => handleAuth(e, true)} 
+                  className="btn-primary flex-1 py-2.5 text-lg font-semibold tracking-wide shadow-lg bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700"
+                  disabled={loading}
+                >
+                  {loading ? 'جاري...' : 'تسجيل الدخول لأول مرة'}
+                </button>
+              </div>
             </form>
             <div className="pt-2 border-t border-white/10 text-center text-xs text-gray-400 w-full">
               <p>جميع الحقوق محفوظة © 2026 لصالح المبرمج همام هاني محمد علي</p>
@@ -526,7 +541,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   )
 }
 
-// ========== TeacherPanel (unchanged) ==========
+// ========== TeacherPanel ==========
 const TeacherPanel = ({ user, onLogout }) => {
   const [lessonTime, setLessonTime] = useState('')
   const [homeworks, setHomeworks] = useState([])
@@ -1195,7 +1210,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   )
 }
 
-// ========== StudentPanel (unchanged) ==========
+// ========== StudentPanel ==========
 const StudentPanel = ({ user, onLogout }) => {
   const [teacherData, setTeacherData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -1453,7 +1468,7 @@ const StudentPanel = ({ user, onLogout }) => {
   )
 }
 
-// ========== App (تعديل: إزالة showSignUp) ==========
+// ========== App ==========
 const App = () => {
   const [user, setUser] = useState(null)
   const [frozenUser, setFrozenUser] = useState(null)
