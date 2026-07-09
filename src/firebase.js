@@ -13,10 +13,7 @@ const firebaseConfig = {
   measurementId: "G-4LKJCL8PV2"
 };
 
-// تهيئة Firebase
 const app = initializeApp(firebaseConfig);
-
-// تصدير الخدمات لتتمكن من استيرادها في ملفات React الأخرى
 export const analytics = getAnalytics(app);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
