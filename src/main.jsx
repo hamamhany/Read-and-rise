@@ -211,7 +211,7 @@ const FrozenAccount = ({ user, onLogout }) => {
   )
 }
 
-// ========== CompleteProfile ==========
+// ========== CompleteProfile (واجهة التأكيد - تبقى كما هي) ==========
 const CompleteProfile = ({ user, onSuccess, onCancel }) => {
   const [name, setName] = useState('')
   const [gender, setGender] = useState('')
@@ -354,7 +354,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
   )
 }
 
-// ========== Login (مع زر "تسجيل الدخول لأول مرة") ==========
+// ========== Login (تم تعديل الأزرار إلى سطر نصي) ==========
 const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -398,7 +398,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
         if (loginErr.code === 'auth/user-not-found') {
           // إنشاء حساب جديد (تسجيل الدخول لأول مرة)
           if (!isFirstTime) {
-            setError('هذا الحساب غير مسجل في النظام. استخدم زر "تسجيل الدخول لأول مرة" إذا كنت جديداً.')
+            setError('هذا الحساب غير مسجل في النظام. استخدم الرابط "تسجيل الدخول لأول مرة" أدناه.')
             setLoading(false)
             return
           }
@@ -517,17 +517,18 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
                 </button>
               </div>
               {error && <p className="text-red-400 text-sm text-center whitespace-pre-wrap">{error}</p>}
-              <div className="flex gap-3">
-                <button type="submit" className="btn-primary flex-1 py-2.5 text-lg font-semibold tracking-wide shadow-lg" disabled={loading}>
-                  {loading ? 'جاري التحميل...' : 'تسجيل الدخول'}
-                </button>
+              <button type="submit" className="btn-primary w-full py-2.5 text-lg font-semibold tracking-wide shadow-lg" disabled={loading}>
+                {loading ? 'جاري التحميل...' : 'تسجيل الدخول'}
+              </button>
+              {/* سطر نصي بدلاً من الزر الثاني */}
+              <div className="text-center mt-2">
                 <button 
                   type="button" 
                   onClick={(e) => handleAuth(e, true)} 
-                  className="btn-primary flex-1 py-2.5 text-lg font-semibold tracking-wide shadow-lg bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700"
+                  className="text-sm text-green-400 hover:text-green-300 underline transition-colors"
                   disabled={loading}
                 >
-                  {loading ? 'جاري...' : 'تسجيل الدخول لأول مرة'}
+                  تسجيل الدخول لأول مرة (اضغط هنا)
                 </button>
               </div>
             </form>
@@ -541,7 +542,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   )
 }
 
-// ========== TeacherPanel ==========
+// ========== TeacherPanel (نفسه) ==========
 const TeacherPanel = ({ user, onLogout }) => {
   const [lessonTime, setLessonTime] = useState('')
   const [homeworks, setHomeworks] = useState([])
