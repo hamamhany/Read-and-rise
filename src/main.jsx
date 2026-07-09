@@ -1,32 +1,45 @@
 import './index.css'
 import React, { useState, useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
-import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+// Firebase imports
+import { auth, db } from './firebase.js'
+import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  updatePassword,
+  signOut
+} from 'firebase/auth'
+import {
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  collection,
+  query,
+  where,
+  getDocs,
+  onSnapshot,
+  serverTimestamp,
+  arrayUnion,
+  arrayRemove
+} from 'firebase/firestore'
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('متغيرات Supabase غير محددة في ملف .env')
-}
-
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
-
-// ========== دالة مساعدة لتوليد ID (متوافقة مع جميع البيئات) ==========
+// ========== Utility: generateId (unchanged) ==========
 const generateId = () => {
   try {
-    // محاولة استخدام crypto.randomUUID() إذا كانت متوفرة (HTTPS أو متصفح حديث)
-    return crypto.randomUUID();
+    return crypto.randomUUID()
   } catch {
-    // خطة بديلة للمتصفحات القديمة أو بيئة HTTP
-    return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+    return Date.now().toString(36) + Math.random().toString(36).substr(2, 9)
   }
-};
+}
 
-// ========== هوك خلفية متحركة ==========
+// ========== Hook: dynamic background (unchanged) ==========
 const useDynamicBackground = () => {
   useEffect(() => {
-    const style = document.createElement('style');
+    const style = document.createElement('style')
     style.innerHTML = `
       @keyframes logoPulseSoft {
         0% { transform: scale(1); opacity: 0.12; }
@@ -36,43 +49,43 @@ const useDynamicBackground = () => {
       .animate-logo-bg {
         animation: logoPulseSoft 6s ease-in-out infinite;
       }
-    `;
-    document.head.appendChild(style);
+    `
+    document.head.appendChild(style)
 
     const bgGradients = [
       'linear-gradient(135deg, #0f172a, #1e1b4b, #311042)',
       'linear-gradient(135deg, #090d16, #111827, #1f2937)',
       'linear-gradient(135deg, #020617, #0f172a, #1e293b)',
       'linear-gradient(135deg, #070a13, #161224, #281432)'
-    ];
-    let currentIndex = 0;
+    ]
+    let currentIndex = 0
 
-    document.body.style.background = bgGradients[currentIndex];
-    document.body.style.transition = 'background 4s ease-in-out';
+    document.body.style.background = bgGradients[currentIndex]
+    document.body.style.transition = 'background 4s ease-in-out'
 
     const interval = setInterval(() => {
-      currentIndex = (currentIndex + 1) % bgGradients.length;
-      document.body.style.background = bgGradients[currentIndex];
-    }, 7000);
+      currentIndex = (currentIndex + 1) % bgGradients.length
+      document.body.style.background = bgGradients[currentIndex]
+    }, 7000)
 
     return () => {
-      clearInterval(interval);
-      document.body.style.background = '';
-      document.body.style.transition = '';
-      document.head.removeChild(style);
-    };
-  }, []);
-};
+      clearInterval(interval)
+      document.body.style.background = ''
+      document.body.style.transition = ''
+      document.head.removeChild(style)
+    }
+  }, [])
+}
 
-// ========== عداد تنازلي ==========
+// ========== CountdownTimer (unchanged) ==========
 const CountdownTimer = ({ targetDate }) => {
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
 
   useEffect(() => {
     const calculateTime = () => {
-      const target = new Date(targetDate).getTime();
-      const now = new Date().getTime();
-      const distance = target - now;
+      const target = new Date(targetDate).getTime()
+      const now = new Date().getTime()
+      const distance = target - now
       if (distance < 0) {
         setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 })
         return true
@@ -84,17 +97,17 @@ const CountdownTimer = ({ targetDate }) => {
         seconds: Math.floor((distance % (1000 * 60)) / 1000)
       })
       return false
-    };
+    }
 
-    calculateTime();
+    calculateTime()
     const interval = setInterval(() => {
-      const isEnded = calculateTime();
-      if (isEnded) clearInterval(interval);
+      const isEnded = calculateTime()
+      if (isEnded) clearInterval(interval)
     }, 1000)
     return () => clearInterval(interval)
   }, [targetDate])
 
-  const labels = { days: 'أيام', hours: 'ساعات', minutes: 'دقائق', seconds: 'ثواني' };
+  const labels = { days: 'أيام', hours: 'ساعات', minutes: 'دقائق', seconds: 'ثواني' }
 
   return (
     <div className="flex gap-4 text-center flex-wrap justify-center">
@@ -114,9 +127,9 @@ const HomeworkTextCountdown = ({ targetDate }) => {
 
   useEffect(() => {
     const calculate = () => {
-      const target = new Date(targetDate).getTime();
-      const now = new Date().getTime();
-      const distance = target - now;
+      const target = new Date(targetDate).getTime()
+      const now = new Date().getTime()
+      const distance = target - now
       if (distance <= 0) {
         setIsPast(true)
         return true
@@ -148,7 +161,7 @@ const HomeworkTextCountdown = ({ targetDate }) => {
   )
 }
 
-// ========== شاشة الحساب المجمد ==========
+// ========== FrozenAccount (unchanged) ==========
 const FrozenAccount = ({ user, onLogout }) => {
   const studentName = user?.name || user?.username || 'الطالب'
   const studentClass = user?.class_name || 'غير محدد'
@@ -197,7 +210,7 @@ const FrozenAccount = ({ user, onLogout }) => {
   )
 }
 
-// ========== صفحة تسجيل حساب جديد ==========
+// ========== SignUp (converted to Firebase) ==========
 const SignUp = ({ onSuccess, onCancel }) => {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -231,45 +244,36 @@ const SignUp = ({ onSuccess, onCancel }) => {
     try {
       const email = `${cleanUsername}@readandrise.com`
 
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            username: cleanUsername,
-            phone: cleanPhone,
-            whatsapp: cleanPhone
-          }
-        }
-      })
+      // 1. Create user with email/password
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password)
+      const firebaseUser = userCredential.user
 
-      if (signUpError) {
-        if (signUpError.message.includes('User already registered')) {
-          setError('اسم المستخدم موجود بالفعل، اختر اسماً آخر')
-        } else {
-          throw signUpError
-        }
-        setLoading(false)
-        return
+      // 2. Create profile document in Firestore
+      const profileData = {
+        email: firebaseUser.email,
+        username: cleanUsername,
+        phone: cleanPhone,
+        whatsapp: cleanPhone,
+        role: 'student',
+        isFrozen: false,
+        isProfileComplete: false,
+        infoVerified: false,
+        pendingChanges: null,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
       }
+      await setDoc(doc(db, 'profiles', firebaseUser.uid), profileData)
 
-      // تسجيل الدخول تلقائياً
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      })
-
-      if (signInError) {
-        alert('تم إنشاء الحساب، يرجى تسجيل الدخول الآن.')
-        onCancel()
-        return
-      }
-
+      // 3. Auto-login: the onAuthStateChanged will trigger
+      // onSuccess will be called after state updates
       onSuccess()
-
     } catch (err) {
       console.error(err)
-      setError(err.message || 'حدث خطأ غير متوقع.')
+      if (err.code === 'auth/email-already-in-use') {
+        setError('اسم المستخدم موجود بالفعل، اختر اسماً آخر')
+      } else {
+        setError(err.message || 'حدث خطأ غير متوقع.')
+      }
     } finally {
       setLoading(false)
     }
@@ -340,7 +344,7 @@ const SignUp = ({ onSuccess, onCancel }) => {
   )
 }
 
-// ========== صفحة إكمال البيانات ==========
+// ========== CompleteProfile (converted to Firebase) ==========
 const CompleteProfile = ({ user, onSuccess, onCancel }) => {
   const [name, setName] = useState('')
   const [gender, setGender] = useState('')
@@ -353,10 +357,14 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
 
   useEffect(() => {
     const fetchClasses = async () => {
-      const { data, error } = await supabase
-        .from('classes')
-        .select('id, name')
-      if (!error) setClasses(data || [])
+      try {
+        const q = query(collection(db, 'classes'))
+        const querySnapshot = await getDocs(q)
+        const classesList = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+        setClasses(classesList)
+      } catch (err) {
+        console.error('Error fetching classes:', err)
+      }
     }
     fetchClasses()
   }, [])
@@ -377,33 +385,26 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
     setError('')
 
     try {
+      const userId = user.id
+
       const updates = {
         name: cleanName,
         gender: gender || null,
         age: cleanAge,
         phone: cleanPhone,
-        class_id: classId || null,
-        is_profile_complete: true,
-        info_verified: true
+        classId: classId || null,
+        isProfileComplete: true,
+        infoVerified: true,
+        updatedAt: serverTimestamp()
       }
 
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update(updates)
-        .eq('id', user.id)
+      await updateDoc(doc(db, 'profiles', userId), updates)
 
-      if (updateError) throw updateError
+      // Fetch updated profile
+      const docSnap = await getDoc(doc(db, 'profiles', userId))
+      const profileData = docSnap.data()
 
-      const { data: profile, error: fetchError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single()
-
-      if (fetchError) throw fetchError
-
-      onSuccess({ ...user, ...profile })
-
+      onSuccess({ ...user, ...profileData })
     } catch (err) {
       console.error(err)
       setError(err.message || 'حدث خطأ غير متوقع.')
@@ -487,7 +488,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
   )
 }
 
-// ========== واجهة تسجيل الدخول الرئيسية ==========
+// ========== Login (converted to Firebase) ==========
 const Login = ({ onLogin, onFrozen, onSignUp, onCompleteProfile }) => {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -510,51 +511,29 @@ const Login = ({ onLogin, onFrozen, onSignUp, onCompleteProfile }) => {
 
       const email = `${cleanUsername}@readandrise.com`
 
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      })
+      const userCredential = await signInWithEmailAndPassword(auth, email, password)
+      const firebaseUser = userCredential.user
 
-      if (authError) {
-        if (authError.message.includes('Invalid login credentials')) {
-          setError('اسم المستخدم أو كلمة المرور غير صحيحة')
-        } else {
-          setError(authError.message)
-        }
+      // Profile will be loaded by onAuthStateChanged, but we need to process it here
+      // We'll fetch profile manually because the state might not have updated yet
+      const docSnap = await getDoc(doc(db, 'profiles', firebaseUser.uid))
+      if (!docSnap.exists()) {
+        // No profile, redirect to complete profile
+        onCompleteProfile({
+          id: firebaseUser.uid,
+          email: firebaseUser.email,
+          username: cleanUsername
+        })
         setLoading(false)
         return
       }
 
-      const user = authData.user
-      if (!user) {
-        setError('فشل تسجيل الدخول')
-        setLoading(false)
-        return
-      }
+      const profile = docSnap.data()
 
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('role, is_frozen, username, name, gender, age, phone, class_id, info_verified, is_profile_complete')
-        .eq('id', user.id)
-        .maybeSingle()
-
-      if (profileError) {
-        console.error(profileError)
-        setError('خطأ في التحقق من الملف الشخصي')
-        setLoading(false)
-        return
-      }
-
-      if (!profile) {
-        onCompleteProfile({ id: user.id, email: user.email, username: cleanUsername })
-        setLoading(false)
-        return
-      }
-
-      if (profile.is_frozen) {
+      if (profile.isFrozen) {
         onFrozen({
-          id: user.id,
-          email: user.email,
+          id: firebaseUser.uid,
+          email: firebaseUser.email,
           username: profile.username,
           role: profile.role,
           name: profile.name,
@@ -565,10 +544,10 @@ const Login = ({ onLogin, onFrozen, onSignUp, onCompleteProfile }) => {
         return
       }
 
-      if (!profile.is_profile_complete) {
+      if (!profile.isProfileComplete) {
         onCompleteProfile({
-          id: user.id,
-          email: user.email,
+          id: firebaseUser.uid,
+          email: firebaseUser.email,
           username: profile.username || cleanUsername,
           ...profile
         })
@@ -577,22 +556,25 @@ const Login = ({ onLogin, onFrozen, onSignUp, onCompleteProfile }) => {
       }
 
       onLogin({
-        id: user.id,
-        email: user.email,
+        id: firebaseUser.uid,
+        email: firebaseUser.email,
         role: profile.role,
         username: profile.username,
         name: profile.name,
         gender: profile.gender,
         age: profile.age,
         phone: profile.phone,
-        class_id: profile.class_id,
-        needsPasswordChange: profile.info_verified === false,
-        is_profile_complete: true
+        classId: profile.classId,
+        needsPasswordChange: profile.infoVerified === false,
+        isProfileComplete: true
       })
-
     } catch (err) {
       console.error(err)
-      setError(err.message || 'حدث خطأ غير متوقع.')
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+        setError('اسم المستخدم أو كلمة المرور غير صحيحة')
+      } else {
+        setError(err.message || 'حدث خطأ غير متوقع.')
+      }
     } finally {
       setLoading(false)
     }
@@ -656,7 +638,7 @@ const Login = ({ onLogin, onFrozen, onSignUp, onCompleteProfile }) => {
   )
 }
 
-// ========== لوحة تحكم المعلم ==========
+// ========== TeacherPanel (converted to Firebase) ==========
 const TeacherPanel = ({ user, onLogout }) => {
   const [lessonTime, setLessonTime] = useState('')
   const [homeworks, setHomeworks] = useState([])
@@ -686,203 +668,213 @@ const TeacherPanel = ({ user, onLogout }) => {
     return phone.replace(/^0+/, '').replace(/[^0-9]/g, '')
   }
 
+  // Helper: fetch class names for given ids
   const fetchClassNames = async (classIds) => {
     if (!classIds || classIds.length === 0) return {}
-    const { data, error } = await supabase
-      .from('classes')
-      .select('id, name')
-      .in('id', classIds)
-    if (error) {
-      console.error('خطأ في جلب أسماء الشعب:', error)
-      return {}
+    const names = {}
+    for (const id of classIds) {
+      try {
+        const docSnap = await getDoc(doc(db, 'classes', id))
+        if (docSnap.exists()) {
+          names[id] = docSnap.data().name
+        }
+      } catch (err) {
+        console.error('Error fetching class name:', err)
+      }
     }
-    return Object.fromEntries((data || []).map(c => [c.id, c.name]))
+    return names
   }
 
+  // Fetch all teacher data
   const fetchTeacherData = async () => {
     try {
-      let teacherRecord;
-      const { data: existingTeacher, error: teacherFetchError } = await supabase
-        .from('teachers')
-        .select('*')
-        .eq('id', user.id)
-        .maybeSingle();
+      const teacherId = user.id
+      const teacherRef = doc(db, 'teachers', teacherId)
+      let teacherDoc = await getDoc(teacherRef)
 
-      if (teacherFetchError && teacherFetchError.code !== 'PGRST116') {
-        throw new Error('خطأ في جلب بيانات المعلم: ' + teacherFetchError.message);
-      }
-
-      if (!existingTeacher) {
-        const { data: newTeacher, error: insertError } = await supabase
-          .from('teachers')
-          .insert([{ id: user.id, lesson_time: null, homeworks: [] }])
-          .select()
-          .single();
-        if (insertError) {
-          console.error('فشل إنشاء سجل المعلم:', insertError)
-          setLessonTime('')
-          setHomeworks([])
-          teacherRecord = null
-        } else {
-          teacherRecord = newTeacher
-          setLessonTime(newTeacher.lesson_time || '')
-          setHomeworks(newTeacher.homeworks || [])
-        }
-      } else {
-        teacherRecord = existingTeacher
-        setLessonTime(existingTeacher.lesson_time || '')
-        setHomeworks(existingTeacher.homeworks || [])
-      }
-
-      let profilesData = []
-      try {
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('role', 'student')
-        if (error) throw error
-        profilesData = data || []
-      } catch (err) {
-        console.error("خطأ في جلب الطلاب:", err)
-        setErrorMsg('فشل تحميل الطلاب، لكن سيتم عرض باقي البيانات.')
-      }
-
-      if (profilesData.length > 0) {
-        const classIds = profilesData.map(p => p.class_id).filter(Boolean)
-        const classMap = await fetchClassNames(classIds)
-        profilesData.forEach(p => {
-          p.classes = p.class_id ? { name: classMap[p.class_id] || null } : null
+      if (!teacherDoc.exists()) {
+        // Create default teacher document
+        await setDoc(teacherRef, {
+          lessonTime: null,
+          homeworks: [],
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
         })
-      }
-      setStudents(profilesData)
-
-      let classesData = []
-      try {
-        const { data, error } = await supabase
-          .from('classes')
-          .select('*')
-          .eq('teacher_id', user.id)
-        if (error) throw error
-        classesData = data || []
-      } catch (err) {
-        console.error("خطأ في جلب الشعب:", err)
-        classesData = []
+        teacherDoc = await getDoc(teacherRef)
       }
 
-      if (classesData.length === 0 && teacherRecord) {
+      const teacherData = teacherDoc.data()
+      setLessonTime(teacherData.lessonTime || '')
+      setHomeworks(teacherData.homeworks || [])
+
+      // Fetch students (role == 'student')
+      const studentsQuery = query(collection(db, 'profiles'), where('role', '==', 'student'))
+      const studentsSnapshot = await getDocs(studentsQuery)
+      let studentsList = studentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+
+      // Enrich with class names
+      const classIds = studentsList.map(s => s.classId).filter(Boolean)
+      const classMap = await fetchClassNames(classIds)
+      studentsList = studentsList.map(s => ({
+        ...s,
+        classes: s.classId ? { name: classMap[s.classId] || null } : null
+      }))
+      setStudents(studentsList)
+
+      // Fetch classes for this teacher
+      const classesQuery = query(collection(db, 'classes'), where('teacherId', '==', teacherId))
+      const classesSnapshot = await getDocs(classesQuery)
+      let classesList = classesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+
+      if (classesList.length === 0) {
+        // Create default classes
         const defaultClasses = [
-          { name: 'أساسيات البرمجة', teacher_id: user.id },
-          { name: 'بايثون (Python)', teacher_id: user.id }
+          { name: 'أساسيات البرمجة', teacherId: teacherId },
+          { name: 'بايثون (Python)', teacherId: teacherId }
         ]
-        const { data: newClasses, error: insertError } = await supabase
-          .from('classes')
-          .insert(defaultClasses)
-          .select()
-        if (insertError) {
-          console.error("فشل إنشاء الشعب الافتراضية:", insertError)
-          setClasses([])
-        } else {
-          setClasses(newClasses || [])
+        const created = []
+        for (const cls of defaultClasses) {
+          const ref = doc(collection(db, 'classes'))
+          await setDoc(ref, { ...cls, createdAt: serverTimestamp() })
+          created.push({ id: ref.id, ...cls })
         }
-      } else {
-        setClasses(classesData)
+        classesList = created
       }
+      setClasses(classesList)
 
-      let pendingData = []
-      try {
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('id, username, name, phone, gender, age, class_id, pending_changes')
-          .not('pending_changes', 'is', null)
-          .eq('role', 'student')
-        if (error) throw error
-        pendingData = data || []
-      } catch (err) {
-        console.error("خطأ في جلب طلبات المراجعة:", err)
-        pendingData = []
-      }
-      if (pendingData.length > 0) {
-        const classIds = pendingData.map(p => p.class_id).filter(Boolean)
-        const classMap = await fetchClassNames(classIds)
-        pendingData.forEach(p => {
-          p.classes = p.class_id ? { name: classMap[p.class_id] || null } : null
-        })
-      }
-      setPendingReviews(pendingData)
+      // Fetch pending reviews (pendingChanges != null)
+      const pendingQuery = query(
+        collection(db, 'profiles'),
+        where('role', '==', 'student'),
+        where('pendingChanges', '!=', null)
+      )
+      const pendingSnapshot = await getDocs(pendingQuery)
+      let pendingList = pendingSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+      // Enrich with class names
+      const pendingClassIds = pendingList.map(s => s.classId).filter(Boolean)
+      const pendingClassMap = await fetchClassNames(pendingClassIds)
+      pendingList = pendingList.map(s => ({
+        ...s,
+        classes: s.classId ? { name: pendingClassMap[s.classId] || null } : null
+      }))
+      setPendingReviews(pendingList)
 
     } catch (err) {
-      console.error("خطأ عام في جلب البيانات:", err)
+      console.error('Error fetching teacher data:', err)
       setErrorMsg('فشل تحميل البيانات: ' + err.message)
     } finally {
       setLoading(false)
     }
   }
 
+  // Real-time listeners
   useEffect(() => {
     fetchTeacherData()
 
-    const channel = supabase
-      .channel('teacher-sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => { fetchTeacherData() })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'teachers' }, () => { fetchTeacherData() })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'classes' }, () => { fetchTeacherData() })
-      .subscribe()
+    // Listen to teacher document changes
+    const teacherRef = doc(db, 'teachers', user.id)
+    const unsubscribeTeacher = onSnapshot(teacherRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data()
+        setLessonTime(data.lessonTime || '')
+        setHomeworks(data.homeworks || [])
+      }
+    })
 
-    return () => { supabase.removeChannel(channel) }
+    // Listen to students changes
+    const studentsQuery = query(collection(db, 'profiles'), where('role', '==', 'student'))
+    const unsubscribeStudents = onSnapshot(studentsQuery, async (snapshot) => {
+      let studentsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+      const classIds = studentsList.map(s => s.classId).filter(Boolean)
+      const classMap = await fetchClassNames(classIds)
+      studentsList = studentsList.map(s => ({
+        ...s,
+        classes: s.classId ? { name: classMap[s.classId] || null } : null
+      }))
+      setStudents(studentsList)
+    })
+
+    // Listen to classes changes
+    const classesQuery = query(collection(db, 'classes'), where('teacherId', '==', user.id))
+    const unsubscribeClasses = onSnapshot(classesQuery, (snapshot) => {
+      const classesList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+      setClasses(classesList)
+    })
+
+    // Listen to pending reviews
+    const pendingQuery = query(
+      collection(db, 'profiles'),
+      where('role', '==', 'student'),
+      where('pendingChanges', '!=', null)
+    )
+    const unsubscribePending = onSnapshot(pendingQuery, async (snapshot) => {
+      let pendingList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+      const classIds = pendingList.map(s => s.classId).filter(Boolean)
+      const classMap = await fetchClassNames(classIds)
+      pendingList = pendingList.map(s => ({
+        ...s,
+        classes: s.classId ? { name: classMap[s.classId] || null } : null
+      }))
+      setPendingReviews(pendingList)
+    })
+
+    return () => {
+      unsubscribeTeacher()
+      unsubscribeStudents()
+      unsubscribeClasses()
+      unsubscribePending()
+    }
   }, [user.id])
 
+  // Accept review
   const acceptReview = async (studentId) => {
     try {
-      const { data: student, error: fetchError } = await supabase
-        .from('profiles')
-        .select('pending_changes, name, gender, age, phone')
-        .eq('id', studentId)
-        .single()
-      if (fetchError) throw fetchError
-      if (!student.pending_changes) {
+      const docRef = doc(db, 'profiles', studentId)
+      const docSnap = await getDoc(docRef)
+      if (!docSnap.exists()) {
+        alert('الطالب غير موجود.')
+        return
+      }
+      const student = docSnap.data()
+      if (!student.pendingChanges) {
         alert('لا توجد تغييرات معلقة لهذا الطالب.')
         return
       }
 
       const newData = {
-        name: student.pending_changes.name ?? student.name,
-        gender: student.pending_changes.gender ?? student.gender,
-        age: student.pending_changes.age != null ? Number(student.pending_changes.age) : student.age,
-        phone: student.pending_changes.phone ?? student.phone,
-        info_verified: true,
-        pending_changes: null
+        name: student.pendingChanges.name ?? student.name,
+        gender: student.pendingChanges.gender ?? student.gender,
+        age: student.pendingChanges.age != null ? Number(student.pendingChanges.age) : student.age,
+        phone: student.pendingChanges.phone ?? student.phone,
+        infoVerified: true,
+        pendingChanges: null,
+        updatedAt: serverTimestamp()
       }
 
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update(newData)
-        .eq('id', studentId)
-      if (updateError) throw updateError
-
+      await updateDoc(docRef, newData)
       alert('تم قبول التغييرات وتحديث بيانات الطالب بنجاح.')
-      fetchTeacherData()
     } catch (err) {
-      console.error('خطأ في قبول المراجعة:', err)
-      alert('فشل قبول المراجعة: ' + (err.message || err.details || 'خطأ غير معروف'))
+      console.error('Error accepting review:', err)
+      alert('فشل قبول المراجعة: ' + (err.message || 'خطأ غير معروف'))
     }
   }
 
+  // Reject review
   const rejectReview = async (studentId) => {
     if (!window.confirm('هل أنت متأكد من رفض هذه التغييرات؟')) return
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ pending_changes: null })
-        .eq('id', studentId)
-      if (error) throw error
+      await updateDoc(doc(db, 'profiles', studentId), {
+        pendingChanges: null,
+        updatedAt: serverTimestamp()
+      })
       alert('تم رفض التغييرات.')
-      fetchTeacherData()
     } catch (err) {
-      console.error('خطأ في رفض المراجعة:', err)
-      alert('فشل رفض المراجعة: ' + (err.message || err.details || 'خطأ غير معروف'))
+      console.error('Error rejecting review:', err)
+      alert('فشل رفض المراجعة: ' + (err.message || 'خطأ غير معروف'))
     }
   }
 
+  // Save homework
   const saveHomework = async () => {
     if (!newHomeworkText.trim()) return alert('يرجى كتابة نص الواجب أولاً.')
     const revealTime = publishType === 'now' ? new Date().toISOString() : new Date(newHomeworkRevealTime).toISOString()
@@ -895,14 +887,13 @@ const TeacherPanel = ({ user, onLogout }) => {
       reveal_time: revealTime,
       is_scheduled: publishType === 'schedule'
     }
-    const updatedList = [...homeworks, newHwItem]
     try {
-      const { error } = await supabase
-        .from('teachers')
-        .update({ homeworks: updatedList })
-        .eq('id', user.id)
-      if (error) throw error
-      setHomeworks(updatedList)
+      const teacherRef = doc(db, 'teachers', user.id)
+      await updateDoc(teacherRef, {
+        homeworks: arrayUnion(newHwItem),
+        updatedAt: serverTimestamp()
+      })
+      // Optimistically update local state? onSnapshot will update.
       setNewHomeworkText('')
       setNewHomeworkRevealTime('')
       alert(publishType === 'now' ? 'تم نشر الواجب فوراً!' : 'تم جدولة الواجب بنجاح.')
@@ -911,19 +902,28 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
+  // Delete homework
   const deleteHomework = async (hwId) => {
     if (!window.confirm('هل تريد حذف هذا الواجب نهائياً؟')) return
-    const filtered = homeworks.filter(h => h.id !== hwId)
     try {
-      await supabase.from('teachers').update({ homeworks: filtered }).eq('id', user.id)
-      setHomeworks(filtered)
+      const teacherRef = doc(db, 'teachers', user.id)
+      const docSnap = await getDoc(teacherRef)
+      if (docSnap.exists()) {
+        const currentHomeworks = docSnap.data().homeworks || []
+        const filtered = currentHomeworks.filter(h => h.id !== hwId)
+        await updateDoc(teacherRef, {
+          homeworks: filtered,
+          updatedAt: serverTimestamp()
+        })
+      }
     } catch (err) {
       alert('فشل حذف الواجب: ' + err.message)
     }
   }
 
+  // Toggle freeze
   const toggleFreezeStudent = async (student) => {
-    const nextStatus = !student.is_frozen
+    const nextStatus = !student.isFrozen
     if (nextStatus) {
       const confirmFreeze = window.confirm(
         'تنبيه هام:\nإذا قمت بتجميد هذا الحساب، سيبقى مجمداً حتى تقوم بفك التجميد يدوياً.\nهل تريد المتابعة؟'
@@ -931,40 +931,36 @@ const TeacherPanel = ({ user, onLogout }) => {
       if (!confirmFreeze) return
     }
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ is_frozen: nextStatus })
-        .eq('id', student.id)
-      if (error) throw error
-      fetchTeacherData()
+      await updateDoc(doc(db, 'profiles', student.id), {
+        isFrozen: nextStatus,
+        updatedAt: serverTimestamp()
+      })
     } catch (err) {
-      console.error('خطأ في تحديث حالة التجميد:', err)
-      alert('فشل تحديث حالة التجميد: ' + (err.message || err.details || 'خطأ غير معروف'))
+      console.error('Error toggling freeze:', err)
+      alert('فشل تحديث حالة التجميد: ' + (err.message || 'خطأ غير معروف'))
     }
   }
 
+  // Delete all frozen accounts
   const deleteFrozenAccounts = async () => {
     try {
-      const { data: frozen, error } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('is_frozen', true)
-      if (error) throw error
-      if (frozen.length === 0) {
+      const q = query(collection(db, 'profiles'), where('isFrozen', '==', true))
+      const snapshot = await getDocs(q)
+      if (snapshot.empty) {
         alert('لا يوجد حسابات مجمدة.')
         return
       }
-      if (!window.confirm(`هل أنت متأكد من حذف ${frozen.length} حساب مجمد نهائياً؟`)) return
-      for (const student of frozen) {
-        await supabase.from('profiles').delete().eq('id', student.id)
+      if (!window.confirm(`هل أنت متأكد من حذف ${snapshot.size} حساب مجمد نهائياً؟`)) return
+      for (const docSnap of snapshot.docs) {
+        await deleteDoc(doc(db, 'profiles', docSnap.id))
       }
-      alert(`تم حذف ${frozen.length} حساب مجمد.`)
-      fetchTeacherData()
+      alert(`تم حذف ${snapshot.size} حساب مجمد.`)
     } catch (err) {
       alert('خطأ أثناء الحذف: ' + err.message)
     }
   }
 
+  // Check inactivity (30 days)
   const checkInactivityWarning = (lastSeenStr) => {
     if (!lastSeenStr) return false
     const lastSeen = new Date(lastSeenStr)
@@ -973,6 +969,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     return diffDays >= 30
   }
 
+  // Communicate with parent via WhatsApp
   const communicateWithParent = (student) => {
     const phone = student.phone || ''
     if (!phone) {
@@ -994,47 +991,42 @@ const TeacherPanel = ({ user, onLogout }) => {
     window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank')
   }
 
+  // Reset student (set infoVerified false, unfreeze, clear pending)
   const handleResetStudent = async (studentId) => {
     if (!window.confirm('سيتم إعادة تعيين هذا الحساب ليصبح كأنه جديد، وسيُطلب من الطالب تغيير كلمة المرور عند تسجيل الدخول. هل تريد المتابعة؟')) return
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          info_verified: false,
-          is_frozen: false,
-          pending_changes: null,
-        })
-        .eq('id', studentId)
-      if (error) throw error
+      await updateDoc(doc(db, 'profiles', studentId), {
+        infoVerified: false,
+        isFrozen: false,
+        pendingChanges: null,
+        updatedAt: serverTimestamp()
+      })
       alert('تم إعادة تعيين الحساب بنجاح. سيتوجب على الطالب تغيير كلمة المرور عند تسجيل الدخول.')
-      fetchTeacherData()
     } catch (err) {
-      alert('فشل إعادة التعيين: ' + (err.message || err.details || 'خطأ غير معروف'))
+      alert('فشل إعادة التعيين: ' + (err.message || 'خطأ غير معروف'))
     }
   }
 
+  // Delete student permanently
   const handleDeleteStudentPermanently = async (studentId) => {
     if (!window.confirm('إجراء خطير: هل أنت متأكد من حذف حساب هذا الطالب نهائياً وفوراً؟')) return
     try {
-      const { error } = await supabase.from('profiles').delete().eq('id', studentId)
-      if (error) throw error
+      await deleteDoc(doc(db, 'profiles', studentId))
       alert('تم حذف الطالب من النظام.')
-      fetchTeacherData()
     } catch (err) {
       alert('فشل حذف الطالب: ' + err.message)
     }
   }
 
+  // Update lesson time
   const updateLessonTime = async () => {
     if (!newLessonTime) return alert('يرجى اختيار تاريخ ووقت الحصة أولاً.')
     try {
       const isoTime = new Date(newLessonTime).toISOString()
-      const { error } = await supabase
-        .from('teachers')
-        .update({ lesson_time: isoTime })
-        .eq('id', user.id)
-      if (error) throw error
-      setLessonTime(isoTime)
+      await updateDoc(doc(db, 'teachers', user.id), {
+        lessonTime: isoTime,
+        updatedAt: serverTimestamp()
+      })
       setNewLessonTime('')
       alert('تم تحديث موعد الحصة القادمة بنجاح!')
     } catch (err) {
@@ -1042,6 +1034,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
+  // Add student
   const handleAddStudent = async (e) => {
     e.preventDefault()
     if (!newStudentName || !newStudentGender || !newStudentAge || !newStudentPhone || !newStudentClass) {
@@ -1051,14 +1044,10 @@ const TeacherPanel = ({ user, onLogout }) => {
 
     setStudentLoading(true)
     try {
-      const { data: classData, error: classError } = await supabase
-        .from('classes')
-        .select('id')
-        .eq('id', newStudentClass)
-        .maybeSingle()
-
-      if (classError) throw new Error('خطأ في التحقق من الشعبة: ' + classError.message)
-      if (!classData) {
+      // Verify class exists
+      const classRef = doc(db, 'classes', newStudentClass)
+      const classSnap = await getDoc(classRef)
+      if (!classSnap.exists()) {
         alert('الشعبة المختارة غير صالحة. يرجى تحديث الصفحة والمحاولة مرة أخرى.')
         setStudentLoading(false)
         return
@@ -1067,18 +1056,20 @@ const TeacherPanel = ({ user, onLogout }) => {
       const newId = generateId()
       const tempEmail = `student_${newId}@temp.com`
 
+      // Generate unique username
       const baseUsername = newStudentName.trim().replace(/\s+/g, '.').toLowerCase()
       let username = baseUsername
       let counter = 1
       let exists = true
       while (exists) {
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('username')
-          .eq('username', username)
-          .maybeSingle()
-        if (error) throw error
-        if (!data) { exists = false } else { username = `${baseUsername}${counter}`; counter++ }
+        const q = query(collection(db, 'profiles'), where('username', '==', username))
+        const querySnap = await getDocs(q)
+        if (querySnap.empty) {
+          exists = false
+        } else {
+          username = `${baseUsername}${counter}`
+          counter++
+        }
       }
 
       const cleanPhone = newStudentPhone.replace(/[^0-9]/g, '')
@@ -1095,42 +1086,23 @@ const TeacherPanel = ({ user, onLogout }) => {
         return
       }
 
-      const { error } = await supabase
-        .from('profiles')
-        .insert([{
-          id: newId,
-          email: tempEmail,
-          username: username,
-          name: newStudentName.trim(),
-          gender: newStudentGender,
-          age: ageNum,
-          phone: cleanPhone,
-          class_id: newStudentClass,
-          role: 'student',
-          is_frozen: false,
-          info_verified: false,
-          is_profile_complete: false
-        }])
-
-      if (error) {
-        console.error('📌 تفاصيل الخطأ من Supabase:', error)
-        let errorMessage = 'فشل إضافة الطالب: '
-        if (error.code === '42501' || error.message.includes('permission denied')) {
-          errorMessage += 'صلاحية الإدراج ممنوعة. تأكد من إنشاء سياسة RLS للإدراج.'
-        } else if (error.code === '23503') {
-          errorMessage += 'معرف الشعبة غير صالح (مفتاح خارجي). تأكد من اختيار شعبة صحيحة.'
-        } else if (error.code === '23505') {
-          errorMessage += 'اسم المستخدم أو البريد الإلكتروني موجود بالفعل. حاول مرة أخرى.'
-        } else if (error.message) {
-          errorMessage += error.message
-        } else {
-          errorMessage += 'خطأ غير معروف'
-        }
-        if (error.details) errorMessage += `\nالتفاصيل: ${error.details}`
-        if (error.hint) errorMessage += `\nتلميح: ${error.hint}`
-        alert(errorMessage)
-        return
-      }
+      // Create profile document
+      await setDoc(doc(db, 'profiles', newId), {
+        email: tempEmail,
+        username: username,
+        name: newStudentName.trim(),
+        gender: newStudentGender,
+        age: ageNum,
+        phone: cleanPhone,
+        classId: newStudentClass,
+        role: 'student',
+        isFrozen: false,
+        infoVerified: false,
+        isProfileComplete: false,
+        pendingChanges: null,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      })
 
       alert(`تم تسجيل الطالب ${newStudentName} بنجاح.\nاسم المستخدم المؤقت: ${username}\nسيتمكن الطالب من تعيين اسم مستخدم جديد عند تسجيل الدخول لأول مرة.`)
       setNewStudentName('')
@@ -1139,9 +1111,8 @@ const TeacherPanel = ({ user, onLogout }) => {
       setNewStudentPhone('')
       setNewStudentClass('')
       setShowAddStudentModal(false)
-      await fetchTeacherData()
     } catch (err) {
-      console.error('خطأ في إضافة الطالب:', err)
+      console.error('Error adding student:', err)
       alert('فشل إضافة الطالب: ' + (err.message || 'خطأ غير معروف'))
     } finally {
       setStudentLoading(false)
@@ -1149,7 +1120,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   }
 
   const sortedHomeworks = [...homeworks].sort((a, b) => (b.is_scheduled ? 1 : 0) - (a.is_scheduled ? 1 : 0))
-  const sortedStudents = [...students].sort((a, b) => (a.is_frozen ? 1 : 0) - (b.is_frozen ? 1 : 0))
+  const sortedStudents = [...students].sort((a, b) => (a.isFrozen ? 1 : 0) - (b.isFrozen ? 1 : 0))
 
   if (loading) return <div className="text-center text-gray-400 p-8">جاري التحميل...</div>
 
@@ -1194,10 +1165,10 @@ const TeacherPanel = ({ user, onLogout }) => {
                       {student.classes && <p className="text-xs text-blue-300">الشعبة: {student.classes.name}</p>}
                       <div className="mt-1 text-xs text-gray-300 bg-yellow-950/30 p-2 rounded border border-yellow-500/10">
                         <p className="font-semibold text-yellow-200">التغييرات المطلوبة:</p>
-                        {student.pending_changes?.name && <p>الاسم: {student.pending_changes.name}</p>}
-                        {student.pending_changes?.gender && <p>الجنس: {student.pending_changes.gender}</p>}
-                        {student.pending_changes?.age && <p>العمر: {student.pending_changes.age}</p>}
-                        {student.pending_changes?.phone && <p>رقم الهاتف: {student.pending_changes.phone}</p>}
+                        {student.pendingChanges?.name && <p>الاسم: {student.pendingChanges.name}</p>}
+                        {student.pendingChanges?.gender && <p>الجنس: {student.pendingChanges.gender}</p>}
+                        {student.pendingChanges?.age && <p>العمر: {student.pendingChanges.age}</p>}
+                        {student.pendingChanges?.phone && <p>رقم الهاتف: {student.pendingChanges.phone}</p>}
                       </div>
                     </div>
                     <div className="flex gap-2">
@@ -1281,7 +1252,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       </div>
 
-      {/* مودال عرض قوائم الطلاب */}
+      {/* Modal: Students list */}
       {showStudentsModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowStudentsModal(false)}>
           <div className="glass p-6 rounded-3xl max-w-4xl w-full max-h-[80vh] overflow-y-auto border border-white/20" onClick={(e) => e.stopPropagation()}>
@@ -1291,7 +1262,7 @@ const TeacherPanel = ({ user, onLogout }) => {
             </div>
             <div className="space-y-3">
               {sortedStudents.map(s => (
-                <div key={s.id} className={`p-3 rounded-xl border flex flex-wrap justify-between items-center gap-3 ${s.is_frozen ? 'bg-gray-900/60 border-gray-700 opacity-60' : 'bg-white/5 border-white/5'}`}>
+                <div key={s.id} className={`p-3 rounded-xl border flex flex-wrap justify-between items-center gap-3 ${s.isFrozen ? 'bg-gray-900/60 border-gray-700 opacity-60' : 'bg-white/5 border-white/5'}`}>
                   <div className="flex items-center gap-3 flex-wrap">
                     <span className="text-white text-sm font-medium">{s.name || s.username}</span>
                     <span className="text-xs text-gray-400">({s.username})</span>
@@ -1299,8 +1270,8 @@ const TeacherPanel = ({ user, onLogout }) => {
                     {s.phone && <span className="text-xs text-gray-400">📱 {s.phone}</span>}
                     {s.gender && <span className="text-xs text-gray-400">{s.gender}</span>}
                     {s.age && <span className="text-xs text-gray-400">عمر {s.age}</span>}
-                    {s.is_frozen && <span className="text-xs text-orange-400 bg-orange-950/40 px-2 py-0.5 rounded border border-orange-500/20">⏳ مجمد</span>}
-                    {checkInactivityWarning(s.last_seen) && !s.is_frozen && (
+                    {s.isFrozen && <span className="text-xs text-orange-400 bg-orange-950/40 px-2 py-0.5 rounded border border-orange-500/20">⏳ مجمد</span>}
+                    {checkInactivityWarning(s.last_seen) && !s.isFrozen && (
                       <span className="text-xs text-red-400 bg-red-950/40 px-2 py-0.5 rounded border border-red-500/30 animate-bounce">🚨 لم يفتح منذ 30 يوم!</span>
                     )}
                   </div>
@@ -1309,9 +1280,9 @@ const TeacherPanel = ({ user, onLogout }) => {
                     <button onClick={() => handleResetStudent(s.id)} type="button" className="text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-2 py-1 rounded-lg hover:bg-yellow-500/30">🔄 إعادة تعيين</button>
                     <button onClick={() => handleDeleteStudentPermanently(s.id)} type="button" className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg hover:bg-red-500/30">❌ حذف</button>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-400">{s.is_frozen ? 'مجمد' : 'مفعل'}</span>
-                      <div onClick={() => toggleFreezeStudent(s)} className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-300 ${s.is_frozen ? 'bg-gray-600' : 'bg-green-500'}`}>
-                        <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-300 ${s.is_frozen ? 'translate-x-0' : '-translate-x-6'}`} />
+                      <span className="text-xs text-gray-400">{s.isFrozen ? 'مجمد' : 'مفعل'}</span>
+                      <div onClick={() => toggleFreezeStudent(s)} className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-300 ${s.isFrozen ? 'bg-gray-600' : 'bg-green-500'}`}>
+                        <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-300 ${s.isFrozen ? 'translate-x-0' : '-translate-x-6'}`} />
                       </div>
                     </div>
                   </div>
@@ -1323,7 +1294,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* مودال إضافة طالب */}
+      {/* Modal: Add student */}
       {showAddStudentModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowAddStudentModal(false)}>
           <div className="glass p-6 rounded-3xl max-w-md w-full border border-white/20" onClick={(e) => e.stopPropagation()}>
@@ -1368,7 +1339,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   )
 }
 
-// ========== لوحة تحكم الطالب ==========
+// ========== StudentPanel (converted to Firebase) ==========
 const StudentPanel = ({ user, onLogout }) => {
   const [teacherData, setTeacherData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -1380,15 +1351,15 @@ const StudentPanel = ({ user, onLogout }) => {
 
   const fetchTeacherInfo = async () => {
     try {
-      const { data, error } = await supabase
-        .from('teachers')
-        .select('lesson_time, homeworks')
-        .limit(1)
-      if (error) throw error
-      if (data && data.length > 0) {
-        setTeacherData(data[0])
+      // Fetch first teacher document (there should be one)
+      const q = query(collection(db, 'teachers'))
+      const querySnapshot = await getDocs(q)
+      if (!querySnapshot.empty) {
+        const docSnap = querySnapshot.docs[0]
+        const data = docSnap.data()
+        setTeacherData({ id: docSnap.id, ...data })
         const now = new Date().getTime()
-        const available = (data[0].homeworks || []).filter(hw => new Date(hw.reveal_time).getTime() <= now)
+        const available = (data.homeworks || []).filter(hw => new Date(hw.reveal_time).getTime() <= now)
         setAvailableHomeworks(available)
       }
     } catch (err) {
@@ -1401,22 +1372,19 @@ const StudentPanel = ({ user, onLogout }) => {
 
   const fetchProfile = async () => {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .maybeSingle()
-      if (error) throw error
-      if (data && data.class_id) {
-        const { data: classData } = await supabase
-          .from('classes')
-          .select('name')
-          .eq('id', data.class_id)
-          .maybeSingle()
-        data.classes = classData || null
+      const docSnap = await getDoc(doc(db, 'profiles', user.id))
+      if (docSnap.exists()) {
+        const data = docSnap.data()
+        // Fetch class name if classId exists
+        if (data.classId) {
+          const classSnap = await getDoc(doc(db, 'classes', data.classId))
+          if (classSnap.exists()) {
+            data.classes = classSnap.data()
+          }
+        }
+        setProfile(data)
+        setEditData(data || {})
       }
-      setProfile(data)
-      setEditData(data || {})
     } catch (err) {
       console.error(err)
     }
@@ -1426,19 +1394,46 @@ const StudentPanel = ({ user, onLogout }) => {
     fetchTeacherInfo()
     fetchProfile()
 
-    const channel = supabase
-      .channel('student-sync')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'teachers' }, (payload) => {
-        setTeacherData(payload.new)
+    // Listen to teacher changes
+    const q = query(collection(db, 'teachers'))
+    const unsubscribeTeacher = onSnapshot(q, (snapshot) => {
+      if (!snapshot.empty) {
+        const docSnap = snapshot.docs[0]
+        const data = docSnap.data()
+        setTeacherData({ id: docSnap.id, ...data })
         const now = new Date().getTime()
-        const available = (payload.new.homeworks || []).filter(hw => new Date(hw.reveal_time).getTime() <= now)
+        const available = (data.homeworks || []).filter(hw => new Date(hw.reveal_time).getTime() <= now)
         setAvailableHomeworks(available)
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` }, () => { fetchProfile() })
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
+      }
+    })
+
+    // Listen to own profile changes
+    const unsubscribeProfile = onSnapshot(doc(db, 'profiles', user.id), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data()
+        // Re-fetch class name
+        if (data.classId) {
+          getDoc(doc(db, 'classes', data.classId)).then(classSnap => {
+            if (classSnap.exists()) {
+              data.classes = classSnap.data()
+            }
+            setProfile(data)
+            setEditData(data || {})
+          })
+        } else {
+          setProfile(data)
+          setEditData(data || {})
+        }
+      }
+    })
+
+    return () => {
+      unsubscribeTeacher()
+      unsubscribeProfile()
+    }
   }, [user.id])
 
+  // Update available homeworks every second
   useEffect(() => {
     const interval = setInterval(() => {
       if (teacherData?.homeworks) {
@@ -1453,9 +1448,12 @@ const StudentPanel = ({ user, onLogout }) => {
   const changePassword = async () => {
     const newPass = window.prompt('أدخل كلمة المرور الجديدة')
     if (!newPass) return
-    const { error } = await supabase.auth.updateUser({ password: newPass })
-    if (error) alert('فشل التحديث: ' + error.message)
-    else alert('تم تغيير كلمة المرور بنجاح')
+    try {
+      await updatePassword(auth.currentUser, newPass)
+      alert('تم تغيير كلمة المرور بنجاح')
+    } catch (err) {
+      alert('فشل التحديث: ' + err.message)
+    }
   }
 
   const getNextScheduledHomework = () => {
@@ -1489,22 +1487,17 @@ const StudentPanel = ({ user, onLogout }) => {
         gender: editData.gender,
         age: parseInt(editData.age) || null,
         phone: editData.phone,
+        infoVerified: false,
+        pendingChanges: {
+          updated_at: new Date().toISOString(),
+          name: editData.name,
+          gender: editData.gender,
+          age: parseInt(editData.age) || null,
+          phone: editData.phone
+        },
+        updatedAt: serverTimestamp()
       }
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          ...updates,
-          info_verified: false,
-          pending_changes: {
-            updated_at: new Date().toISOString(),
-            name: editData.name,
-            gender: editData.gender,
-            age: parseInt(editData.age) || null,
-            phone: editData.phone
-          }
-        })
-        .eq('id', user.id)
-      if (error) throw error
+      await updateDoc(doc(db, 'profiles', user.id), updates)
       alert('سيتم مراجعة البيانات خلال 48 ساعة.')
       setEditing(false)
       fetchProfile()
@@ -1570,14 +1563,14 @@ const StudentPanel = ({ user, onLogout }) => {
               <p><span className="text-gray-400">العمر:</span> {profile?.age || 'غير محدد'}</p>
               <p><span className="text-gray-400">رقم الهاتف:</span> {profile?.phone || 'غير مسجل'}</p>
               <p className="col-span-2"><span className="text-gray-400">الشعبة:</span> {profile?.classes?.name || 'غير محددة'}</p>
-              <p className="col-span-2"><span className="text-gray-400">حالة التحقق:</span> {profile?.info_verified ? '✅ تم التحقق' : '⏳ قيد المراجعة'}</p>
+              <p className="col-span-2"><span className="text-gray-400">حالة التحقق:</span> {profile?.infoVerified ? '✅ تم التحقق' : '⏳ قيد المراجعة'}</p>
             </div>
           )}
         </div>
 
         <div className="glass-glow p-6 rounded-2xl border border-blue-500/20">
           <h3 className="text-xl font-semibold mb-4 text-blue-200">الوقت المتبقي لحصتك القادمة</h3>
-          {teacherData?.lesson_time ? <CountdownTimer targetDate={teacherData.lesson_time} /> : <p className="text-gray-400 text-center py-2">لا توجد حصة مجدولة</p>}
+          {teacherData?.lessonTime ? <CountdownTimer targetDate={teacherData.lessonTime} /> : <p className="text-gray-400 text-center py-2">لا توجد حصة مجدولة</p>}
         </div>
 
         <div className="glass p-6 rounded-2xl border border-white/5 space-y-3">
@@ -1610,7 +1603,7 @@ const StudentPanel = ({ user, onLogout }) => {
   )
 }
 
-// ========== التطبيق الرئيسي ==========
+// ========== App (converted to Firebase) ==========
 const App = () => {
   const [user, setUser] = useState(null)
   const [frozenUser, setFrozenUser] = useState(null)
@@ -1621,8 +1614,11 @@ const App = () => {
   useDynamicBackground()
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
-    setUser(null); setFrozenUser(null); setPendingUserForComplete(null); setShowSignUp(false)
+    await signOut(auth)
+    setUser(null)
+    setFrozenUser(null)
+    setPendingUserForComplete(null)
+    setShowSignUp(false)
   }
 
   const handleLogin = (userData) => {
@@ -1650,39 +1646,38 @@ const App = () => {
 
   const handleSignUpSuccess = () => {
     setShowSignUp(false)
-    // سوف يتم تحديث الجلسة عبر onAuthStateChange
+    // Auth state will trigger login
   }
 
-  const checkSession = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (session?.user) {
-      const { data: profile, error } = await supabase
-        .from('profiles')
-        .select('role, is_frozen, username, name, gender, age, phone, class_id, info_verified, is_profile_complete')
-        .eq('id', session.user.id)
-        .maybeSingle()
+  const checkSessionAndProfile = async (firebaseUser) => {
+    if (!firebaseUser) {
+      setUser(null)
+      setFrozenUser(null)
+      setPendingUserForComplete(null)
+      setLoading(false)
+      return
+    }
 
-      if (error) {
-        console.error(error)
-        await supabase.auth.signOut()
+    try {
+      const docSnap = await getDoc(doc(db, 'profiles', firebaseUser.uid))
+      if (!docSnap.exists()) {
+        setPendingUserForComplete({
+          id: firebaseUser.uid,
+          email: firebaseUser.email,
+          username: firebaseUser.displayName || ''
+        })
         setUser(null)
         setFrozenUser(null)
         setLoading(false)
         return
       }
 
-      if (!profile) {
-        setPendingUserForComplete({ id: session.user.id, email: session.user.email, username: session.user.user_metadata?.username || '' })
-        setUser(null)
-        setFrozenUser(null)
-        setLoading(false)
-        return
-      }
+      const profile = docSnap.data()
 
-      if (profile.is_frozen) {
+      if (profile.isFrozen) {
         setFrozenUser({
-          id: session.user.id,
-          email: session.user.email,
+          id: firebaseUser.uid,
+          email: firebaseUser.email,
           username: profile.username,
           role: profile.role,
           name: profile.name,
@@ -1690,12 +1685,18 @@ const App = () => {
           class_name: 'غير محدد'
         })
         setUser(null)
+        setPendingUserForComplete(null)
         setLoading(false)
         return
       }
 
-      if (!profile.is_profile_complete) {
-        setPendingUserForComplete({ id: session.user.id, email: session.user.email, username: profile.username || '', ...profile })
+      if (!profile.isProfileComplete) {
+        setPendingUserForComplete({
+          id: firebaseUser.uid,
+          email: firebaseUser.email,
+          username: profile.username || '',
+          ...profile
+        })
         setUser(null)
         setFrozenUser(null)
         setLoading(false)
@@ -1703,91 +1704,37 @@ const App = () => {
       }
 
       setUser({
-        id: session.user.id,
-        email: session.user.email,
+        id: firebaseUser.uid,
+        email: firebaseUser.email,
         role: profile.role,
         username: profile.username,
         name: profile.name,
         gender: profile.gender,
         age: profile.age,
         phone: profile.phone,
-        class_id: profile.class_id,
-        needsPasswordChange: profile.info_verified === false,
-        is_profile_complete: true
+        classId: profile.classId,
+        needsPasswordChange: profile.infoVerified === false,
+        isProfileComplete: true
       })
       setFrozenUser(null)
       setPendingUserForComplete(null)
-    } else {
+      setLoading(false)
+    } catch (err) {
+      console.error(err)
       setUser(null)
       setFrozenUser(null)
       setPendingUserForComplete(null)
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   useEffect(() => {
-    checkSession()
-
-    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session?.user) {
-        const { data: profile, error } = await supabase
-          .from('profiles')
-          .select('role, is_frozen, username, name, gender, age, phone, class_id, info_verified, is_profile_complete')
-          .eq('id', session.user.id)
-          .maybeSingle()
-
-        if (error || !profile) {
-          setUser(null)
-          setFrozenUser(null)
-          setPendingUserForComplete(null)
-          return
-        }
-
-        if (profile.is_frozen) {
-          setFrozenUser({
-            id: session.user.id,
-            email: session.user.email,
-            username: profile.username,
-            role: profile.role,
-            name: profile.name,
-            phone: profile.phone,
-            class_name: 'غير محدد'
-          })
-          setUser(null)
-          setPendingUserForComplete(null)
-          return
-        }
-
-        if (!profile.is_profile_complete) {
-          setPendingUserForComplete({ id: session.user.id, email: session.user.email, username: profile.username || '', ...profile })
-          setUser(null)
-          setFrozenUser(null)
-          return
-        }
-
-        setUser({
-          id: session.user.id,
-          email: session.user.email,
-          role: profile.role,
-          username: profile.username,
-          name: profile.name,
-          gender: profile.gender,
-          age: profile.age,
-          phone: profile.phone,
-          class_id: profile.class_id,
-          needsPasswordChange: profile.info_verified === false,
-          is_profile_complete: true
-        })
-        setFrozenUser(null)
-        setPendingUserForComplete(null)
-      } else {
-        setUser(null)
-        setFrozenUser(null)
-        setPendingUserForComplete(null)
-      }
+    // Check initial auth state
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      await checkSessionAndProfile(firebaseUser)
     })
 
-    return () => listener?.subscription.unsubscribe()
+    return () => unsubscribe()
   }, [])
 
   if (loading) return <div className="container-center min-h-screen text-white"><div className="glass p-8 rounded-2xl border border-white/10 shadow-xl animate-pulse">جاري التحميل...</div></div>
