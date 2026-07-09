@@ -12,6 +12,17 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
+// ========== دالة مساعدة لتوليد ID (متوافقة مع جميع البيئات) ==========
+const generateId = () => {
+  try {
+    // محاولة استخدام crypto.randomUUID() إذا كانت متوفرة (HTTPS أو متصفح حديث)
+    return crypto.randomUUID();
+  } catch {
+    // خطة بديلة للمتصفحات القديمة أو بيئة HTTP
+    return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+  }
+};
+
 // ========== هوك خلفية متحركة ==========
 const useDynamicBackground = () => {
   useEffect(() => {
@@ -175,6 +186,7 @@ const FrozenAccount = ({ user, onLogout }) => {
           </a>
           <button
             onClick={onLogout}
+            type="button"
             className="text-sm text-gray-400 hover:text-white transition-colors mt-4"
           >
             تسجيل الخروج
@@ -319,7 +331,7 @@ const SignUp = ({ onSuccess, onCancel }) => {
               {loading ? 'جاري التسجيل...' : 'إنشاء حساب'}
             </button>
           </form>
-          <button onClick={onCancel} className="text-sm text-gray-400 hover:text-white w-full text-center mt-2">
+          <button onClick={onCancel} type="button" className="text-sm text-gray-400 hover:text-white w-full text-center mt-2">
             لديك حساب بالفعل؟ تسجيل الدخول
           </button>
         </div>
@@ -468,7 +480,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
               {loading ? 'جاري الحفظ...' : 'حفظ البيانات'}
             </button>
           </form>
-          <button onClick={onCancel} className="text-sm text-gray-400 hover:text-white w-full text-center mt-2">تسجيل الخروج</button>
+          <button onClick={onCancel} type="button" className="text-sm text-gray-400 hover:text-white w-full text-center mt-2">تسجيل الخروج</button>
         </div>
       </div>
     </div>
@@ -629,6 +641,7 @@ const Login = ({ onLogin, onFrozen, onSignUp, onCompleteProfile }) => {
             </form>
             <button
               onClick={onSignUp}
+              type="button"
               className="text-sm text-blue-400 hover:text-blue-300 transition-colors underline-offset-2"
             >
               ليس لديك حساب؟ أنشئ حساباً جديداً
@@ -877,7 +890,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       return alert('يرجى تحديد تاريخ ووقت نشر الواجب المجدول.')
     }
     const newHwItem = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       text: newHomeworkText,
       reveal_time: revealTime,
       is_scheduled: publishType === 'schedule'
@@ -1051,7 +1064,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         return
       }
 
-      const newId = crypto.randomUUID()
+      const newId = generateId()
       const tempEmail = `student_${newId}@temp.com`
 
       const baseUsername = newStudentName.trim().replace(/\s+/g, '.').toLowerCase()
@@ -1148,7 +1161,7 @@ const TeacherPanel = ({ user, onLogout }) => {
             <h2 className="text-3xl font-bold text-purple-300">لوحة تحكم المعلم</h2>
             <p className="text-gray-400 text-sm mt-1">مرحباً بك: {user.username || user.email}</p>
           </div>
-          <button onClick={onLogout} className="btn-primary bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 shadow-lg text-sm">
+          <button onClick={onLogout} type="button" className="btn-primary bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 shadow-lg text-sm">
             تسجيل الخروج
           </button>
         </div>
@@ -1188,8 +1201,8 @@ const TeacherPanel = ({ user, onLogout }) => {
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <button onClick={() => acceptReview(student.id)} className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg">قبول ✅</button>
-                      <button onClick={() => rejectReview(student.id)} className="text-xs bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg">رفض ❌</button>
+                      <button onClick={() => acceptReview(student.id)} type="button" className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg">قبول ✅</button>
+                      <button onClick={() => rejectReview(student.id)} type="button" className="text-xs bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg">رفض ❌</button>
                     </div>
                   </div>
                 </div>
@@ -1218,7 +1231,7 @@ const TeacherPanel = ({ user, onLogout }) => {
                   <input type="datetime-local" className="input-glass text-right" value={newHomeworkRevealTime} onChange={(e) => setNewHomeworkRevealTime(e.target.value)} />
                 </div>
               )}
-              <button onClick={saveHomework} className="btn-primary bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 py-3.5 px-6 mr-auto sm:mr-0 self-end">
+              <button onClick={saveHomework} type="button" className="btn-primary bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 py-3.5 px-6 mr-auto sm:mr-0 self-end">
                 نشر الواجب
               </button>
             </div>
@@ -1240,7 +1253,7 @@ const TeacherPanel = ({ user, onLogout }) => {
                         </span>
                       </div>
                     </div>
-                    <button onClick={() => deleteHomework(hw.id)} className="p-1.5 bg-red-600/30 text-red-300 rounded-lg border border-red-500/30 hover:bg-red-600/50 text-xs">حذف</button>
+                    <button onClick={() => deleteHomework(hw.id)} type="button" className="p-1.5 bg-red-600/30 text-red-300 rounded-lg border border-red-500/30 hover:bg-red-600/50 text-xs">حذف</button>
                   </div>
                 )
               })}
@@ -1252,9 +1265,9 @@ const TeacherPanel = ({ user, onLogout }) => {
           <div className="flex flex-wrap justify-between items-center gap-3">
             <h3 className="text-xl font-semibold text-blue-300">إدارة الطلاب</h3>
             <div className="flex flex-wrap gap-2">
-              <button onClick={() => setShowAddStudentModal(true)} className="btn-primary bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 py-2 px-4 text-sm">+ إضافة طالب</button>
-              <button onClick={deleteFrozenAccounts} className="btn-primary bg-red-600 hover:bg-red-700 py-2 px-4 text-sm">🗑️ حذف المجمدين</button>
-              <button onClick={() => setShowStudentsModal(true)} className="btn-primary bg-purple-600 hover:bg-purple-700 py-2 px-4 text-sm">📋 عرض قوائم الطلبة</button>
+              <button onClick={() => setShowAddStudentModal(true)} type="button" className="btn-primary bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 py-2 px-4 text-sm">+ إضافة طالب</button>
+              <button onClick={deleteFrozenAccounts} type="button" className="btn-primary bg-red-600 hover:bg-red-700 py-2 px-4 text-sm">🗑️ حذف المجمدين</button>
+              <button onClick={() => setShowStudentsModal(true)} type="button" className="btn-primary bg-purple-600 hover:bg-purple-700 py-2 px-4 text-sm">📋 عرض قوائم الطلبة</button>
             </div>
           </div>
         </div>
@@ -1263,7 +1276,7 @@ const TeacherPanel = ({ user, onLogout }) => {
           <h3 className="text-xl font-semibold text-purple-200">جدولة موعد حصة</h3>
           <div className="flex flex-col sm:flex-row gap-4 items-stretch">
             <input type="datetime-local" className="input-glass flex-1 text-right" value={newLessonTime} onChange={(e) => setNewLessonTime(e.target.value)} />
-            <button onClick={updateLessonTime} className="btn-primary py-3 px-6">حفظ الحصة</button>
+            <button onClick={updateLessonTime} type="button" className="btn-primary py-3 px-6">حفظ الحصة</button>
           </div>
         </div>
       </div>
@@ -1274,7 +1287,7 @@ const TeacherPanel = ({ user, onLogout }) => {
           <div className="glass p-6 rounded-3xl max-w-4xl w-full max-h-[80vh] overflow-y-auto border border-white/20" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-semibold text-blue-300">قائمة الطلاب المسجلين ({students.length})</h3>
-              <button onClick={() => setShowStudentsModal(false)} className="text-gray-400 hover:text-white text-2xl">✕</button>
+              <button onClick={() => setShowStudentsModal(false)} type="button" className="text-gray-400 hover:text-white text-2xl">✕</button>
             </div>
             <div className="space-y-3">
               {sortedStudents.map(s => (
@@ -1292,9 +1305,9 @@ const TeacherPanel = ({ user, onLogout }) => {
                     )}
                   </div>
                   <div className="flex items-center gap-4 flex-wrap">
-                    <button onClick={() => communicateWithParent(s)} className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-lg hover:bg-green-500/30">📞 تواصل مع ولي الأمر</button>
-                    <button onClick={() => handleResetStudent(s.id)} className="text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-2 py-1 rounded-lg hover:bg-yellow-500/30">🔄 إعادة تعيين</button>
-                    <button onClick={() => handleDeleteStudentPermanently(s.id)} className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg hover:bg-red-500/30">❌ حذف</button>
+                    <button onClick={() => communicateWithParent(s)} type="button" className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-lg hover:bg-green-500/30">📞 تواصل مع ولي الأمر</button>
+                    <button onClick={() => handleResetStudent(s.id)} type="button" className="text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-2 py-1 rounded-lg hover:bg-yellow-500/30">🔄 إعادة تعيين</button>
+                    <button onClick={() => handleDeleteStudentPermanently(s.id)} type="button" className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg hover:bg-red-500/30">❌ حذف</button>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-gray-400">{s.is_frozen ? 'مجمد' : 'مفعل'}</span>
                       <div onClick={() => toggleFreezeStudent(s)} className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-300 ${s.is_frozen ? 'bg-gray-600' : 'bg-green-500'}`}>
@@ -1511,8 +1524,8 @@ const StudentPanel = ({ user, onLogout }) => {
             <p className="text-gray-400 text-sm mt-1">أهلاً بك: {user.username || user.email}</p>
           </div>
           <div className="flex gap-2">
-            <button onClick={changePassword} className="btn-primary bg-blue-600 hover:bg-blue-700 text-sm">تغيير كلمة المرور</button>
-            <button onClick={onLogout} className="btn-primary bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 shadow-lg text-sm">تسجيل الخروج</button>
+            <button onClick={changePassword} type="button" className="btn-primary bg-blue-600 hover:bg-blue-700 text-sm">تغيير كلمة المرور</button>
+            <button onClick={onLogout} type="button" className="btn-primary bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 shadow-lg text-sm">تسجيل الخروج</button>
           </div>
         </div>
 
@@ -1521,7 +1534,7 @@ const StudentPanel = ({ user, onLogout }) => {
         <div className="glass p-6 rounded-2xl border border-blue-500/20">
           <div className="flex justify-between items-center">
             <h3 className="text-xl font-semibold text-blue-200">معلوماتي الشخصية</h3>
-            {!editing && <button onClick={startEditing} className="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1"><span>✏️</span> تعديل</button>}
+            {!editing && <button onClick={startEditing} type="button" className="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1"><span>✏️</span> تعديل</button>}
           </div>
           {editing ? (
             <div className="mt-4 space-y-3">
@@ -1546,8 +1559,8 @@ const StudentPanel = ({ user, onLogout }) => {
                 <input type="text" className="input-glass w-full text-right" value={editData.phone} onChange={e => setEditData({ ...editData, phone: e.target.value })} />
               </div>
               <div className="flex gap-3">
-                <button onClick={saveChanges} className="btn-primary bg-green-600 hover:bg-green-700">حفظ</button>
-                <button onClick={() => setEditing(false)} className="btn-primary bg-gray-600 hover:bg-gray-700">إلغاء</button>
+                <button onClick={saveChanges} type="button" className="btn-primary bg-green-600 hover:bg-green-700">حفظ</button>
+                <button onClick={() => setEditing(false)} type="button" className="btn-primary bg-gray-600 hover:bg-gray-700">إلغاء</button>
               </div>
             </div>
           ) : (
