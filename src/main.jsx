@@ -211,7 +211,7 @@ const FrozenAccount = ({ user, onLogout }) => {
   )
 }
 
-// ========== CompleteProfile (واجهة التأكيد - تبقى كما هي) ==========
+// ========== CompleteProfile (واجهة التأكيد) ==========
 const CompleteProfile = ({ user, onSuccess, onCancel }) => {
   const [name, setName] = useState('')
   const [gender, setGender] = useState('')
@@ -354,7 +354,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
   )
 }
 
-// ========== Login (تم تعديل الأزرار إلى سطر نصي) ==========
+// ========== Login (تم تعديل زر "تسجيل الدخول لأول مرة" ليصبح زراً واضحاً) ==========
 const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -398,7 +398,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
         if (loginErr.code === 'auth/user-not-found') {
           // إنشاء حساب جديد (تسجيل الدخول لأول مرة)
           if (!isFirstTime) {
-            setError('هذا الحساب غير مسجل في النظام. استخدم الرابط "تسجيل الدخول لأول مرة" أدناه.')
+            setError('هذا الحساب غير مسجل في النظام. استخدم زر "تسجيل الدخول لأول مرة" أدناه.')
             setLoading(false)
             return
           }
@@ -520,17 +520,16 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
               <button type="submit" className="btn-primary w-full py-2.5 text-lg font-semibold tracking-wide shadow-lg" disabled={loading}>
                 {loading ? 'جاري التحميل...' : 'تسجيل الدخول'}
               </button>
-              {/* سطر نصي بدلاً من الزر الثاني */}
-              <div className="text-center mt-2">
-                <button 
-                  type="button" 
-                  onClick={(e) => handleAuth(e, true)} 
-                  className="text-sm text-green-400 hover:text-green-300 underline transition-colors"
-                  disabled={loading}
-                >
-                  تسجيل الدخول لأول مرة (اضغط هنا)
-                </button>
-              </div>
+              
+              {/* زر "تسجيل الدخول لأول مرة" بشكل واضح */}
+              <button 
+                type="button" 
+                onClick={(e) => handleAuth(e, true)} 
+                className="w-full py-2.5 text-lg font-semibold tracking-wide shadow-lg bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white rounded-lg transition-all duration-200 flex items-center justify-center gap-2 border border-green-400/30"
+                disabled={loading}
+              >
+                {loading ? 'جاري...' : '🆕 تسجيل الدخول لأول مرة'}
+              </button>
             </form>
             <div className="pt-2 border-t border-white/10 text-center text-xs text-gray-400 w-full">
               <p>جميع الحقوق محفوظة © 2026 لصالح المبرمج همام هاني محمد علي</p>
@@ -542,7 +541,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   )
 }
 
-// ========== TeacherPanel (نفسه) ==========
+// ========== TeacherPanel (نفسه بدون تغيير) ==========
 const TeacherPanel = ({ user, onLogout }) => {
   const [lessonTime, setLessonTime] = useState('')
   const [homeworks, setHomeworks] = useState([])
@@ -1211,7 +1210,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   )
 }
 
-// ========== StudentPanel ==========
+// ========== StudentPanel (نفسه بدون تغيير) ==========
 const StudentPanel = ({ user, onLogout }) => {
   const [teacherData, setTeacherData] = useState(null)
   const [loading, setLoading] = useState(true)
