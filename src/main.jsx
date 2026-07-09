@@ -210,141 +210,7 @@ const FrozenAccount = ({ user, onLogout }) => {
   )
 }
 
-// ========== SignUp (converted to Firebase) ==========
-const SignUp = ({ onSuccess, onCancel }) => {
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [phone, setPhone] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-
-    const cleanUsername = username.trim().toLowerCase()
-    const cleanPhone = phone.replace(/[^0-9]/g, '')
-
-    if (!cleanUsername || cleanUsername.length < 3) {
-      setError('اسم المستخدم يجب أن يكون 3 أحرف على الأقل')
-      return
-    }
-    if (password.length < 6) {
-      setError('كلمة المرور يجب أن تكون 6 أحرف على الأقل')
-      return
-    }
-    if (password !== confirmPassword) {
-      setError('كلمة المرور غير متطابقة')
-      return
-    }
-
-    setLoading(true)
-    setError('')
-
-    try {
-      const email = `${cleanUsername}@readandrise.com`
-
-      // 1. Create user with email/password
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password)
-      const firebaseUser = userCredential.user
-
-      // 2. Create profile document in Firestore
-      const profileData = {
-        email: firebaseUser.email,
-        username: cleanUsername,
-        phone: cleanPhone,
-        whatsapp: cleanPhone,
-        role: 'student',
-        isFrozen: false,
-        isProfileComplete: false,
-        infoVerified: false,
-        pendingChanges: null,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      }
-      await setDoc(doc(db, 'profiles', firebaseUser.uid), profileData)
-
-      // 3. Auto-login: the onAuthStateChanged will trigger
-      // onSuccess will be called after state updates
-      onSuccess()
-    } catch (err) {
-      console.error(err)
-      if (err.code === 'auth/email-already-in-use') {
-        setError('اسم المستخدم موجود بالفعل، اختر اسماً آخر')
-      } else {
-        setError(err.message || 'حدث خطأ غير متوقع.')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="container-center min-h-screen relative" dir="rtl">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-      <div className="relative z-10 w-full max-w-md px-4">
-        <div className="glass p-6 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl space-y-4">
-          <h2 className="text-2xl font-bold text-center text-green-300">إنشاء حساب جديد</h2>
-          <p className="text-gray-400 text-sm text-center">أدخل بياناتك لإنشاء حساب في المنصة</p>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="text-sm text-gray-300 block mb-1">اسم المستخدم <span className="text-red-400">*</span></label>
-              <input
-                type="text"
-                className="input-glass w-full text-right"
-                value={username}
-                onChange={e => setUsername(e.target.value)}
-                required
-                minLength={3}
-              />
-              <p className="text-xs text-gray-500 mt-1">سيتم استخدامه لتسجيل الدخول (مثل: student1)</p>
-            </div>
-            <div>
-              <label className="text-sm text-gray-300 block mb-1">رقم الهاتف (واتساب) <span className="text-red-400">*</span></label>
-              <input
-                type="text"
-                className="input-glass w-full text-right"
-                value={phone}
-                onChange={e => setPhone(e.target.value)}
-                required
-              />
-            </div>
-            <div>
-              <label className="text-sm text-gray-300 block mb-1">كلمة المرور <span className="text-red-400">*</span></label>
-              <input
-                type="password"
-                className="input-glass w-full text-right"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                required
-                minLength={6}
-              />
-            </div>
-            <div>
-              <label className="text-sm text-gray-300 block mb-1">تأكيد كلمة المرور <span className="text-red-400">*</span></label>
-              <input
-                type="password"
-                className="input-glass w-full text-right"
-                value={confirmPassword}
-                onChange={e => setConfirmPassword(e.target.value)}
-                required
-              />
-            </div>
-            {error && <p className="text-red-400 text-sm text-center">{error}</p>}
-            <button type="submit" disabled={loading} className="btn-primary w-full py-3 bg-green-600 hover:bg-green-700">
-              {loading ? 'جاري التسجيل...' : 'إنشاء حساب'}
-            </button>
-          </form>
-          <button onClick={onCancel} type="button" className="text-sm text-gray-400 hover:text-white w-full text-center mt-2">
-            لديك حساب بالفعل؟ تسجيل الدخول
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ========== CompleteProfile (converted to Firebase) ==========
+// ========== CompleteProfile (unchanged) ==========
 const CompleteProfile = ({ user, onSuccess, onCancel }) => {
   const [name, setName] = useState('')
   const [gender, setGender] = useState('')
@@ -400,7 +266,6 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
 
       await updateDoc(doc(db, 'profiles', userId), updates)
 
-      // Fetch updated profile
       const docSnap = await getDoc(doc(db, 'profiles', userId))
       const profileData = docSnap.data()
 
@@ -488,8 +353,8 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
   )
 }
 
-// ========== Login (converted to Firebase) ==========
-const Login = ({ onLogin, onFrozen, onSignUp, onCompleteProfile }) => {
+// ========== Login (تعديل: حذف onSignUp وإضافة منطق إنشاء الحساب لأول مرة) ==========
+const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -509,16 +374,44 @@ const Login = ({ onLogin, onFrozen, onSignUp, onCompleteProfile }) => {
         return
       }
 
+      // 1. البحث عن المستخدم في Firestore
+      const q = query(collection(db, 'profiles'), where('username', '==', cleanUsername))
+      const querySnapshot = await getDocs(q)
+      if (querySnapshot.empty) {
+        setError('اسم المستخدم غير موجود')
+        setLoading(false)
+        return
+      }
+      const profileDoc = querySnapshot.docs[0]
+      const oldId = profileDoc.id
+      const profileData = profileDoc.data()
+
       const email = `${cleanUsername}@readandrise.com`
 
-      const userCredential = await signInWithEmailAndPassword(auth, email, password)
-      const firebaseUser = userCredential.user
+      let firebaseUser = null
+      try {
+        // محاولة تسجيل الدخول
+        const userCredential = await signInWithEmailAndPassword(auth, email, password)
+        firebaseUser = userCredential.user
+      } catch (loginErr) {
+        if (loginErr.code === 'auth/user-not-found') {
+          // إنشاء حساب جديد
+          const userCredential = await createUserWithEmailAndPassword(auth, email, password)
+          firebaseUser = userCredential.user
+          // نقل الوثيقة من oldId إلى uid الجديد
+          const newUid = firebaseUser.uid
+          const newDocRef = doc(db, 'profiles', newUid)
+          await setDoc(newDocRef, { ...profileData, updatedAt: serverTimestamp() })
+          await deleteDoc(doc(db, 'profiles', oldId))
+        } else {
+          throw loginErr
+        }
+      }
 
-      // Profile will be loaded by onAuthStateChanged, but we need to process it here
-      // We'll fetch profile manually because the state might not have updated yet
+      // الآن لدينا firebaseUser
       const docSnap = await getDoc(doc(db, 'profiles', firebaseUser.uid))
       if (!docSnap.exists()) {
-        // No profile, redirect to complete profile
+        // في حالة نادرة، نكمل بإنشاء ملف جديد
         onCompleteProfile({
           id: firebaseUser.uid,
           email: firebaseUser.email,
@@ -570,8 +463,10 @@ const Login = ({ onLogin, onFrozen, onSignUp, onCompleteProfile }) => {
       })
     } catch (err) {
       console.error(err)
-      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
-        setError('اسم المستخدم أو كلمة المرور غير صحيحة')
+      if (err.code === 'auth/wrong-password') {
+        setError('كلمة المرور غير صحيحة')
+      } else if (err.code === 'auth/too-many-requests') {
+        setError('تم حظر الحساب مؤقتاً بسبب كثرة المحاولات، حاول لاحقاً')
       } else {
         setError(err.message || 'حدث خطأ غير متوقع.')
       }
@@ -621,13 +516,6 @@ const Login = ({ onLogin, onFrozen, onSignUp, onCompleteProfile }) => {
                 {loading ? 'جاري التحميل...' : 'تسجيل الدخول'}
               </button>
             </form>
-            <button
-              onClick={onSignUp}
-              type="button"
-              className="text-sm text-blue-400 hover:text-blue-300 transition-colors underline-offset-2"
-            >
-              ليس لديك حساب؟ أنشئ حساباً جديداً
-            </button>
             <div className="pt-2 border-t border-white/10 text-center text-xs text-gray-400 w-full">
               <p>جميع الحقوق محفوظة © 2026 لصالح المبرمج همام هاني محمد علي</p>
             </div>
@@ -638,7 +526,7 @@ const Login = ({ onLogin, onFrozen, onSignUp, onCompleteProfile }) => {
   )
 }
 
-// ========== TeacherPanel (converted to Firebase) ==========
+// ========== TeacherPanel (unchanged) ==========
 const TeacherPanel = ({ user, onLogout }) => {
   const [lessonTime, setLessonTime] = useState('')
   const [homeworks, setHomeworks] = useState([])
@@ -668,7 +556,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     return phone.replace(/^0+/, '').replace(/[^0-9]/g, '')
   }
 
-  // Helper: fetch class names for given ids
   const fetchClassNames = async (classIds) => {
     if (!classIds || classIds.length === 0) return {}
     const names = {}
@@ -685,7 +572,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     return names
   }
 
-  // Fetch all teacher data
   const fetchTeacherData = async () => {
     try {
       const teacherId = user.id
@@ -693,7 +579,6 @@ const TeacherPanel = ({ user, onLogout }) => {
       let teacherDoc = await getDoc(teacherRef)
 
       if (!teacherDoc.exists()) {
-        // Create default teacher document
         await setDoc(teacherRef, {
           lessonTime: null,
           homeworks: [],
@@ -707,12 +592,10 @@ const TeacherPanel = ({ user, onLogout }) => {
       setLessonTime(teacherData.lessonTime || '')
       setHomeworks(teacherData.homeworks || [])
 
-      // Fetch students (role == 'student')
       const studentsQuery = query(collection(db, 'profiles'), where('role', '==', 'student'))
       const studentsSnapshot = await getDocs(studentsQuery)
       let studentsList = studentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
 
-      // Enrich with class names
       const classIds = studentsList.map(s => s.classId).filter(Boolean)
       const classMap = await fetchClassNames(classIds)
       studentsList = studentsList.map(s => ({
@@ -721,13 +604,11 @@ const TeacherPanel = ({ user, onLogout }) => {
       }))
       setStudents(studentsList)
 
-      // Fetch classes for this teacher
       const classesQuery = query(collection(db, 'classes'), where('teacherId', '==', teacherId))
       const classesSnapshot = await getDocs(classesQuery)
       let classesList = classesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
 
       if (classesList.length === 0) {
-        // Create default classes
         const defaultClasses = [
           { name: 'أساسيات البرمجة', teacherId: teacherId },
           { name: 'بايثون (Python)', teacherId: teacherId }
@@ -742,7 +623,6 @@ const TeacherPanel = ({ user, onLogout }) => {
       }
       setClasses(classesList)
 
-      // Fetch pending reviews (pendingChanges != null)
       const pendingQuery = query(
         collection(db, 'profiles'),
         where('role', '==', 'student'),
@@ -750,7 +630,6 @@ const TeacherPanel = ({ user, onLogout }) => {
       )
       const pendingSnapshot = await getDocs(pendingQuery)
       let pendingList = pendingSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-      // Enrich with class names
       const pendingClassIds = pendingList.map(s => s.classId).filter(Boolean)
       const pendingClassMap = await fetchClassNames(pendingClassIds)
       pendingList = pendingList.map(s => ({
@@ -767,11 +646,9 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // Real-time listeners
   useEffect(() => {
     fetchTeacherData()
 
-    // Listen to teacher document changes
     const teacherRef = doc(db, 'teachers', user.id)
     const unsubscribeTeacher = onSnapshot(teacherRef, (docSnap) => {
       if (docSnap.exists()) {
@@ -781,7 +658,6 @@ const TeacherPanel = ({ user, onLogout }) => {
       }
     })
 
-    // Listen to students changes
     const studentsQuery = query(collection(db, 'profiles'), where('role', '==', 'student'))
     const unsubscribeStudents = onSnapshot(studentsQuery, async (snapshot) => {
       let studentsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
@@ -794,14 +670,12 @@ const TeacherPanel = ({ user, onLogout }) => {
       setStudents(studentsList)
     })
 
-    // Listen to classes changes
     const classesQuery = query(collection(db, 'classes'), where('teacherId', '==', user.id))
     const unsubscribeClasses = onSnapshot(classesQuery, (snapshot) => {
       const classesList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
       setClasses(classesList)
     })
 
-    // Listen to pending reviews
     const pendingQuery = query(
       collection(db, 'profiles'),
       where('role', '==', 'student'),
@@ -826,7 +700,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }, [user.id])
 
-  // Accept review
   const acceptReview = async (studentId) => {
     try {
       const docRef = doc(db, 'profiles', studentId)
@@ -859,7 +732,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // Reject review
   const rejectReview = async (studentId) => {
     if (!window.confirm('هل أنت متأكد من رفض هذه التغييرات؟')) return
     try {
@@ -874,7 +746,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // Save homework
   const saveHomework = async () => {
     if (!newHomeworkText.trim()) return alert('يرجى كتابة نص الواجب أولاً.')
     const revealTime = publishType === 'now' ? new Date().toISOString() : new Date(newHomeworkRevealTime).toISOString()
@@ -893,7 +764,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         homeworks: arrayUnion(newHwItem),
         updatedAt: serverTimestamp()
       })
-      // Optimistically update local state? onSnapshot will update.
       setNewHomeworkText('')
       setNewHomeworkRevealTime('')
       alert(publishType === 'now' ? 'تم نشر الواجب فوراً!' : 'تم جدولة الواجب بنجاح.')
@@ -902,7 +772,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // Delete homework
   const deleteHomework = async (hwId) => {
     if (!window.confirm('هل تريد حذف هذا الواجب نهائياً؟')) return
     try {
@@ -921,7 +790,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // Toggle freeze
   const toggleFreezeStudent = async (student) => {
     const nextStatus = !student.isFrozen
     if (nextStatus) {
@@ -941,7 +809,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // Delete all frozen accounts
   const deleteFrozenAccounts = async () => {
     try {
       const q = query(collection(db, 'profiles'), where('isFrozen', '==', true))
@@ -960,7 +827,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // Check inactivity (30 days)
   const checkInactivityWarning = (lastSeenStr) => {
     if (!lastSeenStr) return false
     const lastSeen = new Date(lastSeenStr)
@@ -969,7 +835,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     return diffDays >= 30
   }
 
-  // Communicate with parent via WhatsApp
   const communicateWithParent = (student) => {
     const phone = student.phone || ''
     if (!phone) {
@@ -991,7 +856,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank')
   }
 
-  // Reset student (set infoVerified false, unfreeze, clear pending)
   const handleResetStudent = async (studentId) => {
     if (!window.confirm('سيتم إعادة تعيين هذا الحساب ليصبح كأنه جديد، وسيُطلب من الطالب تغيير كلمة المرور عند تسجيل الدخول. هل تريد المتابعة؟')) return
     try {
@@ -1007,7 +871,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // Delete student permanently
   const handleDeleteStudentPermanently = async (studentId) => {
     if (!window.confirm('إجراء خطير: هل أنت متأكد من حذف حساب هذا الطالب نهائياً وفوراً؟')) return
     try {
@@ -1018,7 +881,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // Update lesson time
   const updateLessonTime = async () => {
     if (!newLessonTime) return alert('يرجى اختيار تاريخ ووقت الحصة أولاً.')
     try {
@@ -1034,7 +896,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }
 
-  // Add student
   const handleAddStudent = async (e) => {
     e.preventDefault()
     if (!newStudentName || !newStudentGender || !newStudentAge || !newStudentPhone || !newStudentClass) {
@@ -1044,7 +905,6 @@ const TeacherPanel = ({ user, onLogout }) => {
 
     setStudentLoading(true)
     try {
-      // Verify class exists
       const classRef = doc(db, 'classes', newStudentClass)
       const classSnap = await getDoc(classRef)
       if (!classSnap.exists()) {
@@ -1056,7 +916,6 @@ const TeacherPanel = ({ user, onLogout }) => {
       const newId = generateId()
       const tempEmail = `student_${newId}@temp.com`
 
-      // Generate unique username
       const baseUsername = newStudentName.trim().replace(/\s+/g, '.').toLowerCase()
       let username = baseUsername
       let counter = 1
@@ -1086,7 +945,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         return
       }
 
-      // Create profile document
       await setDoc(doc(db, 'profiles', newId), {
         email: tempEmail,
         username: username,
@@ -1252,7 +1110,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       </div>
 
-      {/* Modal: Students list */}
       {showStudentsModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowStudentsModal(false)}>
           <div className="glass p-6 rounded-3xl max-w-4xl w-full max-h-[80vh] overflow-y-auto border border-white/20" onClick={(e) => e.stopPropagation()}>
@@ -1294,7 +1151,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* Modal: Add student */}
       {showAddStudentModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowAddStudentModal(false)}>
           <div className="glass p-6 rounded-3xl max-w-md w-full border border-white/20" onClick={(e) => e.stopPropagation()}>
@@ -1339,7 +1195,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   )
 }
 
-// ========== StudentPanel (converted to Firebase) ==========
+// ========== StudentPanel (unchanged) ==========
 const StudentPanel = ({ user, onLogout }) => {
   const [teacherData, setTeacherData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -1351,7 +1207,6 @@ const StudentPanel = ({ user, onLogout }) => {
 
   const fetchTeacherInfo = async () => {
     try {
-      // Fetch first teacher document (there should be one)
       const q = query(collection(db, 'teachers'))
       const querySnapshot = await getDocs(q)
       if (!querySnapshot.empty) {
@@ -1375,7 +1230,6 @@ const StudentPanel = ({ user, onLogout }) => {
       const docSnap = await getDoc(doc(db, 'profiles', user.id))
       if (docSnap.exists()) {
         const data = docSnap.data()
-        // Fetch class name if classId exists
         if (data.classId) {
           const classSnap = await getDoc(doc(db, 'classes', data.classId))
           if (classSnap.exists()) {
@@ -1394,7 +1248,6 @@ const StudentPanel = ({ user, onLogout }) => {
     fetchTeacherInfo()
     fetchProfile()
 
-    // Listen to teacher changes
     const q = query(collection(db, 'teachers'))
     const unsubscribeTeacher = onSnapshot(q, (snapshot) => {
       if (!snapshot.empty) {
@@ -1407,11 +1260,9 @@ const StudentPanel = ({ user, onLogout }) => {
       }
     })
 
-    // Listen to own profile changes
     const unsubscribeProfile = onSnapshot(doc(db, 'profiles', user.id), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data()
-        // Re-fetch class name
         if (data.classId) {
           getDoc(doc(db, 'classes', data.classId)).then(classSnap => {
             if (classSnap.exists()) {
@@ -1433,7 +1284,6 @@ const StudentPanel = ({ user, onLogout }) => {
     }
   }, [user.id])
 
-  // Update available homeworks every second
   useEffect(() => {
     const interval = setInterval(() => {
       if (teacherData?.homeworks) {
@@ -1603,12 +1453,11 @@ const StudentPanel = ({ user, onLogout }) => {
   )
 }
 
-// ========== App (converted to Firebase) ==========
+// ========== App (تعديل: إزالة showSignUp) ==========
 const App = () => {
   const [user, setUser] = useState(null)
   const [frozenUser, setFrozenUser] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [showSignUp, setShowSignUp] = useState(false)
   const [pendingUserForComplete, setPendingUserForComplete] = useState(null)
 
   useDynamicBackground()
@@ -1618,14 +1467,12 @@ const App = () => {
     setUser(null)
     setFrozenUser(null)
     setPendingUserForComplete(null)
-    setShowSignUp(false)
   }
 
   const handleLogin = (userData) => {
     setUser(userData)
     setFrozenUser(null)
     setPendingUserForComplete(null)
-    setShowSignUp(false)
   }
 
   const handleFrozen = (frozenData) => {
@@ -1636,17 +1483,11 @@ const App = () => {
 
   const handleCompleteProfile = (userData) => {
     setPendingUserForComplete(userData)
-    setShowSignUp(false)
   }
 
   const handleCompleteProfileSuccess = (updatedUser) => {
     setUser(updatedUser)
     setPendingUserForComplete(null)
-  }
-
-  const handleSignUpSuccess = () => {
-    setShowSignUp(false)
-    // Auth state will trigger login
   }
 
   const checkSessionAndProfile = async (firebaseUser) => {
@@ -1729,7 +1570,6 @@ const App = () => {
   }
 
   useEffect(() => {
-    // Check initial auth state
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       await checkSessionAndProfile(firebaseUser)
     })
@@ -1753,16 +1593,11 @@ const App = () => {
     return <FrozenAccount user={frozenUser} onLogout={handleLogout} />
   }
 
-  if (showSignUp) {
-    return <SignUp onSuccess={handleSignUpSuccess} onCancel={() => setShowSignUp(false)} />
-  }
-
   if (!user) {
     return (
       <Login
         onLogin={handleLogin}
         onFrozen={handleFrozen}
-        onSignUp={() => setShowSignUp(true)}
         onCompleteProfile={handleCompleteProfile}
       />
     )
