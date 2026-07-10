@@ -407,7 +407,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
   )
 }
 
-// ========== Login (بدون زر "تسجيل الدخول لأول مرة") ==========
+// ========== Login (مع إضافة رابط تفعيل الحساب) ==========
 const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -415,6 +415,21 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  // حالة تفعيل الحساب
+  const [activationMode, setActivationMode] = useState(false)
+  const [activationUsername, setActivationUsername] = useState('')
+  const [activationStep, setActivationStep] = useState(1) // 1: إدخال اسم المستخدم, 2: تأكيد المعلومات, 3: تعيين كلمة المرور
+  const [activationProfile, setActivationProfile] = useState(null)
+  const [activationConfirmName, setActivationConfirmName] = useState('')
+  const [activationConfirmGender, setActivationConfirmGender] = useState('')
+  const [activationConfirmAge, setActivationConfirmAge] = useState('')
+  const [activationConfirmPhone, setActivationConfirmPhone] = useState('')
+  const [activationNewPassword, setActivationNewPassword] = useState('')
+  const [activationConfirmPassword, setActivationConfirmPassword] = useState('')
+  const [activationLoading, setActivationLoading] = useState(false)
+  const [activationError, setActivationError] = useState('')
+
+  // دالة تسجيل الدخول العادية
   const handleAuth = async (e) => {
     e.preventDefault()
     setLoading(true)
@@ -447,7 +462,8 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
         firebaseUser = userCredential.user
       } catch (loginErr) {
         if (loginErr.code === 'auth/user-not-found') {
-          setError('لم يتم إنشاء حسابك بعد. يرجى التواصل مع المعلم لإنشاء حساب لك.')
+          // إذا لم يوجد حساب Firebase، نقترح تفعيل الحساب
+          setError('لم يتم إنشاء حسابك بعد. يرجى استخدام رابط "تسجيل الدخول لأول مرة" لتفعيل الحساب.')
           setLoading(false)
           return
         } else {
@@ -458,8 +474,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
       // جلب الملف الشخصي
       const docSnap = await getDoc(doc(db, 'profiles', firebaseUser.uid))
       if (!docSnap.exists()) {
-        // في حال نادر: المستخدم موجود في Auth ولكن ليس في Firestore
-        // نطلب من المعلم إعادة إنشاء الحساب
         setError('بياناتك غير مكتملة في النظام. يرجى التواصل مع المعلم.')
         setLoading(false)
         return
@@ -482,7 +496,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
       }
 
       if (!profile.isProfileComplete) {
-        // في حال كانت الوثيقة غير مكتملة (نادراً لأن المعلم يكملها)
         onCompleteProfile({
           id: firebaseUser.uid,
           email: firebaseUser.email,
@@ -520,6 +533,246 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     }
   }
 
+  // دالة تفعيل الحساب - الخطوة 1: البحث عن الملف الشخصي
+  const handleActivationStep1 = async (e) => {
+    e.preventDefault()
+    setActivationError('')
+    setActivationLoading(true)
+
+    const cleanUsername = activationUsername.trim().toLowerCase()
+    if (!cleanUsername) {
+      setActivationError('يرجى إدخال اسم المستخدم')
+      setActivationLoading(false)
+      return
+    }
+
+    try {
+      const q = query(collection(db, 'profiles'), where('username', '==', cleanUsername))
+      const snapshot = await getDocs(q)
+      if (snapshot.empty) {
+        setActivationError('اسم المستخدم غير موجود. تأكد من أن المعلم قام بإضافتك.')
+        setActivationLoading(false)
+        return
+      }
+
+      const docSnap = snapshot.docs[0]
+      const profile = docSnap.data()
+
+      // التحقق من أن الحساب غير مفعل بالفعل (لا يوجد حساب Firebase)
+      // نتحقق من وجود حقل authUid أو isProfileComplete
+      if (profile.isProfileComplete) {
+        setActivationError('هذا الحساب مفعل بالفعل. يرجى تسجيل الدخول باستخدام اسم المستخدم وكلمة المرور.')
+        setActivationLoading(false)
+        return
+      }
+
+      // تخزين بيانات الملف الشخصي
+      setActivationProfile({ id: docSnap.id, ...profile })
+      // ملء حقول التأكيد بالقيم المخزنة
+      setActivationConfirmName(profile.name || '')
+      setActivationConfirmGender(profile.gender || '')
+      setActivationConfirmAge(profile.age ? String(profile.age) : '')
+      setActivationConfirmPhone(profile.phone || '')
+      setActivationStep(2)
+      setActivationLoading(false)
+    } catch (err) {
+      console.error(err)
+      setActivationError('حدث خطأ أثناء البحث: ' + err.message)
+      setActivationLoading(false)
+    }
+  }
+
+  // دالة تفعيل الحساب - الخطوة 2: تأكيد المعلومات
+  const handleActivationStep2 = async (e) => {
+    e.preventDefault()
+    setActivationError('')
+
+    const stored = activationProfile
+    const entered = {
+      name: activationConfirmName.trim(),
+      gender: activationConfirmGender.trim(),
+      age: activationConfirmAge.trim(),
+      phone: activationConfirmPhone.trim()
+    }
+
+    if (entered.name !== stored.name) {
+      setActivationError('الاسم غير متطابق مع البيانات المسجلة')
+      return
+    }
+    if (entered.gender !== stored.gender) {
+      setActivationError('الجنس غير متطابق مع البيانات المسجلة')
+      return
+    }
+    if (entered.age !== String(stored.age)) {
+      setActivationError('العمر غير متطابق مع البيانات المسجلة')
+      return
+    }
+    if (entered.phone !== stored.phone) {
+      setActivationError('رقم الهاتف غير متطابق مع البيانات المسجلة')
+      return
+    }
+
+    setActivationStep(3)
+  }
+
+  // دالة تفعيل الحساب - الخطوة 3: تعيين كلمة المرور وإنشاء الحساب
+  const handleActivationStep3 = async (e) => {
+    e.preventDefault()
+    setActivationError('')
+
+    const usernameRegex = /^[a-zA-Z0-9]+$/
+    if (!usernameRegex.test(activationNewPassword)) {
+      setActivationError('كلمة المرور يجب أن تحتوي على أحرف إنجليزية وأرقام فقط')
+      return
+    }
+    if (activationNewPassword !== activationConfirmPassword) {
+      setActivationError('كلمة المرور غير متطابقة مع تأكيدها')
+      return
+    }
+    if (activationNewPassword.length < 6) {
+      setActivationError('كلمة المرور يجب أن تكون 6 أحرف على الأقل')
+      return
+    }
+
+    setActivationLoading(true)
+
+    try {
+      const username = activationProfile.username
+      const email = `${username}@readandrise.com`
+
+      // 1. إنشاء حساب Firebase
+      const userCredential = await createUserWithEmailAndPassword(auth, email, activationNewPassword)
+      const newUid = userCredential.user.uid
+
+      // 2. نسخ بيانات الملف الشخصي من المستند القديم إلى المستند الجديد باستخدام uid
+      const oldDocRef = doc(db, 'profiles', activationProfile.id)
+      const oldDocSnap = await getDoc(oldDocRef)
+      if (!oldDocSnap.exists()) {
+        throw new Error('بيانات الملف الشخصي غير موجودة')
+      }
+      const studentData = oldDocSnap.data()
+
+      // إنشاء وثيقة جديدة بالـ uid الجديد مع تحديث الحقول
+      const newDocRef = doc(db, 'profiles', newUid)
+      await setDoc(newDocRef, {
+        ...studentData,
+        email: email,
+        isProfileComplete: true,
+        infoVerified: true,
+        updatedAt: serverTimestamp()
+      })
+
+      // حذف الوثيقة القديمة
+      await deleteDoc(oldDocRef)
+
+      // 3. تسجيل الدخول تلقائياً أو عرض رسالة نجاح
+      alert(`تم تفعيل حسابك بنجاح! يمكنك الآن تسجيل الدخول باستخدام اسم المستخدم "${username}" وكلمة المرور التي اخترتها.`)
+      // إعادة تعيين حالة التفعيل والعودة إلى وضع تسجيل الدخول
+      setActivationMode(false)
+      setActivationStep(1)
+      setActivationUsername('')
+      setActivationProfile(null)
+      setActivationLoading(false)
+      // لا نقوم بتسجيل الدخول تلقائياً، بل نترك المستخدم يسجل الدخول يدوياً
+    } catch (err) {
+      console.error(err)
+      if (err.code === 'auth/email-already-in-use') {
+        setActivationError('البريد الإلكتروني مستخدم بالفعل. قد يكون الحساب مفعلاً مسبقاً.')
+      } else {
+        setActivationError('فشل التفعيل: ' + (err.message || 'خطأ غير معروف'))
+      }
+      setActivationLoading(false)
+    }
+  }
+
+  // إلغاء التفعيل والعودة لتسجيل الدخول
+  const cancelActivation = () => {
+    setActivationMode(false)
+    setActivationStep(1)
+    setActivationUsername('')
+    setActivationProfile(null)
+    setActivationError('')
+  }
+
+  // إذا كان وضع التفعيل مفعلاً، نعرض واجهة التفعيل
+  if (activationMode) {
+    return (
+      <div className="container-center relative min-h-screen overflow-hidden" dir="rtl">
+        <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
+        <div className="relative z-10 w-full max-w-md px-4">
+          <div className="glass p-6 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl flex flex-col items-center relative overflow-hidden">
+            <div className="w-full z-10 flex flex-col items-center space-y-4">
+              <h2 className="text-2xl font-bold bg-gradient-to-r from-green-400 to-blue-400 text-transparent bg-clip-text">
+                تفعيل الحساب لأول مرة
+              </h2>
+              {activationStep === 1 && (
+                <form onSubmit={handleActivationStep1} className="space-y-4 w-full">
+                  <div>
+                    <label className="text-sm text-gray-300 block mb-1">اسم المستخدم (الذي أعطاك إياه المعلم)</label>
+                    <input type="text" className="input-glass w-full text-right" value={activationUsername} onChange={e => setActivationUsername(e.target.value)} required />
+                  </div>
+                  {activationError && <p className="text-red-400 text-sm text-center">{activationError}</p>}
+                  <button type="submit" disabled={activationLoading} className="btn-primary w-full py-3 bg-blue-600 hover:bg-blue-700">
+                    {activationLoading ? 'جاري البحث...' : 'التالي'}
+                  </button>
+                  <button type="button" onClick={cancelActivation} className="text-sm text-gray-400 hover:text-white w-full text-center mt-2">عودة لتسجيل الدخول</button>
+                </form>
+              )}
+
+              {activationStep === 2 && (
+                <form onSubmit={handleActivationStep2} className="space-y-4 w-full">
+                  <p className="text-gray-300 text-sm">يرجى إدخال المعلومات كما هي مسجلة لدينا للتأكيد</p>
+                  <div>
+                    <label className="text-sm text-gray-300 block mb-1">الاسم الكامل</label>
+                    <input type="text" className="input-glass w-full text-right" value={activationConfirmName} onChange={e => setActivationConfirmName(e.target.value)} required />
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-300 block mb-1">الجنس</label>
+                    <select className="input-glass w-full text-right" value={activationConfirmGender} onChange={e => setActivationConfirmGender(e.target.value)} required>
+                      <option value="">اختر</option>
+                      <option value="ذكر">ذكر</option>
+                      <option value="أنثى">أنثى</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-300 block mb-1">العمر</label>
+                    <input type="number" className="input-glass w-full text-right" value={activationConfirmAge} onChange={e => setActivationConfirmAge(e.target.value)} required />
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-300 block mb-1">رقم الهاتف</label>
+                    <input type="text" className="input-glass w-full text-right" value={activationConfirmPhone} onChange={e => setActivationConfirmPhone(e.target.value)} required />
+                  </div>
+                  {activationError && <p className="text-red-400 text-sm text-center">{activationError}</p>}
+                  <button type="submit" className="btn-primary w-full py-3 bg-green-600 hover:bg-green-700">تأكيد المعلومات</button>
+                </form>
+              )}
+
+              {activationStep === 3 && (
+                <form onSubmit={handleActivationStep3} className="space-y-4 w-full">
+                  <p className="text-gray-300 text-sm">اختر كلمة مرور جديدة (أحرف إنجليزية أو أرقام فقط، 6 أحرف على الأقل)</p>
+                  <div>
+                    <label className="text-sm text-gray-300 block mb-1">كلمة المرور الجديدة</label>
+                    <input type="password" className="input-glass w-full text-right" value={activationNewPassword} onChange={e => setActivationNewPassword(e.target.value)} required minLength="6" pattern="[a-zA-Z0-9]+" title="أحرف إنجليزية أو أرقام فقط" />
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-300 block mb-1">تأكيد كلمة المرور</label>
+                    <input type="password" className="input-glass w-full text-right" value={activationConfirmPassword} onChange={e => setActivationConfirmPassword(e.target.value)} required />
+                  </div>
+                  {activationError && <p className="text-red-400 text-sm text-center">{activationError}</p>}
+                  <button type="submit" disabled={activationLoading} className="btn-primary w-full py-3 bg-purple-600 hover:bg-purple-700">
+                    {activationLoading ? 'جاري التفعيل...' : 'تفعيل الحساب'}
+                  </button>
+                  <button type="button" onClick={cancelActivation} className="text-sm text-gray-400 hover:text-white w-full text-center mt-2">إلغاء</button>
+                </form>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // واجهة تسجيل الدخول العادية
   return (
     <div className="container-center relative min-h-screen overflow-hidden" dir="rtl">
       <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
@@ -556,6 +809,18 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
                 {loading ? 'جاري التحميل...' : 'تسجيل الدخول'}
               </button>
             </form>
+
+            {/* رابط تفعيل الحساب (فوق حقوق الملكية) */}
+            <div className="w-full text-center">
+              <button
+                type="button"
+                onClick={() => setActivationMode(true)}
+                className="text-sm text-blue-400 hover:text-blue-300 underline transition-colors"
+              >
+                تسجيل الدخول لأول مرة (تفعيل الحساب)
+              </button>
+            </div>
+
             <div className="pt-2 border-t border-white/10 text-center text-xs text-gray-400 w-full">
               <p>جميع الحقوق محفوظة © 2026 لصالح المبرمج همام هاني محمد علي</p>
             </div>
@@ -566,7 +831,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   )
 }
 
-// ========== TeacherPanel (مع إضافة زر "إنشاء حساب" للطلاب) ==========
+// ========== TeacherPanel (مع إزالة زر إنشاء حساب) ==========
 const TeacherPanel = ({ user, onLogout }) => {
   const [lessonTime, setLessonTime] = useState('')
   const [homeworks, setHomeworks] = useState([])
@@ -740,58 +1005,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }, [user.id])
 
-  // ========== دالة إنشاء حساب للطالب (المعلم فقط) ==========
-  const createStudentAccount = async (student) => {
-    // التأكد من أن البريد الإلكتروني مؤقت (أي لم ينشأ حساب بعد)
-    if (!student.email || !student.email.endsWith('@temp.com')) {
-      alert('هذا الطالب لديه حساب بالفعل.')
-      return
-    }
-
-    const password = prompt(`أدخل كلمة مرور مؤقتة للطالب ${student.name || student.username} (ستكون قابلة للتغيير لاحقاً):`)
-    if (!password || password.length < 6) {
-      alert('كلمة المرور يجب أن تكون 6 أحرف على الأقل.')
-      return
-    }
-
-    try {
-      // إنشاء الحساب في Firebase Authentication
-      const email = `${student.username}@readandrise.com`
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password)
-      const newUid = userCredential.user.uid
-
-      // نسخ بيانات الطالب من الوثيقة القديمة إلى الوثيقة الجديدة باستخدام uid الجديد
-      const oldDocRef = doc(db, 'profiles', student.id)
-      const oldDocSnap = await getDoc(oldDocRef)
-      if (!oldDocSnap.exists()) {
-        alert('بيانات الطالب غير موجودة.')
-        return
-      }
-      const studentData = oldDocSnap.data()
-
-      // إنشاء وثيقة جديدة بالـ uid الجديد
-      const newDocRef = doc(db, 'profiles', newUid)
-      await setDoc(newDocRef, {
-        ...studentData,
-        email: email,
-        isProfileComplete: true,
-        infoVerified: true,
-        updatedAt: serverTimestamp()
-      })
-
-      // حذف الوثيقة القديمة
-      await deleteDoc(oldDocRef)
-
-      alert(`تم إنشاء حساب للطالب ${student.name || student.username} بنجاح.\nالبريد: ${email}\nكلمة المرور: ${password}`)
-    } catch (err) {
-      console.error(err)
-      if (err.code === 'auth/email-already-in-use') {
-        alert('البريد الإلكتروني مستخدم بالفعل. قد يكون الطالب قد أنشأ حسابه مسبقاً.')
-      } else {
-        alert('فشل إنشاء الحساب: ' + err.message)
-      }
-    }
-  }
+  // ========== تم إزالة دالة createStudentAccount بالكامل ==========
 
   const acceptReview = async (studentId) => {
     try {
@@ -1038,6 +1252,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         return
       }
 
+      // إنشاء الملف الشخصي مع isProfileComplete = false (بحاجة تفعيل)
       await setDoc(doc(db, 'profiles', newId), {
         email: tempEmail,
         username: username,
@@ -1049,13 +1264,13 @@ const TeacherPanel = ({ user, onLogout }) => {
         role: 'student',
         isFrozen: false,
         infoVerified: false,
-        isProfileComplete: false,
+        isProfileComplete: false,    // لم يتم تفعيل الحساب بعد
         pendingChanges: null,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       })
 
-      alert(`تم تسجيل الطالب ${newStudentName} بنجاح.\nاسم المستخدم: ${username}\nالآن قم بإنشاء حساب له باستخدام زر "إنشاء حساب" في قائمة الطلاب.`)
+      alert(`تم تسجيل الطالب ${newStudentName} بنجاح.\nاسم المستخدم: ${username}\nالآن يجب على الطالب استخدام رابط "تسجيل الدخول لأول مرة" لتفعيل حسابه.`)
       setNewStudentName('')
       setNewStudentGender('')
       setNewStudentAge('')
@@ -1226,14 +1441,10 @@ const TeacherPanel = ({ user, onLogout }) => {
                       {checkInactivityWarning(s.last_seen) && !s.isFrozen && (
                         <span className="text-xs text-red-400 bg-red-950/40 px-2 py-0.5 rounded border border-red-500/30 animate-bounce">🚨 لم يفتح منذ 30 يوم!</span>
                       )}
-                      {!hasAccount && <span className="text-xs text-yellow-400 bg-yellow-950/40 px-2 py-0.5 rounded border border-yellow-500/30">⚠️ لم ينشأ حساب بعد</span>}
+                      {/* تم إزالة زر "إنشاء حساب" */}
+                      {!hasAccount && <span className="text-xs text-yellow-400 bg-yellow-950/40 px-2 py-0.5 rounded border border-yellow-500/30">⚠️ لم يتم التفعيل بعد</span>}
                     </div>
                     <div className="flex items-center gap-4 flex-wrap">
-                      {!hasAccount && (
-                        <button onClick={() => createStudentAccount(s)} type="button" className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-lg hover:bg-green-500/30">
-                          🔑 إنشاء حساب
-                        </button>
-                      )}
                       <button onClick={() => communicateWithParent(s)} type="button" className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-lg hover:bg-green-500/30">📞 تواصل مع ولي الأمر</button>
                       <button onClick={() => handleResetStudent(s.id)} type="button" className="text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-2 py-1 rounded-lg hover:bg-yellow-500/30">🔄 إعادة تعيين</button>
                       <button onClick={() => handleDeleteStudentPermanently(s.id)} type="button" className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg hover:bg-red-500/30">❌ حذف</button>
