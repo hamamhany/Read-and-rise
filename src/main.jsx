@@ -1,5 +1,5 @@
 import './index.css';
-import React, { useState, useEffect, createContext, useContext } from 'react';
+import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 import toast, { Toaster } from 'react-hot-toast';
 
@@ -37,6 +37,315 @@ const generateId = () => {
     return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
   }
 };
+
+// ============================================================
+// 1. مكوّن إضافة الواجب (النافذة المنبثقة الجديدة)
+// ============================================================
+const AddAssignmentModal = ({ isOpen, onClose, onSubmit }) => {
+  // حالة الحقول
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [time, setTime] = useState({ hours: 12, minutes: 0 });
+  const [section, setSection] = useState('');
+  const [assignmentText, setAssignmentText] = useState('');
+
+  if (!isOpen) return null;
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    // تجميع البيانات وإرسالها
+    const assignmentData = {
+      date: selectedDate,
+      time: time,
+      section: section,
+      text: assignmentText,
+    };
+    onSubmit(assignmentData);
+    // لا نغلق هنا، لأن الدالة الخارجية ستغلق بعد الحفظ
+  };
+
+  // ----- مكوّن التقويم الداخلي -----
+  const Calendar = ({ selectedDate, onDateChange }) => {
+    const [currentMonth, setCurrentMonth] = useState(new Date(selectedDate));
+    const [days, setDays] = useState([]);
+
+    useEffect(() => {
+      const year = currentMonth.getFullYear();
+      const month = currentMonth.getMonth();
+      const firstDay = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+      const daysArray = [];
+      for (let i = 0; i < firstDay; i++) {
+        daysArray.push(null);
+      }
+      for (let i = 1; i <= daysInMonth; i++) {
+        daysArray.push(new Date(year, month, i));
+      }
+      setDays(daysArray);
+    }, [currentMonth]);
+
+    const goPrevMonth = () => {
+      setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
+    };
+    const goNextMonth = () => {
+      setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
+    };
+
+    const isSameDay = (d1, d2) => {
+      return d1 && d2 && d1.getFullYear() === d2.getFullYear() &&
+             d1.getMonth() === d2.getMonth() &&
+             d1.getDate() === d2.getDate();
+    };
+
+    return (
+      <div className="p-4 w-72">
+        <div className="flex justify-between items-center mb-4">
+          <button onClick={goPrevMonth} className="text-xl px-2 hover:bg-gray-200 rounded">‹</button>
+          <span className="font-bold text-lg">
+            {currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
+          </span>
+          <button onClick={goNextMonth} className="text-xl px-2 hover:bg-gray-200 rounded">›</button>
+        </div>
+        <div className="grid grid-cols-7 gap-1 text-center font-semibold text-sm text-gray-600">
+          {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => <div key={d}>{d}</div>)}
+        </div>
+        <div className="grid grid-cols-7 gap-1 mt-1">
+          {days.map((day, idx) => (
+            <div
+              key={idx}
+              onClick={() => day && onDateChange(day)}
+              className={`text-center py-2 rounded-full cursor-pointer transition
+                ${!day ? '' :
+                  isSameDay(day, selectedDate)
+                    ? 'bg-blue-600 text-white hover:bg-blue-700'
+                    : 'hover:bg-gray-100'
+                }`}
+            >
+              {day ? day.getDate() : ''}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  // ----- مكوّن الساعة الدائرية الداخلي -----
+  const ClockPicker = ({ time, onTimeChange }) => {
+    const svgRef = useRef(null);
+    const radius = 120;
+    const center = 140;
+    const [dragging, setDragging] = useState(null);
+
+    const getAngle = (hours, minutes) => {
+      const hAngle = (hours % 12) * (Math.PI / 6) + minutes * (Math.PI / 360);
+      const mAngle = minutes * (Math.PI / 30);
+      return { hAngle, mAngle };
+    };
+
+    const getCoords = (angle) => {
+      const x = center + radius * 0.7 * Math.sin(angle);
+      const y = center - radius * 0.7 * Math.cos(angle);
+      return { x, y };
+    };
+
+    const handleMouseDown = (type) => (e) => {
+      e.preventDefault();
+      setDragging(type);
+    };
+
+    const handleMouseMove = (e) => {
+      if (!dragging) return;
+      const svg = svgRef.current;
+      const rect = svg.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left - center;
+      const mouseY = e.clientY - rect.top - center;
+      let angle = Math.atan2(mouseX, -mouseY);
+      if (angle < 0) angle += 2 * Math.PI;
+
+      let newHours = time.hours;
+      let newMinutes = time.minutes;
+
+      if (dragging === 'hour') {
+        const hoursFromAngle = (angle / (2 * Math.PI)) * 12;
+        newHours = Math.round(hoursFromAngle) % 12 || 12;
+      } else if (dragging === 'minute') {
+        const minutesFromAngle = (angle / (2 * Math.PI)) * 60;
+        newMinutes = Math.round(minutesFromAngle) % 60;
+      }
+
+      onTimeChange({ hours: newHours, minutes: newMinutes });
+    };
+
+    const handleMouseUp = () => {
+      setDragging(null);
+    };
+
+    useEffect(() => {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+      };
+    }, [dragging]);
+
+    const { hAngle, mAngle } = getAngle(time.hours, time.minutes);
+    const hourCoords = getCoords(hAngle);
+    const minuteCoords = getCoords(mAngle);
+
+    return (
+      <div className="flex flex-col items-center">
+        <svg ref={svgRef} width={280} height={280} viewBox="0 0 280 280" className="cursor-pointer">
+          <circle cx={center} cy={center} r={radius} fill="#f3f4f6" stroke="#d1d5db" strokeWidth="2" />
+          {[...Array(12)].map((_, i) => {
+            const angle = (i / 12) * 2 * Math.PI;
+            const x1 = center + radius * 0.85 * Math.sin(angle);
+            const y1 = center - radius * 0.85 * Math.cos(angle);
+            const x2 = center + radius * 0.95 * Math.sin(angle);
+            const y2 = center - radius * 0.95 * Math.cos(angle);
+            return (
+              <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#374151" strokeWidth="3" />
+            );
+          })}
+          <line
+            x1={center} y1={center}
+            x2={hourCoords.x} y2={hourCoords.y}
+            stroke="#1f2937" strokeWidth="6" strokeLinecap="round"
+            onMouseDown={handleMouseDown('hour')}
+          />
+          <line
+            x1={center} y1={center}
+            x2={minuteCoords.x} y2={minuteCoords.y}
+            stroke="#3b82f6" strokeWidth="4" strokeLinecap="round"
+            onMouseDown={handleMouseDown('minute')}
+          />
+          <circle cx={center} cy={center} r={8} fill="#ef4444" />
+          {[...Array(12)].map((_, i) => {
+            const num = i === 0 ? 12 : i;
+            const angle = (i / 12) * 2 * Math.PI;
+            const x = center + radius * 0.72 * Math.sin(angle);
+            const y = center - radius * 0.72 * Math.cos(angle);
+            return (
+              <text key={i} x={x} y={y+5} textAnchor="middle" fontSize="14" fill="#4b5563" fontWeight="bold">
+                {num}
+              </text>
+            );
+          })}
+        </svg>
+
+        <div className="flex gap-4 mt-4">
+          <div className="flex flex-col items-center">
+            <label className="text-sm font-medium text-gray-700">ساعات</label>
+            <input
+              type="number" min="1" max="12"
+              value={time.hours}
+              onChange={(e) => {
+                let val = parseInt(e.target.value) || 0;
+                if (val < 1) val = 1;
+                if (val > 12) val = 12;
+                onTimeChange({ ...time, hours: val });
+              }}
+              className="w-20 px-3 py-2 border border-gray-300 rounded-md text-center focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div className="flex flex-col items-center">
+            <label className="text-sm font-medium text-gray-700">دقائق</label>
+            <input
+              type="number" min="0" max="59"
+              value={time.minutes}
+              onChange={(e) => {
+                let val = parseInt(e.target.value) || 0;
+                if (val < 0) val = 0;
+                if (val > 59) val = 59;
+                onTimeChange({ ...time, minutes: val });
+              }}
+              className="w-20 px-3 py-2 border border-gray-300 rounded-md text-center focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ----- واجهة المودال الرئيسية -----
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+      <div className="bg-white rounded-lg shadow-2xl w-[90%] max-w-4xl max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center p-4 border-b">
+          <h2 className="text-2xl font-bold text-gray-800">إضافة واجب جديد</h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-800 text-2xl">×</button>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div className="p-6 flex flex-col md:flex-row gap-6">
+            {/* الجانب الأيسر: التقويم */}
+            <div className="flex-1 border-l md:border-l-0 md:border-r border-gray-200 pr-4">
+              <Calendar selectedDate={selectedDate} onDateChange={setSelectedDate} />
+            </div>
+
+            {/* خط فاصل عمودي */}
+            <div className="hidden md:block w-px bg-gray-300 self-stretch"></div>
+
+            {/* الجانب الأيمن: الساعة وحقول الوقت */}
+            <div className="flex-1 pl-4">
+              <ClockPicker time={time} onTimeChange={setTime} />
+            </div>
+          </div>
+
+          {/* حقول إضافية (الشعبة، نص الواجب) */}
+          <div className="px-6 pb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">الشعبة</label>
+              <select
+                value={section}
+                onChange={(e) => setSection(e.target.value)}
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                required
+              >
+                <option value="">اختر الشعبة</option>
+                <option value="A">شعبة A</option>
+                <option value="B">شعبة B</option>
+                <option value="C">شعبة C</option>
+                <option value="D">شعبة D</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">الموضوع / الواجب</label>
+              <input
+                type="text"
+                value={assignmentText}
+                onChange={(e) => setAssignmentText(e.target.value)}
+                placeholder="مثلاً: حل التمارين صفحة ٥"
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="px-6 py-4 bg-gray-50 border-t flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+            >
+              إلغاء
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700"
+            >
+              إضافة الواجب
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// ============================================================
+// باقي المكونات (CountdownTimer, HomeworkTextCountdown, ConfirmContext, إلخ)
+// ============================================================
 
 // ========== Hook: dynamic background ==========
 const useDynamicBackground = () => {
@@ -672,7 +981,9 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   );
 };
 
-// ========== TeacherPanel ==========
+// ============================================================
+// TeacherPanel (معدل)
+// ============================================================
 const TeacherPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
   const [lessonTime, setLessonTime] = useState('');
@@ -683,9 +994,10 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [errorMsg, setErrorMsg] = useState('');
   const [pendingReviews, setPendingReviews] = useState([]);
 
-  const [newHomeworkText, setNewHomeworkText] = useState('');
-  const [publishType, setPublishType] = useState('now');
-  const [newHomeworkRevealTime, setNewHomeworkRevealTime] = useState('');
+  // حالات المودالات
+  const [showAddStudentModal, setShowAddStudentModal] = useState(false);
+  const [showStudentsModal, setShowStudentsModal] = useState(false);
+  const [showAssignmentModal, setShowAssignmentModal] = useState(false); // <-- جديدة
 
   const [newStudentName, setNewStudentName] = useState('');
   const [newStudentGender, setNewStudentGender] = useState('');
@@ -695,10 +1007,8 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [studentLoading, setStudentLoading] = useState(false);
 
   const [newLessonTime, setNewLessonTime] = useState('');
-  const [showAddStudentModal, setShowAddStudentModal] = useState(false);
-  const [showStudentsModal, setShowStudentsModal] = useState(false);
 
-  // ===== حالات المودالات الإجبارية =====
+  // حالات المودالات الإجبارية (للتجميد والإضافة)
   const [showAddNotificationModal, setShowAddNotificationModal] = useState(false);
   const [newlyAddedStudent, setNewlyAddedStudent] = useState(null);
   const [showFreezeNotificationModal, setShowFreezeNotificationModal] = useState(false);
@@ -967,31 +1277,34 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  const saveHomework = async () => {
-    if (!newHomeworkText.trim()) {
-      toast.error('يرجى كتابة نص الواجب أولاً.');
+  // ===== الدالة الجديدة لحفظ الواجب من المودال =====
+  const saveHomeworkFromModal = async (assignmentData) => {
+    const { date, time, section, text } = assignmentData;
+    if (!text.trim()) {
+      toast.error('يرجى كتابة نص الواجب.');
       return;
     }
-    const revealTime = publishType === 'now' ? new Date().toISOString() : new Date(newHomeworkRevealTime).toISOString();
-    if (publishType === 'schedule' && !newHomeworkRevealTime) {
-      toast.error('يرجى تحديد تاريخ ووقت نشر الواجب المجدول.');
-      return;
-    }
+    // دمج التاريخ والوقت
+    const combinedDate = new Date(date);
+    combinedDate.setHours(time.hours, time.minutes, 0, 0);
+    const revealTime = combinedDate.toISOString();
+
     const newHwItem = {
       id: generateId(),
-      text: newHomeworkText,
+      text: text,
+      section: section,        // نضيف الشعبة
       reveal_time: revealTime,
-      is_scheduled: publishType === 'schedule'
+      is_scheduled: true       // دائمًا مجدول
     };
+
     try {
       const teacherRef = doc(db, 'teachers', user.id);
       await updateDoc(teacherRef, {
         homeworks: arrayUnion(newHwItem),
         updatedAt: serverTimestamp()
       });
-      setNewHomeworkText('');
-      setNewHomeworkRevealTime('');
-      toast.success(publishType === 'now' ? 'تم نشر الواجب فوراً!' : 'تم جدولة الواجب بنجاح.');
+      toast.success('تم جدولة الواجب بنجاح!');
+      setShowAssignmentModal(false);
     } catch (err) {
       toast.error('فشل حفظ الواجب: ' + err.message);
     }
@@ -1033,7 +1346,6 @@ const TeacherPanel = ({ user, onLogout }) => {
       });
 
       if (nextStatus) {
-        // إظهار المودال الإجباري لإرسال رسالة التجميد
         setFrozenStudent(student);
         setShowFreezeNotificationModal(true);
       } else {
@@ -1141,7 +1453,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ===== تعديل دالة إضافة الطالب =====
+  // ===== إضافة طالب =====
   const handleAddStudent = async (e) => {
     e.preventDefault();
     if (!newStudentName || !newStudentGender || !newStudentAge || !newStudentPhone || !newStudentClass) {
@@ -1208,7 +1520,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         updatedAt: serverTimestamp()
       });
 
-      // بناء كائن الطالب المُضاف
       const classObj = classes.find(c => c.id === newStudentClass);
       const addedStudent = {
         name: newStudentName.trim(),
@@ -1219,11 +1530,9 @@ const TeacherPanel = ({ user, onLogout }) => {
         classes: { name: classObj ? classObj.name : 'غير محدد' }
       };
 
-      // إظهار المودال الإجباري بدلاً من الإشعار
       setNewlyAddedStudent(addedStudent);
       setShowAddNotificationModal(true);
 
-      // تنظيف الحقول
       setNewStudentName('');
       setNewStudentGender('');
       setNewStudentAge('');
@@ -1301,39 +1610,28 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
         )}
 
+        {/* ===== قسم إدارة الواجبات (معدل) ===== */}
         <div className="glass p-6 rounded-2xl border border-white/5 space-y-4">
-          <h3 className="text-xl font-semibold text-pink-300">إدارة الواجبات</h3>
-          <div className="space-y-3">
-            <textarea placeholder="نص الواجب..." className="input-glass w-full h-24 text-right resize-none" value={newHomeworkText} onChange={(e) => setNewHomeworkText(e.target.value)} />
-            <div className="flex gap-6 items-center bg-white/5 p-3 rounded-xl border border-white/5 text-sm flex-wrap">
-              <span className="text-gray-300 font-medium">النشر:</span>
-              <label className="flex items-center gap-1.5 cursor-pointer text-gray-200">
-                <input type="radio" name="pubtype" value="now" checked={publishType === 'now'} onChange={() => setPublishType('now')} className="accent-pink-500" /> فوري
-              </label>
-              <label className="flex items-center gap-1.5 cursor-pointer text-gray-200">
-                <input type="radio" name="pubtype" value="schedule" checked={publishType === 'schedule'} onChange={() => setPublishType('schedule')} className="accent-pink-500" /> مجدول
-              </label>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center">
-              {publishType === 'schedule' && (
-                <div className="flex-1 flex flex-col gap-1">
-                  <span className="text-xs text-gray-400 mr-2">تاريخ ووقت النشر:</span>
-                  <input type="datetime-local" className="input-glass text-right" value={newHomeworkRevealTime} onChange={(e) => setNewHomeworkRevealTime(e.target.value)} />
-                </div>
-              )}
-              <button onClick={saveHomework} type="button" className="btn-primary bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 py-3.5 px-6 mr-auto sm:mr-0 self-end">
-                نشر الواجب
-              </button>
-            </div>
+          <div className="flex justify-between items-center">
+            <h3 className="text-xl font-semibold text-pink-300">إدارة الواجبات</h3>
+            <button
+              onClick={() => setShowAssignmentModal(true)}
+              type="button"
+              className="btn-primary bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 py-2 px-4 text-sm"
+            >
+              📝 إضافة واجب جديد
+            </button>
           </div>
-          {homeworks.length > 0 && (
-            <div className="mt-4 space-y-3 max-h-60 overflow-y-auto">
+
+          {homeworks.length > 0 ? (
+            <div className="space-y-3 max-h-60 overflow-y-auto">
               {sortedHomeworks.map(hw => {
                 const isRevealed = new Date(hw.reveal_time).getTime() <= new Date().getTime();
                 return (
                   <div key={hw.id} className="p-3 bg-black/30 rounded-xl border border-white/5 flex justify-between items-start gap-3">
                     <div className="flex-1">
                       <p className="text-gray-100 text-sm">{hw.text}</p>
+                      {hw.section && <span className="text-xs text-blue-300 mr-2">(شعبة {hw.section})</span>}
                       <div className="flex flex-wrap gap-2 mt-1">
                         <span className={`text-xs px-2 py-0.5 rounded-full ${isRevealed ? 'bg-green-500/20 text-green-300' : 'bg-yellow-500/20 text-yellow-300'}`}>
                           {isRevealed ? '🟢 متاح' : '📅 مجدول'}
@@ -1348,6 +1646,8 @@ const TeacherPanel = ({ user, onLogout }) => {
                 );
               })}
             </div>
+          ) : (
+            <p className="text-gray-400 text-center py-4">لا توجد واجبات مضافة بعد.</p>
           )}
         </div>
 
@@ -1392,7 +1692,6 @@ const TeacherPanel = ({ user, onLogout }) => {
               >
                 <span>💬</span> إخبار ولي الأمر
               </button>
-              {/* لا يوجد زر إلغاء أو إغلاق */}
             </div>
           </div>
         </div>
@@ -1419,7 +1718,6 @@ const TeacherPanel = ({ user, onLogout }) => {
               >
                 <span>💬</span> إخبار ولي الأمر
               </button>
-              {/* لا يوجد زر إلغاء أو إغلاق */}
             </div>
           </div>
         </div>
@@ -1514,11 +1812,20 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
         </div>
       )}
+
+      {/* ===== مودال إضافة الواجب الجديد ===== */}
+      <AddAssignmentModal
+        isOpen={showAssignmentModal}
+        onClose={() => setShowAssignmentModal(false)}
+        onSubmit={saveHomeworkFromModal}
+      />
     </div>
   );
 };
 
-// ========== StudentPanel ==========
+// ============================================================
+// StudentPanel (لم يتغير)
+// ============================================================
 const StudentPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
   const [teacherData, setTeacherData] = useState(null);
@@ -1742,6 +2049,7 @@ const StudentPanel = ({ user, onLogout }) => {
               {availableHomeworks.map(hw => (
                 <div key={hw.id} className="p-4 bg-black/30 rounded-xl border border-white/5">
                   <p className="text-base font-medium text-gray-100">{hw.text}</p>
+                  {hw.section && <span className="text-xs text-blue-300 mr-2">(شعبة {hw.section})</span>}
                   <p className="text-xs text-gray-400 mt-1">
                     نشر في: {new Date(hw.reveal_time).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })}
                   </p>
@@ -1765,7 +2073,9 @@ const StudentPanel = ({ user, onLogout }) => {
   );
 };
 
-// ========== App ==========
+// ============================================================
+// App
+// ============================================================
 const App = () => {
   const [user, setUser] = useState(null);
   const [frozenUser, setFrozenUser] = useState(null);
@@ -1943,7 +2253,9 @@ const App = () => {
   return user.role === 'teacher' ? <TeacherPanel user={user} onLogout={handleLogout} /> : <StudentPanel user={user} onLogout={handleLogout} />;
 };
 
-// ========== التطبيق مع Providers ==========
+// ============================================================
+// التطبيق مع Providers
+// ============================================================
 const Root = () => (
   <ConfirmProvider>
     <Toaster
