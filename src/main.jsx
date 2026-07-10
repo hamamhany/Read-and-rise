@@ -9,6 +9,7 @@ import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
   updatePassword,
+  updateEmail,   // <-- تمت الإضافة
   signOut
 } from 'firebase/auth'
 import {
@@ -211,140 +212,252 @@ const FrozenAccount = ({ user, onLogout }) => {
   )
 }
 
-// ========== CompleteProfile (واجهة التأكيد - تبقى كما هي) ==========
+// ========== CompleteProfile (تأكيد المعلومات + إنشاء بيانات الدخول) ==========
 const CompleteProfile = ({ user, onSuccess, onCancel }) => {
+  const [step, setStep] = useState(1) // 1: تأكيد المعلومات, 2: إنشاء اسم مستخدم وكلمة مرور
   const [name, setName] = useState('')
   const [gender, setGender] = useState('')
   const [age, setAge] = useState('')
   const [phone, setPhone] = useState('')
-  const [classId, setClassId] = useState('')
-  const [classes, setClasses] = useState([])
+  const [newUsername, setNewUsername] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  // تعبئة الحقول بالبيانات المسجلة مسبقاً (من المعلم)
   useEffect(() => {
-    const fetchClasses = async () => {
-      try {
-        const q = query(collection(db, 'classes'))
-        const querySnapshot = await getDocs(q)
-        const classesList = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-        setClasses(classesList)
-      } catch (err) {
-        console.error('Error fetching classes:', err)
-      }
+    if (user) {
+      setName(user.name || '')
+      setGender(user.gender || '')
+      setAge(user.age ? String(user.age) : '')
+      setPhone(user.phone || '')
     }
-    fetchClasses()
-  }, [])
+  }, [user])
 
-  const handleSubmit = async (e) => {
+  // الخطوة 1: تأكيد المعلومات
+  const handleVerify = async (e) => {
     e.preventDefault()
+    setError('')
 
-    const cleanName = name.trim()
-    const cleanPhone = phone.replace(/[^0-9]/g, '')
-    const cleanAge = parseInt(age, 10)
+    const stored = {
+      name: user.name || '',
+      gender: user.gender || '',
+      age: user.age ? String(user.age) : '',
+      phone: user.phone || ''
+    }
+    const entered = {
+      name: name.trim(),
+      gender: gender.trim(),
+      age: age.trim(),
+      phone: phone.trim()
+    }
 
-    if (!cleanName || !cleanPhone || isNaN(cleanAge) || cleanAge < 1) {
-      setError('يرجى ملء جميع الحقول بشكل صحيح')
+    if (entered.name !== stored.name) {
+      setError('الاسم غير متطابق مع البيانات المسجلة')
+      return
+    }
+    if (entered.gender !== stored.gender) {
+      setError('الجنس غير متطابق مع البيانات المسجلة')
+      return
+    }
+    if (entered.age !== stored.age) {
+      setError('العمر غير متطابق مع البيانات المسجلة')
+      return
+    }
+    if (entered.phone !== stored.phone) {
+      setError('رقم الهاتف غير متطابق مع البيانات المسجلة')
+      return
+    }
+
+    // جميع البيانات متطابقة → الانتقال للخطوة الثانية
+    setStep(2)
+  }
+
+  // الخطوة 2: إنشاء اسم مستخدم وكلمة مرور
+  const handleSetCredentials = async (e) => {
+    e.preventDefault()
+    setError('')
+
+    const usernameRegex = /^[a-zA-Z0-9]+$/
+    if (!usernameRegex.test(newUsername)) {
+      setError('اسم المستخدم يجب أن يحتوي على أحرف إنجليزية وأرقام فقط')
+      return
+    }
+    if (!usernameRegex.test(newPassword)) {
+      setError('كلمة المرور يجب أن تحتوي على أحرف إنجليزية وأرقام فقط')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setError('كلمة المرور غير متطابقة مع تأكيدها')
+      return
+    }
+    if (newPassword.length < 6) {
+      setError('كلمة المرور يجب أن تكون 6 أحرف على الأقل')
       return
     }
 
     setLoading(true)
-    setError('')
-
     try {
-      const userId = user.id
+      // التحقق من تفرد اسم المستخدم
+      const q = query(collection(db, 'profiles'), where('username', '==', newUsername))
+      const querySnap = await getDocs(q)
+      let exists = false
+      querySnap.forEach(doc => {
+        if (doc.id !== user.id) exists = true
+      })
+      if (exists) {
+        setError('اسم المستخدم هذا مستخدم بالفعل، يرجى اختيار آخر')
+        setLoading(false)
+        return
+      }
 
-      const updates = {
-        name: cleanName,
-        gender: gender || null,
-        age: cleanAge,
-        phone: cleanPhone,
-        classId: classId || null,
+      // تحديث الملف الشخصي في Firestore
+      const profileRef = doc(db, 'profiles', user.id)
+      await updateDoc(profileRef, {
+        username: newUsername,
         isProfileComplete: true,
         infoVerified: true,
         updatedAt: serverTimestamp()
+      })
+
+      // تحديث البريد الإلكتروني وكلمة المرور في Firebase Authentication
+      const currentUser = auth.currentUser
+      if (currentUser) {
+        await updateEmail(currentUser, `${newUsername}@readandrise.com`)
+        await updatePassword(currentUser, newPassword)
+      } else {
+        throw new Error('لم يتم العثور على المستخدم الحالي')
       }
 
-      await updateDoc(doc(db, 'profiles', userId), updates)
-
-      const docSnap = await getDoc(doc(db, 'profiles', userId))
-      const profileData = docSnap.data()
-
-      onSuccess({ ...user, ...profileData })
+      // بناء كائن المستخدم المحدث
+      const updatedUser = {
+        ...user,
+        username: newUsername,
+        email: `${newUsername}@readandrise.com`,
+        isProfileComplete: true,
+        infoVerified: true
+      }
+      onSuccess(updatedUser)
     } catch (err) {
       console.error(err)
-      setError(err.message || 'حدث خطأ غير متوقع.')
-    } finally {
+      setError(err.message || 'حدث خطأ أثناء تحديث البيانات')
       setLoading(false)
     }
   }
 
+  // عرض الخطوة 1
+  if (step === 1) {
+    return (
+      <div className="container-center min-h-screen relative" dir="rtl">
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+        <div className="relative z-10 w-full max-w-md px-4">
+          <div className="glass p-6 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl space-y-4">
+            <h2 className="text-2xl font-bold text-center text-blue-300">تأكيد المعلومات الشخصية</h2>
+            <p className="text-gray-400 text-sm text-center">يرجى إدخال المعلومات كما أضافها المعلم للتأكيد</p>
+            <form onSubmit={handleVerify} className="space-y-4">
+              <div>
+                <label className="text-sm text-gray-300 block mb-1">الاسم الكامل <span className="text-red-400">*</span></label>
+                <input
+                  type="text"
+                  className="input-glass w-full text-right"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-sm text-gray-300 block mb-1">الجنس <span className="text-red-400">*</span></label>
+                <select
+                  className="input-glass w-full text-right"
+                  value={gender}
+                  onChange={e => setGender(e.target.value)}
+                  required
+                >
+                  <option value="">اختر</option>
+                  <option value="ذكر">ذكر</option>
+                  <option value="أنثى">أنثى</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-sm text-gray-300 block mb-1">العمر <span className="text-red-400">*</span></label>
+                <input
+                  type="number"
+                  className="input-glass w-full text-right"
+                  value={age}
+                  onChange={e => setAge(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-sm text-gray-300 block mb-1">رقم الهاتف <span className="text-red-400">*</span></label>
+                <input
+                  type="text"
+                  className="input-glass w-full text-right"
+                  value={phone}
+                  onChange={e => setPhone(e.target.value)}
+                  required
+                />
+              </div>
+              {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+              <button type="submit" className="btn-primary w-full py-3 bg-blue-600 hover:bg-blue-700">
+                تأكيد المعلومات
+              </button>
+            </form>
+            <button onClick={onCancel} type="button" className="text-sm text-gray-400 hover:text-white w-full text-center mt-2">تسجيل الخروج</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // عرض الخطوة 2
   return (
     <div className="container-center min-h-screen relative" dir="rtl">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
       <div className="relative z-10 w-full max-w-md px-4">
         <div className="glass p-6 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl space-y-4">
-          <h2 className="text-2xl font-bold text-center text-blue-300">إكمال البيانات الشخصية</h2>
-          <p className="text-gray-400 text-sm text-center">يرجى إدخال معلوماتك الأساسية لإكمال التسجيل</p>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <h2 className="text-2xl font-bold text-center text-green-300">إنشاء اسم مستخدم وكلمة مرور جديدة</h2>
+          <p className="text-gray-400 text-sm text-center">اختر اسم مستخدم وكلمة مرور (أحرف إنجليزية أو أرقام فقط)</p>
+          <form onSubmit={handleSetCredentials} className="space-y-4">
             <div>
-              <label className="text-sm text-gray-300 block mb-1">الاسم الكامل <span className="text-red-400">*</span></label>
+              <label className="text-sm text-gray-300 block mb-1">اسم المستخدم الجديد <span className="text-red-400">*</span></label>
               <input
                 type="text"
                 className="input-glass w-full text-right"
-                value={name}
-                onChange={e => setName(e.target.value)}
+                value={newUsername}
+                onChange={e => setNewUsername(e.target.value)}
                 required
+                pattern="[a-zA-Z0-9]+"
+                title="أحرف إنجليزية أو أرقام فقط"
               />
             </div>
             <div>
-              <label className="text-sm text-gray-300 block mb-1">الجنس</label>
-              <select
-                className="input-glass w-full text-right"
-                value={gender}
-                onChange={e => setGender(e.target.value)}
-              >
-                <option value="">اختر</option>
-                <option value="ذكر">ذكر</option>
-                <option value="أنثى">أنثى</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-sm text-gray-300 block mb-1">العمر <span className="text-red-400">*</span></label>
+              <label className="text-sm text-gray-300 block mb-1">كلمة المرور الجديدة <span className="text-red-400">*</span></label>
               <input
-                type="number"
+                type="password"
                 className="input-glass w-full text-right"
-                value={age}
-                onChange={e => setAge(e.target.value)}
+                value={newPassword}
+                onChange={e => setNewPassword(e.target.value)}
                 required
+                minLength="6"
+                pattern="[a-zA-Z0-9]+"
+                title="أحرف إنجليزية أو أرقام فقط، على الأقل 6 أحرف"
               />
             </div>
             <div>
-              <label className="text-sm text-gray-300 block mb-1">رقم الهاتف <span className="text-red-400">*</span></label>
+              <label className="text-sm text-gray-300 block mb-1">تأكيد كلمة المرور <span className="text-red-400">*</span></label>
               <input
-                type="text"
+                type="password"
                 className="input-glass w-full text-right"
-                value={phone}
-                onChange={e => setPhone(e.target.value)}
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
                 required
               />
-            </div>
-            <div>
-              <label className="text-sm text-gray-300 block mb-1">الشعبة</label>
-              <select
-                className="input-glass w-full text-right"
-                value={classId}
-                onChange={e => setClassId(e.target.value)}
-              >
-                <option value="">اختر الشعبة</option>
-                {classes.map(cls => (
-                  <option key={cls.id} value={cls.id}>{cls.name}</option>
-                ))}
-              </select>
             </div>
             {error && <p className="text-red-400 text-sm text-center">{error}</p>}
-            <button type="submit" disabled={loading} className="btn-primary w-full py-3 bg-blue-600 hover:bg-blue-700">
-              {loading ? 'جاري الحفظ...' : 'حفظ البيانات'}
+            <button type="submit" disabled={loading} className="btn-primary w-full py-3 bg-green-600 hover:bg-green-700">
+              {loading ? 'جاري الحفظ...' : 'حفظ وإتمام التسجيل'}
             </button>
           </form>
           <button onClick={onCancel} type="button" className="text-sm text-gray-400 hover:text-white w-full text-center mt-2">تسجيل الخروج</button>
