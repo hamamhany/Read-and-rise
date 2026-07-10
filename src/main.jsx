@@ -450,19 +450,27 @@ const useDynamicBackground = () => {
   }, []);
 };
 
-// ========== CountdownTimer ==========
+// ========== CountdownTimer (معدل لإظهار "انتهى" بدلاً من الأصفار) ==========
 const CountdownTimer = ({ targetDate }) => {
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+  const [isEnded, setIsEnded] = useState(false);
 
   useEffect(() => {
     const calculateTime = () => {
-      const target = new Date(targetDate).getTime();
-      const now = new Date().getTime();
-      const distance = target - now;
-      if (distance < 0) {
+      if (!targetDate) {
+        setIsEnded(false);
         setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
         return true;
       }
+      const target = new Date(targetDate).getTime();
+      const now = new Date().getTime();
+      const distance = target - now;
+      if (distance <= 0) {
+        setIsEnded(true);
+        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+        return true;
+      }
+      setIsEnded(false);
       setTimeLeft({
         days: Math.floor(distance / (1000 * 60 * 60 * 24)),
         hours: Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
@@ -474,13 +482,17 @@ const CountdownTimer = ({ targetDate }) => {
 
     calculateTime();
     const interval = setInterval(() => {
-      const isEnded = calculateTime();
-      if (isEnded) clearInterval(interval);
+      const ended = calculateTime();
+      if (ended) clearInterval(interval);
     }, 1000);
     return () => clearInterval(interval);
   }, [targetDate]);
 
   const labels = { days: 'أيام', hours: 'ساعات', minutes: 'دقائق', seconds: 'ثواني' };
+
+  if (isEnded) {
+    return <div className="text-center text-yellow-300 font-bold text-xl">⏰ انتهى الوقت</div>;
+  }
 
   return (
     <div className="flex gap-4 text-center flex-wrap justify-center">
