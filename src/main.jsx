@@ -53,14 +53,13 @@ const arabicToEnglish = (text) => {
 };
 
 // ============================================================
-// 1. مكوّن إضافة الواجب / جدولة الحصة (مودال موحد مع خيار النشر الفوري)
+// 1. مكوّن إضافة الواجب (مع خيار النشر الفوري / الجدولة)
 // ============================================================
 const AddAssignmentModal = ({
   isOpen,
   onClose,
   onSubmit,
-  mode = 'homework',   // 'homework' أو 'lesson'
-  classesList = []     // قائمة الشعب من Firestore
+  classesList = []
 }) => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [time, setTime] = useState({ hours: 12, minutes: 0 });
@@ -72,20 +71,19 @@ const AddAssignmentModal = ({
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const data = {};
-
-    if (mode === 'homework') {
-      if (!assignmentText.trim()) {
-        toast.error('يرجى كتابة نص الواجب.');
-        return;
-      }
-      if (!section) {
-        toast.error('يرجى اختيار الشعبة.');
-        return;
-      }
-      data.section = section;
-      data.text = assignmentText;
+    if (!assignmentText.trim()) {
+      toast.error('يرجى كتابة نص الواجب.');
+      return;
     }
+    if (!section) {
+      toast.error('يرجى اختيار الشعبة.');
+      return;
+    }
+
+    const data = {
+      section,
+      text: assignmentText,
+    };
 
     if (publishMode === 'now') {
       const now = new Date();
@@ -136,11 +134,11 @@ const AddAssignmentModal = ({
     return (
       <div className="p-4 w-72">
         <div className="flex justify-between items-center mb-4">
-          <button onClick={goPrevMonth} className="text-xl px-2 hover:bg-white/20 rounded">‹</button>
+          <button onClick={goPrevMonth} className="text-xl px-2 hover:bg-white/20 rounded text-white">‹</button>
           <span className="font-bold text-lg text-white">
             {currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
           </span>
-          <button onClick={goNextMonth} className="text-xl px-2 hover:bg-white/20 rounded">›</button>
+          <button onClick={goNextMonth} className="text-xl px-2 hover:bg-white/20 rounded text-white">›</button>
         </div>
         <div className="grid grid-cols-7 gap-1 text-center font-semibold text-sm text-gray-300">
           {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => <div key={d}>{d}</div>)}
@@ -312,7 +310,7 @@ const AddAssignmentModal = ({
               value={hoursStr}
               onChange={handleHoursChange}
               onBlur={handleHoursBlur}
-              className="w-20 px-3 py-2 border border-gray-600 rounded-md text-center bg-white/10 text-white focus:ring-2 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              className="w-20 px-3 py-2 border border-gray-600 rounded-md text-center bg-gray-800 text-white focus:ring-2 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
           </div>
           <div className="flex flex-col items-center">
@@ -323,7 +321,7 @@ const AddAssignmentModal = ({
               value={minutesStr}
               onChange={handleMinutesChange}
               onBlur={handleMinutesBlur}
-              className="w-20 px-3 py-2 border border-gray-600 rounded-md text-center bg-white/10 text-white focus:ring-2 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              className="w-20 px-3 py-2 border border-gray-600 rounded-md text-center bg-gray-800 text-white focus:ring-2 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
           </div>
         </div>
@@ -331,49 +329,45 @@ const AddAssignmentModal = ({
     );
   };
 
-  // ----- واجهة المودال -----
+  // ----- واجهة المودال (خلفية صلبة داكنة) -----
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="glass p-6 rounded-3xl w-[90%] max-w-4xl max-h-[90vh] overflow-y-auto border border-white/20 bg-white/10 backdrop-blur-xl shadow-2xl">
-        <div className="flex justify-between items-center p-2 border-b border-white/10">
-          <h2 className="text-2xl font-bold text-white">
-            {mode === 'homework' ? 'إضافة واجب جديد' : 'جدولة موعد الحصة'}
-          </h2>
-          <button onClick={onClose} className="text-gray-300 hover:text-white text-2xl">×</button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+      <div className="bg-gray-900 p-6 rounded-3xl w-[90%] max-w-4xl max-h-[90vh] overflow-y-auto border border-gray-700 shadow-2xl">
+        <div className="flex justify-between items-center p-2 border-b border-gray-700">
+          <h2 className="text-2xl font-bold text-white">إضافة واجب جديد</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">×</button>
         </div>
 
         <form onSubmit={handleSubmit}>
-          {mode === 'homework' && (
-            <div className="px-4 pb-4 grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300">الشعبة</label>
-                <select
-                  value={section}
-                  onChange={(e) => setSection(e.target.value)}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-600 rounded-md shadow-sm bg-white/10 text-white focus:ring-blue-500 focus:border-blue-500"
-                  required
-                >
-                  <option value="">اختر الشعبة</option>
-                  {classesList.map(cls => (
-                    <option key={cls.id} value={cls.id}>{cls.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300">الموضوع / الواجب</label>
-                <input
-                  type="text"
-                  value={assignmentText}
-                  onChange={(e) => setAssignmentText(e.target.value)}
-                  placeholder="مثلاً: حل التمارين صفحة ٥"
-                  className="mt-1 block w-full px-3 py-2 border border-gray-600 rounded-md shadow-sm bg-white/10 text-white focus:ring-blue-500 focus:border-blue-500"
-                  required
-                />
-              </div>
+          <div className="px-4 pb-4 grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300">الشعبة</label>
+              <select
+                value={section}
+                onChange={(e) => setSection(e.target.value)}
+                className="mt-1 block w-full px-3 py-2 border border-gray-600 rounded-md shadow-sm bg-gray-800 text-white focus:ring-blue-500 focus:border-blue-500"
+                required
+              >
+                <option value="">اختر الشعبة</option>
+                {classesList.map(cls => (
+                  <option key={cls.id} value={cls.id}>{cls.name}</option>
+                ))}
+              </select>
             </div>
-          )}
+            <div>
+              <label className="block text-sm font-medium text-gray-300">الموضوع / الواجب</label>
+              <input
+                type="text"
+                value={assignmentText}
+                onChange={(e) => setAssignmentText(e.target.value)}
+                placeholder="مثلاً: حل التمارين صفحة ٥"
+                className="mt-1 block w-full px-3 py-2 border border-gray-600 rounded-md shadow-sm bg-gray-800 text-white focus:ring-blue-500 focus:border-blue-500"
+                required
+              />
+            </div>
+          </div>
 
-          <div className="px-4 pb-2 flex flex-wrap gap-4 border-b border-white/10">
+          <div className="px-4 pb-2 flex flex-wrap gap-4 border-b border-gray-700">
             <label className="flex items-center gap-2 text-gray-300">
               <input
                 type="radio"
@@ -398,21 +392,21 @@ const AddAssignmentModal = ({
 
           {publishMode === 'schedule' && (
             <div className="p-4 flex flex-col md:flex-row gap-6">
-              <div className="flex-1 border-l md:border-l-0 md:border-r border-white/20 pr-4">
+              <div className="flex-1 border-l md:border-l-0 md:border-r border-gray-700 pr-4">
                 <Calendar selectedDate={selectedDate} onDateChange={setSelectedDate} />
               </div>
-              <div className="hidden md:block w-px bg-white/20 self-stretch"></div>
+              <div className="hidden md:block w-px bg-gray-700 self-stretch"></div>
               <div className="flex-1 pl-4">
                 <ClockPicker time={time} onTimeChange={setTime} />
               </div>
             </div>
           )}
 
-          <div className="px-4 py-3 border-t border-white/10 flex justify-end gap-3">
+          <div className="px-4 py-3 border-t border-gray-700 flex justify-end gap-3">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-gray-300 bg-white/10 border border-gray-600 rounded-md hover:bg-white/20"
+              className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md hover:bg-gray-600"
             >
               إلغاء
             </button>
@@ -420,7 +414,298 @@ const AddAssignmentModal = ({
               type="submit"
               className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700"
             >
-              {mode === 'homework' ? 'إضافة الواجب' : 'حفظ الموعد'}
+              إضافة الواجب
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// ============================================================
+// 2. مكوّن جدولة موعد الحصة (منفصل، بدون خيارات نشر)
+// ============================================================
+const AddLessonModal = ({
+  isOpen,
+  onClose,
+  onSubmit
+}) => {
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [time, setTime] = useState({ hours: 12, minutes: 0 });
+
+  if (!isOpen) return null;
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSubmit({ date: selectedDate, time });
+  };
+
+  // ----- مكوّن التقويم الداخلي -----
+  const Calendar = ({ selectedDate, onDateChange }) => {
+    const [currentMonth, setCurrentMonth] = useState(new Date(selectedDate));
+    const [days, setDays] = useState([]);
+
+    useEffect(() => {
+      const year = currentMonth.getFullYear();
+      const month = currentMonth.getMonth();
+      const firstDay = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+      const daysArray = [];
+      for (let i = 0; i < firstDay; i++) {
+        daysArray.push(null);
+      }
+      for (let i = 1; i <= daysInMonth; i++) {
+        daysArray.push(new Date(year, month, i));
+      }
+      setDays(daysArray);
+    }, [currentMonth]);
+
+    const goPrevMonth = () => {
+      setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
+    };
+    const goNextMonth = () => {
+      setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
+    };
+
+    const isSameDay = (d1, d2) => {
+      return d1 && d2 && d1.getFullYear() === d2.getFullYear() &&
+        d1.getMonth() === d2.getMonth() &&
+        d1.getDate() === d2.getDate();
+    };
+
+    return (
+      <div className="p-4 w-72">
+        <div className="flex justify-between items-center mb-4">
+          <button onClick={goPrevMonth} className="text-xl px-2 hover:bg-white/20 rounded text-white">‹</button>
+          <span className="font-bold text-lg text-white">
+            {currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
+          </span>
+          <button onClick={goNextMonth} className="text-xl px-2 hover:bg-white/20 rounded text-white">›</button>
+        </div>
+        <div className="grid grid-cols-7 gap-1 text-center font-semibold text-sm text-gray-300">
+          {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => <div key={d}>{d}</div>)}
+        </div>
+        <div className="grid grid-cols-7 gap-1 mt-1">
+          {days.map((day, idx) => (
+            <div
+              key={idx}
+              onClick={() => day && onDateChange(day)}
+              className={`text-center py-2 rounded-full cursor-pointer transition
+                ${!day ? '' :
+                  isSameDay(day, selectedDate)
+                    ? 'bg-blue-600 text-white hover:bg-blue-700'
+                    : 'hover:bg-white/10 text-white'
+                }`}
+            >
+              {day ? day.getDate() : ''}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  // ----- مكوّن الساعة الدائرية الداخلي -----
+  const ClockPicker = ({ time, onTimeChange }) => {
+    const svgRef = useRef(null);
+    const radius = 120;
+    const center = 140;
+    const [dragging, setDragging] = useState(null);
+
+    const [hoursStr, setHoursStr] = useState(time.hours.toString().padStart(2, '0'));
+    const [minutesStr, setMinutesStr] = useState(time.minutes.toString().padStart(2, '0'));
+
+    useEffect(() => {
+      setHoursStr(time.hours.toString().padStart(2, '0'));
+      setMinutesStr(time.minutes.toString().padStart(2, '0'));
+    }, [time]);
+
+    const getAngle = (hours, minutes) => {
+      const hAngle = (hours % 12) * (Math.PI / 6) + minutes * (Math.PI / 360);
+      const mAngle = minutes * (Math.PI / 30);
+      return { hAngle, mAngle };
+    };
+
+    const getCoords = (angle) => {
+      const x = center + radius * 0.7 * Math.sin(angle);
+      const y = center - radius * 0.7 * Math.cos(angle);
+      return { x, y };
+    };
+
+    const handleMouseDown = (type) => (e) => {
+      e.preventDefault();
+      setDragging(type);
+    };
+
+    const handleMouseMove = (e) => {
+      if (!dragging) return;
+      const svg = svgRef.current;
+      const rect = svg.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left - center;
+      const mouseY = e.clientY - rect.top - center;
+      let angle = Math.atan2(mouseX, -mouseY);
+      if (angle < 0) angle += 2 * Math.PI;
+
+      let newHours = time.hours;
+      let newMinutes = time.minutes;
+
+      if (dragging === 'hour') {
+        const hoursFromAngle = (angle / (2 * Math.PI)) * 12;
+        newHours = Math.round(hoursFromAngle) % 12 || 12;
+      } else if (dragging === 'minute') {
+        const minutesFromAngle = (angle / (2 * Math.PI)) * 60;
+        newMinutes = Math.round(minutesFromAngle) % 60;
+      }
+
+      onTimeChange({ hours: newHours, minutes: newMinutes });
+    };
+
+    const handleMouseUp = () => {
+      setDragging(null);
+    };
+
+    useEffect(() => {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+      };
+    }, [dragging]);
+
+    const { hAngle, mAngle } = getAngle(time.hours, time.minutes);
+    const hourCoords = getCoords(hAngle);
+    const minuteCoords = getCoords(mAngle);
+
+    const handleHoursChange = (e) => {
+      const val = e.target.value;
+      setHoursStr(val);
+    };
+
+    const handleHoursBlur = () => {
+      let val = parseInt(hoursStr);
+      if (isNaN(val) || val < 1) val = 1;
+      if (val > 12) val = 12;
+      setHoursStr(val.toString().padStart(2, '0'));
+      onTimeChange({ ...time, hours: val });
+    };
+
+    const handleMinutesChange = (e) => {
+      const val = e.target.value;
+      setMinutesStr(val);
+    };
+
+    const handleMinutesBlur = () => {
+      let val = parseInt(minutesStr);
+      if (isNaN(val) || val < 0) val = 0;
+      if (val > 59) val = 59;
+      setMinutesStr(val.toString().padStart(2, '0'));
+      onTimeChange({ ...time, minutes: val });
+    };
+
+    return (
+      <div className="flex flex-col items-center">
+        <svg ref={svgRef} width={280} height={280} viewBox="0 0 280 280" className="cursor-pointer">
+          <circle cx={center} cy={center} r={radius} fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.3)" strokeWidth="2" />
+          {[...Array(12)].map((_, i) => {
+            const angle = (i / 12) * 2 * Math.PI;
+            const x1 = center + radius * 0.85 * Math.sin(angle);
+            const y1 = center - radius * 0.85 * Math.cos(angle);
+            const x2 = center + radius * 0.95 * Math.sin(angle);
+            const y2 = center - radius * 0.95 * Math.cos(angle);
+            return (
+              <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(255,255,255,0.6)" strokeWidth="3" />
+            );
+          })}
+          <line
+            x1={center} y1={center}
+            x2={hourCoords.x} y2={hourCoords.y}
+            stroke="#fff" strokeWidth="6" strokeLinecap="round"
+            onMouseDown={handleMouseDown('hour')}
+          />
+          <line
+            x1={center} y1={center}
+            x2={minuteCoords.x} y2={minuteCoords.y}
+            stroke="#3b82f6" strokeWidth="4" strokeLinecap="round"
+            onMouseDown={handleMouseDown('minute')}
+          />
+          <circle cx={center} cy={center} r={8} fill="#ef4444" />
+          {[...Array(12)].map((_, i) => {
+            const num = i === 0 ? 12 : i;
+            const angle = (i / 12) * 2 * Math.PI;
+            const x = center + radius * 0.72 * Math.sin(angle);
+            const y = center - radius * 0.72 * Math.cos(angle);
+            return (
+              <text key={i} x={x} y={y + 5} textAnchor="middle" fontSize="14" fill="#fff" fontWeight="bold">
+                {num}
+              </text>
+            );
+          })}
+        </svg>
+
+        <div className="flex gap-4 mt-4">
+          <div className="flex flex-col items-center">
+            <label className="text-sm font-medium text-gray-300">ساعات</label>
+            <input
+              type="text"
+              maxLength="2"
+              value={hoursStr}
+              onChange={handleHoursChange}
+              onBlur={handleHoursBlur}
+              className="w-20 px-3 py-2 border border-gray-600 rounded-md text-center bg-gray-800 text-white focus:ring-2 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            />
+          </div>
+          <div className="flex flex-col items-center">
+            <label className="text-sm font-medium text-gray-300">دقائق</label>
+            <input
+              type="text"
+              maxLength="2"
+              value={minutesStr}
+              onChange={handleMinutesChange}
+              onBlur={handleMinutesBlur}
+              className="w-20 px-3 py-2 border border-gray-600 rounded-md text-center bg-gray-800 text-white focus:ring-2 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            />
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ----- واجهة المودال (خلفية صلبة داكنة) -----
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+      <div className="bg-gray-900 p-6 rounded-3xl w-[90%] max-w-4xl max-h-[90vh] overflow-y-auto border border-gray-700 shadow-2xl">
+        <div className="flex justify-between items-center p-2 border-b border-gray-700">
+          <h2 className="text-2xl font-bold text-white">جدولة موعد الحصة</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">×</button>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div className="p-4 flex flex-col md:flex-row gap-6">
+            <div className="flex-1 border-l md:border-l-0 md:border-r border-gray-700 pr-4">
+              <Calendar selectedDate={selectedDate} onDateChange={setSelectedDate} />
+            </div>
+            <div className="hidden md:block w-px bg-gray-700 self-stretch"></div>
+            <div className="flex-1 pl-4">
+              <ClockPicker time={time} onTimeChange={setTime} />
+            </div>
+          </div>
+
+          <div className="px-4 py-3 border-t border-gray-700 flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md hover:bg-gray-600"
+            >
+              إلغاء
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700"
+            >
+              حفظ الموعد
             </button>
           </div>
         </form>
@@ -517,7 +802,7 @@ const CountdownTimer = ({ targetDate }) => {
   return (
     <div className="flex gap-4 text-center flex-wrap justify-center">
       {Object.entries(timeLeft).map(([unit, value]) => (
-        <div key={unit} className="glass p-4 min-w-[85px] rounded-2xl border border-white/10 shadow-md">
+        <div key={unit} className="bg-gray-800/80 p-4 min-w-[85px] rounded-2xl border border-gray-700 shadow-md">
           <div className="text-3xl font-bold text-purple-300 drop-shadow">{value}</div>
           <div className="text-xs uppercase tracking-wider text-gray-400 mt-1">{labels[unit]}</div>
         </div>
@@ -601,14 +886,14 @@ export const ConfirmProvider = ({ children }) => {
     <ConfirmContext.Provider value={showConfirm}>
       {children}
       {state.isOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="glass p-6 rounded-2xl max-w-sm w-full border border-white/20">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-gray-900 p-6 rounded-2xl max-w-sm w-full border border-gray-700">
             <h3 className="text-xl font-bold text-white mb-2">{state.title}</h3>
             <p className="text-gray-300 mb-4">{state.message}</p>
             <div className="flex gap-3 justify-end">
               <button
                 onClick={state.onCancel}
-                className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg text-white"
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-white"
               >
                 إلغاء
               </button>
@@ -652,7 +937,7 @@ const FrozenAccount = ({ user, onLogout }) => {
     <div className="container-center min-h-screen relative" dir="rtl">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-md" />
       <div className="relative z-10 w-full max-w-md px-4">
-        <div className="glass p-8 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl text-center space-y-6">
+        <div className="bg-gray-900 p-8 rounded-3xl shadow-2xl border border-gray-700 text-center space-y-6">
           <div className="text-6xl mb-2">🚫</div>
           <h2 className="text-2xl font-bold text-red-400">الحساب مجمد</h2>
           <p className="text-gray-300 leading-relaxed">
@@ -964,7 +1249,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
       <div className="container-center relative min-h-screen overflow-hidden" dir="rtl">
         <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
         <div className="relative z-10 w-full max-w-md px-4">
-          <div className="glass p-6 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl flex flex-col items-center relative overflow-hidden">
+          <div className="bg-gray-900 p-6 rounded-3xl shadow-2xl border border-gray-700 flex flex-col items-center relative overflow-hidden">
             <div className="w-full z-10 flex flex-col items-center space-y-4">
               <h2 className="text-2xl font-bold bg-gradient-to-r from-green-400 to-blue-400 text-transparent bg-clip-text">
                 تفعيل الحساب لأول مرة
@@ -975,11 +1260,11 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
                   <p className="text-gray-300 text-sm text-center">يرجى إدخال المعلومات كما هي مسجلة لدينا للتأكيد</p>
                   <div>
                     <label className="text-sm text-gray-300 block mb-1">الاسم الكامل</label>
-                    <input type="text" className="input-glass w-full text-right" value={activationConfirmName} onChange={e => setActivationConfirmName(e.target.value)} required />
+                    <input type="text" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationConfirmName} onChange={e => setActivationConfirmName(e.target.value)} required />
                   </div>
                   <div>
                     <label className="text-sm text-gray-300 block mb-1">الجنس</label>
-                    <select className="input-glass w-full text-right" value={activationConfirmGender} onChange={e => setActivationConfirmGender(e.target.value)} required>
+                    <select className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationConfirmGender} onChange={e => setActivationConfirmGender(e.target.value)} required>
                       <option value="">اختر</option>
                       <option value="ذكر">ذكر</option>
                       <option value="أنثى">أنثى</option>
@@ -987,14 +1272,14 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
                   </div>
                   <div>
                     <label className="text-sm text-gray-300 block mb-1">العمر</label>
-                    <input type="number" className="input-glass w-full text-right" value={activationConfirmAge} onChange={e => setActivationConfirmAge(e.target.value)} required />
+                    <input type="number" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationConfirmAge} onChange={e => setActivationConfirmAge(e.target.value)} required />
                   </div>
                   <div>
                     <label className="text-sm text-gray-300 block mb-1">رقم الهاتف</label>
-                    <input type="text" className="input-glass w-full text-right" value={activationConfirmPhone} onChange={e => setActivationConfirmPhone(e.target.value)} required />
+                    <input type="text" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationConfirmPhone} onChange={e => setActivationConfirmPhone(e.target.value)} required />
                   </div>
                   {activationError && <p className="text-red-400 text-sm text-center">{activationError}</p>}
-                  <button type="submit" disabled={activationLoading} className="btn-primary w-full py-3 bg-blue-600 hover:bg-blue-700">
+                  <button type="submit" disabled={activationLoading} className="btn-primary w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-md">
                     {activationLoading ? 'جاري البحث...' : 'تأكيد المعلومات'}
                   </button>
                   <button type="button" onClick={cancelActivation} className="text-sm text-gray-400 hover:text-white w-full text-center mt-2">عودة لتسجيل الدخول</button>
@@ -1006,18 +1291,18 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
                   <p className="text-gray-300 text-sm text-center">اختر اسم مستخدم وكلمة مرور جديدة</p>
                   <div>
                     <label className="text-sm text-gray-300 block mb-1">اسم المستخدم الجديد (أحرف إنجليزية وأرقام والرموز @ . _ -)</label>
-                    <input type="text" className="input-glass w-full text-right" value={activationNewUsername} onChange={handleActivationNewUsernameChange} required pattern="[a-zA-Z0-9@._-]+" title="أحرف إنجليزية وأرقام والرموز @ . _ -" />
+                    <input type="text" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationNewUsername} onChange={handleActivationNewUsernameChange} required pattern="[a-zA-Z0-9@._-]+" title="أحرف إنجليزية وأرقام والرموز @ . _ -" />
                   </div>
                   <div>
                     <label className="text-sm text-gray-300 block mb-1">كلمة المرور الجديدة</label>
-                    <input type="password" className="input-glass w-full text-right" value={activationNewPassword} onChange={e => setActivationNewPassword(e.target.value)} required minLength="6" pattern="[a-zA-Z0-9@._-]+" title="أحرف إنجليزية وأرقام والرموز @ . _ -، 6 أحرف على الأقل" />
+                    <input type="password" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationNewPassword} onChange={e => setActivationNewPassword(e.target.value)} required minLength="6" pattern="[a-zA-Z0-9@._-]+" title="أحرف إنجليزية وأرقام والرموز @ . _ -، 6 أحرف على الأقل" />
                   </div>
                   <div>
                     <label className="text-sm text-gray-300 block mb-1">تأكيد كلمة المرور</label>
-                    <input type="password" className="input-glass w-full text-right" value={activationConfirmPassword} onChange={e => setActivationConfirmPassword(e.target.value)} required />
+                    <input type="password" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationConfirmPassword} onChange={e => setActivationConfirmPassword(e.target.value)} required />
                   </div>
                   {activationError && <p className="text-red-400 text-sm text-center">{activationError}</p>}
-                  <button type="submit" disabled={activationLoading} className="btn-primary w-full py-3 bg-purple-600 hover:bg-purple-700">
+                  <button type="submit" disabled={activationLoading} className="btn-primary w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-md">
                     {activationLoading ? 'جاري التفعيل...' : 'تفعيل الحساب'}
                   </button>
                   <button type="button" onClick={cancelActivation} className="text-sm text-gray-400 hover:text-white w-full text-center mt-2">إلغاء</button>
@@ -1034,7 +1319,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     <div className="container-center relative min-h-screen overflow-hidden" dir="rtl">
       <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
       <div className="relative z-10 w-full max-w-md px-4">
-        <div className="glass p-6 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl flex flex-col items-center relative overflow-hidden min-h-[440px] justify-center">
+        <div className="bg-gray-900 p-6 rounded-3xl shadow-2xl border border-gray-700 flex flex-col items-center relative overflow-hidden min-h-[440px] justify-center">
           <div className="absolute inset-0 flex items-start justify-center pt-6 pointer-events-none z-0 overflow-hidden">
             <img src="/images/logo.png" alt="" className="w-96 h-96 md:w-[420px] md:h-[420px] object-contain opacity-15 animate-logo-bg select-none" onError={(e) => e.target.style.display = 'none'} />
           </div>
@@ -1043,7 +1328,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
               <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 text-transparent bg-clip-text">
                 الفرسان التقنيين - اقرآ وارتق
               </h2>
-              <div className="w-full max-w-[310px] bg-black/50 border border-white/10 px-4 py-1.5 rounded-full mx-auto shadow-inner">
+              <div className="w-full max-w-[310px] bg-black/50 border border-gray-700 px-4 py-1.5 rounded-full mx-auto shadow-inner">
                 <span className="text-sm font-semibold text-gray-200 tracking-wide">
                   المعلم المسؤول : Dev / همام هاني محمد
                 </span>
@@ -1052,17 +1337,17 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
             <form onSubmit={handleAuth} className="space-y-3.5 w-full">
               <div className="relative flex items-center">
                 <span className="absolute right-4 text-gray-400 pointer-events-none text-sm font-medium">اسم المستخدم</span>
-                <input type="text" className="input-glass w-full text-right pr-24 pl-4 text-base bg-black/20" value={username} onChange={handleUsernameChange} required />
+                <input type="text" className="bg-gray-800 w-full text-right pr-24 pl-4 text-base border border-gray-600 rounded-md text-white" value={username} onChange={handleUsernameChange} required />
               </div>
               <div className="relative flex items-center">
                 <span className="absolute right-4 text-gray-400 pointer-events-none text-sm font-medium">كلمة المرور</span>
-                <input type={showPassword ? "text" : "password"} className="input-glass w-full text-right pr-24 pl-12 text-base bg-black/20" value={password} onChange={(e) => setPassword(e.target.value)} required />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute left-4 text-xs font-semibold text-purple-400 hover:text-purple-300 transition-colors focus:outline-none bg-white/5 px-2 py-1 rounded border border-white/10">
+                <input type={showPassword ? "text" : "password"} className="bg-gray-800 w-full text-right pr-24 pl-12 text-base border border-gray-600 rounded-md text-white" value={password} onChange={(e) => setPassword(e.target.value)} required />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute left-4 text-xs font-semibold text-purple-400 hover:text-purple-300 transition-colors focus:outline-none bg-white/5 px-2 py-1 rounded border border-gray-600">
                   {showPassword ? "إخفاء" : "إظهار"}
                 </button>
               </div>
               {error && <p className="text-red-400 text-sm text-center whitespace-pre-wrap">{error}</p>}
-              <button type="submit" className="btn-primary w-full py-2.5 text-lg font-semibold tracking-wide shadow-lg" disabled={loading}>
+              <button type="submit" className="btn-primary w-full py-2.5 text-lg font-semibold tracking-wide shadow-lg bg-blue-600 hover:bg-blue-700 text-white rounded-md" disabled={loading}>
                 {loading ? 'جاري التحميل...' : 'تسجيل الدخول'}
               </button>
             </form>
@@ -1077,7 +1362,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
               </button>
             </div>
 
-            <div className="pt-2 border-t border-white/10 text-center text-xs text-gray-400 w-full">
+            <div className="pt-2 border-t border-gray-700 text-center text-xs text-gray-400 w-full">
               <p>جميع الحقوق محفوظة © 2026 لصالح المبرمج همام هاني محمد علي</p>
             </div>
           </div>
@@ -1088,7 +1373,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
 };
 
 // ============================================================
-// TeacherPanel (معدل - مع إدارة المواد وتحديد المادة في الرسالة)
+// TeacherPanel (معدل)
 // ============================================================
 const TeacherPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -1099,7 +1384,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [pendingReviews, setPendingReviews] = useState([]);
-  const [teacherMaterials, setTeacherMaterials] = useState([]); // قائمة المواد
+  const [teacherMaterials, setTeacherMaterials] = useState([]);
 
   // حالات المودالات
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
@@ -1110,7 +1395,7 @@ const TeacherPanel = ({ user, onLogout }) => {
 
   // حالات مودال الرسالة العامة (للطالب المختار)
   const [showGeneralMessageModal, setShowGeneralMessageModal] = useState(false);
-  const [generalMessageMaterial, setGeneralMessageMaterial] = useState('');
+  const [generalMessageSubject, setGeneralMessageSubject] = useState('');
   const [generalMessageText, setGeneralMessageText] = useState('');
   const [selectedStudentForMessage, setSelectedStudentForMessage] = useState(null);
 
@@ -1161,7 +1446,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         await setDoc(teacherRef, {
           lessonTime: null,
           homeworks: [],
-          materials: ['الرياضيات', 'العلوم', 'اللغة العربية'], // مواد افتراضية
+          materials: ['الرياضيات', 'العلوم', 'اللغة العربية'],
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
@@ -1381,7 +1666,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
   };
 
-  // دالة إرسال الرسالة العامة مع تحديد المادة
+  // دالة إرسال الرسالة العامة مع المادة المستخرجة من شعبة الطالب
   const sendGeneralMessage = (student) => {
     if (!student) {
       toast.error('يرجى اختيار طالب.');
@@ -1398,12 +1683,14 @@ const TeacherPanel = ({ user, onLogout }) => {
       return;
     }
     const studentName = student.name || '';
-    const material = generalMessageMaterial.trim() || 'غير محدد';
+    // جلب المادة من بيانات الشعبة (إذا وجدت)
+    const material = student.classes?.name || 'غير محدد';
+    const subject = generalMessageSubject.trim() || 'إشعار رسمي';
     const body = generalMessageText.trim() || '(نص الرسالة)';
     const dateNow = new Date().toLocaleDateString('ar-EG', { timeZone: 'Asia/Amman' });
     const fullMessage = encodeURIComponent(
       `السلام عليكم ورحمة الله وبركاته\n` +
-      `الموضوع : [ ${material} ]\n` +
+      `الموضوع : [ ${subject} ]\n` +
       `المعلم: همام هاني محمد علي\n` +
       `المادة: ${material}\n` +
       `التاريخ: ${dateNow}\n\n` +
@@ -1417,7 +1704,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     );
     window.open(`https://wa.me/${cleanedPhone}?text=${fullMessage}`, '_blank');
     setShowGeneralMessageModal(false);
-    setGeneralMessageMaterial('');
+    setGeneralMessageSubject('');
     setGeneralMessageText('');
     setSelectedStudentForMessage(null);
   };
@@ -1762,13 +2049,13 @@ const TeacherPanel = ({ user, onLogout }) => {
 
   return (
     <div className="container-center min-h-screen p-4 relative" dir="rtl">
-      <div className="glass p-8 max-w-4xl w-full space-y-6 z-10 border border-white/10">
-        <div className="flex justify-between items-center flex-wrap gap-4 border-b border-white/10 pb-4">
+      <div className="bg-gray-900/80 p-8 max-w-4xl w-full space-y-6 z-10 border border-gray-700 rounded-3xl backdrop-blur-sm">
+        <div className="flex justify-between items-center flex-wrap gap-4 border-b border-gray-700 pb-4">
           <div>
             <h2 className="text-3xl font-bold text-purple-300">لوحة تحكم المعلم</h2>
             <p className="text-gray-400 text-sm mt-1">مرحباً بك: {user.username || user.email}</p>
           </div>
-          <button onClick={onLogout} type="button" className="btn-primary bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 shadow-lg text-sm">
+          <button onClick={onLogout} type="button" className="btn-primary bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 shadow-lg text-sm px-4 py-2 rounded-md text-white">
             تسجيل الخروج
           </button>
         </div>
@@ -1776,13 +2063,13 @@ const TeacherPanel = ({ user, onLogout }) => {
         {errorMsg && <p className="text-red-400 text-sm bg-red-500/10 p-3 rounded-xl border border-red-500/20">{errorMsg}</p>}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="glass-glow p-6 rounded-2xl border border-purple-500/20 flex flex-col justify-center">
+          <div className="bg-gray-800/60 p-6 rounded-2xl border border-purple-500/20 flex flex-col justify-center">
             <h3 className="text-lg font-semibold text-purple-200">عدد الطلاب</h3>
             <p className="text-4xl font-extrabold text-white mt-2 bg-purple-950/40 px-4 py-2 rounded-xl border border-purple-500/30 inline-block self-start">
               {students.length}
             </p>
           </div>
-          <div className="glass p-6 rounded-2xl border border-white/5">
+          <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700">
             <h3 className="text-lg font-semibold text-purple-200 mb-2">الوقت المتبقي للحصة</h3>
             {lessonTime ? (
               <CountdownTimer key={lessonTime} targetDate={lessonTime} />
@@ -1793,7 +2080,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
 
         {pendingReviews.length > 0 && (
-          <div className="glass p-6 rounded-2xl border border-yellow-500/30 bg-yellow-500/5">
+          <div className="bg-gray-800/60 p-6 rounded-2xl border border-yellow-500/30 bg-yellow-500/5">
             <h3 className="text-xl font-semibold text-yellow-300 mb-3">📋 مراجعات الملفات الشخصية</h3>
             <div className="space-y-3 max-h-60 overflow-y-auto">
               {pendingReviews.map(student => (
@@ -1823,13 +2110,13 @@ const TeacherPanel = ({ user, onLogout }) => {
         )}
 
         {/* ===== قسم إدارة الواجبات ===== */}
-        <div className="glass p-6 rounded-2xl border border-white/5 space-y-4">
+        <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700 space-y-4">
           <div className="flex justify-between items-center">
             <h3 className="text-xl font-semibold text-pink-300">إدارة الواجبات</h3>
             <button
               onClick={() => setShowAssignmentModal(true)}
               type="button"
-              className="btn-primary bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 py-2 px-4 text-sm"
+              className="btn-primary bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 py-2 px-4 text-sm rounded-md text-white"
             >
               📝 إضافة واجب جديد
             </button>
@@ -1840,7 +2127,7 @@ const TeacherPanel = ({ user, onLogout }) => {
               {sortedHomeworks.map(hw => {
                 const isRevealed = new Date(hw.reveal_time).getTime() <= new Date().getTime();
                 return (
-                  <div key={hw.id} className="p-3 bg-black/30 rounded-xl border border-white/5 flex justify-between items-start gap-3">
+                  <div key={hw.id} className="p-3 bg-black/30 rounded-xl border border-gray-700 flex justify-between items-start gap-3">
                     <div className="flex-1">
                       <p className="text-gray-100 text-sm">{hw.text}</p>
                       {hw.section && <span className="text-xs text-blue-300 mr-2">(شعبة {hw.section})</span>}
@@ -1864,24 +2151,24 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
 
         {/* ===== قسم إدارة الطلاب ===== */}
-        <div className="glass p-6 rounded-2xl border border-white/5">
+        <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700">
           <div className="flex flex-wrap justify-between items-center gap-3">
             <h3 className="text-xl font-semibold text-blue-300">إدارة الطلاب</h3>
             <div className="flex flex-wrap gap-2">
-              <button onClick={() => setShowAddStudentModal(true)} type="button" className="btn-primary bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 py-2 px-4 text-sm">+ إضافة طالب</button>
-              <button onClick={() => setShowStudentsModal(true)} type="button" className="btn-primary bg-purple-600 hover:bg-purple-700 py-2 px-4 text-sm">📋 عرض قوائم الطلبة</button>
-              <button onClick={() => setShowManageMaterialsModal(true)} type="button" className="btn-primary bg-green-600 hover:bg-green-700 py-2 px-4 text-sm">📚 إدارة المواد</button>
+              <button onClick={() => setShowAddStudentModal(true)} type="button" className="btn-primary bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 py-2 px-4 text-sm rounded-md text-white">+ إضافة طالب</button>
+              <button onClick={() => setShowStudentsModal(true)} type="button" className="btn-primary bg-purple-600 hover:bg-purple-700 py-2 px-4 text-sm rounded-md text-white">📋 عرض قوائم الطلبة</button>
+              <button onClick={() => setShowManageMaterialsModal(true)} type="button" className="btn-primary bg-green-600 hover:bg-green-700 py-2 px-4 text-sm rounded-md text-white">📚 إدارة المواد</button>
             </div>
           </div>
         </div>
 
         {/* ===== قسم جدولة موعد حصة ===== */}
-        <div className="glass p-6 rounded-2xl border border-white/5 space-y-4">
+        <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700 space-y-4">
           <h3 className="text-xl font-semibold text-purple-200">جدولة موعد حصة</h3>
           <button
             onClick={() => setShowLessonModal(true)}
             type="button"
-            className="btn-primary bg-gradient-to-r from-indigo-500 to-blue-600 hover:from-indigo-600 hover:to-blue-700 py-3 px-6 w-full sm:w-auto"
+            className="btn-primary bg-gradient-to-r from-indigo-500 to-blue-600 hover:from-indigo-600 hover:to-blue-700 py-3 px-6 w-full sm:w-auto rounded-md text-white"
           >
             🕒 اختيار موعد الحصة
           </button>
@@ -1895,30 +2182,30 @@ const TeacherPanel = ({ user, onLogout }) => {
 
       {/* ===== مودال إدارة المواد ===== */}
       {showManageMaterialsModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowManageMaterialsModal(false)}>
-          <div className="glass p-6 rounded-3xl max-w-md w-full border border-white/20" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowManageMaterialsModal(false)}>
+          <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-xl font-semibold text-green-300 mb-4">إدارة المواد</h3>
             <div className="space-y-3">
               <div className="flex gap-2">
                 <input
                   type="text"
-                  className="input-glass flex-1 text-right"
+                  className="bg-gray-800 flex-1 text-right p-2 border border-gray-600 rounded-md text-white"
                   placeholder="اسم المادة الجديدة"
                   value={newMaterialName}
                   onChange={(e) => setNewMaterialName(e.target.value)}
                 />
-                <button onClick={handleAddMaterial} className="btn-primary bg-blue-600 hover:bg-blue-700 px-4 py-2">إضافة</button>
+                <button onClick={handleAddMaterial} className="btn-primary bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-white">إضافة</button>
               </div>
               <div className="max-h-60 overflow-y-auto space-y-2">
                 {teacherMaterials.map((mat, idx) => (
-                  <div key={idx} className="flex justify-between items-center p-2 bg-black/30 rounded-xl border border-white/5">
+                  <div key={idx} className="flex justify-between items-center p-2 bg-black/30 rounded-xl border border-gray-700">
                     <span className="text-white">{mat}</span>
                     <button onClick={() => handleRemoveMaterial(mat)} className="text-red-400 hover:text-red-300 text-sm">✕</button>
                   </div>
                 ))}
                 {teacherMaterials.length === 0 && <p className="text-gray-400 text-center">لا توجد مواد مسجلة</p>}
               </div>
-              <button onClick={() => setShowManageMaterialsModal(false)} className="btn-primary bg-gray-600 hover:bg-gray-700 w-full py-2">إغلاق</button>
+              <button onClick={() => setShowManageMaterialsModal(false)} className="btn-primary bg-gray-600 hover:bg-gray-700 w-full py-2 rounded-md text-white">إغلاق</button>
             </div>
           </div>
         </div>
@@ -1927,7 +2214,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       {/* ===== مودالات إجبارية ===== */}
       {showAddNotificationModal && newlyAddedStudent && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
-          <div className="glass p-6 rounded-3xl max-w-md w-full border border-green-500/30 bg-gray-900/90">
+          <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-green-500/30">
             <h3 className="text-xl font-semibold text-green-300 mb-2 text-center">✅ تم تسجيل الطالب</h3>
             <p className="text-gray-300 text-center mb-4">
               تم إضافة الطالب <span className="text-white font-bold">{newlyAddedStudent.name}</span> بنجاح.
@@ -1941,7 +2228,7 @@ const TeacherPanel = ({ user, onLogout }) => {
                   setShowAddNotificationModal(false);
                   setNewlyAddedStudent(null);
                 }}
-                className="btn-primary bg-green-600 hover:bg-green-700 w-full py-3 flex items-center justify-center gap-2 text-lg"
+                className="btn-primary bg-green-600 hover:bg-green-700 w-full py-3 flex items-center justify-center gap-2 text-lg rounded-md text-white"
               >
                 <span>💬</span> إخبار ولي الأمر
               </button>
@@ -1952,7 +2239,7 @@ const TeacherPanel = ({ user, onLogout }) => {
 
       {showFreezeNotificationModal && frozenStudent && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
-          <div className="glass p-6 rounded-3xl max-w-md w-full border border-orange-500/30 bg-gray-900/90">
+          <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-orange-500/30">
             <h3 className="text-xl font-semibold text-orange-300 mb-2 text-center">🚫 تم تجميد الحساب</h3>
             <p className="text-gray-300 text-center mb-4">
               تم تجميد حساب الطالب <span className="text-white font-bold">{frozenStudent.name}</span>.
@@ -1966,7 +2253,7 @@ const TeacherPanel = ({ user, onLogout }) => {
                   setShowFreezeNotificationModal(false);
                   setFrozenStudent(null);
                 }}
-                className="btn-primary bg-orange-600 hover:bg-orange-700 w-full py-3 flex items-center justify-center gap-2 text-lg"
+                className="btn-primary bg-orange-600 hover:bg-orange-700 w-full py-3 flex items-center justify-center gap-2 text-lg rounded-md text-white"
               >
                 <span>💬</span> إخبار ولي الأمر
               </button>
@@ -1975,10 +2262,10 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال عرض الطلاب (مع زر رسالة عامة بجانب كل طالب) ===== */}
+      {/* ===== مودال عرض الطلاب ===== */}
       {showStudentsModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-40 p-4" onClick={() => setShowStudentsModal(false)}>
-          <div className="glass p-6 rounded-3xl max-w-4xl w-full max-h-[80vh] overflow-y-auto border border-white/20" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-40 p-4" onClick={() => setShowStudentsModal(false)}>
+          <div className="bg-gray-900 p-6 rounded-3xl max-w-4xl w-full max-h-[80vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-semibold text-blue-300">قائمة الطلاب المسجلين ({students.length})</h3>
               <button onClick={() => setShowStudentsModal(false)} type="button" className="text-gray-400 hover:text-white text-2xl">✕</button>
@@ -1989,7 +2276,7 @@ const TeacherPanel = ({ user, onLogout }) => {
                 const inactiveDays = getInactivityDays(s.last_seen);
                 const frozenDays = s.isFrozen && s.frozenAt ? Math.floor((new Date() - new Date(s.frozenAt.seconds * 1000)) / (1000 * 60 * 60 * 24)) : 0;
                 return (
-                  <div key={s.id} className={`p-3 rounded-xl border flex flex-wrap justify-between items-center gap-3 ${s.isFrozen ? 'bg-gray-900/60 border-gray-700 opacity-80' : 'bg-white/5 border-white/5'}`}>
+                  <div key={s.id} className={`p-3 rounded-xl border flex flex-wrap justify-between items-center gap-3 ${s.isFrozen ? 'bg-gray-800/60 border-gray-700 opacity-80' : 'bg-gray-800/30 border-gray-700'}`}>
                     <div className="flex items-center gap-3 flex-wrap">
                       <span className="text-white text-sm font-medium">{s.name || s.username}</span>
                       <span className="text-xs text-gray-400">({s.username})</span>
@@ -2013,7 +2300,7 @@ const TeacherPanel = ({ user, onLogout }) => {
                       <button
                         onClick={() => {
                           setSelectedStudentForMessage(s);
-                          setGeneralMessageMaterial('');
+                          setGeneralMessageSubject('');
                           setGeneralMessageText('');
                           setShowGeneralMessageModal(true);
                         }}
@@ -2045,17 +2332,17 @@ const TeacherPanel = ({ user, onLogout }) => {
 
       {/* ===== مودال إضافة طالب ===== */}
       {showAddStudentModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-40 p-4" onClick={() => setShowAddStudentModal(false)}>
-          <div className="glass p-6 rounded-3xl max-w-md w-full border border-white/20" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-40 p-4" onClick={() => setShowAddStudentModal(false)}>
+          <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-xl font-semibold text-blue-300 mb-4">إضافة طالب جديد</h3>
             <form onSubmit={handleAddStudent} className="space-y-4">
               <div>
                 <label className="text-xs text-gray-400 block">الاسم الكامل <span className="text-red-400">*</span></label>
-                <input type="text" className="input-glass w-full text-right" value={newStudentName} onChange={e => setNewStudentName(e.target.value)} required />
+                <input type="text" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentName} onChange={e => setNewStudentName(e.target.value)} required />
               </div>
               <div>
                 <label className="text-xs text-gray-400 block">الجنس <span className="text-red-400">*</span></label>
-                <select className="input-glass w-full text-right" value={newStudentGender} onChange={e => setNewStudentGender(e.target.value)} required>
+                <select className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentGender} onChange={e => setNewStudentGender(e.target.value)} required>
                   <option value="">اختر</option>
                   <option value="ذكر">ذكر</option>
                   <option value="أنثى">أنثى</option>
@@ -2063,20 +2350,20 @@ const TeacherPanel = ({ user, onLogout }) => {
               </div>
               <div>
                 <label className="text-xs text-gray-400 block">العمر <span className="text-red-400">*</span></label>
-                <input type="number" className="input-glass w-full text-right" value={newStudentAge} onChange={e => setNewStudentAge(e.target.value)} required />
+                <input type="number" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentAge} onChange={e => setNewStudentAge(e.target.value)} required />
               </div>
               <div>
                 <label className="text-xs text-gray-400 block">رقم الهاتف <span className="text-red-400">*</span></label>
-                <input type="text" className="input-glass w-full text-right" value={newStudentPhone} onChange={e => setNewStudentPhone(e.target.value)} required />
+                <input type="text" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentPhone} onChange={e => setNewStudentPhone(e.target.value)} required />
               </div>
               <div>
                 <label className="text-xs text-gray-400 block">الشعبة <span className="text-red-400">*</span></label>
-                <select className="input-glass w-full text-right" value={newStudentClass} onChange={e => setNewStudentClass(e.target.value)} required>
+                <select className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentClass} onChange={e => setNewStudentClass(e.target.value)} required>
                   <option value="">اختر الشعبة</option>
                   {classes.map(cls => <option key={cls.id} value={cls.id}>{cls.name}</option>)}
                 </select>
               </div>
-              <button type="submit" disabled={studentLoading} className="btn-primary w-full py-3 bg-blue-600 hover:bg-blue-700">
+              <button type="submit" disabled={studentLoading} className="btn-primary w-full py-3 bg-blue-600 hover:bg-blue-700 rounded-md text-white">
                 {studentLoading ? 'جاري الإضافة...' : 'إضافة الطالب'}
               </button>
               <button type="button" onClick={() => setShowAddStudentModal(false)} className="text-sm text-gray-400 hover:text-white w-full mt-2">إلغاء</button>
@@ -2085,29 +2372,35 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال الرسالة العامة (مع اختيار المادة) ===== */}
+      {/* ===== مودال الرسالة العامة ===== */}
       {showGeneralMessageModal && selectedStudentForMessage && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowGeneralMessageModal(false)}>
-          <div className="glass p-6 rounded-3xl max-w-lg w-full border border-white/20" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowGeneralMessageModal(false)}>
+          <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-xl font-semibold text-green-300 mb-4">✉️ إرسال رسالة إلى {selectedStudentForMessage.name}</h3>
             <div className="space-y-4">
               <div>
-                <label className="text-sm text-gray-300 block">المادة</label>
-                <select
-                  className="input-glass w-full text-right"
-                  value={generalMessageMaterial}
-                  onChange={(e) => setGeneralMessageMaterial(e.target.value)}
-                >
-                  <option value="">اختر المادة</option>
-                  {teacherMaterials.map((mat, idx) => (
-                    <option key={idx} value={mat}>{mat}</option>
-                  ))}
-                </select>
+                <label className="text-sm text-gray-300 block">المادة (تلقائياً من الشعبة)</label>
+                <input
+                  type="text"
+                  className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white cursor-not-allowed"
+                  value={selectedStudentForMessage.classes?.name || 'غير محدد'}
+                  disabled
+                />
+              </div>
+              <div>
+                <label className="text-sm text-gray-300 block">الموضوع</label>
+                <input
+                  type="text"
+                  className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white"
+                  placeholder="اكتب موضوع الرسالة"
+                  value={generalMessageSubject}
+                  onChange={(e) => setGeneralMessageSubject(e.target.value)}
+                />
               </div>
               <div>
                 <label className="text-sm text-gray-300 block">نص الرسالة</label>
                 <textarea
-                  className="input-glass w-full h-32 text-right resize-none"
+                  className="bg-gray-800 w-full h-32 text-right p-2 border border-gray-600 rounded-md text-white resize-none"
                   placeholder="اكتب نص الرسالة هنا..."
                   value={generalMessageText}
                   onChange={(e) => setGeneralMessageText(e.target.value)}
@@ -2116,7 +2409,7 @@ const TeacherPanel = ({ user, onLogout }) => {
               <div className="flex gap-3">
                 <button
                   onClick={() => sendGeneralMessage(selectedStudentForMessage)}
-                  className="btn-primary bg-green-600 hover:bg-green-700 px-6 py-2"
+                  className="btn-primary bg-green-600 hover:bg-green-700 px-6 py-2 rounded-md text-white"
                 >
                   إرسال
                 </button>
@@ -2124,10 +2417,10 @@ const TeacherPanel = ({ user, onLogout }) => {
                   onClick={() => {
                     setShowGeneralMessageModal(false);
                     setSelectedStudentForMessage(null);
-                    setGeneralMessageMaterial('');
+                    setGeneralMessageSubject('');
                     setGeneralMessageText('');
                   }}
-                  className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2"
+                  className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-md text-white"
                 >
                   إلغاء
                 </button>
@@ -2142,17 +2435,14 @@ const TeacherPanel = ({ user, onLogout }) => {
         isOpen={showAssignmentModal}
         onClose={() => setShowAssignmentModal(false)}
         onSubmit={saveHomeworkFromModal}
-        mode="homework"
         classesList={classes}
       />
 
       {/* ===== مودال جدولة الحصة ===== */}
-      <AddAssignmentModal
+      <AddLessonModal
         isOpen={showLessonModal}
         onClose={() => setShowLessonModal(false)}
         onSubmit={saveLessonTimeFromModal}
-        mode="lesson"
-        classesList={[]}
       />
     </div>
   );
@@ -2315,20 +2605,20 @@ const StudentPanel = ({ user, onLogout }) => {
 
   return (
     <div className="container-center min-h-screen p-4 relative" dir="rtl">
-      <div className="glass p-8 max-w-4xl w-full space-y-6 z-10 border border-white/10">
-        <div className="flex justify-between items-center flex-wrap gap-4 border-b border-white/10 pb-4">
+      <div className="bg-gray-900/80 p-8 max-w-4xl w-full space-y-6 z-10 border border-gray-700 rounded-3xl backdrop-blur-sm">
+        <div className="flex justify-between items-center flex-wrap gap-4 border-b border-gray-700 pb-4">
           <div>
             <h2 className="text-3xl font-bold text-blue-300">لوحة تحكم الطالب</h2>
             <p className="text-gray-400 text-sm mt-1">أهلاً بك: {user.username || user.email}</p>
           </div>
           <div className="flex gap-2">
-            <button onClick={onLogout} type="button" className="btn-primary bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 shadow-lg text-sm">تسجيل الخروج</button>
+            <button onClick={onLogout} type="button" className="btn-primary bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 shadow-lg text-sm px-4 py-2 rounded-md text-white">تسجيل الخروج</button>
           </div>
         </div>
 
         {errorMsg && <p className="text-red-400 text-sm bg-red-500/10 p-3 rounded-xl border border-red-500/20">{errorMsg}</p>}
 
-        <div className="glass p-6 rounded-2xl border border-blue-500/20">
+        <div className="bg-gray-800/60 p-6 rounded-2xl border border-blue-500/20">
           <div className="flex justify-between items-center">
             <h3 className="text-xl font-semibold text-blue-200">معلوماتي الشخصية</h3>
             {!editing && <button onClick={startEditing} type="button" className="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1"><span>✏️</span> تعديل</button>}
@@ -2337,11 +2627,11 @@ const StudentPanel = ({ user, onLogout }) => {
             <div className="mt-4 space-y-3">
               <div>
                 <label className="text-sm text-gray-300">الاسم الكامل <span className="text-red-400">*</span></label>
-                <input type="text" className="input-glass w-full text-right" value={editData.name} onChange={e => setEditData({ ...editData, name: e.target.value })} />
+                <input type="text" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={editData.name} onChange={e => setEditData({ ...editData, name: e.target.value })} />
               </div>
               <div>
                 <label className="text-sm text-gray-300">الجنس</label>
-                <select className="input-glass w-full text-right" value={editData.gender} onChange={e => setEditData({ ...editData, gender: e.target.value })}>
+                <select className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={editData.gender} onChange={e => setEditData({ ...editData, gender: e.target.value })}>
                   <option value="">اختر</option>
                   <option value="ذكر">ذكر</option>
                   <option value="أنثى">أنثى</option>
@@ -2349,15 +2639,15 @@ const StudentPanel = ({ user, onLogout }) => {
               </div>
               <div>
                 <label className="text-sm text-gray-300">العمر</label>
-                <input type="number" className="input-glass w-full text-right" value={editData.age} onChange={e => setEditData({ ...editData, age: e.target.value })} />
+                <input type="number" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={editData.age} onChange={e => setEditData({ ...editData, age: e.target.value })} />
               </div>
               <div>
                 <label className="text-sm text-gray-300">رقم الهاتف <span className="text-red-400">*</span></label>
-                <input type="text" className="input-glass w-full text-right" value={editData.phone} onChange={e => setEditData({ ...editData, phone: e.target.value })} />
+                <input type="text" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={editData.phone} onChange={e => setEditData({ ...editData, phone: e.target.value })} />
               </div>
               <div className="flex gap-3">
-                <button onClick={saveChanges} type="button" className="btn-primary bg-green-600 hover:bg-green-700">حفظ</button>
-                <button onClick={() => setEditing(false)} type="button" className="btn-primary bg-gray-600 hover:bg-gray-700">إلغاء</button>
+                <button onClick={saveChanges} type="button" className="btn-primary bg-green-600 hover:bg-green-700 px-4 py-2 rounded-md text-white">حفظ</button>
+                <button onClick={() => setEditing(false)} type="button" className="btn-primary bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-md text-white">إلغاء</button>
               </div>
             </div>
           ) : (
@@ -2372,17 +2662,17 @@ const StudentPanel = ({ user, onLogout }) => {
           )}
         </div>
 
-        <div className="glass-glow p-6 rounded-2xl border border-blue-500/20">
+        <div className="bg-gray-800/60 p-6 rounded-2xl border border-blue-500/20">
           <h3 className="text-xl font-semibold mb-4 text-blue-200">الوقت المتبقي لحصتك القادمة</h3>
           {teacherData?.lessonTime ? <CountdownTimer key={teacherData.lessonTime} targetDate={teacherData.lessonTime} /> : <p className="text-gray-400 text-center py-2">لا توجد حصة مجدولة</p>}
         </div>
 
-        <div className="glass p-6 rounded-2xl border border-white/5 space-y-3">
+        <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700 space-y-3">
           <h3 className="text-xl font-semibold text-pink-300">الواجبات المدرسية</h3>
           {availableHomeworks.length > 0 ? (
             <div className="space-y-3">
               {availableHomeworks.map(hw => (
-                <div key={hw.id} className="p-4 bg-black/30 rounded-xl border border-white/5">
+                <div key={hw.id} className="p-4 bg-black/30 rounded-xl border border-gray-700">
                   <p className="text-base font-medium text-gray-100">{hw.text}</p>
                   {hw.section && <span className="text-xs text-blue-300 mr-2">(شعبة {hw.section})</span>}
                   <p className="text-xs text-gray-400 mt-1">
@@ -2559,7 +2849,7 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
-  if (loading) return <div className="container-center min-h-screen text-white"><div className="glass p-8 rounded-2xl border border-white/10 shadow-xl animate-pulse">جاري التحميل...</div></div>;
+  if (loading) return <div className="container-center min-h-screen text-white"><div className="bg-gray-900 p-8 rounded-2xl border border-gray-700 shadow-xl animate-pulse">جاري التحميل...</div></div>;
 
   if (pendingUserForComplete) {
     return (
