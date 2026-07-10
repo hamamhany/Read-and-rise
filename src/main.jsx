@@ -39,10 +39,15 @@ const generateId = () => {
 };
 
 // ============================================================
-// 1. مكوّن إضافة الواجب (النافذة المنبثقة الجديدة)
+// 1. مكوّن إضافة الواجب / جدولة الحصة (مودال موحد)
 // ============================================================
-const AddAssignmentModal = ({ isOpen, onClose, onSubmit }) => {
-  // حالة الحقول
+const AddAssignmentModal = ({ 
+  isOpen, 
+  onClose, 
+  onSubmit, 
+  mode = 'homework',   // 'homework' أو 'lesson'
+  classesList = []     // قائمة الشعب من Firestore
+}) => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [time, setTime] = useState({ hours: 12, minutes: 0 });
   const [section, setSection] = useState('');
@@ -52,15 +57,23 @@ const AddAssignmentModal = ({ isOpen, onClose, onSubmit }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    // تجميع البيانات وإرسالها
-    const assignmentData = {
+    const data = {
       date: selectedDate,
       time: time,
-      section: section,
-      text: assignmentText,
     };
-    onSubmit(assignmentData);
-    // لا نغلق هنا، لأن الدالة الخارجية ستغلق بعد الحفظ
+    if (mode === 'homework') {
+      if (!assignmentText.trim()) {
+        toast.error('يرجى كتابة نص الواجب.');
+        return;
+      }
+      if (!section) {
+        toast.error('يرجى اختيار الشعبة.');
+        return;
+      }
+      data.section = section;
+      data.text = assignmentText;
+    }
+    onSubmit(data);
   };
 
   // ----- مكوّن التقويم الداخلي -----
@@ -100,13 +113,13 @@ const AddAssignmentModal = ({ isOpen, onClose, onSubmit }) => {
     return (
       <div className="p-4 w-72">
         <div className="flex justify-between items-center mb-4">
-          <button onClick={goPrevMonth} className="text-xl px-2 hover:bg-gray-200 rounded">‹</button>
-          <span className="font-bold text-lg">
+          <button onClick={goPrevMonth} className="text-xl px-2 hover:bg-white/20 rounded">‹</button>
+          <span className="font-bold text-lg text-white">
             {currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
           </span>
-          <button onClick={goNextMonth} className="text-xl px-2 hover:bg-gray-200 rounded">›</button>
+          <button onClick={goNextMonth} className="text-xl px-2 hover:bg-white/20 rounded">›</button>
         </div>
-        <div className="grid grid-cols-7 gap-1 text-center font-semibold text-sm text-gray-600">
+        <div className="grid grid-cols-7 gap-1 text-center font-semibold text-sm text-gray-300">
           {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => <div key={d}>{d}</div>)}
         </div>
         <div className="grid grid-cols-7 gap-1 mt-1">
@@ -118,7 +131,7 @@ const AddAssignmentModal = ({ isOpen, onClose, onSubmit }) => {
                 ${!day ? '' :
                   isSameDay(day, selectedDate)
                     ? 'bg-blue-600 text-white hover:bg-blue-700'
-                    : 'hover:bg-gray-100'
+                    : 'hover:bg-white/10 text-white'
                 }`}
             >
               {day ? day.getDate() : ''}
@@ -196,7 +209,7 @@ const AddAssignmentModal = ({ isOpen, onClose, onSubmit }) => {
     return (
       <div className="flex flex-col items-center">
         <svg ref={svgRef} width={280} height={280} viewBox="0 0 280 280" className="cursor-pointer">
-          <circle cx={center} cy={center} r={radius} fill="#f3f4f6" stroke="#d1d5db" strokeWidth="2" />
+          <circle cx={center} cy={center} r={radius} fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.3)" strokeWidth="2" />
           {[...Array(12)].map((_, i) => {
             const angle = (i / 12) * 2 * Math.PI;
             const x1 = center + radius * 0.85 * Math.sin(angle);
@@ -204,13 +217,13 @@ const AddAssignmentModal = ({ isOpen, onClose, onSubmit }) => {
             const x2 = center + radius * 0.95 * Math.sin(angle);
             const y2 = center - radius * 0.95 * Math.cos(angle);
             return (
-              <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#374151" strokeWidth="3" />
+              <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(255,255,255,0.6)" strokeWidth="3" />
             );
           })}
           <line
             x1={center} y1={center}
             x2={hourCoords.x} y2={hourCoords.y}
-            stroke="#1f2937" strokeWidth="6" strokeLinecap="round"
+            stroke="#fff" strokeWidth="6" strokeLinecap="round"
             onMouseDown={handleMouseDown('hour')}
           />
           <line
@@ -226,7 +239,7 @@ const AddAssignmentModal = ({ isOpen, onClose, onSubmit }) => {
             const x = center + radius * 0.72 * Math.sin(angle);
             const y = center - radius * 0.72 * Math.cos(angle);
             return (
-              <text key={i} x={x} y={y+5} textAnchor="middle" fontSize="14" fill="#4b5563" fontWeight="bold">
+              <text key={i} x={x} y={y+5} textAnchor="middle" fontSize="14" fill="#fff" fontWeight="bold">
                 {num}
               </text>
             );
@@ -235,7 +248,7 @@ const AddAssignmentModal = ({ isOpen, onClose, onSubmit }) => {
 
         <div className="flex gap-4 mt-4">
           <div className="flex flex-col items-center">
-            <label className="text-sm font-medium text-gray-700">ساعات</label>
+            <label className="text-sm font-medium text-gray-300">ساعات</label>
             <input
               type="number" min="1" max="12"
               value={time.hours}
@@ -245,11 +258,11 @@ const AddAssignmentModal = ({ isOpen, onClose, onSubmit }) => {
                 if (val > 12) val = 12;
                 onTimeChange({ ...time, hours: val });
               }}
-              className="w-20 px-3 py-2 border border-gray-300 rounded-md text-center focus:ring-2 focus:ring-blue-500"
+              className="w-20 px-3 py-2 border border-gray-600 rounded-md text-center bg-white/10 text-white focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <div className="flex flex-col items-center">
-            <label className="text-sm font-medium text-gray-700">دقائق</label>
+            <label className="text-sm font-medium text-gray-300">دقائق</label>
             <input
               type="number" min="0" max="59"
               value={time.minutes}
@@ -259,7 +272,7 @@ const AddAssignmentModal = ({ isOpen, onClose, onSubmit }) => {
                 if (val > 59) val = 59;
                 onTimeChange({ ...time, minutes: val });
               }}
-              className="w-20 px-3 py-2 border border-gray-300 rounded-md text-center focus:ring-2 focus:ring-blue-500"
+              className="w-20 px-3 py-2 border border-gray-600 rounded-md text-center bg-white/10 text-white focus:ring-2 focus:ring-blue-500"
             />
           </div>
         </div>
@@ -267,66 +280,69 @@ const AddAssignmentModal = ({ isOpen, onClose, onSubmit }) => {
     );
   };
 
-  // ----- واجهة المودال الرئيسية -----
+  // ----- واجهة المودال الرئيسية (زجاجية) -----
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-      <div className="bg-white rounded-lg shadow-2xl w-[90%] max-w-4xl max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center p-4 border-b">
-          <h2 className="text-2xl font-bold text-gray-800">إضافة واجب جديد</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-800 text-2xl">×</button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="glass p-6 rounded-3xl w-[90%] max-w-4xl max-h-[90vh] overflow-y-auto border border-white/20 bg-white/10 backdrop-blur-xl shadow-2xl">
+        <div className="flex justify-between items-center p-2 border-b border-white/10">
+          <h2 className="text-2xl font-bold text-white">
+            {mode === 'homework' ? 'إضافة واجب جديد' : 'جدولة موعد الحصة'}
+          </h2>
+          <button onClick={onClose} className="text-gray-300 hover:text-white text-2xl">×</button>
         </div>
 
         <form onSubmit={handleSubmit}>
-          <div className="p-6 flex flex-col md:flex-row gap-6">
+          <div className="p-4 flex flex-col md:flex-row gap-6">
             {/* الجانب الأيسر: التقويم */}
-            <div className="flex-1 border-l md:border-l-0 md:border-r border-gray-200 pr-4">
+            <div className="flex-1 border-l md:border-l-0 md:border-r border-white/20 pr-4">
               <Calendar selectedDate={selectedDate} onDateChange={setSelectedDate} />
             </div>
 
             {/* خط فاصل عمودي */}
-            <div className="hidden md:block w-px bg-gray-300 self-stretch"></div>
+            <div className="hidden md:block w-px bg-white/20 self-stretch"></div>
 
-            {/* الجانب الأيمن: الساعة وحقول الوقت */}
+            {/* الجانب الأيمن: الساعة */}
             <div className="flex-1 pl-4">
               <ClockPicker time={time} onTimeChange={setTime} />
             </div>
           </div>
 
-          {/* حقول إضافية (الشعبة، نص الواجب) */}
-          <div className="px-6 pb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">الشعبة</label>
-              <select
-                value={section}
-                onChange={(e) => setSection(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                required
-              >
-                <option value="">اختر الشعبة</option>
-                <option value="A">شعبة A</option>
-                <option value="B">شعبة B</option>
-                <option value="C">شعبة C</option>
-                <option value="D">شعبة D</option>
-              </select>
+          {/* حقول إضافية للواجب فقط */}
+          {mode === 'homework' && (
+            <div className="px-4 pb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300">الشعبة</label>
+                <select
+                  value={section}
+                  onChange={(e) => setSection(e.target.value)}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-600 rounded-md shadow-sm bg-white/10 text-white focus:ring-blue-500 focus:border-blue-500"
+                  required
+                >
+                  <option value="">اختر الشعبة</option>
+                  {classesList.map(cls => (
+                    <option key={cls.id} value={cls.id}>{cls.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300">الموضوع / الواجب</label>
+                <input
+                  type="text"
+                  value={assignmentText}
+                  onChange={(e) => setAssignmentText(e.target.value)}
+                  placeholder="مثلاً: حل التمارين صفحة ٥"
+                  className="mt-1 block w-full px-3 py-2 border border-gray-600 rounded-md shadow-sm bg-white/10 text-white focus:ring-blue-500 focus:border-blue-500"
+                  required
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">الموضوع / الواجب</label>
-              <input
-                type="text"
-                value={assignmentText}
-                onChange={(e) => setAssignmentText(e.target.value)}
-                placeholder="مثلاً: حل التمارين صفحة ٥"
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                required
-              />
-            </div>
-          </div>
+          )}
 
-          <div className="px-6 py-4 bg-gray-50 border-t flex justify-end gap-3">
+          <div className="px-4 py-3 border-t border-white/10 flex justify-end gap-3">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+              className="px-4 py-2 text-sm font-medium text-gray-300 bg-white/10 border border-gray-600 rounded-md hover:bg-white/20"
             >
               إلغاء
             </button>
@@ -334,7 +350,7 @@ const AddAssignmentModal = ({ isOpen, onClose, onSubmit }) => {
               type="submit"
               className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700"
             >
-              إضافة الواجب
+              {mode === 'homework' ? 'إضافة الواجب' : 'حفظ الموعد'}
             </button>
           </div>
         </form>
@@ -982,7 +998,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
 };
 
 // ============================================================
-// TeacherPanel (معدل)
+// TeacherPanel (معدل بالكامل)
 // ============================================================
 const TeacherPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -997,7 +1013,14 @@ const TeacherPanel = ({ user, onLogout }) => {
   // حالات المودالات
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
   const [showStudentsModal, setShowStudentsModal] = useState(false);
-  const [showAssignmentModal, setShowAssignmentModal] = useState(false); // <-- جديدة
+  const [showAssignmentModal, setShowAssignmentModal] = useState(false);
+  const [showLessonModal, setShowLessonModal] = useState(false);
+
+  // حالات مودال الرسالة العامة
+  const [showGeneralMessageModal, setShowGeneralMessageModal] = useState(false);
+  const [generalMessageSubject, setGeneralMessageSubject] = useState('');
+  const [generalMessageText, setGeneralMessageText] = useState('');
+  const [generalMessageTarget, setGeneralMessageTarget] = useState('all'); // 'all' or studentId
 
   const [newStudentName, setNewStudentName] = useState('');
   const [newStudentGender, setNewStudentGender] = useState('');
@@ -1006,9 +1029,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [newStudentClass, setNewStudentClass] = useState('');
   const [studentLoading, setStudentLoading] = useState(false);
 
-  const [newLessonTime, setNewLessonTime] = useState('');
-
-  // حالات المودالات الإجبارية (للتجميد والإضافة)
+  // حالات المودالات الإجبارية
   const [showAddNotificationModal, setShowAddNotificationModal] = useState(false);
   const [newlyAddedStudent, setNewlyAddedStudent] = useState(null);
   const [showFreezeNotificationModal, setShowFreezeNotificationModal] = useState(false);
@@ -1230,6 +1251,80 @@ const TeacherPanel = ({ user, onLogout }) => {
     window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
   };
 
+  // ===== رسالة إعادة تعيين البيانات (الرسالة الأولى المطلوبة) =====
+  const sendResetPasswordMessage = async (student) => {
+    const phone = student.phone || '';
+    if (!phone) {
+      toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
+      return;
+    }
+    const cleanedPhone = cleanPhoneNumber(phone);
+    if (!cleanedPhone) {
+      toast.error('رقم الهاتف غير صالح.');
+      return;
+    }
+    const studentName = student.name || '';
+    const message = encodeURIComponent(
+      `الموضوع: تم إعادة تعيين بيانات دخولك - بانتظار تحديث حسابك في "اقرأ وارتق"\n\n` +
+      `عزيزي الطالب ${studentName}،\n` +
+      `نود إعلامك بأنه قد تمت إعادة تعيين بيانات الدخول الخاصة بحسابك في منصة الفرسان التقنيين - اقرأ وارتق لتصحيح بياناتك.\n\n` +
+      `ما الخطوة التالية؟\n` +
+      `بما أن الحساب الآن يحتاج لبيانات جديدة، يرجى التوجه إلى رابط تسجيل الدخول لأول مرة وتعبئة اسم المستخدم وكلمة المرور الخاصة بك من جديد:\n` +
+      `https://read-and-rise-two.vercel.app/\n\n` +
+      `ملاحظة هامة:\n` +
+      `بمجرد دخولك وتعبئة البيانات المطلوبة، سيتم ربط حسابك ببياناتك الدراسية الموجودة مسبقاً في النظام.\n\n` +
+      `للاستفسار والدعم الفني:\n` +
+      `لأي استفسار حول طريقة إكمال المعلومات، أو في حال وجود معلومات ناقصة، لا تتردد بالتواصل معي مباشرة عبر الرقم التالي:\n` +
+      `+962 7 8611 7388\n\n` +
+      `نحن هنا لضمان تجربة تعليمية آمنة ومستقرة لكم.\n\n` +
+      `مع التقدير،\n` +
+      `همام هاني محمد علي\n` +
+      `رئيس قسم التكنولوجيا وأمن المعلومات | معلم تطوير البرمجيات`
+    );
+    window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
+  };
+
+  // ===== رسالة عامة (القالب الثاني) =====
+  const sendGeneralMessage = (student) => {
+    if (!student) {
+      toast.error('يرجى اختيار طالب.');
+      return;
+    }
+    const phone = student.phone || '';
+    if (!phone) {
+      toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
+      return;
+    }
+    const cleanedPhone = cleanPhoneNumber(phone);
+    if (!cleanedPhone) {
+      toast.error('رقم الهاتف غير صالح.');
+      return;
+    }
+    const studentName = student.name || '';
+    const subject = generalMessageSubject.trim() || 'إشعار رسمي من منصة الفرسان التقنيين';
+    const body = generalMessageText.trim() || '(نص الرسالة)';
+    const dateNow = new Date().toLocaleDateString('ar-EG', { timeZone: 'Asia/Amman' });
+    const fullMessage = encodeURIComponent(
+      `السلام عليكم ورحمة الله وبركاته\n` +
+      `الموضوع : [ ${subject} ]\n` +
+      `المعلم: همام هاني محمد علي\n` +
+      `المادة: [ يحددها المعلم ]\n` +
+      `التاريخ: ${dateNow}\n\n` +
+      `عزيزي الطالب/ة ${studentName}،\n` +
+      `${body}\n\n` +
+      `للتواصل والدعم: +962 7 8611 7388\n\n` +
+      `مع التقدير،\n` +
+      `اسم المعلم : همام هاني محمد علي\n` +
+      `رئيس قسم التكنولوجيا وأمن المعلومات : همام هاني محمد علي\n` +
+      `للبلاغ : +962 7 8611 7388`
+    );
+    window.open(`https://wa.me/${cleanedPhone}?text=${fullMessage}`, '_blank');
+    setShowGeneralMessageModal(false);
+    setGeneralMessageSubject('');
+    setGeneralMessageText('');
+    setGeneralMessageTarget('all');
+  };
+
   const acceptReview = async (studentId) => {
     try {
       const docRef = doc(db, 'profiles', studentId);
@@ -1277,14 +1372,9 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ===== الدالة الجديدة لحفظ الواجب من المودال =====
-  const saveHomeworkFromModal = async (assignmentData) => {
-    const { date, time, section, text } = assignmentData;
-    if (!text.trim()) {
-      toast.error('يرجى كتابة نص الواجب.');
-      return;
-    }
-    // دمج التاريخ والوقت
+  // ===== حفظ الواجب من المودال =====
+  const saveHomeworkFromModal = async (data) => {
+    const { date, time, section, text } = data;
     const combinedDate = new Date(date);
     combinedDate.setHours(time.hours, time.minutes, 0, 0);
     const revealTime = combinedDate.toISOString();
@@ -1292,9 +1382,9 @@ const TeacherPanel = ({ user, onLogout }) => {
     const newHwItem = {
       id: generateId(),
       text: text,
-      section: section,        // نضيف الشعبة
+      section: section,
       reveal_time: revealTime,
-      is_scheduled: true       // دائمًا مجدول
+      is_scheduled: true
     };
 
     try {
@@ -1307,6 +1397,25 @@ const TeacherPanel = ({ user, onLogout }) => {
       setShowAssignmentModal(false);
     } catch (err) {
       toast.error('فشل حفظ الواجب: ' + err.message);
+    }
+  };
+
+  // ===== حفظ موعد الحصة من المودال =====
+  const saveLessonTimeFromModal = async (data) => {
+    const { date, time } = data;
+    const combinedDate = new Date(date);
+    combinedDate.setHours(time.hours, time.minutes, 0, 0);
+    const isoTime = combinedDate.toISOString();
+
+    try {
+      await updateDoc(doc(db, 'teachers', user.id), {
+        lessonTime: isoTime,
+        updatedAt: serverTimestamp()
+      });
+      toast.success('تم تحديث موعد الحصة القادمة بنجاح!');
+      setShowLessonModal(false);
+    } catch (err) {
+      toast.error('فشل تحديث موعد الحصة: ' + err.message);
     }
   };
 
@@ -1432,24 +1541,6 @@ const TeacherPanel = ({ user, onLogout }) => {
       toast.success('تم حذف الطالب من النظام.');
     } catch (err) {
       toast.error('فشل حذف الطالب: ' + err.message);
-    }
-  };
-
-  const updateLessonTime = async () => {
-    if (!newLessonTime) {
-      toast.error('يرجى اختيار تاريخ ووقت الحصة أولاً.');
-      return;
-    }
-    try {
-      const isoTime = new Date(newLessonTime).toISOString();
-      await updateDoc(doc(db, 'teachers', user.id), {
-        lessonTime: isoTime,
-        updatedAt: serverTimestamp()
-      });
-      setNewLessonTime('');
-      toast.success('تم تحديث موعد الحصة القادمة بنجاح!');
-    } catch (err) {
-      toast.error('فشل تحديث موعد الحصة: ' + err.message);
     }
   };
 
@@ -1610,7 +1701,7 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
         )}
 
-        {/* ===== قسم إدارة الواجبات (معدل) ===== */}
+        {/* ===== قسم إدارة الواجبات ===== */}
         <div className="glass p-6 rounded-2xl border border-white/5 space-y-4">
           <div className="flex justify-between items-center">
             <h3 className="text-xl font-semibold text-pink-300">إدارة الواجبات</h3>
@@ -1651,6 +1742,7 @@ const TeacherPanel = ({ user, onLogout }) => {
           )}
         </div>
 
+        {/* ===== قسم إدارة الطلاب ===== */}
         <div className="glass p-6 rounded-2xl border border-white/5">
           <div className="flex flex-wrap justify-between items-center gap-3">
             <h3 className="text-xl font-semibold text-blue-300">إدارة الطلاب</h3>
@@ -1658,20 +1750,30 @@ const TeacherPanel = ({ user, onLogout }) => {
               <button onClick={() => setShowAddStudentModal(true)} type="button" className="btn-primary bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 py-2 px-4 text-sm">+ إضافة طالب</button>
               <button onClick={deleteFrozenAccounts} type="button" className="btn-primary bg-red-600 hover:bg-red-700 py-2 px-4 text-sm">🗑️ حذف المجمدين</button>
               <button onClick={() => setShowStudentsModal(true)} type="button" className="btn-primary bg-purple-600 hover:bg-purple-700 py-2 px-4 text-sm">📋 عرض قوائم الطلبة</button>
+              <button onClick={() => setShowGeneralMessageModal(true)} type="button" className="btn-primary bg-green-600 hover:bg-green-700 py-2 px-4 text-sm">✉️ رسالة عامة</button>
             </div>
           </div>
         </div>
 
+        {/* ===== قسم جدولة موعد حصة (معدل) ===== */}
         <div className="glass p-6 rounded-2xl border border-white/5 space-y-4">
           <h3 className="text-xl font-semibold text-purple-200">جدولة موعد حصة</h3>
-          <div className="flex flex-col sm:flex-row gap-4 items-stretch">
-            <input type="datetime-local" className="input-glass flex-1 text-right" value={newLessonTime} onChange={(e) => setNewLessonTime(e.target.value)} />
-            <button onClick={updateLessonTime} type="button" className="btn-primary py-3 px-6">حفظ الحصة</button>
-          </div>
+          <button
+            onClick={() => setShowLessonModal(true)}
+            type="button"
+            className="btn-primary bg-gradient-to-r from-indigo-500 to-blue-600 hover:from-indigo-600 hover:to-blue-700 py-3 px-6 w-full sm:w-auto"
+          >
+            🕒 اختيار موعد الحصة
+          </button>
+          {lessonTime && (
+            <p className="text-sm text-gray-300 mt-2">
+              الموعد الحالي: {new Date(lessonTime).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })}
+            </p>
+          )}
         </div>
       </div>
 
-      {/* ===== مودال إضافة طالب - إجباري ===== */}
+      {/* ===== مودالات إجبارية (إضافة طالب، تجميد) ===== */}
       {showAddNotificationModal && newlyAddedStudent && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
           <div className="glass p-6 rounded-3xl max-w-md w-full border border-green-500/30 bg-gray-900/90">
@@ -1697,7 +1799,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال تجميد طالب - إجباري ===== */}
       {showFreezeNotificationModal && frozenStudent && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
           <div className="glass p-6 rounded-3xl max-w-md w-full border border-orange-500/30 bg-gray-900/90">
@@ -1723,6 +1824,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
+      {/* ===== مودال عرض الطلاب ===== */}
       {showStudentsModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-40 p-4" onClick={() => setShowStudentsModal(false)}>
           <div className="glass p-6 rounded-3xl max-w-4xl w-full max-h-[80vh] overflow-y-auto border border-white/20" onClick={(e) => e.stopPropagation()}>
@@ -1750,11 +1852,12 @@ const TeacherPanel = ({ user, onLogout }) => {
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <button onClick={() => sendActivationMessage(s)} type="button" className="text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-1 rounded-lg hover:bg-blue-500/30">📩 تفعيل</button>
+                      <button onClick={() => sendResetPasswordMessage(s)} type="button" className="text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-2 py-1 rounded-lg hover:bg-yellow-500/30">🔑 إعادة تعيين</button>
                       {s.isFrozen && (
                         <button onClick={() => sendFreezeMessage(s)} type="button" className="text-xs bg-orange-500/20 text-orange-300 border border-orange-500/30 px-2 py-1 rounded-lg hover:bg-orange-500/30">🚫 تجميد</button>
                       )}
                       <button onClick={() => communicateWithParent(s)} type="button" className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-lg hover:bg-green-500/30">📞 رسالة عامة</button>
-                      <button onClick={() => handleResetStudent(s.id)} type="button" className="text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-2 py-1 rounded-lg hover:bg-yellow-500/30">🔄 إعادة تعيين</button>
+                      <button onClick={() => handleResetStudent(s.id)} type="button" className="text-xs bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-1 rounded-lg hover:bg-indigo-500/30">🔄 إعادة تعيين</button>
                       <button onClick={() => handleDeleteStudentPermanently(s.id)} type="button" className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg hover:bg-red-500/30">❌ حذف</button>
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-gray-400">{s.isFrozen ? 'مجمد' : 'مفعل'}</span>
@@ -1772,6 +1875,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
+      {/* ===== مودال إضافة طالب ===== */}
       {showAddStudentModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-40 p-4" onClick={() => setShowAddStudentModal(false)}>
           <div className="glass p-6 rounded-3xl max-w-md w-full border border-white/20" onClick={(e) => e.stopPropagation()}>
@@ -1813,18 +1917,99 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال إضافة الواجب الجديد ===== */}
+      {/* ===== مودال الرسالة العامة ===== */}
+      {showGeneralMessageModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowGeneralMessageModal(false)}>
+          <div className="glass p-6 rounded-3xl max-w-lg w-full border border-white/20" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-semibold text-green-300 mb-4">✉️ إرسال رسالة عامة</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm text-gray-300 block">المادة</label>
+                <input
+                  type="text"
+                  className="input-glass w-full text-right"
+                  placeholder="مثلاً: تطوير البرمجيات"
+                  value={generalMessageSubject}
+                  onChange={(e) => setGeneralMessageSubject(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-sm text-gray-300 block">نص الرسالة</label>
+                <textarea
+                  className="input-glass w-full h-32 text-right resize-none"
+                  placeholder="اكتب نص الرسالة هنا..."
+                  value={generalMessageText}
+                  onChange={(e) => setGeneralMessageText(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-sm text-gray-300 block">إرسال إلى</label>
+                <select
+                  className="input-glass w-full text-right"
+                  value={generalMessageTarget}
+                  onChange={(e) => setGeneralMessageTarget(e.target.value)}
+                >
+                  <option value="all">جميع الطلاب</option>
+                  {students.map(s => (
+                    <option key={s.id} value={s.id}>{s.name || s.username}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    if (generalMessageTarget === 'all') {
+                      // إرسال للجميع (نرسل لكل طالب على حدة)
+                      students.forEach(s => sendGeneralMessage(s));
+                      setShowGeneralMessageModal(false);
+                    } else {
+                      const student = students.find(s => s.id === generalMessageTarget);
+                      if (student) {
+                        sendGeneralMessage(student);
+                      } else {
+                        toast.error('الطالب غير موجود.');
+                      }
+                    }
+                  }}
+                  className="btn-primary bg-green-600 hover:bg-green-700 px-6 py-2"
+                >
+                  إرسال
+                </button>
+                <button
+                  onClick={() => setShowGeneralMessageModal(false)}
+                  className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== مودال إضافة الواجب (مع الشعب الديناميكية) ===== */}
       <AddAssignmentModal
         isOpen={showAssignmentModal}
         onClose={() => setShowAssignmentModal(false)}
         onSubmit={saveHomeworkFromModal}
+        mode="homework"
+        classesList={classes}
+      />
+
+      {/* ===== مودال جدولة الحصة (بدون شعب ونص) ===== */}
+      <AddAssignmentModal
+        isOpen={showLessonModal}
+        onClose={() => setShowLessonModal(false)}
+        onSubmit={saveLessonTimeFromModal}
+        mode="lesson"
+        classesList={[]}
       />
     </div>
   );
 };
 
 // ============================================================
-// StudentPanel (لم يتغير)
+// StudentPanel (نفسه مع إضافة عرض الشعبة في الواجبات)
 // ============================================================
 const StudentPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
