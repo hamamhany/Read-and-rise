@@ -2485,8 +2485,7 @@ const App = () => {
     );
   }
 
-  return user.role === 'teacher' ? <TeacherPanel user={user} onLogout={onLogout} /> : <StudentPanel user={user} onLogout={onLogout} />;
-};
+return user.role === 'teacher' ? <TeacherPanel user={user} onLogout={handleLogout} /> : <StudentPanel user={user} onLogout={handleLogout} />;};
 
 // ============================================================
 // التطبيق مع Providers
