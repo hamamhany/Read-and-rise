@@ -163,11 +163,13 @@ const HomeworkTextCountdown = ({ targetDate }) => {
   )
 }
 
-// ========== FrozenAccount ==========
+// ========== FrozenAccount (معدل) ==========
 const FrozenAccount = ({ user, onLogout }) => {
   const studentName = user?.name || user?.username || 'الطالب'
   const studentClass = user?.class_name || 'غير محدد'
-  const studentPhone = user?.phone || 'غير مسجل'
+  const studentUsername = user?.username || 'غير مسجل'
+  // نستخدم نفس الرقم ولكن نسميه "رقم واتساب"
+  const studentWhatsApp = user?.phone || 'غير مسجل'
 
   const waMessage = encodeURIComponent(
     `السلام عليكم ورحمة الله وبركاته\n` +
@@ -176,8 +178,9 @@ const FrozenAccount = ({ user, onLogout }) => {
     `أرجو منكم التكرم بفك تجميد حسابي في التطبيق، حيث أنني حالياً لا أستطيع الوصول للمحتوى التعليمي.\n\n` +
     `بيانات الطالب:\n` +
     `الاسم الكامل: ${studentName}\n` +
+    `اسم المستخدم: ${studentUsername}\n` +
     `الشعبة: ${studentClass}\n` +
-    `رقم الهاتف المسجل: ${studentPhone}\n\n` +
+    `رقم واتساب: ${studentWhatsApp}\n\n` +
     `شاكراً لكم تعاونكم.`
   )
 
@@ -212,29 +215,17 @@ const FrozenAccount = ({ user, onLogout }) => {
   )
 }
 
-// ========== CompleteProfile (لم نعد نستخدمها، لكن نتركها للتوافق) ==========
+// ========== CompleteProfile (نسخة مبسطة للتوافق) ==========
 const CompleteProfile = ({ user, onSuccess, onCancel }) => {
-  // نفس الكود السابق – يمكن تركه أو حذفه، لكننا نتركه لأن بعض السيناريوهات قد تستدعيه.
-  // ولكننا لا نستخدمه في التدفق الجديد.
-  // لتوفير المساحة، سنضع نسخة مبسطة هنا (أو يمكن الاحتفاظ بالكود القديم).
-  // لكن بما أن المستخدم قال إنه ليس مبرمجاً، فسنبقي الكود كما هو دون تغيير.
-  // (يمكنك حذفه إذا أردت، لكنه لن يظهر لأننا لن نستدعيه)
-  // سأتركه كما هو في الملف الأصلي.
-  // لكن للاختصار، سأكتب نسخة مختصرة تعيد توجيه المستخدم إلى لوحة التحكم بعد التأكيد.
-  // لكن الأفضل الاحتفاظ بالكود الأصلي لأنه قد يُستخدم في حالات نادرة.
-  // سأضع الكود الأصلي كما هو (لأنه طويل) – لكني سأشير إلى أنه لم يعد مستخدماً.
-  // (سنحتفظ به للتوافق)
-  // نظراً لطول الكود، سأضعه كما هو من الملف السابق.
-  // لكني سأقوم بتعديله قليلاً ليكون متوافقاً مع المتغيرات الجديدة.
-  // لكن بما أننا لن نستخدمه، فسأتركه دون تغيير.
-  // في المرفق النهائي، سيكون موجوداً كما هو، لكني سأشير في التعليقات أنه قديم.
-  // ولن يتم استدعاؤه.
-  // سأقوم بنسخه من الكود السابق.
-  // لكن للاختصار في هذه الرسالة، سأقول أنني سأضمنه في الملف النهائي.
-  // سأكتب الـ component كاملاً في الملف النهائي.
-  // بما أن المستخدم يريد الكود كاملاً، سأرسل الملف كاملاً مع جميع المكونات.
-  // سأقوم ببناء الملف النهائي كاملاً هنا.
-};
+  // في التدفق الجديد لم يعد هذا المكون مستخدماً، لكن نتركه لتجنب الأعطال
+  useEffect(() => {
+    // إذا وصلنا إلى هنا، فهذا يعني أن الحساب غير مكتمل ولكن لا يوجد واجهة تفعيل،
+    // نوجه المستخدم إلى تسجيل الخروج ثم الدخول عبر رابط "تسجيل الدخول لأول مرة"
+    alert('يرجى استخدام رابط "تسجيل الدخول لأول مرة" لإكمال حسابك.')
+    onCancel()
+  }, [onCancel])
+  return null
+}
 
 // ========== Login (مع تفعيل الحساب عبر المعلومات الشخصية) ==========
 const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
@@ -416,14 +407,15 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     e.preventDefault()
     setActivationError('')
 
-    const usernameRegex = /^[a-zA-Z0-9]+$/
+    // ✅ التعديل: السماح بالرموز @ . _ -
+    const usernameRegex = /^[a-zA-Z0-9@._-]+$/
     const newUsername = activationNewUsername.trim()
     if (!usernameRegex.test(newUsername)) {
-      setActivationError('اسم المستخدم يجب أن يحتوي على أحرف إنجليزية وأرقام فقط')
+      setActivationError('اسم المستخدم يجب أن يحتوي على أحرف إنجليزية وأرقام والرموز (@ . _ -) فقط')
       return
     }
     if (!usernameRegex.test(activationNewPassword)) {
-      setActivationError('كلمة المرور يجب أن تحتوي على أحرف إنجليزية وأرقام فقط')
+      setActivationError('كلمة المرور يجب أن تحتوي على أحرف إنجليزية وأرقام والرموز (@ . _ -) فقط')
       return
     }
     if (activationNewPassword !== activationConfirmPassword) {
@@ -552,12 +544,12 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
                 <form onSubmit={handleActivationStep2} className="space-y-4 w-full">
                   <p className="text-gray-300 text-sm text-center">اختر اسم مستخدم وكلمة مرور جديدة</p>
                   <div>
-                    <label className="text-sm text-gray-300 block mb-1">اسم المستخدم الجديد (أحرف إنجليزية وأرقام فقط)</label>
-                    <input type="text" className="input-glass w-full text-right" value={activationNewUsername} onChange={e => setActivationNewUsername(e.target.value)} required pattern="[a-zA-Z0-9]+" title="أحرف إنجليزية وأرقام فقط" />
+                    <label className="text-sm text-gray-300 block mb-1">اسم المستخدم الجديد (أحرف إنجليزية وأرقام والرموز @ . _ -)</label>
+                    <input type="text" className="input-glass w-full text-right" value={activationNewUsername} onChange={e => setActivationNewUsername(e.target.value)} required pattern="[a-zA-Z0-9@._-]+" title="أحرف إنجليزية وأرقام والرموز @ . _ -" />
                   </div>
                   <div>
                     <label className="text-sm text-gray-300 block mb-1">كلمة المرور الجديدة</label>
-                    <input type="password" className="input-glass w-full text-right" value={activationNewPassword} onChange={e => setActivationNewPassword(e.target.value)} required minLength="6" pattern="[a-zA-Z0-9]+" title="أحرف إنجليزية وأرقام فقط، 6 أحرف على الأقل" />
+                    <input type="password" className="input-glass w-full text-right" value={activationNewPassword} onChange={e => setActivationNewPassword(e.target.value)} required minLength="6" pattern="[a-zA-Z0-9@._-]+" title="أحرف إنجليزية وأرقام والرموز @ . _ -، 6 أحرف على الأقل" />
                   </div>
                   <div>
                     <label className="text-sm text-gray-300 block mb-1">تأكيد كلمة المرور</label>
@@ -1312,7 +1304,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   )
 }
 
-// ========== StudentPanel (نفسه بدون تغيير) ==========
+// ========== StudentPanel (تم إزالة زر تغيير كلمة المرور) ==========
 const StudentPanel = ({ user, onLogout }) => {
   const [teacherData, setTeacherData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -1412,16 +1404,7 @@ const StudentPanel = ({ user, onLogout }) => {
     return () => clearInterval(interval)
   }, [teacherData?.homeworks])
 
-  const changePassword = async () => {
-    const newPass = window.prompt('أدخل كلمة المرور الجديدة')
-    if (!newPass) return
-    try {
-      await updatePassword(auth.currentUser, newPass)
-      alert('تم تغيير كلمة المرور بنجاح')
-    } catch (err) {
-      alert('فشل التحديث: ' + err.message)
-    }
-  }
+  // ❌ تم إزالة دالة changePassword نهائياً
 
   const getNextScheduledHomework = () => {
     if (!teacherData?.homeworks) return null
@@ -1484,7 +1467,7 @@ const StudentPanel = ({ user, onLogout }) => {
             <p className="text-gray-400 text-sm mt-1">أهلاً بك: {user.username || user.email}</p>
           </div>
           <div className="flex gap-2">
-            <button onClick={changePassword} type="button" className="btn-primary bg-blue-600 hover:bg-blue-700 text-sm">تغيير كلمة المرور</button>
+            {/* ❌ تم إزالة زر تغيير كلمة المرور */}
             <button onClick={onLogout} type="button" className="btn-primary bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 shadow-lg text-sm">تسجيل الخروج</button>
           </div>
         </div>
