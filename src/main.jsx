@@ -675,7 +675,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   );
 };
 
-// ========== TeacherPanel (معدل: استبدال alert/confirm) ==========
+// ========== TeacherPanel (معدل: استبدال alert/confirm + إضافة رسائل واتساب) ==========
 const TeacherPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
   const [lessonTime, setLessonTime] = useState('');
@@ -850,6 +850,73 @@ const TeacherPanel = ({ user, onLogout }) => {
     };
   }, [user.id]);
 
+  // ===== رسائل واتساب الجديدة =====
+  const sendActivationMessage = (student) => {
+    const phone = student.phone || '';
+    if (!phone) {
+      toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
+      return;
+    }
+    const cleanedPhone = cleanPhoneNumber(phone);
+    if (!cleanedPhone) {
+      toast.error('رقم الهاتف غير صالح.');
+      return;
+    }
+    const studentName = student.name || '';
+    const studentClass = student.classes?.name || 'غير محدد';
+    const studentAge = student.age || 'غير محدد';
+    const studentGender = student.gender || 'غير محدد';
+    const message = encodeURIComponent(
+      `الموضوع: تأكيد تفعيل حسابك في الفرسان التقنيين - اقرأ وارتق\n\n` +
+      `عزيزي الطالب ${studentName}،\n` +
+      `يسعدنا انضمامك إلينا في بيئة التعلم الرقمية الخاصة بـ "الفرسان التقنيين". نود إبلاغك بأنه تم إنشاء حسابك بنجاح، ونرفق لكم أدناه البيانات المسجلة في نظامنا:\n` +
+      `الاسم الكامل: ${studentName}\n` +
+      `الصف الدراسي: ${studentClass}\n` +
+      `رقم الهاتف: ${student.phone || 'غير مسجل'}\n` +
+      `العمر: ${studentAge}\n` +
+      `الجنس: ${studentGender}\n\n` +
+      `خطوة أخيرة لتفعيل الحساب:\n` +
+      `لإتمام عملية التسجيل، يرجى الانتقال إلى الرابط أدناه وتسجيل الدخول لأول مرة لملء البيانات اللازمة وتأكيد حسابك:\n` +
+      `https://read-and-rise-two.vercel.app/\n\n` +
+      `نرجو منكم الاحتفاظ بهذه البيانات، والالتزام بالقوانين التعليمية المتبعة. نتمنى لكم رحلة تعليمية مثمرة ومليئة بالإنجازات.\n\n` +
+      `مع التقدير،\n` +
+      `همام هاني محمد علي\n` +
+      `رئيس قسم التكنولوجيا وأمن المعلومات | معلم تطوير البرمجيات`
+    );
+    window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
+  };
+
+  const sendFreezeMessage = (student) => {
+    const phone = student.phone || '';
+    if (!phone) {
+      toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
+      return;
+    }
+    const cleanedPhone = cleanPhoneNumber(phone);
+    if (!cleanedPhone) {
+      toast.error('رقم الهاتف غير صالح.');
+      return;
+    }
+    const studentName = student.name || '';
+    const studentClass = student.classes?.name || 'غير محدد';
+    const message = encodeURIComponent(
+      `الموضوع: إشعار بشأن حساب الطالب في منصة "اقرأ وارتق"\n\n` +
+      `عزيزي ولي أمر الطالب/ة ${studentName} المحترم،\n` +
+      `تحية طيبة وبعد،،\n` +
+      `نود إحاطتكم علماً بأنه قد تم إجراء "تجميد مؤقت" لحساب الطالب في منصة الفرسان التقنيين - اقرأ وارتق التعليمية. يأتي هذا الإجراء وفقاً للسياسات التنظيمية المتبعة في المنصة لضمان سير العملية التعليمية بفعالية.\n\n` +
+      `بيانات الطالب:\n` +
+      `اسم الطالب: ${studentName}\n` +
+      `الصف الدراسي: ${studentClass}\n` +
+      `سبب الإجراء: عدم الالتزام بالحصص والانقطاع لفترة طويلة\n\n` +
+      `نرجو منكم التواصل معنا لمناقشة الإجراءات اللازمة لفك التجميد وإعادة تفعيل الحساب لضمان استمرارية الطالب في مسيرته التعليمية دون انقطاع.\n` +
+      `نحن نقدر حرصكم الدائم على متابعة مستوى الطالب ونتطلع لتعاونكم معنا.\n\n` +
+      `مع التقدير،\n` +
+      `همام هاني محمد علي\n` +
+      `رئيس قسم التكنولوجيا وأمن المعلومات | معلم تطوير البرمجيات`
+    );
+    window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
+  };
+
   const acceptReview = async (studentId) => {
     try {
       const docRef = doc(db, 'profiles', studentId);
@@ -961,6 +1028,29 @@ const TeacherPanel = ({ user, onLogout }) => {
         isFrozen: nextStatus,
         updatedAt: serverTimestamp()
       });
+
+      // إشعار بعد التجميد
+      if (nextStatus) {
+        toast.success(
+          (t) => (
+            <div className="flex flex-col items-start gap-2">
+              <span>تم تجميد حساب الطالب {student.name || ''}.</span>
+              <button
+                onClick={() => {
+                  toast.dismiss(t.id);
+                  sendFreezeMessage(student);
+                }}
+                className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-lg text-sm flex items-center gap-1"
+              >
+                <span>💬</span> إخبار ولي الأمر
+              </button>
+            </div>
+          ),
+          { duration: 8000 }
+        );
+      } else {
+        toast.success('تم فك التجميد.');
+      }
     } catch (err) {
       console.error('Error toggling freeze:', err);
       toast.error('فشل تحديث حالة التجميد: ' + (err.message || 'خطأ غير معروف'));
@@ -1129,7 +1219,36 @@ const TeacherPanel = ({ user, onLogout }) => {
         updatedAt: serverTimestamp()
       });
 
-      toast.success(`تم تسجيل الطالب ${newStudentName} بنجاح.\nاسم المستخدم المؤقت: ${username}\nالآن يجب على الطالب استخدام رابط "تسجيل الدخول لأول مرة" لتفعيل حسابه.`);
+      // بناء كائن الطالب المُضاف لاستخدامه في رسالة التفعيل
+      const classObj = classes.find(c => c.id === newStudentClass);
+      const className = classObj ? classObj.name : 'غير محدد';
+      const addedStudent = {
+        name: newStudentName.trim(),
+        gender: newStudentGender,
+        age: ageNum,
+        phone: cleanPhone,
+        classId: newStudentClass,
+        classes: { name: className }
+      };
+
+      toast.success(
+        (t) => (
+          <div className="flex flex-col items-start gap-2">
+            <span>تم تسجيل الطالب {newStudentName} بنجاح.</span>
+            <button
+              onClick={() => {
+                toast.dismiss(t.id);
+                sendActivationMessage(addedStudent);
+              }}
+              className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-lg text-sm flex items-center gap-1"
+            >
+              <span>💬</span> إخبار ولي الأمر
+            </button>
+          </div>
+        ),
+        { duration: 8000 }
+      );
+
       setNewStudentName('');
       setNewStudentGender('');
       setNewStudentAge('');
@@ -1302,8 +1421,12 @@ const TeacherPanel = ({ user, onLogout }) => {
                       )}
                       {!hasAccount && <span className="text-xs text-yellow-400 bg-yellow-950/40 px-2 py-0.5 rounded border border-yellow-500/30">⚠️ لم يتم التفعيل بعد</span>}
                     </div>
-                    <div className="flex items-center gap-4 flex-wrap">
-                      <button onClick={() => communicateWithParent(s)} type="button" className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-lg hover:bg-green-500/30">📞 تواصل مع ولي الأمر</button>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button onClick={() => sendActivationMessage(s)} type="button" className="text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-1 rounded-lg hover:bg-blue-500/30">📩 تفعيل</button>
+                      {s.isFrozen && (
+                        <button onClick={() => sendFreezeMessage(s)} type="button" className="text-xs bg-orange-500/20 text-orange-300 border border-orange-500/30 px-2 py-1 rounded-lg hover:bg-orange-500/30">🚫 تجميد</button>
+                      )}
+                      <button onClick={() => communicateWithParent(s)} type="button" className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-lg hover:bg-green-500/30">📞 رسالة عامة</button>
                       <button onClick={() => handleResetStudent(s.id)} type="button" className="text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-2 py-1 rounded-lg hover:bg-yellow-500/30">🔄 إعادة تعيين</button>
                       <button onClick={() => handleDeleteStudentPermanently(s.id)} type="button" className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg hover:bg-red-500/30">❌ حذف</button>
                       <div className="flex items-center gap-2">
