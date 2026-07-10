@@ -38,6 +38,20 @@ const generateId = () => {
   }
 };
 
+// ========== Utility: تحويل النص العربي إلى إنجليزي (تقريبي) ==========
+const arabicToEnglish = (text) => {
+  const map = {
+    'ا': 'a', 'أ': 'a', 'إ': 'a', 'آ': 'a',
+    'ب': 'b', 'ت': 't', 'ث': 'th', 'ج': 'j', 'ح': 'h', 'خ': 'kh',
+    'د': 'd', 'ذ': 'th', 'ر': 'r', 'ز': 'z', 'س': 's', 'ش': 'sh',
+    'ص': 's', 'ض': 'd', 'ط': 't', 'ظ': 'z', 'ع': 'a', 'غ': 'gh',
+    'ف': 'f', 'ق': 'q', 'ك': 'k', 'ل': 'l', 'م': 'm', 'ن': 'n',
+    'ه': 'h', 'و': 'w', 'ي': 'y', 'ة': 'h', 'ى': 'a',
+    'ء': 'a', 'ؤ': 'a', 'ئ': 'a'
+  };
+  return text.split('').map(ch => map[ch] || ch).join('');
+};
+
 // ============================================================
 // 1. مكوّن إضافة الواجب / جدولة الحصة (مودال موحد)
 // ============================================================
@@ -149,6 +163,16 @@ const AddAssignmentModal = ({
     const center = 140;
     const [dragging, setDragging] = useState(null);
 
+    // مدخلات نصية محلية لحل مشكلة الاختفاء
+    const [hoursStr, setHoursStr] = useState(time.hours.toString().padStart(2, '0'));
+    const [minutesStr, setMinutesStr] = useState(time.minutes.toString().padStart(2, '0'));
+
+    // مزامنة المدخلات مع الوقت الخارجي
+    useEffect(() => {
+      setHoursStr(time.hours.toString().padStart(2, '0'));
+      setMinutesStr(time.minutes.toString().padStart(2, '0'));
+    }, [time]);
+
     const getAngle = (hours, minutes) => {
       const hAngle = (hours % 12) * (Math.PI / 6) + minutes * (Math.PI / 360);
       const mAngle = minutes * (Math.PI / 30);
@@ -206,6 +230,34 @@ const AddAssignmentModal = ({
     const hourCoords = getCoords(hAngle);
     const minuteCoords = getCoords(mAngle);
 
+    // معالجة تغيير الساعات
+    const handleHoursChange = (e) => {
+      const val = e.target.value;
+      setHoursStr(val);
+      // لا نقوم بتحديث الوقت حتى onBlur
+    };
+
+    const handleHoursBlur = () => {
+      let val = parseInt(hoursStr);
+      if (isNaN(val) || val < 1) val = 1;
+      if (val > 12) val = 12;
+      setHoursStr(val.toString().padStart(2, '0'));
+      onTimeChange({ ...time, hours: val });
+    };
+
+    const handleMinutesChange = (e) => {
+      const val = e.target.value;
+      setMinutesStr(val);
+    };
+
+    const handleMinutesBlur = () => {
+      let val = parseInt(minutesStr);
+      if (isNaN(val) || val < 0) val = 0;
+      if (val > 59) val = 59;
+      setMinutesStr(val.toString().padStart(2, '0'));
+      onTimeChange({ ...time, minutes: val });
+    };
+
     return (
       <div className="flex flex-col items-center">
         <svg ref={svgRef} width={280} height={280} viewBox="0 0 280 280" className="cursor-pointer">
@@ -252,23 +304,9 @@ const AddAssignmentModal = ({
             <input
               type="text"
               maxLength="2"
-              value={time.hours.toString().padStart(2, '0')}
-              onChange={(e) => {
-                let val = parseInt(e.target.value);
-                if (e.target.value === '') {
-                  // إذا كان فارغاً نضعه 1
-                  onTimeChange({ ...time, hours: 1 });
-                  return;
-                }
-                if (isNaN(val)) {
-                  // إذا كانت قيمة غير رقمية نضعه 1
-                  onTimeChange({ ...time, hours: 1 });
-                  return;
-                }
-                if (val < 1) val = 1;
-                if (val > 12) val = 12;
-                onTimeChange({ ...time, hours: val });
-              }}
+              value={hoursStr}
+              onChange={handleHoursChange}
+              onBlur={handleHoursBlur}
               className="w-20 px-3 py-2 border border-gray-600 rounded-md text-center bg-white/10 text-white focus:ring-2 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
           </div>
@@ -277,21 +315,9 @@ const AddAssignmentModal = ({
             <input
               type="text"
               maxLength="2"
-              value={time.minutes.toString().padStart(2, '0')}
-              onChange={(e) => {
-                let val = parseInt(e.target.value);
-                if (e.target.value === '') {
-                  onTimeChange({ ...time, minutes: 0 });
-                  return;
-                }
-                if (isNaN(val)) {
-                  onTimeChange({ ...time, minutes: 0 });
-                  return;
-                }
-                if (val < 0) val = 0;
-                if (val > 59) val = 59;
-                onTimeChange({ ...time, minutes: val });
-              }}
+              value={minutesStr}
+              onChange={handleMinutesChange}
+              onBlur={handleMinutesBlur}
               className="w-20 px-3 py-2 border border-gray-600 rounded-md text-center bg-white/10 text-white focus:ring-2 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
           </div>
@@ -653,6 +679,19 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
 
   const confirm = useConfirm();
 
+  // معالجة تحويل اسم المستخدم إلى إنجليزي تلقائياً
+  const handleUsernameChange = (e) => {
+    const raw = e.target.value;
+    const converted = arabicToEnglish(raw);
+    setUsername(converted);
+  };
+
+  const handleActivationNewUsernameChange = (e) => {
+    const raw = e.target.value;
+    const converted = arabicToEnglish(raw);
+    setActivationNewUsername(converted);
+  };
+
   const handleAuth = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -936,7 +975,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
                   <p className="text-gray-300 text-sm text-center">اختر اسم مستخدم وكلمة مرور جديدة</p>
                   <div>
                     <label className="text-sm text-gray-300 block mb-1">اسم المستخدم الجديد (أحرف إنجليزية وأرقام والرموز @ . _ -)</label>
-                    <input type="text" className="input-glass w-full text-right" value={activationNewUsername} onChange={e => setActivationNewUsername(e.target.value)} required pattern="[a-zA-Z0-9@._-]+" title="أحرف إنجليزية وأرقام والرموز @ . _ -" />
+                    <input type="text" className="input-glass w-full text-right" value={activationNewUsername} onChange={handleActivationNewUsernameChange} required pattern="[a-zA-Z0-9@._-]+" title="أحرف إنجليزية وأرقام والرموز @ . _ -" />
                   </div>
                   <div>
                     <label className="text-sm text-gray-300 block mb-1">كلمة المرور الجديدة</label>
@@ -982,7 +1021,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
             <form onSubmit={handleAuth} className="space-y-3.5 w-full">
               <div className="relative flex items-center">
                 <span className="absolute right-4 text-gray-400 pointer-events-none text-sm font-medium">اسم المستخدم</span>
-                <input type="text" className="input-glass w-full text-right pr-24 pl-4 text-base bg-black/20" value={username} onChange={(e) => setUsername(e.target.value)} required />
+                <input type="text" className="input-glass w-full text-right pr-24 pl-4 text-base bg-black/20" value={username} onChange={handleUsernameChange} required />
               </div>
               <div className="relative flex items-center">
                 <span className="absolute right-4 text-gray-400 pointer-events-none text-sm font-medium">كلمة المرور</span>
@@ -1205,7 +1244,6 @@ const TeacherPanel = ({ user, onLogout }) => {
   }, [user.id]);
 
   // ===== دوال إرسال رسائل واتساب =====
-  // دالة إرسال رسالة التفعيل (تُستخدم عند إضافة طالب جديد)
   const sendActivationMessage = (student) => {
     const phone = student.phone || '';
     if (!phone) {
@@ -1241,7 +1279,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
   };
 
-  // دالة إرسال رسالة التجميد
   const sendFreezeMessage = (student) => {
     const phone = student.phone || '';
     if (!phone) {
@@ -1273,7 +1310,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
   };
 
-  // ===== رسالة إعادة تعيين البيانات (الرسالة المطلوبة) =====
   const sendResetPasswordMessage = (student) => {
     const phone = student.phone || '';
     if (!phone) {
@@ -1306,7 +1342,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
   };
 
-  // ===== رسالة عامة (القالب الثاني) =====
   const sendGeneralMessage = (student) => {
     if (!student) {
       toast.error('يرجى اختيار طالب.');
@@ -1347,7 +1382,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     setGeneralMessageTarget('all');
   };
 
-  // ===== وظيفة إعادة تعيين الطالب (معدلة لترسل رسالة) =====
   const handleResetStudent = async (studentId) => {
     const ok = await confirm(
       'إعادة تعيين الحساب',
@@ -1356,7 +1390,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     if (!ok) return;
 
     try {
-      // 1. تحديث قاعدة البيانات
       await updateDoc(doc(db, 'profiles', studentId), {
         infoVerified: false,
         isFrozen: false,
@@ -1364,16 +1397,13 @@ const TeacherPanel = ({ user, onLogout }) => {
         updatedAt: serverTimestamp()
       });
 
-      // 2. إرسال رسالة إعادة التعيين للطالب
       const student = students.find(s => s.id === studentId);
       if (student) {
         sendResetPasswordMessage(student);
       } else {
-        // محاولة جلب الطالب من قاعدة البيانات إذا لم يكن في القائمة
         const docSnap = await getDoc(doc(db, 'profiles', studentId));
         if (docSnap.exists()) {
           const studentData = docSnap.data();
-          // نحتاج لاسم الشعبة إذا وجدت
           let className = 'غير محدد';
           if (studentData.classId) {
             const classSnap = await getDoc(doc(db, 'classes', studentData.classId));
@@ -1522,6 +1552,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     try {
       await updateDoc(doc(db, 'profiles', student.id), {
         isFrozen: nextStatus,
+        frozenAt: nextStatus ? serverTimestamp() : null,
         updatedAt: serverTimestamp()
       });
 
@@ -1538,30 +1569,15 @@ const TeacherPanel = ({ user, onLogout }) => {
   };
 
   const deleteFrozenAccounts = async () => {
-    try {
-      const q = query(collection(db, 'profiles'), where('isFrozen', '==', true));
-      const snapshot = await getDocs(q);
-      if (snapshot.empty) {
-        toast('لا يوجد حسابات مجمدة.', { icon: 'ℹ️' });
-        return;
-      }
-      const ok = await confirm('حذف المجمدين', `هل أنت متأكد من حذف ${snapshot.size} حساب مجمد نهائياً؟`);
-      if (!ok) return;
-      for (const docSnap of snapshot.docs) {
-        await deleteDoc(doc(db, 'profiles', docSnap.id));
-      }
-      toast.success(`تم حذف ${snapshot.size} حساب مجمد.`);
-    } catch (err) {
-      toast.error('خطأ أثناء الحذف: ' + err.message);
-    }
+    // تم إلغاء استخدام هذه الدالة، ولكن نتركها فارغة أو نحذفها
+    // سيتم إزالة الزر الذي يستدعيها لاحقاً
   };
 
-  const checkInactivityWarning = (lastSeenStr) => {
-    if (!lastSeenStr) return false;
+  const getInactivityDays = (lastSeenStr) => {
+    if (!lastSeenStr) return 0;
     const lastSeen = new Date(lastSeenStr);
     const diffTime = new Date().getTime() - lastSeen.getTime();
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays >= 30;
+    return Math.floor(diffTime / (1000 * 60 * 60 * 24));
   };
 
   const communicateWithParent = (student) => {
@@ -1800,9 +1816,7 @@ const TeacherPanel = ({ user, onLogout }) => {
             <h3 className="text-xl font-semibold text-blue-300">إدارة الطلاب</h3>
             <div className="flex flex-wrap gap-2">
               <button onClick={() => setShowAddStudentModal(true)} type="button" className="btn-primary bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 py-2 px-4 text-sm">+ إضافة طالب</button>
-              <button onClick={deleteFrozenAccounts} type="button" className="btn-primary bg-red-600 hover:bg-red-700 py-2 px-4 text-sm">🗑️ حذف المجمدين</button>
               <button onClick={() => setShowStudentsModal(true)} type="button" className="btn-primary bg-purple-600 hover:bg-purple-700 py-2 px-4 text-sm">📋 عرض قوائم الطلبة</button>
-              <button onClick={() => setShowGeneralMessageModal(true)} type="button" className="btn-primary bg-green-600 hover:bg-green-700 py-2 px-4 text-sm">✉️ رسالة عامة</button>
             </div>
           </div>
         </div>
@@ -1876,19 +1890,30 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال عرض الطلاب (تم حذف زر التفعيل) ===== */}
+      {/* ===== مودال عرض الطلاب (مع زر الرسالة العامة) ===== */}
       {showStudentsModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-40 p-4" onClick={() => setShowStudentsModal(false)}>
           <div className="glass p-6 rounded-3xl max-w-4xl w-full max-h-[80vh] overflow-y-auto border border-white/20" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-semibold text-blue-300">قائمة الطلاب المسجلين ({students.length})</h3>
-              <button onClick={() => setShowStudentsModal(false)} type="button" className="text-gray-400 hover:text-white text-2xl">✕</button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowGeneralMessageModal(true)}
+                  type="button"
+                  className="btn-primary bg-green-600 hover:bg-green-700 py-1.5 px-3 text-sm"
+                >
+                  ✉️ رسالة عامة
+                </button>
+                <button onClick={() => setShowStudentsModal(false)} type="button" className="text-gray-400 hover:text-white text-2xl">✕</button>
+              </div>
             </div>
             <div className="space-y-3">
               {sortedStudents.map(s => {
                 const hasAccount = s.email && !s.email.endsWith('@temp.com');
+                const inactiveDays = getInactivityDays(s.last_seen);
+                const frozenDays = s.isFrozen && s.frozenAt ? Math.floor((new Date() - new Date(s.frozenAt.seconds * 1000)) / (1000 * 60 * 60 * 24)) : 0;
                 return (
-                  <div key={s.id} className={`p-3 rounded-xl border flex flex-wrap justify-between items-center gap-3 ${s.isFrozen ? 'bg-gray-900/60 border-gray-700 opacity-60' : 'bg-white/5 border-white/5'}`}>
+                  <div key={s.id} className={`p-3 rounded-xl border flex flex-wrap justify-between items-center gap-3 ${s.isFrozen ? 'bg-gray-900/60 border-gray-700 opacity-80' : 'bg-white/5 border-white/5'}`}>
                     <div className="flex items-center gap-3 flex-wrap">
                       <span className="text-white text-sm font-medium">{s.name || s.username}</span>
                       <span className="text-xs text-gray-400">({s.username})</span>
@@ -1896,14 +1921,19 @@ const TeacherPanel = ({ user, onLogout }) => {
                       {s.phone && <span className="text-xs text-gray-400">📱 {s.phone}</span>}
                       {s.gender && <span className="text-xs text-gray-400">{s.gender}</span>}
                       {s.age && <span className="text-xs text-gray-400">عمر {s.age}</span>}
-                      {s.isFrozen && <span className="text-xs text-orange-400 bg-orange-950/40 px-2 py-0.5 rounded border border-orange-500/20">⏳ مجمد</span>}
-                      {checkInactivityWarning(s.last_seen) && !s.isFrozen && (
-                        <span className="text-xs text-red-400 bg-red-950/40 px-2 py-0.5 rounded border border-red-500/30 animate-bounce">🚨 لم يفتح منذ 30 يوم!</span>
+                      {s.isFrozen && (
+                        <span className="text-xs text-orange-400 bg-orange-950/40 px-2 py-0.5 rounded border border-orange-500/20">
+                          ⏳ مجمد {frozenDays > 0 && `منذ ${frozenDays} يوم`}
+                        </span>
+                      )}
+                      {inactiveDays >= 30 && !s.isFrozen && (
+                        <span className="text-xs text-red-400 bg-red-950/40 px-2 py-0.5 rounded border border-red-500/30 animate-pulse">
+                          🚨 لم يفتح منذ {inactiveDays} يوم!
+                        </span>
                       )}
                       {!hasAccount && <span className="text-xs text-yellow-400 bg-yellow-950/40 px-2 py-0.5 rounded border border-yellow-500/30">⚠️ لم يتم التفعيل بعد</span>}
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      {/* تم حذف زر "📩 تفعيل" */}
                       {s.isFrozen && (
                         <button onClick={() => sendFreezeMessage(s)} type="button" className="text-xs bg-orange-500/20 text-orange-300 border border-orange-500/30 px-2 py-1 rounded-lg hover:bg-orange-500/30">🚫 تجميد</button>
                       )}
@@ -2485,7 +2515,8 @@ const App = () => {
     );
   }
 
-return user.role === 'teacher' ? <TeacherPanel user={user} onLogout={handleLogout} /> : <StudentPanel user={user} onLogout={handleLogout} />;};
+  return user.role === 'teacher' ? <TeacherPanel user={user} onLogout={handleLogout} /> : <StudentPanel user={user} onLogout={handleLogout} />;
+};
 
 // ============================================================
 // التطبيق مع Providers
