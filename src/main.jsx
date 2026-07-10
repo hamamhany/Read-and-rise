@@ -65,7 +65,7 @@ const AddAssignmentModal = ({
   const [time, setTime] = useState({ hours: 12, minutes: 0 });
   const [section, setSection] = useState('');
   const [assignmentText, setAssignmentText] = useState('');
-  const [publishMode, setPublishMode] = useState('now'); // 'now' أو 'schedule'
+  const [publishMode, setPublishMode] = useState('now');
 
   if (!isOpen) return null;
 
@@ -97,7 +97,6 @@ const AddAssignmentModal = ({
     onSubmit(data);
   };
 
-  // ----- مكوّن التقويم الداخلي -----
   const Calendar = ({ selectedDate, onDateChange }) => {
     const [currentMonth, setCurrentMonth] = useState(new Date(selectedDate));
     const [days, setDays] = useState([]);
@@ -163,7 +162,6 @@ const AddAssignmentModal = ({
     );
   };
 
-  // ----- مكوّن الساعة الدائرية الداخلي -----
   const ClockPicker = ({ time, onTimeChange }) => {
     const svgRef = useRef(null);
     const radius = 120;
@@ -329,7 +327,6 @@ const AddAssignmentModal = ({
     );
   };
 
-  // ----- واجهة المودال (خلفية صلبة داكنة) -----
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
       <div className="bg-gray-900 p-6 rounded-3xl w-[90%] max-w-4xl max-h-[90vh] overflow-y-auto border border-gray-700 shadow-2xl">
@@ -424,7 +421,7 @@ const AddAssignmentModal = ({
 };
 
 // ============================================================
-// 2. مكوّن جدولة موعد الحصة (منفصل، بدون خيارات نشر)
+// 2. مكوّن جدولة موعد الحصة (منفصل)
 // ============================================================
 const AddLessonModal = ({
   isOpen,
@@ -441,7 +438,6 @@ const AddLessonModal = ({
     onSubmit({ date: selectedDate, time });
   };
 
-  // ----- مكوّن التقويم الداخلي -----
   const Calendar = ({ selectedDate, onDateChange }) => {
     const [currentMonth, setCurrentMonth] = useState(new Date(selectedDate));
     const [days, setDays] = useState([]);
@@ -507,7 +503,6 @@ const AddLessonModal = ({
     );
   };
 
-  // ----- مكوّن الساعة الدائرية الداخلي -----
   const ClockPicker = ({ time, onTimeChange }) => {
     const svgRef = useRef(null);
     const radius = 120;
@@ -673,7 +668,6 @@ const AddLessonModal = ({
     );
   };
 
-  // ----- واجهة المودال (خلفية صلبة داكنة) -----
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
       <div className="bg-gray-900 p-6 rounded-3xl w-[90%] max-w-4xl max-h-[90vh] overflow-y-auto border border-gray-700 shadow-2xl">
@@ -718,7 +712,6 @@ const AddLessonModal = ({
 // باقي المكونات (CountdownTimer, HomeworkTextCountdown, ConfirmContext, إلخ)
 // ============================================================
 
-// ========== Hook: dynamic background ==========
 const useDynamicBackground = () => {
   useEffect(() => {
     const style = document.createElement('style');
@@ -759,7 +752,6 @@ const useDynamicBackground = () => {
   }, []);
 };
 
-// ========== CountdownTimer (يعرض الأصفار دائماً) ==========
 const CountdownTimer = ({ targetDate }) => {
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
 
@@ -811,7 +803,6 @@ const CountdownTimer = ({ targetDate }) => {
   );
 };
 
-// ========== HomeworkTextCountdown ==========
 const HomeworkTextCountdown = ({ targetDate }) => {
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
   const [isPast, setIsPast] = useState(false);
@@ -1064,7 +1055,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
           role: profile.role,
           name: profile.name,
           phone: profile.phone,
-          classId: profile.classId
+          classIds: profile.classIds || []
         });
         setLoading(false);
         return;
@@ -1090,7 +1081,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
         gender: profile.gender,
         age: profile.age,
         phone: profile.phone,
-        classId: profile.classId,
+        classIds: profile.classIds || [],
         needsPasswordChange: profile.infoVerified === false,
         isProfileComplete: true
       });
@@ -1384,29 +1375,29 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [pendingReviews, setPendingReviews] = useState([]);
-  const [teacherMaterials, setTeacherMaterials] = useState([]);
 
   // حالات المودالات
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
   const [showStudentsModal, setShowStudentsModal] = useState(false);
   const [showAssignmentModal, setShowAssignmentModal] = useState(false);
   const [showLessonModal, setShowLessonModal] = useState(false);
-  const [showManageMaterialsModal, setShowManageMaterialsModal] = useState(false);
+  const [showManageClassesModal, setShowManageClassesModal] = useState(false); // مودال إدارة شعب الطالب
 
-  // حالات مودال الرسالة العامة (للطالب المختار)
+  // حالات مودال الرسالة العامة
   const [showGeneralMessageModal, setShowGeneralMessageModal] = useState(false);
   const [generalMessageSubject, setGeneralMessageSubject] = useState('');
   const [generalMessageText, setGeneralMessageText] = useState('');
   const [selectedStudentForMessage, setSelectedStudentForMessage] = useState(null);
 
-  // حالات إدارة المواد
-  const [newMaterialName, setNewMaterialName] = useState('');
+  // حالات إدارة شعب الطالب
+  const [selectedStudentForClasses, setSelectedStudentForClasses] = useState(null);
+  const [selectedClassIds, setSelectedClassIds] = useState([]);
 
   const [newStudentName, setNewStudentName] = useState('');
   const [newStudentGender, setNewStudentGender] = useState('');
   const [newStudentAge, setNewStudentAge] = useState('');
   const [newStudentPhone, setNewStudentPhone] = useState('');
-  const [newStudentClass, setNewStudentClass] = useState('');
+  const [newStudentClassIds, setNewStudentClassIds] = useState([]); // مصفوفة
   const [studentLoading, setStudentLoading] = useState(false);
 
   // حالات المودالات الإجبارية
@@ -1446,7 +1437,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         await setDoc(teacherRef, {
           lessonTime: null,
           homeworks: [],
-          materials: ['الرياضيات', 'العلوم', 'اللغة العربية'],
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
@@ -1456,17 +1446,17 @@ const TeacherPanel = ({ user, onLogout }) => {
       const teacherData = teacherDoc.data();
       setLessonTime(teacherData.lessonTime || '');
       setHomeworks(teacherData.homeworks || []);
-      setTeacherMaterials(teacherData.materials || []);
 
       const studentsQuery = query(collection(db, 'profiles'), where('role', '==', 'student'));
       const studentsSnapshot = await getDocs(studentsQuery);
       let studentsList = studentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-      const classIds = studentsList.map(s => s.classId).filter(Boolean);
-      const classMap = await fetchClassNames(classIds);
+      // جمع جميع classIds من جميع الطلاب
+      const allClassIds = studentsList.flatMap(s => s.classIds || []);
+      const classMap = await fetchClassNames(allClassIds);
       studentsList = studentsList.map(s => ({
         ...s,
-        classes: s.classId ? { name: classMap[s.classId] || null } : null
+        classes: (s.classIds || []).map(id => ({ id, name: classMap[id] || null })).filter(c => c.name)
       }));
       setStudents(studentsList);
 
@@ -1496,11 +1486,11 @@ const TeacherPanel = ({ user, onLogout }) => {
       );
       const pendingSnapshot = await getDocs(pendingQuery);
       let pendingList = pendingSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const pendingClassIds = pendingList.map(s => s.classId).filter(Boolean);
+      const pendingClassIds = pendingList.flatMap(s => s.classIds || []);
       const pendingClassMap = await fetchClassNames(pendingClassIds);
       pendingList = pendingList.map(s => ({
         ...s,
-        classes: s.classId ? { name: pendingClassMap[s.classId] || null } : null
+        classes: (s.classIds || []).map(id => ({ id, name: pendingClassMap[id] || null })).filter(c => c.name)
       }));
       setPendingReviews(pendingList);
 
@@ -1521,18 +1511,17 @@ const TeacherPanel = ({ user, onLogout }) => {
         const data = docSnap.data();
         setLessonTime(data.lessonTime || '');
         setHomeworks(data.homeworks || []);
-        setTeacherMaterials(data.materials || []);
       }
     });
 
     const studentsQuery = query(collection(db, 'profiles'), where('role', '==', 'student'));
     const unsubscribeStudents = onSnapshot(studentsQuery, async (snapshot) => {
       let studentsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const classIds = studentsList.map(s => s.classId).filter(Boolean);
-      const classMap = await fetchClassNames(classIds);
+      const allClassIds = studentsList.flatMap(s => s.classIds || []);
+      const classMap = await fetchClassNames(allClassIds);
       studentsList = studentsList.map(s => ({
         ...s,
-        classes: s.classId ? { name: classMap[s.classId] || null } : null
+        classes: (s.classIds || []).map(id => ({ id, name: classMap[id] || null })).filter(c => c.name)
       }));
       setStudents(studentsList);
     });
@@ -1550,11 +1539,11 @@ const TeacherPanel = ({ user, onLogout }) => {
     );
     const unsubscribePending = onSnapshot(pendingQuery, async (snapshot) => {
       let pendingList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const classIds = pendingList.map(s => s.classId).filter(Boolean);
-      const classMap = await fetchClassNames(classIds);
+      const pendingClassIds = pendingList.flatMap(s => s.classIds || []);
+      const pendingClassMap = await fetchClassNames(pendingClassIds);
       pendingList = pendingList.map(s => ({
         ...s,
-        classes: s.classId ? { name: classMap[s.classId] || null } : null
+        classes: (s.classIds || []).map(id => ({ id, name: pendingClassMap[id] || null })).filter(c => c.name)
       }));
       setPendingReviews(pendingList);
     });
@@ -1580,7 +1569,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       return;
     }
     const studentName = student.name || '';
-    const studentClass = student.classes?.name || 'غير محدد';
+    const studentClass = student.classes?.map(c => c.name).join(', ') || 'غير محدد';
     const studentAge = student.age || 'غير محدد';
     const studentGender = student.gender || 'غير محدد';
     const message = encodeURIComponent(
@@ -1615,7 +1604,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       return;
     }
     const studentName = student.name || '';
-    const studentClass = student.classes?.name || 'غير محدد';
+    const studentClass = student.classes?.map(c => c.name).join(', ') || 'غير محدد';
     const message = encodeURIComponent(
       `الموضوع: إشعار بشأن حساب الطالب في منصة "اقرأ وارتق"\n\n` +
       `عزيزي ولي أمر الطالب/ة ${studentName} المحترم،\n` +
@@ -1666,7 +1655,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
   };
 
-  // دالة إرسال الرسالة العامة مع المادة المستخرجة من شعبة الطالب
   const sendGeneralMessage = (student) => {
     if (!student) {
       toast.error('يرجى اختيار طالب.');
@@ -1683,8 +1671,8 @@ const TeacherPanel = ({ user, onLogout }) => {
       return;
     }
     const studentName = student.name || '';
-    // جلب المادة من بيانات الشعبة (إذا وجدت)
-    const material = student.classes?.name || 'غير محدد';
+    // المادة: نأخذ اسم أول شعبة في القائمة
+    const material = student.classes?.length > 0 ? student.classes[0].name : 'غير محدد';
     const subject = generalMessageSubject.trim() || 'إشعار رسمي';
     const body = generalMessageText.trim() || '(نص الرسالة)';
     const dateNow = new Date().toLocaleDateString('ar-EG', { timeZone: 'Asia/Amman' });
@@ -1709,42 +1697,26 @@ const TeacherPanel = ({ user, onLogout }) => {
     setSelectedStudentForMessage(null);
   };
 
-  // ===== إدارة المواد =====
-  const handleAddMaterial = async () => {
-    const name = newMaterialName.trim();
-    if (!name) {
-      toast.error('يرجى إدخال اسم المادة');
-      return;
-    }
-    if (teacherMaterials.includes(name)) {
-      toast.error('هذه المادة موجودة بالفعل');
-      return;
-    }
-    try {
-      const teacherRef = doc(db, 'teachers', user.id);
-      await updateDoc(teacherRef, {
-        materials: arrayUnion(name),
-        updatedAt: serverTimestamp()
-      });
-      setNewMaterialName('');
-      toast.success('تم إضافة المادة بنجاح');
-    } catch (err) {
-      toast.error('فشل إضافة المادة: ' + err.message);
-    }
+  // ===== إدارة شعب الطالب =====
+  const openManageClasses = (student) => {
+    setSelectedStudentForClasses(student);
+    setSelectedClassIds(student.classIds || []);
+    setShowManageClassesModal(true);
   };
 
-  const handleRemoveMaterial = async (material) => {
-    const ok = await confirm('حذف مادة', `هل أنت متأكد من حذف المادة "${material}"؟`);
-    if (!ok) return;
+  const saveStudentClasses = async () => {
+    if (!selectedStudentForClasses) return;
     try {
-      const teacherRef = doc(db, 'teachers', user.id);
-      await updateDoc(teacherRef, {
-        materials: arrayRemove(material),
+      await updateDoc(doc(db, 'profiles', selectedStudentForClasses.id), {
+        classIds: selectedClassIds,
         updatedAt: serverTimestamp()
       });
-      toast.success('تم حذف المادة');
+      toast.success('تم تحديث شعب الطالب بنجاح');
+      setShowManageClassesModal(false);
+      setSelectedStudentForClasses(null);
+      setSelectedClassIds([]);
     } catch (err) {
-      toast.error('فشل حذف المادة: ' + err.message);
+      toast.error('فشل تحديث الشعب: ' + err.message);
     }
   };
 
@@ -1770,16 +1742,14 @@ const TeacherPanel = ({ user, onLogout }) => {
         const docSnap = await getDoc(doc(db, 'profiles', studentId));
         if (docSnap.exists()) {
           const studentData = docSnap.data();
-          let className = 'غير محدد';
-          if (studentData.classId) {
-            const classSnap = await getDoc(doc(db, 'classes', studentData.classId));
-            if (classSnap.exists()) {
-              className = classSnap.data().name;
-            }
+          let classNames = [];
+          if (studentData.classIds) {
+            const classMap = await fetchClassNames(studentData.classIds);
+            classNames = studentData.classIds.map(id => classMap[id] || null).filter(Boolean);
           }
           const studentObj = {
             ...studentData,
-            classes: { name: className }
+            classes: classNames.map(name => ({ name }))
           };
           sendResetPasswordMessage(studentObj);
         }
@@ -1951,19 +1921,22 @@ const TeacherPanel = ({ user, onLogout }) => {
 
   const handleAddStudent = async (e) => {
     e.preventDefault();
-    if (!newStudentName || !newStudentGender || !newStudentAge || !newStudentPhone || !newStudentClass) {
-      toast.error('جميع الحقول مطلوبة');
+    if (!newStudentName || !newStudentGender || !newStudentAge || !newStudentPhone || newStudentClassIds.length === 0) {
+      toast.error('جميع الحقول مطلوبة واختيار شعبة واحدة على الأقل');
       return;
     }
 
     setStudentLoading(true);
     try {
-      const classRef = doc(db, 'classes', newStudentClass);
-      const classSnap = await getDoc(classRef);
-      if (!classSnap.exists()) {
-        toast.error('الشعبة المختارة غير صالحة. يرجى تحديث الصفحة والمحاولة مرة أخرى.');
-        setStudentLoading(false);
-        return;
+      // التحقق من صحة الشعب المختارة
+      for (const classId of newStudentClassIds) {
+        const classRef = doc(db, 'classes', classId);
+        const classSnap = await getDoc(classRef);
+        if (!classSnap.exists()) {
+          toast.error('إحدى الشعب المختارة غير صالحة. يرجى تحديث الصفحة والمحاولة مرة أخرى.');
+          setStudentLoading(false);
+          return;
+        }
       }
 
       const newId = generateId();
@@ -2005,7 +1978,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         gender: newStudentGender,
         age: ageNum,
         phone: cleanPhone,
-        classId: newStudentClass,
+        classIds: newStudentClassIds,
         role: 'student',
         isFrozen: false,
         infoVerified: false,
@@ -2015,14 +1988,16 @@ const TeacherPanel = ({ user, onLogout }) => {
         updatedAt: serverTimestamp()
       });
 
-      const classObj = classes.find(c => c.id === newStudentClass);
+      // جلب أسماء الشعب المختارة
+      const classMap = await fetchClassNames(newStudentClassIds);
+      const classNames = newStudentClassIds.map(id => classMap[id] || null).filter(Boolean);
       const addedStudent = {
         name: newStudentName.trim(),
         gender: newStudentGender,
         age: ageNum,
         phone: cleanPhone,
-        classId: newStudentClass,
-        classes: { name: classObj ? classObj.name : 'غير محدد' }
+        classIds: newStudentClassIds,
+        classes: classNames.map(name => ({ name }))
       };
 
       setNewlyAddedStudent(addedStudent);
@@ -2032,7 +2007,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       setNewStudentGender('');
       setNewStudentAge('');
       setNewStudentPhone('');
-      setNewStudentClass('');
+      setNewStudentClassIds([]);
       setShowAddStudentModal(false);
     } catch (err) {
       console.error('Error adding student:', err);
@@ -2089,7 +2064,7 @@ const TeacherPanel = ({ user, onLogout }) => {
                     <div>
                       <p className="text-white font-medium">{student.name || student.username}</p>
                       <p className="text-xs text-gray-400">اسم المستخدم: {student.username}</p>
-                      {student.classes && <p className="text-xs text-blue-300">الشعبة: {student.classes.name}</p>}
+                      {student.classes && <p className="text-xs text-blue-300">الشعب: {student.classes.map(c => c.name).join(', ')}</p>}
                       <div className="mt-1 text-xs text-gray-300 bg-yellow-950/30 p-2 rounded border border-yellow-500/10">
                         <p className="font-semibold text-yellow-200">التغييرات المطلوبة:</p>
                         {student.pendingChanges?.name && <p>الاسم: {student.pendingChanges.name}</p>}
@@ -2157,7 +2132,6 @@ const TeacherPanel = ({ user, onLogout }) => {
             <div className="flex flex-wrap gap-2">
               <button onClick={() => setShowAddStudentModal(true)} type="button" className="btn-primary bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 py-2 px-4 text-sm rounded-md text-white">+ إضافة طالب</button>
               <button onClick={() => setShowStudentsModal(true)} type="button" className="btn-primary bg-purple-600 hover:bg-purple-700 py-2 px-4 text-sm rounded-md text-white">📋 عرض قوائم الطلبة</button>
-              <button onClick={() => setShowManageMaterialsModal(true)} type="button" className="btn-primary bg-green-600 hover:bg-green-700 py-2 px-4 text-sm rounded-md text-white">📚 إدارة المواد</button>
             </div>
           </div>
         </div>
@@ -2180,32 +2154,39 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       </div>
 
-      {/* ===== مودال إدارة المواد ===== */}
-      {showManageMaterialsModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowManageMaterialsModal(false)}>
+      {/* ===== مودال إدارة شعب الطالب ===== */}
+      {showManageClassesModal && selectedStudentForClasses && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowManageClassesModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-semibold text-green-300 mb-4">إدارة المواد</h3>
+            <h3 className="text-xl font-semibold text-blue-300 mb-4">إدارة شعب الطالب: {selectedStudentForClasses.name}</h3>
             <div className="space-y-3">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  className="bg-gray-800 flex-1 text-right p-2 border border-gray-600 rounded-md text-white"
-                  placeholder="اسم المادة الجديدة"
-                  value={newMaterialName}
-                  onChange={(e) => setNewMaterialName(e.target.value)}
-                />
-                <button onClick={handleAddMaterial} className="btn-primary bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-white">إضافة</button>
+              <div>
+                <label className="text-sm text-gray-300 block mb-2">اختر الشعب</label>
+                <select
+                  multiple
+                  className="bg-gray-800 w-full h-32 text-right p-2 border border-gray-600 rounded-md text-white"
+                  value={selectedClassIds}
+                  onChange={(e) => {
+                    const options = e.target.options;
+                    const selected = [];
+                    for (let i = 0; i < options.length; i++) {
+                      if (options[i].selected) {
+                        selected.push(options[i].value);
+                      }
+                    }
+                    setSelectedClassIds(selected);
+                  }}
+                >
+                  {classes.map(cls => (
+                    <option key={cls.id} value={cls.id}>{cls.name}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-400 mt-1">اضغط Ctrl (أو ⌘) لاختيار عدة شعب</p>
               </div>
-              <div className="max-h-60 overflow-y-auto space-y-2">
-                {teacherMaterials.map((mat, idx) => (
-                  <div key={idx} className="flex justify-between items-center p-2 bg-black/30 rounded-xl border border-gray-700">
-                    <span className="text-white">{mat}</span>
-                    <button onClick={() => handleRemoveMaterial(mat)} className="text-red-400 hover:text-red-300 text-sm">✕</button>
-                  </div>
-                ))}
-                {teacherMaterials.length === 0 && <p className="text-gray-400 text-center">لا توجد مواد مسجلة</p>}
+              <div className="flex gap-3">
+                <button onClick={saveStudentClasses} className="btn-primary bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-md text-white">حفظ</button>
+                <button onClick={() => setShowManageClassesModal(false)} className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-md text-white">إلغاء</button>
               </div>
-              <button onClick={() => setShowManageMaterialsModal(false)} className="btn-primary bg-gray-600 hover:bg-gray-700 w-full py-2 rounded-md text-white">إغلاق</button>
             </div>
           </div>
         </div>
@@ -2280,7 +2261,7 @@ const TeacherPanel = ({ user, onLogout }) => {
                     <div className="flex items-center gap-3 flex-wrap">
                       <span className="text-white text-sm font-medium">{s.name || s.username}</span>
                       <span className="text-xs text-gray-400">({s.username})</span>
-                      {s.classes && <span className="text-xs text-blue-300 bg-blue-950/40 px-2 py-0.5 rounded border border-blue-500/20">{s.classes.name}</span>}
+                      {s.classes && <span className="text-xs text-blue-300 bg-blue-950/40 px-2 py-0.5 rounded border border-blue-500/20">الشعب: {s.classes.map(c => c.name).join(', ')}</span>}
                       {s.phone && <span className="text-xs text-gray-400">📱 {s.phone}</span>}
                       {s.gender && <span className="text-xs text-gray-400">{s.gender}</span>}
                       {s.age && <span className="text-xs text-gray-400">عمر {s.age}</span>}
@@ -2308,6 +2289,13 @@ const TeacherPanel = ({ user, onLogout }) => {
                         className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-lg hover:bg-green-500/30"
                       >
                         ✉️ رسالة
+                      </button>
+                      <button
+                        onClick={() => openManageClasses(s)}
+                        type="button"
+                        className="text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-1 rounded-lg hover:bg-blue-500/30"
+                      >
+                        📚 شعب
                       </button>
                       {s.isFrozen && (
                         <button onClick={() => sendFreezeMessage(s)} type="button" className="text-xs bg-orange-500/20 text-orange-300 border border-orange-500/30 px-2 py-1 rounded-lg hover:bg-orange-500/30">🚫 تجميد</button>
@@ -2357,11 +2345,28 @@ const TeacherPanel = ({ user, onLogout }) => {
                 <input type="text" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentPhone} onChange={e => setNewStudentPhone(e.target.value)} required />
               </div>
               <div>
-                <label className="text-xs text-gray-400 block">الشعبة <span className="text-red-400">*</span></label>
-                <select className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentClass} onChange={e => setNewStudentClass(e.target.value)} required>
-                  <option value="">اختر الشعبة</option>
-                  {classes.map(cls => <option key={cls.id} value={cls.id}>{cls.name}</option>)}
+                <label className="text-xs text-gray-400 block">الشعب <span className="text-red-400">*</span></label>
+                <select
+                  multiple
+                  className="bg-gray-800 w-full h-24 text-right p-2 border border-gray-600 rounded-md text-white"
+                  value={newStudentClassIds}
+                  onChange={(e) => {
+                    const options = e.target.options;
+                    const selected = [];
+                    for (let i = 0; i < options.length; i++) {
+                      if (options[i].selected) {
+                        selected.push(options[i].value);
+                      }
+                    }
+                    setNewStudentClassIds(selected);
+                  }}
+                  required
+                >
+                  {classes.map(cls => (
+                    <option key={cls.id} value={cls.id}>{cls.name}</option>
+                  ))}
                 </select>
+                <p className="text-xs text-gray-400 mt-1">اضغط Ctrl (أو ⌘) لاختيار عدة شعب</p>
               </div>
               <button type="submit" disabled={studentLoading} className="btn-primary w-full py-3 bg-blue-600 hover:bg-blue-700 rounded-md text-white">
                 {studentLoading ? 'جاري الإضافة...' : 'إضافة الطالب'}
@@ -2383,7 +2388,7 @@ const TeacherPanel = ({ user, onLogout }) => {
                 <input
                   type="text"
                   className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white cursor-not-allowed"
-                  value={selectedStudentForMessage.classes?.name || 'غير محدد'}
+                  value={selectedStudentForMessage.classes?.length > 0 ? selectedStudentForMessage.classes[0].name : 'غير محدد'}
                   disabled
                 />
               </div>
@@ -2449,7 +2454,7 @@ const TeacherPanel = ({ user, onLogout }) => {
 };
 
 // ============================================================
-// StudentPanel
+// StudentPanel (معدل)
 // ============================================================
 const StudentPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -2486,11 +2491,9 @@ const StudentPanel = ({ user, onLogout }) => {
       const docSnap = await getDoc(doc(db, 'profiles', user.id));
       if (docSnap.exists()) {
         const data = docSnap.data();
-        if (data.classId) {
-          const classSnap = await getDoc(doc(db, 'classes', data.classId));
-          if (classSnap.exists()) {
-            data.classes = classSnap.data();
-          }
+        if (data.classIds) {
+          const classMap = await fetchClassNames(data.classIds);
+          data.classes = data.classIds.map(id => ({ id, name: classMap[id] || null })).filter(c => c.name);
         }
         setProfile(data);
         setEditData(data || {});
@@ -2498,6 +2501,22 @@ const StudentPanel = ({ user, onLogout }) => {
     } catch (err) {
       console.error(err);
     }
+  };
+
+  const fetchClassNames = async (classIds) => {
+    if (!classIds || classIds.length === 0) return {};
+    const names = {};
+    for (const id of classIds) {
+      try {
+        const docSnap = await getDoc(doc(db, 'classes', id));
+        if (docSnap.exists()) {
+          names[id] = docSnap.data().name;
+        }
+      } catch (err) {
+        console.error('Error fetching class name:', err);
+      }
+    }
+    return names;
   };
 
   useEffect(() => {
@@ -2516,21 +2535,15 @@ const StudentPanel = ({ user, onLogout }) => {
       }
     });
 
-    const unsubscribeProfile = onSnapshot(doc(db, 'profiles', user.id), (docSnap) => {
+    const unsubscribeProfile = onSnapshot(doc(db, 'profiles', user.id), async (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        if (data.classId) {
-          getDoc(doc(db, 'classes', data.classId)).then(classSnap => {
-            if (classSnap.exists()) {
-              data.classes = classSnap.data();
-            }
-            setProfile(data);
-            setEditData(data || {});
-          });
-        } else {
-          setProfile(data);
-          setEditData(data || {});
+        if (data.classIds) {
+          const classMap = await fetchClassNames(data.classIds);
+          data.classes = data.classIds.map(id => ({ id, name: classMap[id] || null })).filter(c => c.name);
         }
+        setProfile(data);
+        setEditData(data || {});
       }
     });
 
@@ -2656,7 +2669,7 @@ const StudentPanel = ({ user, onLogout }) => {
               <p><span className="text-gray-400">الجنس:</span> {profile?.gender || 'غير محدد'}</p>
               <p><span className="text-gray-400">العمر:</span> {profile?.age || 'غير محدد'}</p>
               <p><span className="text-gray-400">رقم الهاتف:</span> {profile?.phone || 'غير مسجل'}</p>
-              <p className="col-span-2"><span className="text-gray-400">الشعبة:</span> {profile?.classes?.name || 'غير محددة'}</p>
+              <p className="col-span-2"><span className="text-gray-400">الشعب:</span> {profile?.classes?.map(c => c.name).join(', ') || 'غير محددة'}</p>
               <p className="col-span-2"><span className="text-gray-400">حالة التحقق:</span> {profile?.infoVerified ? '✅ تم التحقق' : '⏳ قيد المراجعة'}</p>
             </div>
           )}
@@ -2723,23 +2736,33 @@ const App = () => {
   };
 
   const handleFrozen = async (frozenData) => {
-    let className = 'غير محدد';
-    if (frozenData.classId) {
-      try {
-        const classSnap = await getDoc(doc(db, 'classes', frozenData.classId));
-        if (classSnap.exists()) {
-          className = classSnap.data().name;
-        }
-      } catch (e) {
-        console.error('Error fetching class name for frozen user:', e);
-      }
+    let classNames = [];
+    if (frozenData.classIds) {
+      const classMap = await fetchClassNames(frozenData.classIds);
+      classNames = frozenData.classIds.map(id => classMap[id] || null).filter(Boolean);
     }
     setFrozenUser({
       ...frozenData,
-      class_name: className
+      class_name: classNames.join(', ') || 'غير محدد'
     });
     setUser(null);
     setPendingUserForComplete(null);
+  };
+
+  const fetchClassNames = async (classIds) => {
+    if (!classIds || classIds.length === 0) return {};
+    const names = {};
+    for (const id of classIds) {
+      try {
+        const docSnap = await getDoc(doc(db, 'classes', id));
+        if (docSnap.exists()) {
+          names[id] = docSnap.data().name;
+        }
+      } catch (err) {
+        console.error('Error fetching class name:', err);
+      }
+    }
+    return names;
   };
 
   const handleCompleteProfile = (userData) => {
@@ -2777,16 +2800,10 @@ const App = () => {
       const profile = docSnap.data();
 
       if (profile.isFrozen) {
-        let className = 'غير محدد';
-        if (profile.classId) {
-          try {
-            const classSnap = await getDoc(doc(db, 'classes', profile.classId));
-            if (classSnap.exists()) {
-              className = classSnap.data().name;
-            }
-          } catch (e) {
-            console.error('Error fetching class name:', e);
-          }
+        let classNames = [];
+        if (profile.classIds) {
+          const classMap = await fetchClassNames(profile.classIds);
+          classNames = profile.classIds.map(id => classMap[id] || null).filter(Boolean);
         }
         setFrozenUser({
           id: firebaseUser.uid,
@@ -2795,7 +2812,7 @@ const App = () => {
           role: profile.role,
           name: profile.name,
           phone: profile.phone,
-          class_name: className
+          class_name: classNames.join(', ') || 'غير محدد'
         });
         setUser(null);
         setPendingUserForComplete(null);
@@ -2825,7 +2842,7 @@ const App = () => {
         gender: profile.gender,
         age: profile.age,
         phone: profile.phone,
-        classId: profile.classId,
+        classIds: profile.classIds || [],
         needsPasswordChange: profile.infoVerified === false,
         isProfileComplete: true
       });
