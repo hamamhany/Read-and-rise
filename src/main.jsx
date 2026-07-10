@@ -1088,7 +1088,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
 };
 
 // ============================================================
-// TeacherPanel (معدل)
+// TeacherPanel (معدل - مع إدارة المواد وتحديد المادة في الرسالة)
 // ============================================================
 const TeacherPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -1099,18 +1099,23 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [pendingReviews, setPendingReviews] = useState([]);
+  const [teacherMaterials, setTeacherMaterials] = useState([]); // قائمة المواد
 
   // حالات المودالات
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
   const [showStudentsModal, setShowStudentsModal] = useState(false);
   const [showAssignmentModal, setShowAssignmentModal] = useState(false);
   const [showLessonModal, setShowLessonModal] = useState(false);
+  const [showManageMaterialsModal, setShowManageMaterialsModal] = useState(false);
 
   // حالات مودال الرسالة العامة (للطالب المختار)
   const [showGeneralMessageModal, setShowGeneralMessageModal] = useState(false);
-  const [generalMessageSubject, setGeneralMessageSubject] = useState('');
+  const [generalMessageMaterial, setGeneralMessageMaterial] = useState('');
   const [generalMessageText, setGeneralMessageText] = useState('');
-  const [selectedStudentForMessage, setSelectedStudentForMessage] = useState(null); // الطالب المختار
+  const [selectedStudentForMessage, setSelectedStudentForMessage] = useState(null);
+
+  // حالات إدارة المواد
+  const [newMaterialName, setNewMaterialName] = useState('');
 
   const [newStudentName, setNewStudentName] = useState('');
   const [newStudentGender, setNewStudentGender] = useState('');
@@ -1156,6 +1161,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         await setDoc(teacherRef, {
           lessonTime: null,
           homeworks: [],
+          materials: ['الرياضيات', 'العلوم', 'اللغة العربية'], // مواد افتراضية
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
@@ -1165,6 +1171,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       const teacherData = teacherDoc.data();
       setLessonTime(teacherData.lessonTime || '');
       setHomeworks(teacherData.homeworks || []);
+      setTeacherMaterials(teacherData.materials || []);
 
       const studentsQuery = query(collection(db, 'profiles'), where('role', '==', 'student'));
       const studentsSnapshot = await getDocs(studentsQuery);
@@ -1229,6 +1236,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         const data = docSnap.data();
         setLessonTime(data.lessonTime || '');
         setHomeworks(data.homeworks || []);
+        setTeacherMaterials(data.materials || []);
       }
     });
 
@@ -1373,7 +1381,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
   };
 
-  // دالة إرسال الرسالة العامة (تستخدم للطالب المختار)
+  // دالة إرسال الرسالة العامة مع تحديد المادة
   const sendGeneralMessage = (student) => {
     if (!student) {
       toast.error('يرجى اختيار طالب.');
@@ -1390,14 +1398,14 @@ const TeacherPanel = ({ user, onLogout }) => {
       return;
     }
     const studentName = student.name || '';
-    const subject = generalMessageSubject.trim() || 'إشعار رسمي من منصة الفرسان التقنيين';
+    const material = generalMessageMaterial.trim() || 'غير محدد';
     const body = generalMessageText.trim() || '(نص الرسالة)';
     const dateNow = new Date().toLocaleDateString('ar-EG', { timeZone: 'Asia/Amman' });
     const fullMessage = encodeURIComponent(
       `السلام عليكم ورحمة الله وبركاته\n` +
-      `الموضوع : [ ${subject} ]\n` +
+      `الموضوع : [ ${material} ]\n` +
       `المعلم: همام هاني محمد علي\n` +
-      `المادة: [ يحددها المعلم ]\n` +
+      `المادة: ${material}\n` +
       `التاريخ: ${dateNow}\n\n` +
       `عزيزي الطالب/ة ${studentName}،\n` +
       `${body}\n\n` +
@@ -1409,9 +1417,48 @@ const TeacherPanel = ({ user, onLogout }) => {
     );
     window.open(`https://wa.me/${cleanedPhone}?text=${fullMessage}`, '_blank');
     setShowGeneralMessageModal(false);
-    setGeneralMessageSubject('');
+    setGeneralMessageMaterial('');
     setGeneralMessageText('');
     setSelectedStudentForMessage(null);
+  };
+
+  // ===== إدارة المواد =====
+  const handleAddMaterial = async () => {
+    const name = newMaterialName.trim();
+    if (!name) {
+      toast.error('يرجى إدخال اسم المادة');
+      return;
+    }
+    if (teacherMaterials.includes(name)) {
+      toast.error('هذه المادة موجودة بالفعل');
+      return;
+    }
+    try {
+      const teacherRef = doc(db, 'teachers', user.id);
+      await updateDoc(teacherRef, {
+        materials: arrayUnion(name),
+        updatedAt: serverTimestamp()
+      });
+      setNewMaterialName('');
+      toast.success('تم إضافة المادة بنجاح');
+    } catch (err) {
+      toast.error('فشل إضافة المادة: ' + err.message);
+    }
+  };
+
+  const handleRemoveMaterial = async (material) => {
+    const ok = await confirm('حذف مادة', `هل أنت متأكد من حذف المادة "${material}"؟`);
+    if (!ok) return;
+    try {
+      const teacherRef = doc(db, 'teachers', user.id);
+      await updateDoc(teacherRef, {
+        materials: arrayRemove(material),
+        updatedAt: serverTimestamp()
+      });
+      toast.success('تم حذف المادة');
+    } catch (err) {
+      toast.error('فشل حذف المادة: ' + err.message);
+    }
   };
 
   const handleResetStudent = async (studentId) => {
@@ -1737,7 +1784,11 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
           <div className="glass p-6 rounded-2xl border border-white/5">
             <h3 className="text-lg font-semibold text-purple-200 mb-2">الوقت المتبقي للحصة</h3>
-            {lessonTime ? <CountdownTimer targetDate={lessonTime} /> : <p className="text-gray-400 text-center py-2">لم يتم تحديد موعد</p>}
+            {lessonTime ? (
+              <CountdownTimer key={lessonTime} targetDate={lessonTime} />
+            ) : (
+              <p className="text-gray-400 text-center py-2">لم يتم تحديد موعد</p>
+            )}
           </div>
         </div>
 
@@ -1819,6 +1870,7 @@ const TeacherPanel = ({ user, onLogout }) => {
             <div className="flex flex-wrap gap-2">
               <button onClick={() => setShowAddStudentModal(true)} type="button" className="btn-primary bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 py-2 px-4 text-sm">+ إضافة طالب</button>
               <button onClick={() => setShowStudentsModal(true)} type="button" className="btn-primary bg-purple-600 hover:bg-purple-700 py-2 px-4 text-sm">📋 عرض قوائم الطلبة</button>
+              <button onClick={() => setShowManageMaterialsModal(true)} type="button" className="btn-primary bg-green-600 hover:bg-green-700 py-2 px-4 text-sm">📚 إدارة المواد</button>
             </div>
           </div>
         </div>
@@ -1840,6 +1892,37 @@ const TeacherPanel = ({ user, onLogout }) => {
           )}
         </div>
       </div>
+
+      {/* ===== مودال إدارة المواد ===== */}
+      {showManageMaterialsModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowManageMaterialsModal(false)}>
+          <div className="glass p-6 rounded-3xl max-w-md w-full border border-white/20" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-semibold text-green-300 mb-4">إدارة المواد</h3>
+            <div className="space-y-3">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  className="input-glass flex-1 text-right"
+                  placeholder="اسم المادة الجديدة"
+                  value={newMaterialName}
+                  onChange={(e) => setNewMaterialName(e.target.value)}
+                />
+                <button onClick={handleAddMaterial} className="btn-primary bg-blue-600 hover:bg-blue-700 px-4 py-2">إضافة</button>
+              </div>
+              <div className="max-h-60 overflow-y-auto space-y-2">
+                {teacherMaterials.map((mat, idx) => (
+                  <div key={idx} className="flex justify-between items-center p-2 bg-black/30 rounded-xl border border-white/5">
+                    <span className="text-white">{mat}</span>
+                    <button onClick={() => handleRemoveMaterial(mat)} className="text-red-400 hover:text-red-300 text-sm">✕</button>
+                  </div>
+                ))}
+                {teacherMaterials.length === 0 && <p className="text-gray-400 text-center">لا توجد مواد مسجلة</p>}
+              </div>
+              <button onClick={() => setShowManageMaterialsModal(false)} className="btn-primary bg-gray-600 hover:bg-gray-700 w-full py-2">إغلاق</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ===== مودالات إجبارية ===== */}
       {showAddNotificationModal && newlyAddedStudent && (
@@ -1927,11 +2010,10 @@ const TeacherPanel = ({ user, onLogout }) => {
                       {!hasAccount && <span className="text-xs text-yellow-400 bg-yellow-950/40 px-2 py-0.5 rounded border border-yellow-500/30">⚠️ لم يتم التفعيل بعد</span>}
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      {/* زر رسالة عامة بجانب كل طالب */}
                       <button
                         onClick={() => {
                           setSelectedStudentForMessage(s);
-                          setGeneralMessageSubject('');
+                          setGeneralMessageMaterial('');
                           setGeneralMessageText('');
                           setShowGeneralMessageModal(true);
                         }}
@@ -2003,7 +2085,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال الرسالة العامة (لطالب محدد) ===== */}
+      {/* ===== مودال الرسالة العامة (مع اختيار المادة) ===== */}
       {showGeneralMessageModal && selectedStudentForMessage && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowGeneralMessageModal(false)}>
           <div className="glass p-6 rounded-3xl max-w-lg w-full border border-white/20" onClick={(e) => e.stopPropagation()}>
@@ -2011,13 +2093,16 @@ const TeacherPanel = ({ user, onLogout }) => {
             <div className="space-y-4">
               <div>
                 <label className="text-sm text-gray-300 block">المادة</label>
-                <input
-                  type="text"
+                <select
                   className="input-glass w-full text-right"
-                  placeholder="مثلاً: تطوير البرمجيات"
-                  value={generalMessageSubject}
-                  onChange={(e) => setGeneralMessageSubject(e.target.value)}
-                />
+                  value={generalMessageMaterial}
+                  onChange={(e) => setGeneralMessageMaterial(e.target.value)}
+                >
+                  <option value="">اختر المادة</option>
+                  {teacherMaterials.map((mat, idx) => (
+                    <option key={idx} value={mat}>{mat}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="text-sm text-gray-300 block">نص الرسالة</label>
@@ -2039,7 +2124,7 @@ const TeacherPanel = ({ user, onLogout }) => {
                   onClick={() => {
                     setShowGeneralMessageModal(false);
                     setSelectedStudentForMessage(null);
-                    setGeneralMessageSubject('');
+                    setGeneralMessageMaterial('');
                     setGeneralMessageText('');
                   }}
                   className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2"
@@ -2289,7 +2374,7 @@ const StudentPanel = ({ user, onLogout }) => {
 
         <div className="glass-glow p-6 rounded-2xl border border-blue-500/20">
           <h3 className="text-xl font-semibold mb-4 text-blue-200">الوقت المتبقي لحصتك القادمة</h3>
-          {teacherData?.lessonTime ? <CountdownTimer targetDate={teacherData.lessonTime} /> : <p className="text-gray-400 text-center py-2">لا توجد حصة مجدولة</p>}
+          {teacherData?.lessonTime ? <CountdownTimer key={teacherData.lessonTime} targetDate={teacherData.lessonTime} /> : <p className="text-gray-400 text-center py-2">لا توجد حصة مجدولة</p>}
         </div>
 
         <div className="glass p-6 rounded-2xl border border-white/5 space-y-3">
