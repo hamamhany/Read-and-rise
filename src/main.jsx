@@ -41,10 +41,10 @@ const generateId = () => {
 // ============================================================
 // 1. مكوّن إضافة الواجب / جدولة الحصة (مودال موحد)
 // ============================================================
-const AddAssignmentModal = ({ 
-  isOpen, 
-  onClose, 
-  onSubmit, 
+const AddAssignmentModal = ({
+  isOpen,
+  onClose,
+  onSubmit,
   mode = 'homework',   // 'homework' أو 'lesson'
   classesList = []     // قائمة الشعب من Firestore
 }) => {
@@ -106,8 +106,8 @@ const AddAssignmentModal = ({
 
     const isSameDay = (d1, d2) => {
       return d1 && d2 && d1.getFullYear() === d2.getFullYear() &&
-             d1.getMonth() === d2.getMonth() &&
-             d1.getDate() === d2.getDate();
+        d1.getMonth() === d2.getMonth() &&
+        d1.getDate() === d2.getDate();
     };
 
     return (
@@ -120,7 +120,7 @@ const AddAssignmentModal = ({
           <button onClick={goNextMonth} className="text-xl px-2 hover:bg-white/20 rounded">›</button>
         </div>
         <div className="grid grid-cols-7 gap-1 text-center font-semibold text-sm text-gray-300">
-          {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => <div key={d}>{d}</div>)}
+          {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => <div key={d}>{d}</div>)}
         </div>
         <div className="grid grid-cols-7 gap-1 mt-1">
           {days.map((day, idx) => (
@@ -142,7 +142,7 @@ const AddAssignmentModal = ({
     );
   };
 
-  // ----- مكوّن الساعة الدائرية الداخلي -----
+  // ----- مكوّن الساعة الدائرية الداخلي (معدل) -----
   const ClockPicker = ({ time, onTimeChange }) => {
     const svgRef = useRef(null);
     const radius = 120;
@@ -239,7 +239,7 @@ const AddAssignmentModal = ({
             const x = center + radius * 0.72 * Math.sin(angle);
             const y = center - radius * 0.72 * Math.cos(angle);
             return (
-              <text key={i} x={x} y={y+5} textAnchor="middle" fontSize="14" fill="#fff" fontWeight="bold">
+              <text key={i} x={x} y={y + 5} textAnchor="middle" fontSize="14" fill="#fff" fontWeight="bold">
                 {num}
               </text>
             );
@@ -250,29 +250,49 @@ const AddAssignmentModal = ({
           <div className="flex flex-col items-center">
             <label className="text-sm font-medium text-gray-300">ساعات</label>
             <input
-              type="number" min="1" max="12"
-              value={time.hours}
+              type="text"
+              maxLength="2"
+              value={time.hours.toString().padStart(2, '0')}
               onChange={(e) => {
-                let val = parseInt(e.target.value) || 0;
+                let val = parseInt(e.target.value);
+                if (e.target.value === '') {
+                  // إذا كان فارغاً نضعه 1
+                  onTimeChange({ ...time, hours: 1 });
+                  return;
+                }
+                if (isNaN(val)) {
+                  // إذا كانت قيمة غير رقمية نضعه 1
+                  onTimeChange({ ...time, hours: 1 });
+                  return;
+                }
                 if (val < 1) val = 1;
                 if (val > 12) val = 12;
                 onTimeChange({ ...time, hours: val });
               }}
-              className="w-20 px-3 py-2 border border-gray-600 rounded-md text-center bg-white/10 text-white focus:ring-2 focus:ring-blue-500"
+              className="w-20 px-3 py-2 border border-gray-600 rounded-md text-center bg-white/10 text-white focus:ring-2 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
           </div>
           <div className="flex flex-col items-center">
             <label className="text-sm font-medium text-gray-300">دقائق</label>
             <input
-              type="number" min="0" max="59"
-              value={time.minutes}
+              type="text"
+              maxLength="2"
+              value={time.minutes.toString().padStart(2, '0')}
               onChange={(e) => {
-                let val = parseInt(e.target.value) || 0;
+                let val = parseInt(e.target.value);
+                if (e.target.value === '') {
+                  onTimeChange({ ...time, minutes: 0 });
+                  return;
+                }
+                if (isNaN(val)) {
+                  onTimeChange({ ...time, minutes: 0 });
+                  return;
+                }
                 if (val < 0) val = 0;
                 if (val > 59) val = 59;
                 onTimeChange({ ...time, minutes: val });
               }}
-              className="w-20 px-3 py-2 border border-gray-600 rounded-md text-center bg-white/10 text-white focus:ring-2 focus:ring-blue-500"
+              className="w-20 px-3 py-2 border border-gray-600 rounded-md text-center bg-white/10 text-white focus:ring-2 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
           </div>
         </div>
@@ -752,7 +772,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     try {
       const qName = query(collection(db, 'profiles'), where('name', '==', name));
       const snapshot = await getDocs(qName);
-      
+
       let foundProfile = null;
       snapshot.forEach(doc => {
         const data = doc.data();
@@ -1020,7 +1040,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [showGeneralMessageModal, setShowGeneralMessageModal] = useState(false);
   const [generalMessageSubject, setGeneralMessageSubject] = useState('');
   const [generalMessageText, setGeneralMessageText] = useState('');
-  const [generalMessageTarget, setGeneralMessageTarget] = useState('all'); // 'all' or studentId
+  const [generalMessageTarget, setGeneralMessageTarget] = useState('all');
 
   const [newStudentName, setNewStudentName] = useState('');
   const [newStudentGender, setNewStudentGender] = useState('');
@@ -1185,6 +1205,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   }, [user.id]);
 
   // ===== دوال إرسال رسائل واتساب =====
+  // دالة إرسال رسالة التفعيل (تُستخدم عند إضافة طالب جديد)
   const sendActivationMessage = (student) => {
     const phone = student.phone || '';
     if (!phone) {
@@ -1220,6 +1241,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
   };
 
+  // دالة إرسال رسالة التجميد
   const sendFreezeMessage = (student) => {
     const phone = student.phone || '';
     if (!phone) {
@@ -1251,8 +1273,8 @@ const TeacherPanel = ({ user, onLogout }) => {
     window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
   };
 
-  // ===== رسالة إعادة تعيين البيانات (الرسالة الأولى المطلوبة) =====
-  const sendResetPasswordMessage = async (student) => {
+  // ===== رسالة إعادة تعيين البيانات (الرسالة المطلوبة) =====
+  const sendResetPasswordMessage = (student) => {
     const phone = student.phone || '';
     if (!phone) {
       toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
@@ -1325,6 +1347,55 @@ const TeacherPanel = ({ user, onLogout }) => {
     setGeneralMessageTarget('all');
   };
 
+  // ===== وظيفة إعادة تعيين الطالب (معدلة لترسل رسالة) =====
+  const handleResetStudent = async (studentId) => {
+    const ok = await confirm(
+      'إعادة تعيين الحساب',
+      'سيتم إعادة تعيين هذا الحساب ليصبح كأنه جديد، وسيُطلب من الطالب تغيير كلمة المرور عند تسجيل الدخول. كما سيتم إرسال رسالة إشعار لولي الأمر. هل تريد المتابعة؟'
+    );
+    if (!ok) return;
+
+    try {
+      // 1. تحديث قاعدة البيانات
+      await updateDoc(doc(db, 'profiles', studentId), {
+        infoVerified: false,
+        isFrozen: false,
+        pendingChanges: null,
+        updatedAt: serverTimestamp()
+      });
+
+      // 2. إرسال رسالة إعادة التعيين للطالب
+      const student = students.find(s => s.id === studentId);
+      if (student) {
+        sendResetPasswordMessage(student);
+      } else {
+        // محاولة جلب الطالب من قاعدة البيانات إذا لم يكن في القائمة
+        const docSnap = await getDoc(doc(db, 'profiles', studentId));
+        if (docSnap.exists()) {
+          const studentData = docSnap.data();
+          // نحتاج لاسم الشعبة إذا وجدت
+          let className = 'غير محدد';
+          if (studentData.classId) {
+            const classSnap = await getDoc(doc(db, 'classes', studentData.classId));
+            if (classSnap.exists()) {
+              className = classSnap.data().name;
+            }
+          }
+          const studentObj = {
+            ...studentData,
+            classes: { name: className }
+          };
+          sendResetPasswordMessage(studentObj);
+        }
+      }
+
+      toast.success('تم إعادة تعيين الحساب وإرسال رسالة إشعار.');
+    } catch (err) {
+      toast.error('فشل إعادة التعيين: ' + (err.message || 'خطأ غير معروف'));
+    }
+  };
+
+  // ===== باقي الدوال (قبول/رفض المراجعة، إضافة طالب، حفظ الواجب، حفظ الحصة، حذف، تجميد، إلخ) =====
   const acceptReview = async (studentId) => {
     try {
       const docRef = doc(db, 'profiles', studentId);
@@ -1512,25 +1583,6 @@ const TeacherPanel = ({ user, onLogout }) => {
       `تحياتي،`
     );
     window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
-  };
-
-  const handleResetStudent = async (studentId) => {
-    const ok = await confirm(
-      'إعادة تعيين الحساب',
-      'سيتم إعادة تعيين هذا الحساب ليصبح كأنه جديد، وسيُطلب من الطالب تغيير كلمة المرور عند تسجيل الدخول. هل تريد المتابعة؟'
-    );
-    if (!ok) return;
-    try {
-      await updateDoc(doc(db, 'profiles', studentId), {
-        infoVerified: false,
-        isFrozen: false,
-        pendingChanges: null,
-        updatedAt: serverTimestamp()
-      });
-      toast.success('تم إعادة تعيين الحساب بنجاح. سيتوجب على الطالب تغيير كلمة المرور عند تسجيل الدخول.');
-    } catch (err) {
-      toast.error('فشل إعادة التعيين: ' + (err.message || 'خطأ غير معروف'));
-    }
   };
 
   const handleDeleteStudentPermanently = async (studentId) => {
@@ -1755,7 +1807,7 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* ===== قسم جدولة موعد حصة (معدل) ===== */}
+        {/* ===== قسم جدولة موعد حصة ===== */}
         <div className="glass p-6 rounded-2xl border border-white/5 space-y-4">
           <h3 className="text-xl font-semibold text-purple-200">جدولة موعد حصة</h3>
           <button
@@ -1824,7 +1876,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال عرض الطلاب ===== */}
+      {/* ===== مودال عرض الطلاب (تم حذف زر التفعيل) ===== */}
       {showStudentsModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-40 p-4" onClick={() => setShowStudentsModal(false)}>
           <div className="glass p-6 rounded-3xl max-w-4xl w-full max-h-[80vh] overflow-y-auto border border-white/20" onClick={(e) => e.stopPropagation()}>
@@ -1851,8 +1903,7 @@ const TeacherPanel = ({ user, onLogout }) => {
                       {!hasAccount && <span className="text-xs text-yellow-400 bg-yellow-950/40 px-2 py-0.5 rounded border border-yellow-500/30">⚠️ لم يتم التفعيل بعد</span>}
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <button onClick={() => sendActivationMessage(s)} type="button" className="text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-1 rounded-lg hover:bg-blue-500/30">📩 تفعيل</button>
-                      <button onClick={() => sendResetPasswordMessage(s)} type="button" className="text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-2 py-1 rounded-lg hover:bg-yellow-500/30">🔑 إعادة تعيين</button>
+                      {/* تم حذف زر "📩 تفعيل" */}
                       {s.isFrozen && (
                         <button onClick={() => sendFreezeMessage(s)} type="button" className="text-xs bg-orange-500/20 text-orange-300 border border-orange-500/30 px-2 py-1 rounded-lg hover:bg-orange-500/30">🚫 تجميد</button>
                       )}
@@ -1959,7 +2010,6 @@ const TeacherPanel = ({ user, onLogout }) => {
                 <button
                   onClick={() => {
                     if (generalMessageTarget === 'all') {
-                      // إرسال للجميع (نرسل لكل طالب على حدة)
                       students.forEach(s => sendGeneralMessage(s));
                       setShowGeneralMessageModal(false);
                     } else {
@@ -1987,7 +2037,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال إضافة الواجب (مع الشعب الديناميكية) ===== */}
+      {/* ===== مودال إضافة الواجب ===== */}
       <AddAssignmentModal
         isOpen={showAssignmentModal}
         onClose={() => setShowAssignmentModal(false)}
@@ -1996,7 +2046,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         classesList={classes}
       />
 
-      {/* ===== مودال جدولة الحصة (بدون شعب ونص) ===== */}
+      {/* ===== مودال جدولة الحصة ===== */}
       <AddAssignmentModal
         isOpen={showLessonModal}
         onClose={() => setShowLessonModal(false)}
@@ -2435,7 +2485,7 @@ const App = () => {
     );
   }
 
-  return user.role === 'teacher' ? <TeacherPanel user={user} onLogout={handleLogout} /> : <StudentPanel user={user} onLogout={handleLogout} />;
+  return user.role === 'teacher' ? <TeacherPanel user={user} onLogout={onLogout} /> : <StudentPanel user={user} onLogout={onLogout} />;
 };
 
 // ============================================================
