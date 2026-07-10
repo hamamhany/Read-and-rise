@@ -1,9 +1,10 @@
-import './index.css'
-import React, { useState, useEffect } from 'react'
-import ReactDOM from 'react-dom/client'
+import './index.css';
+import React, { useState, useEffect, createContext, useContext } from 'react';
+import ReactDOM from 'react-dom/client';
+import toast, { Toaster } from 'react-hot-toast';
 
-// Firebase imports
-import { auth, db } from './firebase.js'
+// Firebase imports (نفس السابق)
+import { auth, db } from './firebase.js';
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -11,7 +12,7 @@ import {
   updatePassword,
   updateEmail,
   signOut
-} from 'firebase/auth'
+} from 'firebase/auth';
 import {
   doc,
   getDoc,
@@ -26,21 +27,21 @@ import {
   serverTimestamp,
   arrayUnion,
   arrayRemove
-} from 'firebase/firestore'
+} from 'firebase/firestore';
 
 // ========== Utility: generateId ==========
 const generateId = () => {
   try {
-    return crypto.randomUUID()
+    return crypto.randomUUID();
   } catch {
-    return Date.now().toString(36) + Math.random().toString(36).substr(2, 9)
+    return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
   }
-}
+};
 
 // ========== Hook: dynamic background ==========
 const useDynamicBackground = () => {
   useEffect(() => {
-    const style = document.createElement('style')
+    const style = document.createElement('style');
     style.innerHTML = `
       @keyframes logoPulseSoft {
         0% { transform: scale(1); opacity: 0.12; }
@@ -50,65 +51,65 @@ const useDynamicBackground = () => {
       .animate-logo-bg {
         animation: logoPulseSoft 6s ease-in-out infinite;
       }
-    `
-    document.head.appendChild(style)
+    `;
+    document.head.appendChild(style);
 
     const bgGradients = [
       'linear-gradient(135deg, #0f172a, #1e1b4b, #311042)',
       'linear-gradient(135deg, #090d16, #111827, #1f2937)',
       'linear-gradient(135deg, #020617, #0f172a, #1e293b)',
       'linear-gradient(135deg, #070a13, #161224, #281432)'
-    ]
-    let currentIndex = 0
+    ];
+    let currentIndex = 0;
 
-    document.body.style.background = bgGradients[currentIndex]
-    document.body.style.transition = 'background 4s ease-in-out'
+    document.body.style.background = bgGradients[currentIndex];
+    document.body.style.transition = 'background 4s ease-in-out';
 
     const interval = setInterval(() => {
-      currentIndex = (currentIndex + 1) % bgGradients.length
-      document.body.style.background = bgGradients[currentIndex]
-    }, 7000)
+      currentIndex = (currentIndex + 1) % bgGradients.length;
+      document.body.style.background = bgGradients[currentIndex];
+    }, 7000);
 
     return () => {
-      clearInterval(interval)
-      document.body.style.background = ''
-      document.body.style.transition = ''
-      document.head.removeChild(style)
-    }
-  }, [])
-}
+      clearInterval(interval);
+      document.body.style.background = '';
+      document.body.style.transition = '';
+      document.head.removeChild(style);
+    };
+  }, []);
+};
 
-// ========== CountdownTimer ==========
+// ========== CountdownTimer (نفس السابق) ==========
 const CountdownTimer = ({ targetDate }) => {
-  const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
+  const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
 
   useEffect(() => {
     const calculateTime = () => {
-      const target = new Date(targetDate).getTime()
-      const now = new Date().getTime()
-      const distance = target - now
+      const target = new Date(targetDate).getTime();
+      const now = new Date().getTime();
+      const distance = target - now;
       if (distance < 0) {
-        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 })
-        return true
+        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+        return true;
       }
       setTimeLeft({
         days: Math.floor(distance / (1000 * 60 * 60 * 24)),
         hours: Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
         minutes: Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60)),
         seconds: Math.floor((distance % (1000 * 60)) / 1000)
-      })
-      return false
-    }
+      });
+      return false;
+    };
 
-    calculateTime()
+    calculateTime();
     const interval = setInterval(() => {
-      const isEnded = calculateTime()
-      if (isEnded) clearInterval(interval)
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [targetDate])
+      const isEnded = calculateTime();
+      if (isEnded) clearInterval(interval);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [targetDate]);
 
-  const labels = { days: 'أيام', hours: 'ساعات', minutes: 'دقائق', seconds: 'ثواني' }
+  const labels = { days: 'أيام', hours: 'ساعات', minutes: 'دقائق', seconds: 'ثواني' };
 
   return (
     <div className="flex gap-4 text-center flex-wrap justify-center">
@@ -119,56 +120,117 @@ const CountdownTimer = ({ targetDate }) => {
         </div>
       ))}
     </div>
-  )
-}
+  );
+};
 
-// ========== HomeworkTextCountdown ==========
+// ========== HomeworkTextCountdown (نفس السابق) ==========
 const HomeworkTextCountdown = ({ targetDate }) => {
-  const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
-  const [isPast, setIsPast] = useState(false)
+  const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+  const [isPast, setIsPast] = useState(false);
 
   useEffect(() => {
     const calculate = () => {
-      const target = new Date(targetDate).getTime()
-      const now = new Date().getTime()
-      const distance = target - now
+      const target = new Date(targetDate).getTime();
+      const now = new Date().getTime();
+      const distance = target - now;
       if (distance <= 0) {
-        setIsPast(true)
-        return true
+        setIsPast(true);
+        return true;
       }
-      setIsPast(false)
+      setIsPast(false);
       setTimeLeft({
         days: Math.floor(distance / (1000 * 60 * 60 * 24)),
         hours: Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
         minutes: Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60)),
         seconds: Math.floor((distance % (1000 * 60)) / 1000)
-      })
-      return false
-    }
+      });
+      return false;
+    };
 
-    calculate()
+    calculate();
     const interval = setInterval(() => {
-      const ended = calculate()
-      if (ended) clearInterval(interval)
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [targetDate])
+      const ended = calculate();
+      if (ended) clearInterval(interval);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [targetDate]);
 
-  if (isPast) return null
+  if (isPast) return null;
 
   return (
     <div className="text-sm font-semibold text-pink-300 mt-2 tracking-wide bg-pink-950/30 px-4 py-2 rounded-xl inline-block border border-pink-500/20 animate-pulse">
       متبقي على إظهار الواجب : {timeLeft.days} يوم :{timeLeft.hours} ساعة :{timeLeft.minutes} دقائق :{timeLeft.seconds} ثواني
     </div>
-  )
-}
+  );
+};
 
-// ========== FrozenAccount (معدل) ==========
+// ========== Confirm Context ==========
+const ConfirmContext = createContext();
+
+export const ConfirmProvider = ({ children }) => {
+  const [state, setState] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: null,
+    onCancel: null
+  });
+
+  const showConfirm = (title, message) => {
+    return new Promise((resolve) => {
+      setState({
+        isOpen: true,
+        title,
+        message,
+        onConfirm: () => {
+          setState({ ...state, isOpen: false });
+          resolve(true);
+        },
+        onCancel: () => {
+          setState({ ...state, isOpen: false });
+          resolve(false);
+        }
+      });
+    });
+  };
+
+  return (
+    <ConfirmContext.Provider value={showConfirm}>
+      {children}
+      {state.isOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="glass p-6 rounded-2xl max-w-sm w-full border border-white/20">
+            <h3 className="text-xl font-bold text-white mb-2">{state.title}</h3>
+            <p className="text-gray-300 mb-4">{state.message}</p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={state.onCancel}
+                className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg text-white"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={state.onConfirm}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-white"
+              >
+                تأكيد
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </ConfirmContext.Provider>
+  );
+};
+
+export const useConfirm = () => useContext(ConfirmContext);
+
+// ========== FrozenAccount (معدل: استبدال alert بـ toast) ==========
 const FrozenAccount = ({ user, onLogout }) => {
-  const studentName = user?.name || user?.username || 'الطالب'
-  const studentClass = user?.class_name || 'غير محدد'
-  const studentUsername = user?.username || 'غير مسجل'
-  const studentWhatsApp = user?.phone || 'غير مسجل'
+  const studentName = user?.name || user?.username || 'الطالب';
+  const studentClass = user?.class_name || 'غير محدد';
+  const studentUsername = user?.username || 'غير مسجل';
+  const studentWhatsApp = user?.phone || 'غير مسجل';
 
   const waMessage = encodeURIComponent(
     `السلام عليكم ورحمة الله وبركاته\n` +
@@ -181,7 +243,7 @@ const FrozenAccount = ({ user, onLogout }) => {
     `الشعبة: ${studentClass}\n` +
     `رقم واتساب: ${studentWhatsApp}\n\n` +
     `شاكراً لكم تعاونكم.`
-  )
+  );
 
   return (
     <div className="container-center min-h-screen relative" dir="rtl">
@@ -211,90 +273,91 @@ const FrozenAccount = ({ user, onLogout }) => {
         </div>
       </div>
     </div>
-  )
-}
+  );
+};
 
-// ========== CompleteProfile (نسخة مبسطة للتوافق) ==========
+// ========== CompleteProfile (نفس السابق) ==========
 const CompleteProfile = ({ user, onSuccess, onCancel }) => {
   useEffect(() => {
-    alert('يرجى استخدام رابط "تسجيل الدخول لأول مرة" لإكمال حسابك.')
-    onCancel()
-  }, [onCancel])
-  return null
-}
+    toast('يرجى استخدام رابط "تسجيل الدخول لأول مرة" لإكمال حسابك.', { icon: 'ℹ️' });
+    onCancel();
+  }, [onCancel]);
+  return null;
+};
 
-// ========== Login (مع تفعيل الحساب عبر المعلومات الشخصية) ==========
+// ========== Login (معدل: استبدال alert و confirm) ==========
 const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const [activationMode, setActivationMode] = useState(false)
-  const [activationStep, setActivationStep] = useState(1)
-  const [activationProfile, setActivationProfile] = useState(null)
-  const [activationConfirmName, setActivationConfirmName] = useState('')
-  const [activationConfirmGender, setActivationConfirmGender] = useState('')
-  const [activationConfirmAge, setActivationConfirmAge] = useState('')
-  const [activationConfirmPhone, setActivationConfirmPhone] = useState('')
-  const [activationNewUsername, setActivationNewUsername] = useState('')
-  const [activationNewPassword, setActivationNewPassword] = useState('')
-  const [activationConfirmPassword, setActivationConfirmPassword] = useState('')
-  const [activationLoading, setActivationLoading] = useState(false)
-  const [activationError, setActivationError] = useState('')
+  const [activationMode, setActivationMode] = useState(false);
+  const [activationStep, setActivationStep] = useState(1);
+  const [activationProfile, setActivationProfile] = useState(null);
+  const [activationConfirmName, setActivationConfirmName] = useState('');
+  const [activationConfirmGender, setActivationConfirmGender] = useState('');
+  const [activationConfirmAge, setActivationConfirmAge] = useState('');
+  const [activationConfirmPhone, setActivationConfirmPhone] = useState('');
+  const [activationNewUsername, setActivationNewUsername] = useState('');
+  const [activationNewPassword, setActivationNewPassword] = useState('');
+  const [activationConfirmPassword, setActivationConfirmPassword] = useState('');
+  const [activationLoading, setActivationLoading] = useState(false);
+  const [activationError, setActivationError] = useState('');
 
-  // دالة تسجيل الدخول العادية
+  const confirm = useConfirm();
+
+  // دالة تسجيل الدخول العادية (نفس السابق مع تعديل الإشعارات)
   const handleAuth = async (e) => {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
+    e.preventDefault();
+    setLoading(true);
+    setError('');
 
     try {
-      const cleanUsername = username.trim().toLowerCase()
+      const cleanUsername = username.trim().toLowerCase();
       if (!cleanUsername) {
-        setError('يرجى إدخال اسم المستخدم')
-        setLoading(false)
-        return
+        setError('يرجى إدخال اسم المستخدم');
+        setLoading(false);
+        return;
       }
 
-      const q = query(collection(db, 'profiles'), where('username', '==', cleanUsername))
-      const querySnapshot = await getDocs(q)
+      const q = query(collection(db, 'profiles'), where('username', '==', cleanUsername));
+      const querySnapshot = await getDocs(q);
       if (querySnapshot.empty) {
-        setError('اسم المستخدم غير موجود. تأكد من أن المعلم قام بإضافتك.')
-        setLoading(false)
-        return
+        setError('اسم المستخدم غير موجود. تأكد من أن المعلم قام بإضافتك.');
+        setLoading(false);
+        return;
       }
 
-      const profileDoc = querySnapshot.docs[0]
-      const profileData = profileDoc.data()
-      const email = `${cleanUsername}@readandrise.com`
+      const profileDoc = querySnapshot.docs[0];
+      const profileData = profileDoc.data();
+      const email = `${cleanUsername}@readandrise.com`;
 
-      let firebaseUser = null
+      let firebaseUser = null;
       try {
-        const userCredential = await signInWithEmailAndPassword(auth, email, password)
-        firebaseUser = userCredential.user
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        firebaseUser = userCredential.user;
       } catch (loginErr) {
         if (loginErr.code === 'auth/user-not-found') {
-          setError('لم يتم إنشاء حسابك بعد. يرجى استخدام رابط "تسجيل الدخول لأول مرة" لتفعيل الحساب.')
-          setLoading(false)
-          return
+          setError('لم يتم إنشاء حسابك بعد. يرجى استخدام رابط "تسجيل الدخول لأول مرة" لتفعيل الحساب.');
+          setLoading(false);
+          return;
         } else {
-          throw loginErr
+          throw loginErr;
         }
       }
 
-      const docSnap = await getDoc(doc(db, 'profiles', firebaseUser.uid))
+      const docSnap = await getDoc(doc(db, 'profiles', firebaseUser.uid));
       if (!docSnap.exists()) {
-        setError('بياناتك غير مكتملة في النظام. يرجى التواصل مع المعلم.')
-        setLoading(false)
-        return
+        setError('بياناتك غير مكتملة في النظام. يرجى التواصل مع المعلم.');
+        setLoading(false);
+        return;
       }
 
-      const profile = docSnap.data()
+      const profile = docSnap.data();
 
       if (profile.isFrozen) {
-        // ✅ تمرير classId بدلاً من class_name الثابت
         onFrozen({
           id: firebaseUser.uid,
           email: firebaseUser.email,
@@ -302,10 +365,10 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
           role: profile.role,
           name: profile.name,
           phone: profile.phone,
-          classId: profile.classId // <-- هذا سيُستخدم لجلب الاسم في App
-        })
-        setLoading(false)
-        return
+          classId: profile.classId
+        });
+        setLoading(false);
+        return;
       }
 
       if (!profile.isProfileComplete) {
@@ -314,9 +377,9 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
           email: firebaseUser.email,
           username: profile.username || cleanUsername,
           ...profile
-        })
-        setLoading(false)
-        return
+        });
+        setLoading(false);
+        return;
       }
 
       onLogin({
@@ -331,122 +394,122 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
         classId: profile.classId,
         needsPasswordChange: profile.infoVerified === false,
         isProfileComplete: true
-      })
+      });
     } catch (err) {
-      console.error(err)
+      console.error(err);
       if (err.code === 'auth/wrong-password') {
-        setError('كلمة المرور غير صحيحة')
+        setError('كلمة المرور غير صحيحة');
       } else if (err.code === 'auth/too-many-requests') {
-        setError('تم حظر الحساب مؤقتاً بسبب كثرة المحاولات، حاول لاحقاً')
+        setError('تم حظر الحساب مؤقتاً بسبب كثرة المحاولات، حاول لاحقاً');
       } else {
-        setError(err.message || 'حدث خطأ غير متوقع.')
+        setError(err.message || 'حدث خطأ غير متوقع.');
       }
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   // دالة تفعيل الحساب - الخطوة 1
   const handleActivationStep1 = async (e) => {
-    e.preventDefault()
-    setActivationError('')
-    setActivationLoading(true)
+    e.preventDefault();
+    setActivationError('');
+    setActivationLoading(true);
 
-    const name = activationConfirmName.trim()
-    const gender = activationConfirmGender.trim()
-    const age = activationConfirmAge.trim()
-    const phone = activationConfirmPhone.trim()
+    const name = activationConfirmName.trim();
+    const gender = activationConfirmGender.trim();
+    const age = activationConfirmAge.trim();
+    const phone = activationConfirmPhone.trim();
 
     if (!name || !gender || !age || !phone) {
-      setActivationError('جميع الحقول مطلوبة')
-      setActivationLoading(false)
-      return
+      setActivationError('جميع الحقول مطلوبة');
+      setActivationLoading(false);
+      return;
     }
 
     try {
-      const qName = query(collection(db, 'profiles'), where('name', '==', name))
-      const snapshot = await getDocs(qName)
+      const qName = query(collection(db, 'profiles'), where('name', '==', name));
+      const snapshot = await getDocs(qName);
       
-      let foundProfile = null
+      let foundProfile = null;
       snapshot.forEach(doc => {
-        const data = doc.data()
+        const data = doc.data();
         if (data.gender === gender && String(data.age) === age && data.phone === phone) {
-          foundProfile = { id: doc.id, ...data }
+          foundProfile = { id: doc.id, ...data };
         }
-      })
+      });
 
       if (!foundProfile) {
-        setActivationError('لا يوجد طالب بهذه المعلومات. تأكد من دقة البيانات أو تواصل مع المعلم.')
-        setActivationLoading(false)
-        return
+        setActivationError('لا يوجد طالب بهذه المعلومات. تأكد من دقة البيانات أو تواصل مع المعلم.');
+        setActivationLoading(false);
+        return;
       }
 
       if (foundProfile.isProfileComplete) {
-        setActivationError('هذا الحساب مفعل بالفعل. يرجى تسجيل الدخول باستخدام اسم المستخدم وكلمة المرور.')
-        setActivationLoading(false)
-        return
+        setActivationError('هذا الحساب مفعل بالفعل. يرجى تسجيل الدخول باستخدام اسم المستخدم وكلمة المرور.');
+        setActivationLoading(false);
+        return;
       }
 
-      setActivationProfile(foundProfile)
-      setActivationStep(2)
-      setActivationLoading(false)
+      setActivationProfile(foundProfile);
+      setActivationStep(2);
+      setActivationLoading(false);
     } catch (err) {
-      console.error(err)
-      setActivationError('حدث خطأ أثناء البحث: ' + err.message)
-      setActivationLoading(false)
+      console.error(err);
+      setActivationError('حدث خطأ أثناء البحث: ' + err.message);
+      setActivationLoading(false);
     }
-  }
+  };
 
-  // دالة تفعيل الحساب - الخطوة 2
+  // دالة تفعيل الحساب - الخطوة 2 (معدلة: استبدال alert)
   const handleActivationStep2 = async (e) => {
-    e.preventDefault()
-    setActivationError('')
+    e.preventDefault();
+    setActivationError('');
 
-    const usernameRegex = /^[a-zA-Z0-9@._-]+$/
-    const newUsername = activationNewUsername.trim()
+    const usernameRegex = /^[a-zA-Z0-9@._-]+$/;
+    const newUsername = activationNewUsername.trim();
     if (!usernameRegex.test(newUsername)) {
-      setActivationError('اسم المستخدم يجب أن يحتوي على أحرف إنجليزية وأرقام والرموز (@ . _ -) فقط')
-      return
+      setActivationError('اسم المستخدم يجب أن يحتوي على أحرف إنجليزية وأرقام والرموز (@ . _ -) فقط');
+      return;
     }
     if (!usernameRegex.test(activationNewPassword)) {
-      setActivationError('كلمة المرور يجب أن تحتوي على أحرف إنجليزية وأرقام والرموز (@ . _ -) فقط')
-      return
+      setActivationError('كلمة المرور يجب أن تحتوي على أحرف إنجليزية وأرقام والرموز (@ . _ -) فقط');
+      return;
     }
     if (activationNewPassword !== activationConfirmPassword) {
-      setActivationError('كلمة المرور غير متطابقة مع تأكيدها')
-      return
+      setActivationError('كلمة المرور غير متطابقة مع تأكيدها');
+      return;
     }
     if (activationNewPassword.length < 6) {
-      setActivationError('كلمة المرور يجب أن تكون 6 أحرف على الأقل')
-      return
+      setActivationError('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+      return;
     }
 
-    const q = query(collection(db, 'profiles'), where('username', '==', newUsername))
-    const querySnap = await getDocs(q)
-    let exists = false
+    const q = query(collection(db, 'profiles'), where('username', '==', newUsername));
+    const querySnap = await getDocs(q);
+    let exists = false;
     querySnap.forEach(doc => {
-      if (doc.id !== activationProfile.id) exists = true
-    })
+      if (doc.id !== activationProfile.id) exists = true;
+    });
     if (exists) {
-      setActivationError('اسم المستخدم هذا مستخدم بالفعل، يرجى اختيار آخر')
-      return
+      setActivationError('اسم المستخدم هذا مستخدم بالفعل، يرجى اختيار آخر');
+      return;
     }
 
-    setActivationLoading(true)
+    setActivationLoading(true);
 
     try {
-      const email = `${newUsername}@readandrise.com`
-      const userCredential = await createUserWithEmailAndPassword(auth, email, activationNewPassword)
-      const newUid = userCredential.user.uid
+      const email = `${newUsername}@readandrise.com`;
+      const userCredential = await createUserWithEmailAndPassword(auth, email, activationNewPassword);
+      const newUid = userCredential.user.uid;
 
-      const oldDocRef = doc(db, 'profiles', activationProfile.id)
-      const oldDocSnap = await getDoc(oldDocRef)
+      const oldDocRef = doc(db, 'profiles', activationProfile.id);
+      const oldDocSnap = await getDoc(oldDocRef);
       if (!oldDocSnap.exists()) {
-        throw new Error('بيانات الملف الشخصي غير موجودة')
+        throw new Error('بيانات الملف الشخصي غير موجودة');
       }
-      const studentData = oldDocSnap.data()
+      const studentData = oldDocSnap.data();
 
-      const newDocRef = doc(db, 'profiles', newUid)
+      const newDocRef = doc(db, 'profiles', newUid);
       await setDoc(newDocRef, {
         ...studentData,
         username: newUsername,
@@ -454,35 +517,35 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
         isProfileComplete: true,
         infoVerified: true,
         updatedAt: serverTimestamp()
-      })
+      });
 
-      await deleteDoc(oldDocRef)
+      await deleteDoc(oldDocRef);
 
-      alert(`تم تفعيل حسابك بنجاح!\nاسم المستخدم: ${newUsername}\nيمكنك الآن تسجيل الدخول باستخدام اسم المستخدم وكلمة المرور.`)
-      setActivationMode(false)
-      setActivationStep(1)
-      setActivationProfile(null)
-      setActivationNewUsername('')
-      setActivationNewPassword('')
-      setActivationConfirmPassword('')
-      setActivationLoading(false)
+      toast.success(`تم تفعيل حسابك بنجاح!\nاسم المستخدم: ${newUsername}\nيمكنك الآن تسجيل الدخول باستخدام اسم المستخدم وكلمة المرور.`);
+      setActivationMode(false);
+      setActivationStep(1);
+      setActivationProfile(null);
+      setActivationNewUsername('');
+      setActivationNewPassword('');
+      setActivationConfirmPassword('');
+      setActivationLoading(false);
     } catch (err) {
-      console.error(err)
+      console.error(err);
       if (err.code === 'auth/email-already-in-use') {
-        setActivationError('البريد الإلكتروني مستخدم بالفعل. قد يكون الحساب مفعلاً مسبقاً.')
+        setActivationError('البريد الإلكتروني مستخدم بالفعل. قد يكون الحساب مفعلاً مسبقاً.');
       } else {
-        setActivationError('فشل التفعيل: ' + (err.message || 'خطأ غير معروف'))
+        setActivationError('فشل التفعيل: ' + (err.message || 'خطأ غير معروف'));
       }
-      setActivationLoading(false)
+      setActivationLoading(false);
     }
-  }
+  };
 
   const cancelActivation = () => {
-    setActivationMode(false)
-    setActivationStep(1)
-    setActivationProfile(null)
-    setActivationError('')
-  }
+    setActivationMode(false);
+    setActivationStep(1);
+    setActivationProfile(null);
+    setActivationError('');
+  };
 
   if (activationMode) {
     return (
@@ -552,7 +615,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
           </div>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -609,60 +672,61 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
         </div>
       </div>
     </div>
-  )
-}
+  );
+};
 
-// ========== TeacherPanel (مع إزالة زر إنشاء حساب) ==========
+// ========== TeacherPanel (معدل: استبدال alert/confirm) ==========
 const TeacherPanel = ({ user, onLogout }) => {
-  const [lessonTime, setLessonTime] = useState('')
-  const [homeworks, setHomeworks] = useState([])
-  const [students, setStudents] = useState([])
-  const [classes, setClasses] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [errorMsg, setErrorMsg] = useState('')
-  const [pendingReviews, setPendingReviews] = useState([])
+  const confirm = useConfirm();
+  const [lessonTime, setLessonTime] = useState('');
+  const [homeworks, setHomeworks] = useState([]);
+  const [students, setStudents] = useState([]);
+  const [classes, setClasses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [pendingReviews, setPendingReviews] = useState([]);
 
-  const [newHomeworkText, setNewHomeworkText] = useState('')
-  const [publishType, setPublishType] = useState('now')
-  const [newHomeworkRevealTime, setNewHomeworkRevealTime] = useState('')
+  const [newHomeworkText, setNewHomeworkText] = useState('');
+  const [publishType, setPublishType] = useState('now');
+  const [newHomeworkRevealTime, setNewHomeworkRevealTime] = useState('');
 
-  const [newStudentName, setNewStudentName] = useState('')
-  const [newStudentGender, setNewStudentGender] = useState('')
-  const [newStudentAge, setNewStudentAge] = useState('')
-  const [newStudentPhone, setNewStudentPhone] = useState('')
-  const [newStudentClass, setNewStudentClass] = useState('')
-  const [studentLoading, setStudentLoading] = useState(false)
+  const [newStudentName, setNewStudentName] = useState('');
+  const [newStudentGender, setNewStudentGender] = useState('');
+  const [newStudentAge, setNewStudentAge] = useState('');
+  const [newStudentPhone, setNewStudentPhone] = useState('');
+  const [newStudentClass, setNewStudentClass] = useState('');
+  const [studentLoading, setStudentLoading] = useState(false);
 
-  const [newLessonTime, setNewLessonTime] = useState('')
-  const [showAddStudentModal, setShowAddStudentModal] = useState(false)
-  const [showStudentsModal, setShowStudentsModal] = useState(false)
+  const [newLessonTime, setNewLessonTime] = useState('');
+  const [showAddStudentModal, setShowAddStudentModal] = useState(false);
+  const [showStudentsModal, setShowStudentsModal] = useState(false);
 
   const cleanPhoneNumber = (phone) => {
-    if (!phone) return ''
-    return phone.replace(/^0+/, '').replace(/[^0-9]/g, '')
-  }
+    if (!phone) return '';
+    return phone.replace(/^0+/, '').replace(/[^0-9]/g, '');
+  };
 
   const fetchClassNames = async (classIds) => {
-    if (!classIds || classIds.length === 0) return {}
-    const names = {}
+    if (!classIds || classIds.length === 0) return {};
+    const names = {};
     for (const id of classIds) {
       try {
-        const docSnap = await getDoc(doc(db, 'classes', id))
+        const docSnap = await getDoc(doc(db, 'classes', id));
         if (docSnap.exists()) {
-          names[id] = docSnap.data().name
+          names[id] = docSnap.data().name;
         }
       } catch (err) {
-        console.error('Error fetching class name:', err)
+        console.error('Error fetching class name:', err);
       }
     }
-    return names
-  }
+    return names;
+  };
 
   const fetchTeacherData = async () => {
     try {
-      const teacherId = user.id
-      const teacherRef = doc(db, 'teachers', teacherId)
-      let teacherDoc = await getDoc(teacherRef)
+      const teacherId = user.id;
+      const teacherRef = doc(db, 'teachers', teacherId);
+      let teacherDoc = await getDoc(teacherRef);
 
       if (!teacherDoc.exists()) {
         await setDoc(teacherRef, {
@@ -670,134 +734,134 @@ const TeacherPanel = ({ user, onLogout }) => {
           homeworks: [],
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
-        })
-        teacherDoc = await getDoc(teacherRef)
+        });
+        teacherDoc = await getDoc(teacherRef);
       }
 
-      const teacherData = teacherDoc.data()
-      setLessonTime(teacherData.lessonTime || '')
-      setHomeworks(teacherData.homeworks || [])
+      const teacherData = teacherDoc.data();
+      setLessonTime(teacherData.lessonTime || '');
+      setHomeworks(teacherData.homeworks || []);
 
-      const studentsQuery = query(collection(db, 'profiles'), where('role', '==', 'student'))
-      const studentsSnapshot = await getDocs(studentsQuery)
-      let studentsList = studentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+      const studentsQuery = query(collection(db, 'profiles'), where('role', '==', 'student'));
+      const studentsSnapshot = await getDocs(studentsQuery);
+      let studentsList = studentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-      const classIds = studentsList.map(s => s.classId).filter(Boolean)
-      const classMap = await fetchClassNames(classIds)
+      const classIds = studentsList.map(s => s.classId).filter(Boolean);
+      const classMap = await fetchClassNames(classIds);
       studentsList = studentsList.map(s => ({
         ...s,
         classes: s.classId ? { name: classMap[s.classId] || null } : null
-      }))
-      setStudents(studentsList)
+      }));
+      setStudents(studentsList);
 
-      const classesQuery = query(collection(db, 'classes'), where('teacherId', '==', teacherId))
-      const classesSnapshot = await getDocs(classesQuery)
-      let classesList = classesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+      const classesQuery = query(collection(db, 'classes'), where('teacherId', '==', teacherId));
+      const classesSnapshot = await getDocs(classesQuery);
+      let classesList = classesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
       if (classesList.length === 0) {
         const defaultClasses = [
           { name: 'أساسيات البرمجة', teacherId: teacherId },
           { name: 'بايثون (Python)', teacherId: teacherId }
-        ]
-        const created = []
+        ];
+        const created = [];
         for (const cls of defaultClasses) {
-          const ref = doc(collection(db, 'classes'))
-          await setDoc(ref, { ...cls, createdAt: serverTimestamp() })
-          created.push({ id: ref.id, ...cls })
+          const ref = doc(collection(db, 'classes'));
+          await setDoc(ref, { ...cls, createdAt: serverTimestamp() });
+          created.push({ id: ref.id, ...cls });
         }
-        classesList = created
+        classesList = created;
       }
-      setClasses(classesList)
+      setClasses(classesList);
 
       const pendingQuery = query(
         collection(db, 'profiles'),
         where('role', '==', 'student'),
         where('pendingChanges', '!=', null)
-      )
-      const pendingSnapshot = await getDocs(pendingQuery)
-      let pendingList = pendingSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-      const pendingClassIds = pendingList.map(s => s.classId).filter(Boolean)
-      const pendingClassMap = await fetchClassNames(pendingClassIds)
+      );
+      const pendingSnapshot = await getDocs(pendingQuery);
+      let pendingList = pendingSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const pendingClassIds = pendingList.map(s => s.classId).filter(Boolean);
+      const pendingClassMap = await fetchClassNames(pendingClassIds);
       pendingList = pendingList.map(s => ({
         ...s,
         classes: s.classId ? { name: pendingClassMap[s.classId] || null } : null
-      }))
-      setPendingReviews(pendingList)
+      }));
+      setPendingReviews(pendingList);
 
     } catch (err) {
-      console.error('Error fetching teacher data:', err)
-      setErrorMsg('فشل تحميل البيانات: ' + err.message)
+      console.error('Error fetching teacher data:', err);
+      setErrorMsg('فشل تحميل البيانات: ' + err.message);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   useEffect(() => {
-    fetchTeacherData()
+    fetchTeacherData();
 
-    const teacherRef = doc(db, 'teachers', user.id)
+    const teacherRef = doc(db, 'teachers', user.id);
     const unsubscribeTeacher = onSnapshot(teacherRef, (docSnap) => {
       if (docSnap.exists()) {
-        const data = docSnap.data()
-        setLessonTime(data.lessonTime || '')
-        setHomeworks(data.homeworks || [])
+        const data = docSnap.data();
+        setLessonTime(data.lessonTime || '');
+        setHomeworks(data.homeworks || []);
       }
-    })
+    });
 
-    const studentsQuery = query(collection(db, 'profiles'), where('role', '==', 'student'))
+    const studentsQuery = query(collection(db, 'profiles'), where('role', '==', 'student'));
     const unsubscribeStudents = onSnapshot(studentsQuery, async (snapshot) => {
-      let studentsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-      const classIds = studentsList.map(s => s.classId).filter(Boolean)
-      const classMap = await fetchClassNames(classIds)
+      let studentsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const classIds = studentsList.map(s => s.classId).filter(Boolean);
+      const classMap = await fetchClassNames(classIds);
       studentsList = studentsList.map(s => ({
         ...s,
         classes: s.classId ? { name: classMap[s.classId] || null } : null
-      }))
-      setStudents(studentsList)
-    })
+      }));
+      setStudents(studentsList);
+    });
 
-    const classesQuery = query(collection(db, 'classes'), where('teacherId', '==', user.id))
+    const classesQuery = query(collection(db, 'classes'), where('teacherId', '==', user.id));
     const unsubscribeClasses = onSnapshot(classesQuery, (snapshot) => {
-      const classesList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-      setClasses(classesList)
-    })
+      const classesList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setClasses(classesList);
+    });
 
     const pendingQuery = query(
       collection(db, 'profiles'),
       where('role', '==', 'student'),
       where('pendingChanges', '!=', null)
-    )
+    );
     const unsubscribePending = onSnapshot(pendingQuery, async (snapshot) => {
-      let pendingList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-      const classIds = pendingList.map(s => s.classId).filter(Boolean)
-      const classMap = await fetchClassNames(classIds)
+      let pendingList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const classIds = pendingList.map(s => s.classId).filter(Boolean);
+      const classMap = await fetchClassNames(classIds);
       pendingList = pendingList.map(s => ({
         ...s,
         classes: s.classId ? { name: classMap[s.classId] || null } : null
-      }))
-      setPendingReviews(pendingList)
-    })
+      }));
+      setPendingReviews(pendingList);
+    });
 
     return () => {
-      unsubscribeTeacher()
-      unsubscribeStudents()
-      unsubscribeClasses()
-      unsubscribePending()
-    }
-  }, [user.id])
+      unsubscribeTeacher();
+      unsubscribeStudents();
+      unsubscribeClasses();
+      unsubscribePending();
+    };
+  }, [user.id]);
 
   const acceptReview = async (studentId) => {
     try {
-      const docRef = doc(db, 'profiles', studentId)
-      const docSnap = await getDoc(docRef)
+      const docRef = doc(db, 'profiles', studentId);
+      const docSnap = await getDoc(docRef);
       if (!docSnap.exists()) {
-        alert('الطالب غير موجود.')
-        return
+        toast.error('الطالب غير موجود.');
+        return;
       }
-      const student = docSnap.data()
+      const student = docSnap.data();
       if (!student.pendingChanges) {
-        alert('لا توجد تغييرات معلقة لهذا الطالب.')
-        return
+        toast.error('لا توجد تغييرات معلقة لهذا الطالب.');
+        return;
       }
 
       const newData = {
@@ -808,129 +872,138 @@ const TeacherPanel = ({ user, onLogout }) => {
         infoVerified: true,
         pendingChanges: null,
         updatedAt: serverTimestamp()
-      }
+      };
 
-      await updateDoc(docRef, newData)
-      alert('تم قبول التغييرات وتحديث بيانات الطالب بنجاح.')
+      await updateDoc(docRef, newData);
+      toast.success('تم قبول التغييرات وتحديث بيانات الطالب بنجاح.');
     } catch (err) {
-      console.error('Error accepting review:', err)
-      alert('فشل قبول المراجعة: ' + (err.message || 'خطأ غير معروف'))
+      console.error('Error accepting review:', err);
+      toast.error('فشل قبول المراجعة: ' + (err.message || 'خطأ غير معروف'));
     }
-  }
+  };
 
   const rejectReview = async (studentId) => {
-    if (!window.confirm('هل أنت متأكد من رفض هذه التغييرات؟')) return
+    const ok = await confirm('رفض التغييرات', 'هل أنت متأكد من رفض هذه التغييرات؟');
+    if (!ok) return;
     try {
       await updateDoc(doc(db, 'profiles', studentId), {
         pendingChanges: null,
         updatedAt: serverTimestamp()
-      })
-      alert('تم رفض التغييرات.')
+      });
+      toast.success('تم رفض التغييرات.');
     } catch (err) {
-      console.error('Error rejecting review:', err)
-      alert('فشل رفض المراجعة: ' + (err.message || 'خطأ غير معروف'))
+      console.error('Error rejecting review:', err);
+      toast.error('فشل رفض المراجعة: ' + (err.message || 'خطأ غير معروف'));
     }
-  }
+  };
 
   const saveHomework = async () => {
-    if (!newHomeworkText.trim()) return alert('يرجى كتابة نص الواجب أولاً.')
-    const revealTime = publishType === 'now' ? new Date().toISOString() : new Date(newHomeworkRevealTime).toISOString()
+    if (!newHomeworkText.trim()) {
+      toast.error('يرجى كتابة نص الواجب أولاً.');
+      return;
+    }
+    const revealTime = publishType === 'now' ? new Date().toISOString() : new Date(newHomeworkRevealTime).toISOString();
     if (publishType === 'schedule' && !newHomeworkRevealTime) {
-      return alert('يرجى تحديد تاريخ ووقت نشر الواجب المجدول.')
+      toast.error('يرجى تحديد تاريخ ووقت نشر الواجب المجدول.');
+      return;
     }
     const newHwItem = {
       id: generateId(),
       text: newHomeworkText,
       reveal_time: revealTime,
       is_scheduled: publishType === 'schedule'
-    }
+    };
     try {
-      const teacherRef = doc(db, 'teachers', user.id)
+      const teacherRef = doc(db, 'teachers', user.id);
       await updateDoc(teacherRef, {
         homeworks: arrayUnion(newHwItem),
         updatedAt: serverTimestamp()
-      })
-      setNewHomeworkText('')
-      setNewHomeworkRevealTime('')
-      alert(publishType === 'now' ? 'تم نشر الواجب فوراً!' : 'تم جدولة الواجب بنجاح.')
+      });
+      setNewHomeworkText('');
+      setNewHomeworkRevealTime('');
+      toast.success(publishType === 'now' ? 'تم نشر الواجب فوراً!' : 'تم جدولة الواجب بنجاح.');
     } catch (err) {
-      alert('فشل حفظ الواجب: ' + err.message)
+      toast.error('فشل حفظ الواجب: ' + err.message);
     }
-  }
+  };
 
   const deleteHomework = async (hwId) => {
-    if (!window.confirm('هل تريد حذف هذا الواجب نهائياً؟')) return
+    const ok = await confirm('حذف الواجب', 'هل تريد حذف هذا الواجب نهائياً؟');
+    if (!ok) return;
     try {
-      const teacherRef = doc(db, 'teachers', user.id)
-      const docSnap = await getDoc(teacherRef)
+      const teacherRef = doc(db, 'teachers', user.id);
+      const docSnap = await getDoc(teacherRef);
       if (docSnap.exists()) {
-        const currentHomeworks = docSnap.data().homeworks || []
-        const filtered = currentHomeworks.filter(h => h.id !== hwId)
+        const currentHomeworks = docSnap.data().homeworks || [];
+        const filtered = currentHomeworks.filter(h => h.id !== hwId);
         await updateDoc(teacherRef, {
           homeworks: filtered,
           updatedAt: serverTimestamp()
-        })
+        });
+        toast.success('تم حذف الواجب.');
       }
     } catch (err) {
-      alert('فشل حذف الواجب: ' + err.message)
+      toast.error('فشل حذف الواجب: ' + err.message);
     }
-  }
+  };
 
   const toggleFreezeStudent = async (student) => {
-    const nextStatus = !student.isFrozen
+    const nextStatus = !student.isFrozen;
     if (nextStatus) {
-      const confirmFreeze = window.confirm(
+      const ok = await confirm(
+        'تجميد الحساب',
         'تنبيه هام:\nإذا قمت بتجميد هذا الحساب، سيبقى مجمداً حتى تقوم بفك التجميد يدوياً.\nهل تريد المتابعة؟'
-      )
-      if (!confirmFreeze) return
+      );
+      if (!ok) return;
     }
     try {
       await updateDoc(doc(db, 'profiles', student.id), {
         isFrozen: nextStatus,
         updatedAt: serverTimestamp()
-      })
+      });
     } catch (err) {
-      console.error('Error toggling freeze:', err)
-      alert('فشل تحديث حالة التجميد: ' + (err.message || 'خطأ غير معروف'))
+      console.error('Error toggling freeze:', err);
+      toast.error('فشل تحديث حالة التجميد: ' + (err.message || 'خطأ غير معروف'));
     }
-  }
+  };
 
   const deleteFrozenAccounts = async () => {
     try {
-      const q = query(collection(db, 'profiles'), where('isFrozen', '==', true))
-      const snapshot = await getDocs(q)
+      const q = query(collection(db, 'profiles'), where('isFrozen', '==', true));
+      const snapshot = await getDocs(q);
       if (snapshot.empty) {
-        alert('لا يوجد حسابات مجمدة.')
-        return
+        toast('لا يوجد حسابات مجمدة.', { icon: 'ℹ️' });
+        return;
       }
-      if (!window.confirm(`هل أنت متأكد من حذف ${snapshot.size} حساب مجمد نهائياً؟`)) return
+      const ok = await confirm('حذف المجمدين', `هل أنت متأكد من حذف ${snapshot.size} حساب مجمد نهائياً؟`);
+      if (!ok) return;
       for (const docSnap of snapshot.docs) {
-        await deleteDoc(doc(db, 'profiles', docSnap.id))
+        await deleteDoc(doc(db, 'profiles', docSnap.id));
       }
-      alert(`تم حذف ${snapshot.size} حساب مجمد.`)
+      toast.success(`تم حذف ${snapshot.size} حساب مجمد.`);
     } catch (err) {
-      alert('خطأ أثناء الحذف: ' + err.message)
+      toast.error('خطأ أثناء الحذف: ' + err.message);
     }
-  }
+  };
 
   const checkInactivityWarning = (lastSeenStr) => {
-    if (!lastSeenStr) return false
-    const lastSeen = new Date(lastSeenStr)
-    const diffTime = new Date().getTime() - lastSeen.getTime()
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
-    return diffDays >= 30
-  }
+    if (!lastSeenStr) return false;
+    const lastSeen = new Date(lastSeenStr);
+    const diffTime = new Date().getTime() - lastSeen.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays >= 30;
+  };
 
   const communicateWithParent = (student) => {
-    const phone = student.phone || ''
+    const phone = student.phone || '';
     if (!phone) {
-      alert('رقم الهاتف غير مسجل لهذا الطالب.')
-      return
+      toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
+      return;
     }
-    const cleanedPhone = cleanPhoneNumber(phone)
+    const cleanedPhone = cleanPhoneNumber(phone);
     if (!cleanedPhone) {
-      alert('رقم الهاتف غير صالح.')
-      return
+      toast.error('رقم الهاتف غير صالح.');
+      return;
     }
     const message = encodeURIComponent(
       `أهلاً بك،\n` +
@@ -938,97 +1011,105 @@ const TeacherPanel = ({ user, onLogout }) => {
       `أتواصل معك بخصوص [........].\n` +
       `بانتظار ردكم لمتابعة العمل.\n` +
       `تحياتي،`
-    )
-    window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank')
-  }
+    );
+    window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
+  };
 
   const handleResetStudent = async (studentId) => {
-    if (!window.confirm('سيتم إعادة تعيين هذا الحساب ليصبح كأنه جديد، وسيُطلب من الطالب تغيير كلمة المرور عند تسجيل الدخول. هل تريد المتابعة؟')) return
+    const ok = await confirm(
+      'إعادة تعيين الحساب',
+      'سيتم إعادة تعيين هذا الحساب ليصبح كأنه جديد، وسيُطلب من الطالب تغيير كلمة المرور عند تسجيل الدخول. هل تريد المتابعة؟'
+    );
+    if (!ok) return;
     try {
       await updateDoc(doc(db, 'profiles', studentId), {
         infoVerified: false,
         isFrozen: false,
         pendingChanges: null,
         updatedAt: serverTimestamp()
-      })
-      alert('تم إعادة تعيين الحساب بنجاح. سيتوجب على الطالب تغيير كلمة المرور عند تسجيل الدخول.')
+      });
+      toast.success('تم إعادة تعيين الحساب بنجاح. سيتوجب على الطالب تغيير كلمة المرور عند تسجيل الدخول.');
     } catch (err) {
-      alert('فشل إعادة التعيين: ' + (err.message || 'خطأ غير معروف'))
+      toast.error('فشل إعادة التعيين: ' + (err.message || 'خطأ غير معروف'));
     }
-  }
+  };
 
   const handleDeleteStudentPermanently = async (studentId) => {
-    if (!window.confirm('إجراء خطير: هل أنت متأكد من حذف حساب هذا الطالب نهائياً وفوراً؟')) return
+    const ok = await confirm('حذف دائم', 'إجراء خطير: هل أنت متأكد من حذف حساب هذا الطالب نهائياً وفوراً؟');
+    if (!ok) return;
     try {
-      await deleteDoc(doc(db, 'profiles', studentId))
-      alert('تم حذف الطالب من النظام.')
+      await deleteDoc(doc(db, 'profiles', studentId));
+      toast.success('تم حذف الطالب من النظام.');
     } catch (err) {
-      alert('فشل حذف الطالب: ' + err.message)
+      toast.error('فشل حذف الطالب: ' + err.message);
     }
-  }
+  };
 
   const updateLessonTime = async () => {
-    if (!newLessonTime) return alert('يرجى اختيار تاريخ ووقت الحصة أولاً.')
+    if (!newLessonTime) {
+      toast.error('يرجى اختيار تاريخ ووقت الحصة أولاً.');
+      return;
+    }
     try {
-      const isoTime = new Date(newLessonTime).toISOString()
+      const isoTime = new Date(newLessonTime).toISOString();
       await updateDoc(doc(db, 'teachers', user.id), {
         lessonTime: isoTime,
         updatedAt: serverTimestamp()
-      })
-      setNewLessonTime('')
-      alert('تم تحديث موعد الحصة القادمة بنجاح!')
+      });
+      setNewLessonTime('');
+      toast.success('تم تحديث موعد الحصة القادمة بنجاح!');
     } catch (err) {
-      alert('فشل تحديث موعد الحصة: ' + err.message)
+      toast.error('فشل تحديث موعد الحصة: ' + err.message);
     }
-  }
+  };
 
   const handleAddStudent = async (e) => {
-    e.preventDefault()
+    e.preventDefault();
     if (!newStudentName || !newStudentGender || !newStudentAge || !newStudentPhone || !newStudentClass) {
-      alert('جميع الحقول مطلوبة')
-      return
+      toast.error('جميع الحقول مطلوبة');
+      return;
     }
 
-    setStudentLoading(true)
+    setStudentLoading(true);
     try {
-      const classRef = doc(db, 'classes', newStudentClass)
-      const classSnap = await getDoc(classRef)
+      const classRef = doc(db, 'classes', newStudentClass);
+      const classSnap = await getDoc(classRef);
       if (!classSnap.exists()) {
-        alert('الشعبة المختارة غير صالحة. يرجى تحديث الصفحة والمحاولة مرة أخرى.')
-        setStudentLoading(false)
-        return
+        toast.error('الشعبة المختارة غير صالحة. يرجى تحديث الصفحة والمحاولة مرة أخرى.');
+        setStudentLoading(false);
+        return;
       }
 
-      const newId = generateId()
-      const tempEmail = `student_${newId}@temp.com`
+      const newId = generateId();
+      const tempEmail = `student_${newId}@temp.com`;
 
-      const baseUsername = newStudentName.trim().replace(/\s+/g, '.').toLowerCase()
-      let username = baseUsername
-      let counter = 1
-      let exists = true
+      const baseUsername = newStudentName.trim().replace(/\s+/g, '.').toLowerCase();
+      let username = baseUsername;
+      let counter = 1;
+      let exists = true;
       while (exists) {
-        const q = query(collection(db, 'profiles'), where('username', '==', username))
-        const querySnap = await getDocs(q)
+        const q = query(collection(db, 'profiles'), where('username', '==', username));
+        const querySnap = await getDocs(q);
         if (querySnap.empty) {
-          exists = false
+          exists = false;
         } else {
-          username = `${baseUsername}${counter}`
-          counter++
+          username = `${baseUsername}${counter}`;
+          counter++;
         }
       }
 
-      const cleanPhone = newStudentPhone.replace(/[^0-9]/g, '')
-      const ageNum = parseInt(newStudentAge)
+      const cleanPhone = newStudentPhone.replace(/[^0-9]/g, '');
+      const ageNum = parseInt(newStudentAge);
       if (isNaN(ageNum) || ageNum < 1 || ageNum > 99) {
-        alert('العمر يجب أن يكون رقماً بين 1 و 99.')
-        setStudentLoading(false)
-        return
+        toast.error('العمر يجب أن يكون رقماً بين 1 و 99.');
+        setStudentLoading(false);
+        return;
       }
 
       if (!['ذكر', 'أنثى'].includes(newStudentGender)) {
-        alert('الجنس يجب أن يكون ذكر أو أنثى.')
-        setStudentLoading(false)
-        return
+        toast.error('الجنس يجب أن يكون ذكر أو أنثى.');
+        setStudentLoading(false);
+        return;
       }
 
       await setDoc(doc(db, 'profiles', newId), {
@@ -1046,27 +1127,27 @@ const TeacherPanel = ({ user, onLogout }) => {
         pendingChanges: null,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
-      })
+      });
 
-      alert(`تم تسجيل الطالب ${newStudentName} بنجاح.\nاسم المستخدم المؤقت: ${username}\nالآن يجب على الطالب استخدام رابط "تسجيل الدخول لأول مرة" لتفعيل حسابه.`)
-      setNewStudentName('')
-      setNewStudentGender('')
-      setNewStudentAge('')
-      setNewStudentPhone('')
-      setNewStudentClass('')
-      setShowAddStudentModal(false)
+      toast.success(`تم تسجيل الطالب ${newStudentName} بنجاح.\nاسم المستخدم المؤقت: ${username}\nالآن يجب على الطالب استخدام رابط "تسجيل الدخول لأول مرة" لتفعيل حسابه.`);
+      setNewStudentName('');
+      setNewStudentGender('');
+      setNewStudentAge('');
+      setNewStudentPhone('');
+      setNewStudentClass('');
+      setShowAddStudentModal(false);
     } catch (err) {
-      console.error('Error adding student:', err)
-      alert('فشل إضافة الطالب: ' + (err.message || 'خطأ غير معروف'))
+      console.error('Error adding student:', err);
+      toast.error('فشل إضافة الطالب: ' + (err.message || 'خطأ غير معروف'));
     } finally {
-      setStudentLoading(false)
+      setStudentLoading(false);
     }
-  }
+  };
 
-  const sortedHomeworks = [...homeworks].sort((a, b) => (b.is_scheduled ? 1 : 0) - (a.is_scheduled ? 1 : 0))
-  const sortedStudents = [...students].sort((a, b) => (a.isFrozen ? 1 : 0) - (b.isFrozen ? 1 : 0))
+  const sortedHomeworks = [...homeworks].sort((a, b) => (b.is_scheduled ? 1 : 0) - (a.is_scheduled ? 1 : 0));
+  const sortedStudents = [...students].sort((a, b) => (a.isFrozen ? 1 : 0) - (b.isFrozen ? 1 : 0));
 
-  if (loading) return <div className="text-center text-gray-400 p-8">جاري التحميل...</div>
+  if (loading) return <div className="text-center text-gray-400 p-8">جاري التحميل...</div>;
 
   return (
     <div className="container-center min-h-screen p-4 relative" dir="rtl">
@@ -1154,7 +1235,7 @@ const TeacherPanel = ({ user, onLogout }) => {
           {homeworks.length > 0 && (
             <div className="mt-4 space-y-3 max-h-60 overflow-y-auto">
               {sortedHomeworks.map(hw => {
-                const isRevealed = new Date(hw.reveal_time).getTime() <= new Date().getTime()
+                const isRevealed = new Date(hw.reveal_time).getTime() <= new Date().getTime();
                 return (
                   <div key={hw.id} className="p-3 bg-black/30 rounded-xl border border-white/5 flex justify-between items-start gap-3">
                     <div className="flex-1">
@@ -1170,7 +1251,7 @@ const TeacherPanel = ({ user, onLogout }) => {
                     </div>
                     <button onClick={() => deleteHomework(hw.id)} type="button" className="p-1.5 bg-red-600/30 text-red-300 rounded-lg border border-red-500/30 hover:bg-red-600/50 text-xs">حذف</button>
                   </div>
-                )
+                );
               })}
             </div>
           )}
@@ -1205,7 +1286,7 @@ const TeacherPanel = ({ user, onLogout }) => {
             </div>
             <div className="space-y-3">
               {sortedStudents.map(s => {
-                const hasAccount = s.email && !s.email.endsWith('@temp.com')
+                const hasAccount = s.email && !s.email.endsWith('@temp.com');
                 return (
                   <div key={s.id} className={`p-3 rounded-xl border flex flex-wrap justify-between items-center gap-3 ${s.isFrozen ? 'bg-gray-900/60 border-gray-700 opacity-60' : 'bg-white/5 border-white/5'}`}>
                     <div className="flex items-center gap-3 flex-wrap">
@@ -1233,7 +1314,7 @@ const TeacherPanel = ({ user, onLogout }) => {
                       </div>
                     </div>
                   </div>
-                )
+                );
               })}
               {students.length === 0 && <p className="text-gray-400 text-center py-2">لا يوجد طلاب مسجلين.</p>}
             </div>
@@ -1282,133 +1363,134 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
     </div>
-  )
-}
+  );
+};
 
-// ========== StudentPanel (تم إزالة زر تغيير كلمة المرور) ==========
+// ========== StudentPanel (معدل: استبدال alert/confirm) ==========
 const StudentPanel = ({ user, onLogout }) => {
-  const [teacherData, setTeacherData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [errorMsg, setErrorMsg] = useState('')
-  const [availableHomeworks, setAvailableHomeworks] = useState([])
-  const [profile, setProfile] = useState(null)
-  const [editing, setEditing] = useState(false)
-  const [editData, setEditData] = useState({})
+  const confirm = useConfirm();
+  const [teacherData, setTeacherData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [availableHomeworks, setAvailableHomeworks] = useState([]);
+  const [profile, setProfile] = useState(null);
+  const [editing, setEditing] = useState(false);
+  const [editData, setEditData] = useState({});
 
   const fetchTeacherInfo = async () => {
     try {
-      const q = query(collection(db, 'teachers'))
-      const querySnapshot = await getDocs(q)
+      const q = query(collection(db, 'teachers'));
+      const querySnapshot = await getDocs(q);
       if (!querySnapshot.empty) {
-        const docSnap = querySnapshot.docs[0]
-        const data = docSnap.data()
-        setTeacherData({ id: docSnap.id, ...data })
-        const now = new Date().getTime()
-        const available = (data.homeworks || []).filter(hw => new Date(hw.reveal_time).getTime() <= now)
-        setAvailableHomeworks(available)
+        const docSnap = querySnapshot.docs[0];
+        const data = docSnap.data();
+        setTeacherData({ id: docSnap.id, ...data });
+        const now = new Date().getTime();
+        const available = (data.homeworks || []).filter(hw => new Date(hw.reveal_time).getTime() <= now);
+        setAvailableHomeworks(available);
       }
     } catch (err) {
-      console.error(err)
-      setErrorMsg('فشل تحميل بيانات الصف: ' + err.message)
+      console.error(err);
+      setErrorMsg('فشل تحميل بيانات الصف: ' + err.message);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const fetchProfile = async () => {
     try {
-      const docSnap = await getDoc(doc(db, 'profiles', user.id))
+      const docSnap = await getDoc(doc(db, 'profiles', user.id));
       if (docSnap.exists()) {
-        const data = docSnap.data()
+        const data = docSnap.data();
         if (data.classId) {
-          const classSnap = await getDoc(doc(db, 'classes', data.classId))
+          const classSnap = await getDoc(doc(db, 'classes', data.classId));
           if (classSnap.exists()) {
-            data.classes = classSnap.data()
+            data.classes = classSnap.data();
           }
         }
-        setProfile(data)
-        setEditData(data || {})
+        setProfile(data);
+        setEditData(data || {});
       }
     } catch (err) {
-      console.error(err)
+      console.error(err);
     }
-  }
+  };
 
   useEffect(() => {
-    fetchTeacherInfo()
-    fetchProfile()
+    fetchTeacherInfo();
+    fetchProfile();
 
-    const q = query(collection(db, 'teachers'))
+    const q = query(collection(db, 'teachers'));
     const unsubscribeTeacher = onSnapshot(q, (snapshot) => {
       if (!snapshot.empty) {
-        const docSnap = snapshot.docs[0]
-        const data = docSnap.data()
-        setTeacherData({ id: docSnap.id, ...data })
-        const now = new Date().getTime()
-        const available = (data.homeworks || []).filter(hw => new Date(hw.reveal_time).getTime() <= now)
-        setAvailableHomeworks(available)
+        const docSnap = snapshot.docs[0];
+        const data = docSnap.data();
+        setTeacherData({ id: docSnap.id, ...data });
+        const now = new Date().getTime();
+        const available = (data.homeworks || []).filter(hw => new Date(hw.reveal_time).getTime() <= now);
+        setAvailableHomeworks(available);
       }
-    })
+    });
 
     const unsubscribeProfile = onSnapshot(doc(db, 'profiles', user.id), (docSnap) => {
       if (docSnap.exists()) {
-        const data = docSnap.data()
+        const data = docSnap.data();
         if (data.classId) {
           getDoc(doc(db, 'classes', data.classId)).then(classSnap => {
             if (classSnap.exists()) {
-              data.classes = classSnap.data()
+              data.classes = classSnap.data();
             }
-            setProfile(data)
-            setEditData(data || {})
-          })
+            setProfile(data);
+            setEditData(data || {});
+          });
         } else {
-          setProfile(data)
-          setEditData(data || {})
+          setProfile(data);
+          setEditData(data || {});
         }
       }
-    })
+    });
 
     return () => {
-      unsubscribeTeacher()
-      unsubscribeProfile()
-    }
-  }, [user.id])
+      unsubscribeTeacher();
+      unsubscribeProfile();
+    };
+  }, [user.id]);
 
   useEffect(() => {
     const interval = setInterval(() => {
       if (teacherData?.homeworks) {
-        const now = new Date().getTime()
-        const available = teacherData.homeworks.filter(hw => new Date(hw.reveal_time).getTime() <= now)
-        setAvailableHomeworks(available)
+        const now = new Date().getTime();
+        const available = teacherData.homeworks.filter(hw => new Date(hw.reveal_time).getTime() <= now);
+        setAvailableHomeworks(available);
       }
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [teacherData?.homeworks])
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [teacherData?.homeworks]);
 
   const getNextScheduledHomework = () => {
-    if (!teacherData?.homeworks) return null
-    const now = new Date().getTime()
-    const scheduled = teacherData.homeworks.filter(hw => new Date(hw.reveal_time).getTime() > now)
-    if (scheduled.length === 0) return null
-    return scheduled.reduce((a, b) => new Date(a.reveal_time).getTime() < new Date(b.reveal_time).getTime() ? a : b)
-  }
+    if (!teacherData?.homeworks) return null;
+    const now = new Date().getTime();
+    const scheduled = teacherData.homeworks.filter(hw => new Date(hw.reveal_time).getTime() > now);
+    if (scheduled.length === 0) return null;
+    return scheduled.reduce((a, b) => new Date(a.reveal_time).getTime() < new Date(b.reveal_time).getTime() ? a : b);
+  };
 
-  const nextScheduled = getNextScheduledHomework()
+  const nextScheduled = getNextScheduledHomework();
 
   const startEditing = () => {
-    setEditing(true)
+    setEditing(true);
     setEditData({
       name: profile?.name || '',
       gender: profile?.gender || '',
       age: profile?.age || '',
       phone: profile?.phone || ''
-    })
-  }
+    });
+  };
 
   const saveChanges = async () => {
     if (!editData.name || !editData.phone) {
-      alert('الاسم ورقم الهاتف إلزاميان')
-      return
+      toast.error('الاسم ورقم الهاتف إلزاميان');
+      return;
     }
     try {
       const updates = {
@@ -1425,17 +1507,17 @@ const StudentPanel = ({ user, onLogout }) => {
           phone: editData.phone
         },
         updatedAt: serverTimestamp()
-      }
-      await updateDoc(doc(db, 'profiles', user.id), updates)
-      alert('سيتم مراجعة البيانات خلال 48 ساعة.')
-      setEditing(false)
-      fetchProfile()
+      };
+      await updateDoc(doc(db, 'profiles', user.id), updates);
+      toast.success('سيتم مراجعة البيانات خلال 48 ساعة.');
+      setEditing(false);
+      fetchProfile();
     } catch (err) {
-      alert('فشل حفظ التغييرات: ' + err.message)
+      toast.error('فشل حفظ التغييرات: ' + err.message);
     }
-  }
+  };
 
-  if (loading) return <div className="text-center text-gray-400 p-8">جاري التحميل...</div>
+  if (loading) return <div className="text-center text-gray-400 p-8">جاري التحميل...</div>;
 
   return (
     <div className="container-center min-h-screen p-4 relative" dir="rtl">
@@ -1528,97 +1610,95 @@ const StudentPanel = ({ user, onLogout }) => {
         </div>
       </div>
     </div>
-  )
-}
+  );
+};
 
-// ========== App ==========
+// ========== App (معدل) ==========
 const App = () => {
-  const [user, setUser] = useState(null)
-  const [frozenUser, setFrozenUser] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [pendingUserForComplete, setPendingUserForComplete] = useState(null)
+  const [user, setUser] = useState(null);
+  const [frozenUser, setFrozenUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [pendingUserForComplete, setPendingUserForComplete] = useState(null);
 
-  useDynamicBackground()
+  useDynamicBackground();
 
   const handleLogout = async () => {
-    await signOut(auth)
-    setUser(null)
-    setFrozenUser(null)
-    setPendingUserForComplete(null)
-  }
+    await signOut(auth);
+    setUser(null);
+    setFrozenUser(null);
+    setPendingUserForComplete(null);
+  };
 
   const handleLogin = (userData) => {
-    setUser(userData)
-    setFrozenUser(null)
-    setPendingUserForComplete(null)
-  }
+    setUser(userData);
+    setFrozenUser(null);
+    setPendingUserForComplete(null);
+  };
 
-  // ✅ دالة غير متزامنة لجلب اسم الشعبة من classId
   const handleFrozen = async (frozenData) => {
-    let className = 'غير محدد'
+    let className = 'غير محدد';
     if (frozenData.classId) {
       try {
-        const classSnap = await getDoc(doc(db, 'classes', frozenData.classId))
+        const classSnap = await getDoc(doc(db, 'classes', frozenData.classId));
         if (classSnap.exists()) {
-          className = classSnap.data().name
+          className = classSnap.data().name;
         }
       } catch (e) {
-        console.error('Error fetching class name for frozen user:', e)
+        console.error('Error fetching class name for frozen user:', e);
       }
     }
     setFrozenUser({
       ...frozenData,
-      class_name: className // نضيف اسم الشعبة المحجوب
-    })
-    setUser(null)
-    setPendingUserForComplete(null)
-  }
+      class_name: className
+    });
+    setUser(null);
+    setPendingUserForComplete(null);
+  };
 
   const handleCompleteProfile = (userData) => {
-    setPendingUserForComplete(userData)
-  }
+    setPendingUserForComplete(userData);
+  };
 
   const handleCompleteProfileSuccess = (updatedUser) => {
-    setUser(updatedUser)
-    setPendingUserForComplete(null)
-  }
+    setUser(updatedUser);
+    setPendingUserForComplete(null);
+  };
 
   const checkSessionAndProfile = async (firebaseUser) => {
     if (!firebaseUser) {
-      setUser(null)
-      setFrozenUser(null)
-      setPendingUserForComplete(null)
-      setLoading(false)
-      return
+      setUser(null);
+      setFrozenUser(null);
+      setPendingUserForComplete(null);
+      setLoading(false);
+      return;
     }
 
     try {
-      const docSnap = await getDoc(doc(db, 'profiles', firebaseUser.uid))
+      const docSnap = await getDoc(doc(db, 'profiles', firebaseUser.uid));
       if (!docSnap.exists()) {
         setPendingUserForComplete({
           id: firebaseUser.uid,
           email: firebaseUser.email,
           username: firebaseUser.displayName || ''
-        })
-        setUser(null)
-        setFrozenUser(null)
-        setLoading(false)
-        return
+        });
+        setUser(null);
+        setFrozenUser(null);
+        setLoading(false);
+        return;
       }
 
-      const profile = docSnap.data()
+      const profile = docSnap.data();
 
       if (profile.isFrozen) {
-        // ✅ جلب اسم الشعبة من classId إن وجد
-        let className = 'غير محدد'
+        let className = 'غير محدد';
         if (profile.classId) {
           try {
-            const classSnap = await getDoc(doc(db, 'classes', profile.classId))
+            const classSnap = await getDoc(doc(db, 'classes', profile.classId));
             if (classSnap.exists()) {
-              className = classSnap.data().name
+              className = classSnap.data().name;
             }
           } catch (e) {
-            console.error('Error fetching class name:', e)
+            console.error('Error fetching class name:', e);
           }
         }
         setFrozenUser({
@@ -1629,11 +1709,11 @@ const App = () => {
           name: profile.name,
           phone: profile.phone,
           class_name: className
-        })
-        setUser(null)
-        setPendingUserForComplete(null)
-        setLoading(false)
-        return
+        });
+        setUser(null);
+        setPendingUserForComplete(null);
+        setLoading(false);
+        return;
       }
 
       if (!profile.isProfileComplete) {
@@ -1642,11 +1722,11 @@ const App = () => {
           email: firebaseUser.email,
           username: profile.username || '',
           ...profile
-        })
-        setUser(null)
-        setFrozenUser(null)
-        setLoading(false)
-        return
+        });
+        setUser(null);
+        setFrozenUser(null);
+        setLoading(false);
+        return;
       }
 
       setUser({
@@ -1661,28 +1741,28 @@ const App = () => {
         classId: profile.classId,
         needsPasswordChange: profile.infoVerified === false,
         isProfileComplete: true
-      })
-      setFrozenUser(null)
-      setPendingUserForComplete(null)
-      setLoading(false)
+      });
+      setFrozenUser(null);
+      setPendingUserForComplete(null);
+      setLoading(false);
     } catch (err) {
-      console.error(err)
-      setUser(null)
-      setFrozenUser(null)
-      setPendingUserForComplete(null)
-      setLoading(false)
+      console.error(err);
+      setUser(null);
+      setFrozenUser(null);
+      setPendingUserForComplete(null);
+      setLoading(false);
     }
-  }
+  };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      await checkSessionAndProfile(firebaseUser)
-    })
+      await checkSessionAndProfile(firebaseUser);
+    });
 
-    return () => unsubscribe()
-  }, [])
+    return () => unsubscribe();
+  }, []);
 
-  if (loading) return <div className="container-center min-h-screen text-white"><div className="glass p-8 rounded-2xl border border-white/10 shadow-xl animate-pulse">جاري التحميل...</div></div>
+  if (loading) return <div className="container-center min-h-screen text-white"><div className="glass p-8 rounded-2xl border border-white/10 shadow-xl animate-pulse">جاري التحميل...</div></div>;
 
   if (pendingUserForComplete) {
     return (
@@ -1691,11 +1771,11 @@ const App = () => {
         onSuccess={handleCompleteProfileSuccess}
         onCancel={handleLogout}
       />
-    )
+    );
   }
 
   if (frozenUser) {
-    return <FrozenAccount user={frozenUser} onLogout={handleLogout} />
+    return <FrozenAccount user={frozenUser} onLogout={handleLogout} />;
   }
 
   if (!user) {
@@ -1705,14 +1785,35 @@ const App = () => {
         onFrozen={handleFrozen}
         onCompleteProfile={handleCompleteProfile}
       />
-    )
+    );
   }
 
-  return user.role === 'teacher' ? <TeacherPanel user={user} onLogout={handleLogout} /> : <StudentPanel user={user} onLogout={handleLogout} />
-}
+  return user.role === 'teacher' ? <TeacherPanel user={user} onLogout={handleLogout} /> : <StudentPanel user={user} onLogout={handleLogout} />;
+};
+
+// ========== التطبيق مع Providers ==========
+const Root = () => (
+  <ConfirmProvider>
+    <Toaster
+      position="top-center"
+      toastOptions={{
+        duration: 3000,
+        style: {
+          background: '#1e293b',
+          color: '#fff',
+          border: '1px solid rgba(255,255,255,0.15)',
+          borderRadius: '16px',
+          padding: '16px',
+          direction: 'rtl'
+        }
+      }}
+    />
+    <App />
+  </ConfirmProvider>
+);
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <App />
+    <Root />
   </React.StrictMode>
-)
+);
