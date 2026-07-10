@@ -9,7 +9,7 @@ import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
   updatePassword,
-  updateEmail,   // <-- تمت الإضافة
+  updateEmail,
   signOut
 } from 'firebase/auth'
 import {
@@ -476,71 +476,97 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [error, setError] = useState('')
 
   const handleAuth = async (e, isFirstTime = false) => {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
+    e.preventDefault();
+    setLoading(true);
+    setError('');
 
     try {
-      const cleanUsername = username.trim().toLowerCase()
+      const cleanUsername = username.trim().toLowerCase();
       if (!cleanUsername) {
-        setError('يرجى إدخال اسم المستخدم')
-        setLoading(false)
-        return
+        setError('يرجى إدخال اسم المستخدم');
+        setLoading(false);
+        return;
       }
 
       // البحث عن المستخدم في Firestore
-      const q = query(collection(db, 'profiles'), where('username', '==', cleanUsername))
-      const querySnapshot = await getDocs(q)
+      const q = query(collection(db, 'profiles'), where('username', '==', cleanUsername));
+      const querySnapshot = await getDocs(q);
       if (querySnapshot.empty) {
-        setError('اسم المستخدم غير موجود. تأكد من أن المعلم قام بإضافتك.')
-        setLoading(false)
-        return
+        setError('اسم المستخدم غير موجود. تأكد من أن المعلم قام بإضافتك.');
+        setLoading(false);
+        return;
       }
-      const profileDoc = querySnapshot.docs[0]
-      const oldId = profileDoc.id
-      const profileData = profileDoc.data()
 
-      const email = `${cleanUsername}@readandrise.com`
+      const profileDoc = querySnapshot.docs[0];
+      const oldId = profileDoc.id;
+      const profileData = profileDoc.data();
+      const email = `${cleanUsername}@readandrise.com`;
 
-      let firebaseUser = null
+      let firebaseUser = null;
+
       try {
-        // محاولة تسجيل الدخول
-        const userCredential = await signInWithEmailAndPassword(auth, email, password)
-        firebaseUser = userCredential.user
+        // محاولة تسجيل الدخول أولاً
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        firebaseUser = userCredential.user;
       } catch (loginErr) {
+        // إذا كان المستخدم غير موجود في Firebase Authentication
         if (loginErr.code === 'auth/user-not-found') {
-          // إنشاء حساب جديد (تسجيل الدخول لأول مرة)
+          // نسمح بالإنشاء فقط إذا كان الزر "تسجيل الدخول لأول مرة"
           if (!isFirstTime) {
-            setError('هذا الحساب غير مسجل في النظام. استخدم الرابط "تسجيل الدخول لأول مرة" أدناه.')
-            setLoading(false)
-            return
+            setError('هذا الحساب غير مسجل في النظام. استخدم الرابط "تسجيل الدخول لأول مرة" أدناه.');
+            setLoading(false);
+            return;
           }
-          const userCredential = await createUserWithEmailAndPassword(auth, email, password)
-          firebaseUser = userCredential.user
-          // نقل الوثيقة من oldId إلى uid الجديد
-          const newUid = firebaseUser.uid
-          const newDocRef = doc(db, 'profiles', newUid)
-          await setDoc(newDocRef, { ...profileData, updatedAt: serverTimestamp() })
-          await deleteDoc(doc(db, 'profiles', oldId))
+
+          // إنشاء حساب جديد
+          try {
+            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+            firebaseUser = userCredential.user;
+
+            // نقل بيانات الملف الشخصي من oldId إلى uid الجديد
+            const newUid = firebaseUser.uid;
+            const newDocRef = doc(db, 'profiles', newUid);
+            await setDoc(newDocRef, { ...profileData, updatedAt: serverTimestamp() });
+            await deleteDoc(doc(db, 'profiles', oldId));
+          } catch (createErr) {
+            // معالجة أخطاء الإنشاء
+            if (createErr.code === 'auth/email-already-in-use') {
+              setError('هذا الحساب موجود بالفعل في النظام. يرجى استخدام زر "تسجيل الدخول" العادي.');
+            } else if (createErr.code === 'auth/weak-password') {
+              setError('كلمة المرور ضعيفة، يجب أن تحتوي على 6 أحرف على الأقل.');
+            } else {
+              setError(createErr.message || 'حدث خطأ أثناء إنشاء الحساب.');
+            }
+            setLoading(false);
+            return;
+          }
+        } else if (loginErr.code === 'auth/wrong-password' && isFirstTime) {
+          // إذا كانت كلمة المرور خاطئة ولكن المستخدم موجود، نعطي توجيهاً
+          setError('كلمة المرور غير صحيحة. إذا كنت قد أنشأت حساباً مسبقاً، استخدم زر "تسجيل الدخول" العادي.');
+          setLoading(false);
+          return;
         } else {
-          throw loginErr
+          // أخطاء أخرى (مثل too-many-requests)
+          throw loginErr;
         }
       }
 
-      // جلب الملف الشخصي
-      const docSnap = await getDoc(doc(db, 'profiles', firebaseUser.uid))
+      // بعد الحصول على firebaseUser، جلب الملف الشخصي
+      const docSnap = await getDoc(doc(db, 'profiles', firebaseUser.uid));
       if (!docSnap.exists()) {
+        // حالة نادرة: الملف غير موجود، نطلب إكمال الملف
         onCompleteProfile({
           id: firebaseUser.uid,
           email: firebaseUser.email,
           username: cleanUsername
-        })
-        setLoading(false)
-        return
+        });
+        setLoading(false);
+        return;
       }
 
-      const profile = docSnap.data()
+      const profile = docSnap.data();
 
+      // التحقق من التجميد
       if (profile.isFrozen) {
         onFrozen({
           id: firebaseUser.uid,
@@ -550,22 +576,24 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
           name: profile.name,
           phone: profile.phone,
           class_name: 'غير محدد'
-        })
-        setLoading(false)
-        return
+        });
+        setLoading(false);
+        return;
       }
 
+      // التحقق من اكتمال الملف الشخصي
       if (!profile.isProfileComplete) {
         onCompleteProfile({
           id: firebaseUser.uid,
           email: firebaseUser.email,
           username: profile.username || cleanUsername,
           ...profile
-        })
-        setLoading(false)
-        return
+        });
+        setLoading(false);
+        return;
       }
 
+      // تسجيل الدخول العادي
       onLogin({
         id: firebaseUser.uid,
         email: firebaseUser.email,
@@ -578,20 +606,20 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
         classId: profile.classId,
         needsPasswordChange: profile.infoVerified === false,
         isProfileComplete: true
-      })
+      });
     } catch (err) {
-      console.error(err)
+      console.error(err);
       if (err.code === 'auth/wrong-password') {
-        setError('كلمة المرور غير صحيحة')
+        setError('كلمة المرور غير صحيحة');
       } else if (err.code === 'auth/too-many-requests') {
-        setError('تم حظر الحساب مؤقتاً بسبب كثرة المحاولات، حاول لاحقاً')
+        setError('تم حظر الحساب مؤقتاً بسبب كثرة المحاولات، حاول لاحقاً');
       } else {
-        setError(err.message || 'حدث خطأ غير متوقع.')
+        setError(err.message || 'حدث خطأ غير متوقع.');
       }
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   return (
     <div className="container-center relative min-h-screen overflow-hidden" dir="rtl">
@@ -643,6 +671,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
                 >
                   تسجيل الدخول لأول مرة (اضغط هنا)
                 </button>
+                <p className="text-xs text-gray-500 mt-1">🔑 أدخل كلمة مرور (6 أحرف على الأقل) لإنشاء حسابك الجديد</p>
               </div>
             </form>
             <div className="pt-2 border-t border-white/10 text-center text-xs text-gray-400 w-full">
