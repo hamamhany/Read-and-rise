@@ -3,7 +3,7 @@ import React, { useState, useEffect, createContext, useContext } from 'react';
 import ReactDOM from 'react-dom/client';
 import toast, { Toaster } from 'react-hot-toast';
 
-// Firebase imports (نفس السابق)
+// Firebase imports
 import { auth, db } from './firebase.js';
 import {
   signInWithEmailAndPassword,
@@ -79,7 +79,7 @@ const useDynamicBackground = () => {
   }, []);
 };
 
-// ========== CountdownTimer (نفس السابق) ==========
+// ========== CountdownTimer ==========
 const CountdownTimer = ({ targetDate }) => {
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
 
@@ -123,7 +123,7 @@ const CountdownTimer = ({ targetDate }) => {
   );
 };
 
-// ========== HomeworkTextCountdown (نفس السابق) ==========
+// ========== HomeworkTextCountdown ==========
 const HomeworkTextCountdown = ({ targetDate }) => {
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
   const [isPast, setIsPast] = useState(false);
@@ -225,7 +225,7 @@ export const ConfirmProvider = ({ children }) => {
 
 export const useConfirm = () => useContext(ConfirmContext);
 
-// ========== FrozenAccount (معدل: استبدال alert بـ toast) ==========
+// ========== FrozenAccount ==========
 const FrozenAccount = ({ user, onLogout }) => {
   const studentName = user?.name || user?.username || 'الطالب';
   const studentClass = user?.class_name || 'غير محدد';
@@ -276,7 +276,7 @@ const FrozenAccount = ({ user, onLogout }) => {
   );
 };
 
-// ========== CompleteProfile (نفس السابق) ==========
+// ========== CompleteProfile ==========
 const CompleteProfile = ({ user, onSuccess, onCancel }) => {
   useEffect(() => {
     toast('يرجى استخدام رابط "تسجيل الدخول لأول مرة" لإكمال حسابك.', { icon: 'ℹ️' });
@@ -285,7 +285,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
   return null;
 };
 
-// ========== Login (معدل: استبدال alert و confirm) ==========
+// ========== Login ==========
 const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -308,7 +308,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
 
   const confirm = useConfirm();
 
-  // دالة تسجيل الدخول العادية (نفس السابق مع تعديل الإشعارات)
   const handleAuth = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -409,7 +408,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     }
   };
 
-  // دالة تفعيل الحساب - الخطوة 1
   const handleActivationStep1 = async (e) => {
     e.preventDefault();
     setActivationError('');
@@ -460,7 +458,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     }
   };
 
-  // دالة تفعيل الحساب - الخطوة 2 (معدلة: استبدال alert)
   const handleActivationStep2 = async (e) => {
     e.preventDefault();
     setActivationError('');
@@ -675,7 +672,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   );
 };
 
-// ========== TeacherPanel (معدل: استبدال alert/confirm + إضافة رسائل واتساب) ==========
+// ========== TeacherPanel ==========
 const TeacherPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
   const [lessonTime, setLessonTime] = useState('');
@@ -700,6 +697,12 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [newLessonTime, setNewLessonTime] = useState('');
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
   const [showStudentsModal, setShowStudentsModal] = useState(false);
+
+  // ===== حالات المودالات الإجبارية =====
+  const [showAddNotificationModal, setShowAddNotificationModal] = useState(false);
+  const [newlyAddedStudent, setNewlyAddedStudent] = useState(null);
+  const [showFreezeNotificationModal, setShowFreezeNotificationModal] = useState(false);
+  const [frozenStudent, setFrozenStudent] = useState(null);
 
   const cleanPhoneNumber = (phone) => {
     if (!phone) return '';
@@ -850,7 +853,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     };
   }, [user.id]);
 
-  // ===== رسائل واتساب الجديدة =====
+  // ===== دوال إرسال رسائل واتساب =====
   const sendActivationMessage = (student) => {
     const phone = student.phone || '';
     if (!phone) {
@@ -1029,25 +1032,10 @@ const TeacherPanel = ({ user, onLogout }) => {
         updatedAt: serverTimestamp()
       });
 
-      // إشعار بعد التجميد
       if (nextStatus) {
-        toast.success(
-          (t) => (
-            <div className="flex flex-col items-start gap-2">
-              <span>تم تجميد حساب الطالب {student.name || ''}.</span>
-              <button
-                onClick={() => {
-                  toast.dismiss(t.id);
-                  sendFreezeMessage(student);
-                }}
-                className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-lg text-sm flex items-center gap-1"
-              >
-                <span>💬</span> إخبار ولي الأمر
-              </button>
-            </div>
-          ),
-          { duration: 8000 }
-        );
+        // إظهار المودال الإجباري لإرسال رسالة التجميد
+        setFrozenStudent(student);
+        setShowFreezeNotificationModal(true);
       } else {
         toast.success('تم فك التجميد.');
       }
@@ -1153,6 +1141,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
+  // ===== تعديل دالة إضافة الطالب =====
   const handleAddStudent = async (e) => {
     e.preventDefault();
     if (!newStudentName || !newStudentGender || !newStudentAge || !newStudentPhone || !newStudentClass) {
@@ -1219,36 +1208,22 @@ const TeacherPanel = ({ user, onLogout }) => {
         updatedAt: serverTimestamp()
       });
 
-      // بناء كائن الطالب المُضاف لاستخدامه في رسالة التفعيل
+      // بناء كائن الطالب المُضاف
       const classObj = classes.find(c => c.id === newStudentClass);
-      const className = classObj ? classObj.name : 'غير محدد';
       const addedStudent = {
         name: newStudentName.trim(),
         gender: newStudentGender,
         age: ageNum,
         phone: cleanPhone,
         classId: newStudentClass,
-        classes: { name: className }
+        classes: { name: classObj ? classObj.name : 'غير محدد' }
       };
 
-      toast.success(
-        (t) => (
-          <div className="flex flex-col items-start gap-2">
-            <span>تم تسجيل الطالب {newStudentName} بنجاح.</span>
-            <button
-              onClick={() => {
-                toast.dismiss(t.id);
-                sendActivationMessage(addedStudent);
-              }}
-              className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-lg text-sm flex items-center gap-1"
-            >
-              <span>💬</span> إخبار ولي الأمر
-            </button>
-          </div>
-        ),
-        { duration: 8000 }
-      );
+      // إظهار المودال الإجباري بدلاً من الإشعار
+      setNewlyAddedStudent(addedStudent);
+      setShowAddNotificationModal(true);
 
+      // تنظيف الحقول
       setNewStudentName('');
       setNewStudentGender('');
       setNewStudentAge('');
@@ -1396,8 +1371,62 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       </div>
 
+      {/* ===== مودال إضافة طالب - إجباري ===== */}
+      {showAddNotificationModal && newlyAddedStudent && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+          <div className="glass p-6 rounded-3xl max-w-md w-full border border-green-500/30 bg-gray-900/90">
+            <h3 className="text-xl font-semibold text-green-300 mb-2 text-center">✅ تم تسجيل الطالب</h3>
+            <p className="text-gray-300 text-center mb-4">
+              تم إضافة الطالب <span className="text-white font-bold">{newlyAddedStudent.name}</span> بنجاح.
+              <br />
+              <span className="text-sm text-gray-400">يجب إرسال رسالة التفعيل لولي الأمر الآن.</span>
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => {
+                  sendActivationMessage(newlyAddedStudent);
+                  setShowAddNotificationModal(false);
+                  setNewlyAddedStudent(null);
+                }}
+                className="btn-primary bg-green-600 hover:bg-green-700 w-full py-3 flex items-center justify-center gap-2 text-lg"
+              >
+                <span>💬</span> إخبار ولي الأمر
+              </button>
+              {/* لا يوجد زر إلغاء أو إغلاق */}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== مودال تجميد طالب - إجباري ===== */}
+      {showFreezeNotificationModal && frozenStudent && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+          <div className="glass p-6 rounded-3xl max-w-md w-full border border-orange-500/30 bg-gray-900/90">
+            <h3 className="text-xl font-semibold text-orange-300 mb-2 text-center">🚫 تم تجميد الحساب</h3>
+            <p className="text-gray-300 text-center mb-4">
+              تم تجميد حساب الطالب <span className="text-white font-bold">{frozenStudent.name}</span>.
+              <br />
+              <span className="text-sm text-gray-400">يجب إرسال رسالة إشعار لولي الأمر الآن.</span>
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => {
+                  sendFreezeMessage(frozenStudent);
+                  setShowFreezeNotificationModal(false);
+                  setFrozenStudent(null);
+                }}
+                className="btn-primary bg-orange-600 hover:bg-orange-700 w-full py-3 flex items-center justify-center gap-2 text-lg"
+              >
+                <span>💬</span> إخبار ولي الأمر
+              </button>
+              {/* لا يوجد زر إلغاء أو إغلاق */}
+            </div>
+          </div>
+        </div>
+      )}
+
       {showStudentsModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowStudentsModal(false)}>
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-40 p-4" onClick={() => setShowStudentsModal(false)}>
           <div className="glass p-6 rounded-3xl max-w-4xl w-full max-h-[80vh] overflow-y-auto border border-white/20" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-semibold text-blue-300">قائمة الطلاب المسجلين ({students.length})</h3>
@@ -1446,7 +1475,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       )}
 
       {showAddStudentModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowAddStudentModal(false)}>
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-40 p-4" onClick={() => setShowAddStudentModal(false)}>
           <div className="glass p-6 rounded-3xl max-w-md w-full border border-white/20" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-xl font-semibold text-blue-300 mb-4">إضافة طالب جديد</h3>
             <form onSubmit={handleAddStudent} className="space-y-4">
@@ -1489,7 +1518,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   );
 };
 
-// ========== StudentPanel (معدل: استبدال alert/confirm) ==========
+// ========== StudentPanel ==========
 const StudentPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
   const [teacherData, setTeacherData] = useState(null);
@@ -1736,7 +1765,7 @@ const StudentPanel = ({ user, onLogout }) => {
   );
 };
 
-// ========== App (معدل) ==========
+// ========== App ==========
 const App = () => {
   const [user, setUser] = useState(null);
   const [frozenUser, setFrozenUser] = useState(null);
