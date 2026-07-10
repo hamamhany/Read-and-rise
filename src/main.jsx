@@ -53,7 +53,7 @@ const arabicToEnglish = (text) => {
 };
 
 // ============================================================
-// 1. مكوّن إضافة الواجب / جدولة الحصة (مودال موحد)
+// 1. مكوّن إضافة الواجب / جدولة الحصة (مودال موحد مع خيار النشر الفوري)
 // ============================================================
 const AddAssignmentModal = ({
   isOpen,
@@ -66,15 +66,14 @@ const AddAssignmentModal = ({
   const [time, setTime] = useState({ hours: 12, minutes: 0 });
   const [section, setSection] = useState('');
   const [assignmentText, setAssignmentText] = useState('');
+  const [publishMode, setPublishMode] = useState('now'); // 'now' أو 'schedule'
 
   if (!isOpen) return null;
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const data = {
-      date: selectedDate,
-      time: time,
-    };
+    const data = {};
+
     if (mode === 'homework') {
       if (!assignmentText.trim()) {
         toast.error('يرجى كتابة نص الواجب.');
@@ -87,6 +86,19 @@ const AddAssignmentModal = ({
       data.section = section;
       data.text = assignmentText;
     }
+
+    // تحديد وقت النشر
+    if (publishMode === 'now') {
+      // نشر فوري: استخدام الوقت الحالي
+      const now = new Date();
+      data.date = now;
+      data.time = { hours: now.getHours(), minutes: now.getMinutes() };
+    } else {
+      // جدولة: استخدام التاريخ والوقت المحددين
+      data.date = selectedDate;
+      data.time = time;
+    }
+
     onSubmit(data);
   };
 
@@ -156,18 +168,16 @@ const AddAssignmentModal = ({
     );
   };
 
-  // ----- مكوّن الساعة الدائرية الداخلي (معدل) -----
+  // ----- مكوّن الساعة الدائرية الداخلي -----
   const ClockPicker = ({ time, onTimeChange }) => {
     const svgRef = useRef(null);
     const radius = 120;
     const center = 140;
     const [dragging, setDragging] = useState(null);
 
-    // مدخلات نصية محلية لحل مشكلة الاختفاء
     const [hoursStr, setHoursStr] = useState(time.hours.toString().padStart(2, '0'));
     const [minutesStr, setMinutesStr] = useState(time.minutes.toString().padStart(2, '0'));
 
-    // مزامنة المدخلات مع الوقت الخارجي
     useEffect(() => {
       setHoursStr(time.hours.toString().padStart(2, '0'));
       setMinutesStr(time.minutes.toString().padStart(2, '0'));
@@ -230,11 +240,9 @@ const AddAssignmentModal = ({
     const hourCoords = getCoords(hAngle);
     const minuteCoords = getCoords(mAngle);
 
-    // معالجة تغيير الساعات
     const handleHoursChange = (e) => {
       const val = e.target.value;
       setHoursStr(val);
-      // لا نقوم بتحديث الوقت حتى onBlur
     };
 
     const handleHoursBlur = () => {
@@ -326,7 +334,7 @@ const AddAssignmentModal = ({
     );
   };
 
-  // ----- واجهة المودال الرئيسية (زجاجية) -----
+  // ----- واجهة المودال -----
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="glass p-6 rounded-3xl w-[90%] max-w-4xl max-h-[90vh] overflow-y-auto border border-white/20 bg-white/10 backdrop-blur-xl shadow-2xl">
@@ -338,24 +346,9 @@ const AddAssignmentModal = ({
         </div>
 
         <form onSubmit={handleSubmit}>
-          <div className="p-4 flex flex-col md:flex-row gap-6">
-            {/* الجانب الأيسر: التقويم */}
-            <div className="flex-1 border-l md:border-l-0 md:border-r border-white/20 pr-4">
-              <Calendar selectedDate={selectedDate} onDateChange={setSelectedDate} />
-            </div>
-
-            {/* خط فاصل عمودي */}
-            <div className="hidden md:block w-px bg-white/20 self-stretch"></div>
-
-            {/* الجانب الأيمن: الساعة */}
-            <div className="flex-1 pl-4">
-              <ClockPicker time={time} onTimeChange={setTime} />
-            </div>
-          </div>
-
-          {/* حقول إضافية للواجب فقط */}
+          {/* حقول الواجب أو الحصة */}
           {mode === 'homework' && (
-            <div className="px-4 pb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="px-4 pb-4 grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
               <div>
                 <label className="block text-sm font-medium text-gray-300">الشعبة</label>
                 <select
@@ -380,6 +373,43 @@ const AddAssignmentModal = ({
                   className="mt-1 block w-full px-3 py-2 border border-gray-600 rounded-md shadow-sm bg-white/10 text-white focus:ring-blue-500 focus:border-blue-500"
                   required
                 />
+              </div>
+            </div>
+          )}
+
+          {/* خيارات النشر (للحصة أو الواجب) */}
+          <div className="px-4 pb-2 flex flex-wrap gap-4 border-b border-white/10">
+            <label className="flex items-center gap-2 text-gray-300">
+              <input
+                type="radio"
+                value="now"
+                checked={publishMode === 'now'}
+                onChange={() => setPublishMode('now')}
+                className="accent-blue-500"
+              />
+              نشر فوراً
+            </label>
+            <label className="flex items-center gap-2 text-gray-300">
+              <input
+                type="radio"
+                value="schedule"
+                checked={publishMode === 'schedule'}
+                onChange={() => setPublishMode('schedule')}
+                className="accent-blue-500"
+              />
+              جدولة
+            </label>
+          </div>
+
+          {/* عرض التقويم والساعة فقط في وضع الجدولة */}
+          {publishMode === 'schedule' && (
+            <div className="p-4 flex flex-col md:flex-row gap-6">
+              <div className="flex-1 border-l md:border-l-0 md:border-r border-white/20 pr-4">
+                <Calendar selectedDate={selectedDate} onDateChange={setSelectedDate} />
+              </div>
+              <div className="hidden md:block w-px bg-white/20 self-stretch"></div>
+              <div className="flex-1 pl-4">
+                <ClockPicker time={time} onTimeChange={setTime} />
               </div>
             </div>
           )}
@@ -450,33 +480,27 @@ const useDynamicBackground = () => {
   }, []);
 };
 
-// ========== CountdownTimer (معدل لإظهار "انتهى" بدلاً من الأصفار) ==========
+// ========== CountdownTimer (يعرض الأصفار دائماً، بدون رسالة انتهاء) ==========
 const CountdownTimer = ({ targetDate }) => {
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
-  const [isEnded, setIsEnded] = useState(false);
 
   useEffect(() => {
     const calculateTime = () => {
       if (!targetDate) {
-        setIsEnded(false);
         setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
         return true;
       }
       const target = new Date(targetDate).getTime();
       if (isNaN(target)) {
-        // targetDate غير صالح
-        setIsEnded(false);
         setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
         return true;
       }
       const now = new Date().getTime();
       const distance = target - now;
       if (distance <= 0) {
-        setIsEnded(true);
         setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
         return true;
       }
-      setIsEnded(false);
       setTimeLeft({
         days: Math.floor(distance / (1000 * 60 * 60 * 24)),
         hours: Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
@@ -496,16 +520,7 @@ const CountdownTimer = ({ targetDate }) => {
 
   const labels = { days: 'أيام', hours: 'ساعات', minutes: 'دقائق', seconds: 'ثواني' };
 
-  if (isEnded) {
-    return <div className="text-center text-yellow-300 font-bold text-xl">⏰ انتهى الوقت</div>;
-  }
-
-  // إذا لم يكن هناك targetDate صالح أو كان الوقت المتبقي صفراً (ولكن لم ينتهي بعد) نعرض رسالة بدلاً من الأصفار
-  const totalSeconds = timeLeft.days * 86400 + timeLeft.hours * 3600 + timeLeft.minutes * 60 + timeLeft.seconds;
-  if (totalSeconds === 0 && !isEnded) {
-    return <div className="text-center text-gray-400">لا يوجد موعد محدد</div>;
-  }
-
+  // عرض الأصفار دائماً (بدون رسالة)
   return (
     <div className="flex gap-4 text-center flex-wrap justify-center">
       {Object.entries(timeLeft).map(([unit, value]) => (
@@ -703,7 +718,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
 
   const confirm = useConfirm();
 
-  // معالجة تحويل اسم المستخدم إلى إنجليزي تلقائياً
   const handleUsernameChange = (e) => {
     const raw = e.target.value;
     const converted = arabicToEnglish(raw);
@@ -1366,7 +1380,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
   };
 
-  // دالة إرسال الرسالة العامة (تُستخدم من المودال)
   const sendGeneralMessage = (student) => {
     if (!student) {
       toast.error('يرجى اختيار طالب.');
@@ -1450,7 +1463,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ===== باقي الدوال (قبول/رفض المراجعة، إضافة طالب، حفظ الواجب، حفظ الحصة، حذف، تجميد، إلخ) =====
   const acceptReview = async (studentId) => {
     try {
       const docRef = doc(db, 'profiles', studentId);
@@ -1498,7 +1510,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ===== حفظ الواجب من المودال =====
+  // ===== حفظ الواجب من المودال (مع خيار النشر الفوري أو المجدول) =====
   const saveHomeworkFromModal = async (data) => {
     const { date, time, section, text } = data;
     const combinedDate = new Date(date);
@@ -1519,14 +1531,14 @@ const TeacherPanel = ({ user, onLogout }) => {
         homeworks: arrayUnion(newHwItem),
         updatedAt: serverTimestamp()
       });
-      toast.success('تم جدولة الواجب بنجاح!');
+      toast.success('تم نشر الواجب بنجاح!');
       setShowAssignmentModal(false);
     } catch (err) {
       toast.error('فشل حفظ الواجب: ' + err.message);
     }
   };
 
-  // ===== حفظ موعد الحصة من المودال =====
+  // ===== حفظ موعد الحصة (نفس المنطق) =====
   const saveLessonTimeFromModal = async (data) => {
     const { date, time } = data;
     const combinedDate = new Date(date);
@@ -1599,9 +1611,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     const diffTime = new Date().getTime() - lastSeen.getTime();
     return Math.floor(diffTime / (1000 * 60 * 60 * 24));
   };
-
-  // تم إزالة دالة communicateWithParent لأن زر "📞 رسالة عامة" أصبح موجوداً فقط في المودال
-  // لكننا سنبقيها إذا أراد المستخدم إرسال رسالة سريعة لطالب معين، لكننا سنستخدم زر "✉️ رسالة عامة" بدلاً منها.
 
   const handleDeleteStudentPermanently = async (studentId) => {
     const ok = await confirm('حذف دائم', 'إجراء خطير: هل أنت متأكد من حذف حساب هذا الطالب نهائياً وفوراً؟');
@@ -1937,7 +1946,6 @@ const TeacherPanel = ({ user, onLogout }) => {
                       {!hasAccount && <span className="text-xs text-yellow-400 bg-yellow-950/40 px-2 py-0.5 rounded border border-yellow-500/30">⚠️ لم يتم التفعيل بعد</span>}
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      {/* تم إزالة زر "📞 رسالة عامة" الفردي */}
                       {s.isFrozen && (
                         <button onClick={() => sendFreezeMessage(s)} type="button" className="text-xs bg-orange-500/20 text-orange-300 border border-orange-500/30 px-2 py-1 rounded-lg hover:bg-orange-500/30">🚫 تجميد</button>
                       )}
@@ -2092,7 +2100,7 @@ const TeacherPanel = ({ user, onLogout }) => {
 };
 
 // ============================================================
-// StudentPanel (نفسه مع إضافة عرض الشعبة في الواجبات)
+// StudentPanel
 // ============================================================
 const StudentPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
