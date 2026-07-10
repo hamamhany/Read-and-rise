@@ -87,14 +87,11 @@ const AddAssignmentModal = ({
       data.text = assignmentText;
     }
 
-    // تحديد وقت النشر
     if (publishMode === 'now') {
-      // نشر فوري: استخدام الوقت الحالي
       const now = new Date();
       data.date = now;
       data.time = { hours: now.getHours(), minutes: now.getMinutes() };
     } else {
-      // جدولة: استخدام التاريخ والوقت المحددين
       data.date = selectedDate;
       data.time = time;
     }
@@ -346,7 +343,6 @@ const AddAssignmentModal = ({
         </div>
 
         <form onSubmit={handleSubmit}>
-          {/* حقول الواجب أو الحصة */}
           {mode === 'homework' && (
             <div className="px-4 pb-4 grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
               <div>
@@ -377,7 +373,6 @@ const AddAssignmentModal = ({
             </div>
           )}
 
-          {/* خيارات النشر (للحصة أو الواجب) */}
           <div className="px-4 pb-2 flex flex-wrap gap-4 border-b border-white/10">
             <label className="flex items-center gap-2 text-gray-300">
               <input
@@ -401,7 +396,6 @@ const AddAssignmentModal = ({
             </label>
           </div>
 
-          {/* عرض التقويم والساعة فقط في وضع الجدولة */}
           {publishMode === 'schedule' && (
             <div className="p-4 flex flex-col md:flex-row gap-6">
               <div className="flex-1 border-l md:border-l-0 md:border-r border-white/20 pr-4">
@@ -480,7 +474,7 @@ const useDynamicBackground = () => {
   }, []);
 };
 
-// ========== CountdownTimer (يعرض الأصفار دائماً، بدون رسالة انتهاء) ==========
+// ========== CountdownTimer (يعرض الأصفار دائماً) ==========
 const CountdownTimer = ({ targetDate }) => {
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
 
@@ -520,7 +514,6 @@ const CountdownTimer = ({ targetDate }) => {
 
   const labels = { days: 'أيام', hours: 'ساعات', minutes: 'دقائق', seconds: 'ثواني' };
 
-  // عرض الأصفار دائماً (بدون رسالة)
   return (
     <div className="flex gap-4 text-center flex-wrap justify-center">
       {Object.entries(timeLeft).map(([unit, value]) => (
@@ -1095,7 +1088,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
 };
 
 // ============================================================
-// TeacherPanel (معدل بالكامل)
+// TeacherPanel (معدل)
 // ============================================================
 const TeacherPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -1113,11 +1106,11 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [showAssignmentModal, setShowAssignmentModal] = useState(false);
   const [showLessonModal, setShowLessonModal] = useState(false);
 
-  // حالات مودال الرسالة العامة
+  // حالات مودال الرسالة العامة (للطالب المختار)
   const [showGeneralMessageModal, setShowGeneralMessageModal] = useState(false);
   const [generalMessageSubject, setGeneralMessageSubject] = useState('');
   const [generalMessageText, setGeneralMessageText] = useState('');
-  const [generalMessageTarget, setGeneralMessageTarget] = useState('all');
+  const [selectedStudentForMessage, setSelectedStudentForMessage] = useState(null); // الطالب المختار
 
   const [newStudentName, setNewStudentName] = useState('');
   const [newStudentGender, setNewStudentGender] = useState('');
@@ -1380,6 +1373,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
   };
 
+  // دالة إرسال الرسالة العامة (تستخدم للطالب المختار)
   const sendGeneralMessage = (student) => {
     if (!student) {
       toast.error('يرجى اختيار طالب.');
@@ -1417,7 +1411,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     setShowGeneralMessageModal(false);
     setGeneralMessageSubject('');
     setGeneralMessageText('');
-    setGeneralMessageTarget('all');
+    setSelectedStudentForMessage(null);
   };
 
   const handleResetStudent = async (studentId) => {
@@ -1510,7 +1504,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ===== حفظ الواجب من المودال (مع خيار النشر الفوري أو المجدول) =====
   const saveHomeworkFromModal = async (data) => {
     const { date, time, section, text } = data;
     const combinedDate = new Date(date);
@@ -1538,7 +1531,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ===== حفظ موعد الحصة (نفس المنطق) =====
   const saveLessonTimeFromModal = async (data) => {
     const { date, time } = data;
     const combinedDate = new Date(date);
@@ -1623,7 +1615,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ===== إضافة طالب =====
   const handleAddStudent = async (e) => {
     e.preventDefault();
     if (!newStudentName || !newStudentGender || !newStudentAge || !newStudentPhone || !newStudentClass) {
@@ -1821,7 +1812,7 @@ const TeacherPanel = ({ user, onLogout }) => {
           )}
         </div>
 
-        {/* ===== قسم إدارة الطلاب (تم إزالة زر الرسالة العامة من هنا) ===== */}
+        {/* ===== قسم إدارة الطلاب ===== */}
         <div className="glass p-6 rounded-2xl border border-white/5">
           <div className="flex flex-wrap justify-between items-center gap-3">
             <h3 className="text-xl font-semibold text-blue-300">إدارة الطلاب</h3>
@@ -1850,7 +1841,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       </div>
 
-      {/* ===== مودالات إجبارية (إضافة طالب، تجميد) ===== */}
+      {/* ===== مودالات إجبارية ===== */}
       {showAddNotificationModal && newlyAddedStudent && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
           <div className="glass p-6 rounded-3xl max-w-md w-full border border-green-500/30 bg-gray-900/90">
@@ -1901,23 +1892,13 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال عرض الطلاب (مع زر الرسالة العامة الداخلي) ===== */}
+      {/* ===== مودال عرض الطلاب (مع زر رسالة عامة بجانب كل طالب) ===== */}
       {showStudentsModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-40 p-4" onClick={() => setShowStudentsModal(false)}>
           <div className="glass p-6 rounded-3xl max-w-4xl w-full max-h-[80vh] overflow-y-auto border border-white/20" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-semibold text-blue-300">قائمة الطلاب المسجلين ({students.length})</h3>
-              <div className="flex gap-2">
-                {/* زر الرسالة العامة الوحيد الموجود هنا */}
-                <button
-                  onClick={() => setShowGeneralMessageModal(true)}
-                  type="button"
-                  className="btn-primary bg-green-600 hover:bg-green-700 py-1.5 px-3 text-sm"
-                >
-                  ✉️ رسالة عامة
-                </button>
-                <button onClick={() => setShowStudentsModal(false)} type="button" className="text-gray-400 hover:text-white text-2xl">✕</button>
-              </div>
+              <button onClick={() => setShowStudentsModal(false)} type="button" className="text-gray-400 hover:text-white text-2xl">✕</button>
             </div>
             <div className="space-y-3">
               {sortedStudents.map(s => {
@@ -1946,6 +1927,19 @@ const TeacherPanel = ({ user, onLogout }) => {
                       {!hasAccount && <span className="text-xs text-yellow-400 bg-yellow-950/40 px-2 py-0.5 rounded border border-yellow-500/30">⚠️ لم يتم التفعيل بعد</span>}
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
+                      {/* زر رسالة عامة بجانب كل طالب */}
+                      <button
+                        onClick={() => {
+                          setSelectedStudentForMessage(s);
+                          setGeneralMessageSubject('');
+                          setGeneralMessageText('');
+                          setShowGeneralMessageModal(true);
+                        }}
+                        type="button"
+                        className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-lg hover:bg-green-500/30"
+                      >
+                        ✉️ رسالة
+                      </button>
                       {s.isFrozen && (
                         <button onClick={() => sendFreezeMessage(s)} type="button" className="text-xs bg-orange-500/20 text-orange-300 border border-orange-500/30 px-2 py-1 rounded-lg hover:bg-orange-500/30">🚫 تجميد</button>
                       )}
@@ -2009,11 +2003,11 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال الرسالة العامة ===== */}
-      {showGeneralMessageModal && (
+      {/* ===== مودال الرسالة العامة (لطالب محدد) ===== */}
+      {showGeneralMessageModal && selectedStudentForMessage && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowGeneralMessageModal(false)}>
           <div className="glass p-6 rounded-3xl max-w-lg w-full border border-white/20" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-semibold text-green-300 mb-4">✉️ إرسال رسالة عامة</h3>
+            <h3 className="text-xl font-semibold text-green-300 mb-4">✉️ إرسال رسالة إلى {selectedStudentForMessage.name}</h3>
             <div className="space-y-4">
               <div>
                 <label className="text-sm text-gray-300 block">المادة</label>
@@ -2034,40 +2028,20 @@ const TeacherPanel = ({ user, onLogout }) => {
                   onChange={(e) => setGeneralMessageText(e.target.value)}
                 />
               </div>
-              <div>
-                <label className="text-sm text-gray-300 block">إرسال إلى</label>
-                <select
-                  className="input-glass w-full text-right"
-                  value={generalMessageTarget}
-                  onChange={(e) => setGeneralMessageTarget(e.target.value)}
-                >
-                  <option value="all">جميع الطلاب</option>
-                  {students.map(s => (
-                    <option key={s.id} value={s.id}>{s.name || s.username}</option>
-                  ))}
-                </select>
-              </div>
               <div className="flex gap-3">
                 <button
-                  onClick={() => {
-                    if (generalMessageTarget === 'all') {
-                      students.forEach(s => sendGeneralMessage(s));
-                      setShowGeneralMessageModal(false);
-                    } else {
-                      const student = students.find(s => s.id === generalMessageTarget);
-                      if (student) {
-                        sendGeneralMessage(student);
-                      } else {
-                        toast.error('الطالب غير موجود.');
-                      }
-                    }
-                  }}
+                  onClick={() => sendGeneralMessage(selectedStudentForMessage)}
                   className="btn-primary bg-green-600 hover:bg-green-700 px-6 py-2"
                 >
                   إرسال
                 </button>
                 <button
-                  onClick={() => setShowGeneralMessageModal(false)}
+                  onClick={() => {
+                    setShowGeneralMessageModal(false);
+                    setSelectedStudentForMessage(null);
+                    setGeneralMessageSubject('');
+                    setGeneralMessageText('');
+                  }}
                   className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2"
                 >
                   إلغاء
