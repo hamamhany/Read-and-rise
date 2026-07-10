@@ -200,7 +200,7 @@ const FrozenAccount = ({ user, onLogout }) => {
             rel="noopener noreferrer"
             className="btn-primary w-full py-4 text-lg bg-green-600 hover:bg-green-700 shadow-lg flex items-center justify-center gap-2"
           >
-            <span>📱</span> اضغط هنا للتواصل مع المشرف
+            <span>💬</span> اضغط هنا للتواصل مع المشرف
           </a>
           <button
             onClick={onLogout}
