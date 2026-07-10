@@ -463,6 +463,12 @@ const CountdownTimer = ({ targetDate }) => {
         return true;
       }
       const target = new Date(targetDate).getTime();
+      if (isNaN(target)) {
+        // targetDate غير صالح
+        setIsEnded(false);
+        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+        return true;
+      }
       const now = new Date().getTime();
       const distance = target - now;
       if (distance <= 0) {
@@ -492,6 +498,12 @@ const CountdownTimer = ({ targetDate }) => {
 
   if (isEnded) {
     return <div className="text-center text-yellow-300 font-bold text-xl">⏰ انتهى الوقت</div>;
+  }
+
+  // إذا لم يكن هناك targetDate صالح أو كان الوقت المتبقي صفراً (ولكن لم ينتهي بعد) نعرض رسالة بدلاً من الأصفار
+  const totalSeconds = timeLeft.days * 86400 + timeLeft.hours * 3600 + timeLeft.minutes * 60 + timeLeft.seconds;
+  if (totalSeconds === 0 && !isEnded) {
+    return <div className="text-center text-gray-400">لا يوجد موعد محدد</div>;
   }
 
   return (
@@ -1354,6 +1366,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
   };
 
+  // دالة إرسال الرسالة العامة (تُستخدم من المودال)
   const sendGeneralMessage = (student) => {
     if (!student) {
       toast.error('يرجى اختيار طالب.');
@@ -1580,11 +1593,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  const deleteFrozenAccounts = async () => {
-    // تم إلغاء استخدام هذه الدالة، ولكن نتركها فارغة أو نحذفها
-    // سيتم إزالة الزر الذي يستدعيها لاحقاً
-  };
-
   const getInactivityDays = (lastSeenStr) => {
     if (!lastSeenStr) return 0;
     const lastSeen = new Date(lastSeenStr);
@@ -1592,26 +1600,8 @@ const TeacherPanel = ({ user, onLogout }) => {
     return Math.floor(diffTime / (1000 * 60 * 60 * 24));
   };
 
-  const communicateWithParent = (student) => {
-    const phone = student.phone || '';
-    if (!phone) {
-      toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
-      return;
-    }
-    const cleanedPhone = cleanPhoneNumber(phone);
-    if (!cleanedPhone) {
-      toast.error('رقم الهاتف غير صالح.');
-      return;
-    }
-    const message = encodeURIComponent(
-      `أهلاً بك،\n` +
-      `معكم همام هاني محمد علي، معلم تطوير البرمجيات ورئيس قسم التكنولوجيا وأمن المعلومات.\n` +
-      `أتواصل معك بخصوص [........].\n` +
-      `بانتظار ردكم لمتابعة العمل.\n` +
-      `تحياتي،`
-    );
-    window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
-  };
+  // تم إزالة دالة communicateWithParent لأن زر "📞 رسالة عامة" أصبح موجوداً فقط في المودال
+  // لكننا سنبقيها إذا أراد المستخدم إرسال رسالة سريعة لطالب معين، لكننا سنستخدم زر "✉️ رسالة عامة" بدلاً منها.
 
   const handleDeleteStudentPermanently = async (studentId) => {
     const ok = await confirm('حذف دائم', 'إجراء خطير: هل أنت متأكد من حذف حساب هذا الطالب نهائياً وفوراً؟');
@@ -1822,7 +1812,7 @@ const TeacherPanel = ({ user, onLogout }) => {
           )}
         </div>
 
-        {/* ===== قسم إدارة الطلاب ===== */}
+        {/* ===== قسم إدارة الطلاب (تم إزالة زر الرسالة العامة من هنا) ===== */}
         <div className="glass p-6 rounded-2xl border border-white/5">
           <div className="flex flex-wrap justify-between items-center gap-3">
             <h3 className="text-xl font-semibold text-blue-300">إدارة الطلاب</h3>
@@ -1902,13 +1892,14 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال عرض الطلاب (مع زر الرسالة العامة) ===== */}
+      {/* ===== مودال عرض الطلاب (مع زر الرسالة العامة الداخلي) ===== */}
       {showStudentsModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-40 p-4" onClick={() => setShowStudentsModal(false)}>
           <div className="glass p-6 rounded-3xl max-w-4xl w-full max-h-[80vh] overflow-y-auto border border-white/20" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-semibold text-blue-300">قائمة الطلاب المسجلين ({students.length})</h3>
               <div className="flex gap-2">
+                {/* زر الرسالة العامة الوحيد الموجود هنا */}
                 <button
                   onClick={() => setShowGeneralMessageModal(true)}
                   type="button"
@@ -1946,10 +1937,10 @@ const TeacherPanel = ({ user, onLogout }) => {
                       {!hasAccount && <span className="text-xs text-yellow-400 bg-yellow-950/40 px-2 py-0.5 rounded border border-yellow-500/30">⚠️ لم يتم التفعيل بعد</span>}
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
+                      {/* تم إزالة زر "📞 رسالة عامة" الفردي */}
                       {s.isFrozen && (
                         <button onClick={() => sendFreezeMessage(s)} type="button" className="text-xs bg-orange-500/20 text-orange-300 border border-orange-500/30 px-2 py-1 rounded-lg hover:bg-orange-500/30">🚫 تجميد</button>
                       )}
-                      <button onClick={() => communicateWithParent(s)} type="button" className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-lg hover:bg-green-500/30">📞 رسالة عامة</button>
                       <button onClick={() => handleResetStudent(s.id)} type="button" className="text-xs bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-1 rounded-lg hover:bg-indigo-500/30">🔄 إعادة تعيين</button>
                       <button onClick={() => handleDeleteStudentPermanently(s.id)} type="button" className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg hover:bg-red-500/30">❌ حذف</button>
                       <div className="flex items-center gap-2">
