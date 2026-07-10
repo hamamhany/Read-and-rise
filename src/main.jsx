@@ -168,7 +168,6 @@ const FrozenAccount = ({ user, onLogout }) => {
   const studentName = user?.name || user?.username || 'الطالب'
   const studentClass = user?.class_name || 'غير محدد'
   const studentUsername = user?.username || 'غير مسجل'
-  // نستخدم نفس الرقم ولكن نسميه "رقم واتساب"
   const studentWhatsApp = user?.phone || 'غير مسجل'
 
   const waMessage = encodeURIComponent(
@@ -217,10 +216,7 @@ const FrozenAccount = ({ user, onLogout }) => {
 
 // ========== CompleteProfile (نسخة مبسطة للتوافق) ==========
 const CompleteProfile = ({ user, onSuccess, onCancel }) => {
-  // في التدفق الجديد لم يعد هذا المكون مستخدماً، لكن نتركه لتجنب الأعطال
   useEffect(() => {
-    // إذا وصلنا إلى هنا، فهذا يعني أن الحساب غير مكتمل ولكن لا يوجد واجهة تفعيل،
-    // نوجه المستخدم إلى تسجيل الخروج ثم الدخول عبر رابط "تسجيل الدخول لأول مرة"
     alert('يرجى استخدام رابط "تسجيل الدخول لأول مرة" لإكمال حسابك.')
     onCancel()
   }, [onCancel])
@@ -235,9 +231,8 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  // حالة تفعيل الحساب (بدون خطوة اسم المستخدم المؤقت)
   const [activationMode, setActivationMode] = useState(false)
-  const [activationStep, setActivationStep] = useState(1) // 1: تأكيد المعلومات, 2: تعيين كلمة المرور
+  const [activationStep, setActivationStep] = useState(1)
   const [activationProfile, setActivationProfile] = useState(null)
   const [activationConfirmName, setActivationConfirmName] = useState('')
   const [activationConfirmGender, setActivationConfirmGender] = useState('')
@@ -299,6 +294,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
       const profile = docSnap.data()
 
       if (profile.isFrozen) {
+        // ✅ تمرير classId بدلاً من class_name الثابت
         onFrozen({
           id: firebaseUser.uid,
           email: firebaseUser.email,
@@ -306,7 +302,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
           role: profile.role,
           name: profile.name,
           phone: profile.phone,
-          class_name: 'غير محدد'
+          classId: profile.classId // <-- هذا سيُستخدم لجلب الاسم في App
         })
         setLoading(false)
         return
@@ -350,7 +346,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     }
   }
 
-  // دالة تفعيل الحساب - الخطوة 1: تأكيد المعلومات
+  // دالة تفعيل الحساب - الخطوة 1
   const handleActivationStep1 = async (e) => {
     e.preventDefault()
     setActivationError('')
@@ -368,7 +364,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     }
 
     try {
-      // البحث عن طالب يطابق جميع الحقول الأربعة
       const qName = query(collection(db, 'profiles'), where('name', '==', name))
       const snapshot = await getDocs(qName)
       
@@ -402,12 +397,11 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     }
   }
 
-  // دالة تفعيل الحساب - الخطوة 2: تعيين اسم المستخدم وكلمة المرور وإنشاء الحساب
+  // دالة تفعيل الحساب - الخطوة 2
   const handleActivationStep2 = async (e) => {
     e.preventDefault()
     setActivationError('')
 
-    // ✅ التعديل: السماح بالرموز @ . _ -
     const usernameRegex = /^[a-zA-Z0-9@._-]+$/
     const newUsername = activationNewUsername.trim()
     if (!usernameRegex.test(newUsername)) {
@@ -427,7 +421,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
       return
     }
 
-    // التحقق من عدم وجود اسم مستخدم مكرر
     const q = query(collection(db, 'profiles'), where('username', '==', newUsername))
     const querySnap = await getDocs(q)
     let exists = false
@@ -443,12 +436,9 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
 
     try {
       const email = `${newUsername}@readandrise.com`
-
-      // 1. إنشاء حساب Firebase
       const userCredential = await createUserWithEmailAndPassword(auth, email, activationNewPassword)
       const newUid = userCredential.user.uid
 
-      // 2. نسخ بيانات الملف الشخصي من المستند القديم إلى المستند الجديد
       const oldDocRef = doc(db, 'profiles', activationProfile.id)
       const oldDocSnap = await getDoc(oldDocRef)
       if (!oldDocSnap.exists()) {
@@ -466,11 +456,9 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
         updatedAt: serverTimestamp()
       })
 
-      // حذف الوثيقة القديمة
       await deleteDoc(oldDocRef)
 
       alert(`تم تفعيل حسابك بنجاح!\nاسم المستخدم: ${newUsername}\nيمكنك الآن تسجيل الدخول باستخدام اسم المستخدم وكلمة المرور.`)
-      // إعادة تعيين حالة التفعيل والعودة لتسجيل الدخول
       setActivationMode(false)
       setActivationStep(1)
       setActivationProfile(null)
@@ -489,7 +477,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     }
   }
 
-  // إلغاء التفعيل والعودة لتسجيل الدخول
   const cancelActivation = () => {
     setActivationMode(false)
     setActivationStep(1)
@@ -497,7 +484,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     setActivationError('')
   }
 
-  // إذا كان وضع التفعيل مفعلاً، نعرض واجهة التفعيل
   if (activationMode) {
     return (
       <div className="container-center relative min-h-screen overflow-hidden" dir="rtl">
@@ -569,7 +555,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     )
   }
 
-  // واجهة تسجيل الدخول العادية
   return (
     <div className="container-center relative min-h-screen overflow-hidden" dir="rtl">
       <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
@@ -607,7 +592,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
               </button>
             </form>
 
-            {/* رابط تفعيل الحساب */}
             <div className="w-full text-center">
               <button
                 type="button"
@@ -801,8 +785,6 @@ const TeacherPanel = ({ user, onLogout }) => {
       unsubscribePending()
     }
   }, [user.id])
-
-  // ========== تم إزالة دالة createStudentAccount ==========
 
   const acceptReview = async (studentId) => {
     try {
@@ -1049,7 +1031,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         return
       }
 
-      // إنشاء الملف الشخصي مع isProfileComplete = false
       await setDoc(doc(db, 'profiles', newId), {
         email: tempEmail,
         username: username,
@@ -1404,8 +1385,6 @@ const StudentPanel = ({ user, onLogout }) => {
     return () => clearInterval(interval)
   }, [teacherData?.homeworks])
 
-  // ❌ تم إزالة دالة changePassword نهائياً
-
   const getNextScheduledHomework = () => {
     if (!teacherData?.homeworks) return null
     const now = new Date().getTime()
@@ -1467,7 +1446,6 @@ const StudentPanel = ({ user, onLogout }) => {
             <p className="text-gray-400 text-sm mt-1">أهلاً بك: {user.username || user.email}</p>
           </div>
           <div className="flex gap-2">
-            {/* ❌ تم إزالة زر تغيير كلمة المرور */}
             <button onClick={onLogout} type="button" className="btn-primary bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 shadow-lg text-sm">تسجيل الخروج</button>
           </div>
         </div>
@@ -1575,8 +1553,23 @@ const App = () => {
     setPendingUserForComplete(null)
   }
 
-  const handleFrozen = (frozenData) => {
-    setFrozenUser(frozenData)
+  // ✅ دالة غير متزامنة لجلب اسم الشعبة من classId
+  const handleFrozen = async (frozenData) => {
+    let className = 'غير محدد'
+    if (frozenData.classId) {
+      try {
+        const classSnap = await getDoc(doc(db, 'classes', frozenData.classId))
+        if (classSnap.exists()) {
+          className = classSnap.data().name
+        }
+      } catch (e) {
+        console.error('Error fetching class name for frozen user:', e)
+      }
+    }
+    setFrozenUser({
+      ...frozenData,
+      class_name: className // نضيف اسم الشعبة المحجوب
+    })
     setUser(null)
     setPendingUserForComplete(null)
   }
@@ -1616,6 +1609,18 @@ const App = () => {
       const profile = docSnap.data()
 
       if (profile.isFrozen) {
+        // ✅ جلب اسم الشعبة من classId إن وجد
+        let className = 'غير محدد'
+        if (profile.classId) {
+          try {
+            const classSnap = await getDoc(doc(db, 'classes', profile.classId))
+            if (classSnap.exists()) {
+              className = classSnap.data().name
+            }
+          } catch (e) {
+            console.error('Error fetching class name:', e)
+          }
+        }
         setFrozenUser({
           id: firebaseUser.uid,
           email: firebaseUser.email,
@@ -1623,7 +1628,7 @@ const App = () => {
           role: profile.role,
           name: profile.name,
           phone: profile.phone,
-          class_name: 'غير محدد'
+          class_name: className
         })
         setUser(null)
         setPendingUserForComplete(null)
