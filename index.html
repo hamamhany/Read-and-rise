@@ -5,15 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes" />
     <meta name="theme-color" content="#1a1a2e" />
     <title>الفرسان التقنيين - اقرآ وارتق</title>
+
+    <!-- ===== أيقونات PWA ===== -->
+    <!-- للأجهزة التي تعمل بنظام iOS -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <!-- أيقونات عامة بأحجام مختلفة -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <!-- Manifest (للـ PWA) -->
+    <link rel="manifest" href="/site.webmanifest" />
     
-    <!-- إضافة الشعار (favicon) لعلامة التبويب - المسار مباشر بدون %PUBLIC_URL% -->
-     <link rel="icon" href="/images/logo.png" type="image/png" />
-    
+    <!-- أيقونة احتياطية (في حال عدم دعم ما سبق) -->
+    <link rel="icon" href="/images/logo.png" type="image/png" />
+
     <style>
       /* ===== التصميم الزجاجي العصري ===== */
       @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
-      
-      * { margin: 0; padding: 0; box-sizing: border-box; }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
       body {
         font-family: 'Inter', sans-serif;
         background: #0f0e1a;
@@ -78,9 +91,15 @@
         animation: gradientShift 12s ease infinite;
       }
       @keyframes gradientShift {
-        0% { background-position: 0% 50%; }
-        50% { background-position: 100% 50%; }
-        100% { background-position: 0% 50%; }
+        0% {
+          background-position: 0% 50%;
+        }
+        50% {
+          background-position: 100% 50%;
+        }
+        100% {
+          background-position: 0% 50%;
+        }
       }
     </style>
   </head>
