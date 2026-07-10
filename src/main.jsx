@@ -1381,7 +1381,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [showStudentsModal, setShowStudentsModal] = useState(false);
   const [showAssignmentModal, setShowAssignmentModal] = useState(false);
   const [showLessonModal, setShowLessonModal] = useState(false);
-  const [showManageClassesModal, setShowManageClassesModal] = useState(false); // مودال إدارة شعب الطالب
+  const [showManageClassesModal, setShowManageClassesModal] = useState(false); // مودال إدارة الشعب
 
   // حالات مودال الرسالة العامة
   const [showGeneralMessageModal, setShowGeneralMessageModal] = useState(false);
@@ -1389,15 +1389,16 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [generalMessageText, setGeneralMessageText] = useState('');
   const [selectedStudentForMessage, setSelectedStudentForMessage] = useState(null);
 
-  // حالات إدارة شعب الطالب
-  const [selectedStudentForClasses, setSelectedStudentForClasses] = useState(null);
-  const [selectedClassIds, setSelectedClassIds] = useState([]);
+  // حالات إدارة الشعب
+  const [newClassName, setNewClassName] = useState('');
+  const [editingClassId, setEditingClassId] = useState(null);
+  const [editingClassName, setEditingClassName] = useState('');
 
   const [newStudentName, setNewStudentName] = useState('');
   const [newStudentGender, setNewStudentGender] = useState('');
   const [newStudentAge, setNewStudentAge] = useState('');
   const [newStudentPhone, setNewStudentPhone] = useState('');
-  const [newStudentClassIds, setNewStudentClassIds] = useState([]); // مصفوفة
+  const [newStudentClassIds, setNewStudentClassIds] = useState([]);
   const [studentLoading, setStudentLoading] = useState(false);
 
   // حالات المودالات الإجبارية
@@ -1451,7 +1452,6 @@ const TeacherPanel = ({ user, onLogout }) => {
       const studentsSnapshot = await getDocs(studentsQuery);
       let studentsList = studentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-      // جمع جميع classIds من جميع الطلاب
       const allClassIds = studentsList.flatMap(s => s.classIds || []);
       const classMap = await fetchClassNames(allClassIds);
       studentsList = studentsList.map(s => ({
@@ -1671,7 +1671,6 @@ const TeacherPanel = ({ user, onLogout }) => {
       return;
     }
     const studentName = student.name || '';
-    // المادة: نأخذ اسم أول شعبة في القائمة
     const material = student.classes?.length > 0 ? student.classes[0].name : 'غير محدد';
     const subject = generalMessageSubject.trim() || 'إشعار رسمي';
     const body = generalMessageText.trim() || '(نص الرسالة)';
@@ -1697,26 +1696,63 @@ const TeacherPanel = ({ user, onLogout }) => {
     setSelectedStudentForMessage(null);
   };
 
-  // ===== إدارة شعب الطالب =====
-  const openManageClasses = (student) => {
-    setSelectedStudentForClasses(student);
-    setSelectedClassIds(student.classIds || []);
-    setShowManageClassesModal(true);
+  // ===== إدارة الشعب =====
+  const handleAddClass = async () => {
+    const name = newClassName.trim();
+    if (!name) {
+      toast.error('يرجى إدخال اسم الشعبة');
+      return;
+    }
+    if (classes.some(c => c.name === name)) {
+      toast.error('هذه الشعبة موجودة بالفعل');
+      return;
+    }
+    try {
+      const ref = doc(collection(db, 'classes'));
+      await setDoc(ref, {
+        name: name,
+        teacherId: user.id,
+        createdAt: serverTimestamp()
+      });
+      setNewClassName('');
+      toast.success('تم إضافة الشعبة بنجاح');
+    } catch (err) {
+      toast.error('فشل إضافة الشعبة: ' + err.message);
+    }
   };
 
-  const saveStudentClasses = async () => {
-    if (!selectedStudentForClasses) return;
+  const handleDeleteClass = async (classId) => {
+    const ok = await confirm('حذف الشعبة', 'هل أنت متأكد من حذف هذه الشعبة؟ سيتم إزالتها من جميع الطلاب.');
+    if (!ok) return;
     try {
-      await updateDoc(doc(db, 'profiles', selectedStudentForClasses.id), {
-        classIds: selectedClassIds,
+      // حذف الشعبة من جميع الطلاب
+      const studentsWithClass = students.filter(s => (s.classIds || []).includes(classId));
+      for (const student of studentsWithClass) {
+        const newClassIds = (student.classIds || []).filter(id => id !== classId);
+        await updateDoc(doc(db, 'profiles', student.id), {
+          classIds: newClassIds,
+          updatedAt: serverTimestamp()
+        });
+      }
+      await deleteDoc(doc(db, 'classes', classId));
+      toast.success('تم حذف الشعبة وإزالتها من جميع الطلاب');
+    } catch (err) {
+      toast.error('فشل حذف الشعبة: ' + err.message);
+    }
+  };
+
+  const handleEditClass = async () => {
+    if (!editingClassId || !editingClassName.trim()) return;
+    try {
+      await updateDoc(doc(db, 'classes', editingClassId), {
+        name: editingClassName.trim(),
         updatedAt: serverTimestamp()
       });
-      toast.success('تم تحديث شعب الطالب بنجاح');
-      setShowManageClassesModal(false);
-      setSelectedStudentForClasses(null);
-      setSelectedClassIds([]);
+      setEditingClassId(null);
+      setEditingClassName('');
+      toast.success('تم تحديث اسم الشعبة');
     } catch (err) {
-      toast.error('فشل تحديث الشعب: ' + err.message);
+      toast.error('فشل تحديث الشعبة: ' + err.message);
     }
   };
 
@@ -1928,7 +1964,6 @@ const TeacherPanel = ({ user, onLogout }) => {
 
     setStudentLoading(true);
     try {
-      // التحقق من صحة الشعب المختارة
       for (const classId of newStudentClassIds) {
         const classRef = doc(db, 'classes', classId);
         const classSnap = await getDoc(classRef);
@@ -1988,7 +2023,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         updatedAt: serverTimestamp()
       });
 
-      // جلب أسماء الشعب المختارة
       const classMap = await fetchClassNames(newStudentClassIds);
       const classNames = newStudentClassIds.map(id => classMap[id] || null).filter(Boolean);
       const addedStudent = {
@@ -2132,6 +2166,7 @@ const TeacherPanel = ({ user, onLogout }) => {
             <div className="flex flex-wrap gap-2">
               <button onClick={() => setShowAddStudentModal(true)} type="button" className="btn-primary bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 py-2 px-4 text-sm rounded-md text-white">+ إضافة طالب</button>
               <button onClick={() => setShowStudentsModal(true)} type="button" className="btn-primary bg-purple-600 hover:bg-purple-700 py-2 px-4 text-sm rounded-md text-white">📋 عرض قوائم الطلبة</button>
+              <button onClick={() => setShowManageClassesModal(true)} type="button" className="btn-primary bg-green-600 hover:bg-green-700 py-2 px-4 text-sm rounded-md text-white">🏫 إدارة الشعب</button>
             </div>
           </div>
         </div>
@@ -2154,39 +2189,50 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       </div>
 
-      {/* ===== مودال إدارة شعب الطالب ===== */}
-      {showManageClassesModal && selectedStudentForClasses && (
+      {/* ===== مودال إدارة الشعب ===== */}
+      {showManageClassesModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowManageClassesModal(false)}>
-          <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-semibold text-blue-300 mb-4">إدارة شعب الطالب: {selectedStudentForClasses.name}</h3>
-            <div className="space-y-3">
-              <div>
-                <label className="text-sm text-gray-300 block mb-2">اختر الشعب</label>
-                <select
-                  multiple
-                  className="bg-gray-800 w-full h-32 text-right p-2 border border-gray-600 rounded-md text-white"
-                  value={selectedClassIds}
-                  onChange={(e) => {
-                    const options = e.target.options;
-                    const selected = [];
-                    for (let i = 0; i < options.length; i++) {
-                      if (options[i].selected) {
-                        selected.push(options[i].value);
-                      }
-                    }
-                    setSelectedClassIds(selected);
-                  }}
-                >
-                  {classes.map(cls => (
-                    <option key={cls.id} value={cls.id}>{cls.name}</option>
-                  ))}
-                </select>
-                <p className="text-xs text-gray-400 mt-1">اضغط Ctrl (أو ⌘) لاختيار عدة شعب</p>
+          <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-semibold text-green-300 mb-4">🏫 إدارة الشعب</h3>
+            <div className="space-y-4">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  className="bg-gray-800 flex-1 text-right p-2 border border-gray-600 rounded-md text-white"
+                  placeholder="اسم الشعبة الجديدة"
+                  value={newClassName}
+                  onChange={(e) => setNewClassName(e.target.value)}
+                />
+                <button onClick={handleAddClass} className="btn-primary bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-white">إضافة</button>
               </div>
-              <div className="flex gap-3">
-                <button onClick={saveStudentClasses} className="btn-primary bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-md text-white">حفظ</button>
-                <button onClick={() => setShowManageClassesModal(false)} className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-md text-white">إلغاء</button>
+              <div className="max-h-60 overflow-y-auto space-y-2">
+                {classes.map(cls => (
+                  <div key={cls.id} className="flex justify-between items-center p-2 bg-black/30 rounded-xl border border-gray-700">
+                    {editingClassId === cls.id ? (
+                      <div className="flex gap-2 flex-1">
+                        <input
+                          type="text"
+                          className="bg-gray-800 flex-1 text-right p-1 border border-gray-600 rounded-md text-white"
+                          value={editingClassName}
+                          onChange={(e) => setEditingClassName(e.target.value)}
+                        />
+                        <button onClick={handleEditClass} className="text-green-400 hover:text-green-300 text-sm">حفظ</button>
+                        <button onClick={() => { setEditingClassId(null); setEditingClassName(''); }} className="text-gray-400 hover:text-white text-sm">إلغاء</button>
+                      </div>
+                    ) : (
+                      <>
+                        <span className="text-white">{cls.name}</span>
+                        <div className="flex gap-2">
+                          <button onClick={() => { setEditingClassId(cls.id); setEditingClassName(cls.name); }} className="text-blue-400 hover:text-blue-300 text-sm">✏️</button>
+                          <button onClick={() => handleDeleteClass(cls.id)} className="text-red-400 hover:text-red-300 text-sm">🗑️</button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+                {classes.length === 0 && <p className="text-gray-400 text-center">لا توجد شعب مسجلة</p>}
               </div>
+              <button onClick={() => setShowManageClassesModal(false)} className="btn-primary bg-gray-600 hover:bg-gray-700 w-full py-2 rounded-md text-white">إغلاق</button>
             </div>
           </div>
         </div>
@@ -2289,13 +2335,6 @@ const TeacherPanel = ({ user, onLogout }) => {
                         className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-lg hover:bg-green-500/30"
                       >
                         ✉️ رسالة
-                      </button>
-                      <button
-                        onClick={() => openManageClasses(s)}
-                        type="button"
-                        className="text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-1 rounded-lg hover:bg-blue-500/30"
-                      >
-                        📚 شعب
                       </button>
                       {s.isFrozen && (
                         <button onClick={() => sendFreezeMessage(s)} type="button" className="text-xs bg-orange-500/20 text-orange-300 border border-orange-500/30 px-2 py-1 rounded-lg hover:bg-orange-500/30">🚫 تجميد</button>
