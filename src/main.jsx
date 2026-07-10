@@ -213,8 +213,10 @@ const FrozenAccount = ({ user, onLogout }) => {
 }
 
 // ========== CompleteProfile (تأكيد المعلومات + إنشاء بيانات الدخول) ==========
+// (ملاحظة: هذه الشاشة لن تُستخدم الآن لأن المعلم هو من ينشئ الحساب،
+//  لكننا نحتفظ بها في حال تم استدعاؤها من مكان آخر)
 const CompleteProfile = ({ user, onSuccess, onCancel }) => {
-  const [step, setStep] = useState(1) // 1: تأكيد المعلومات, 2: إنشاء اسم مستخدم وكلمة مرور
+  const [step, setStep] = useState(1)
   const [name, setName] = useState('')
   const [gender, setGender] = useState('')
   const [age, setAge] = useState('')
@@ -225,7 +227,6 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  // تعبئة الحقول بالبيانات المسجلة مسبقاً (من المعلم)
   useEffect(() => {
     if (user) {
       setName(user.name || '')
@@ -235,11 +236,9 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
     }
   }, [user])
 
-  // الخطوة 1: تأكيد المعلومات
   const handleVerify = async (e) => {
     e.preventDefault()
     setError('')
-
     const stored = {
       name: user.name || '',
       gender: user.gender || '',
@@ -252,7 +251,6 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
       age: age.trim(),
       phone: phone.trim()
     }
-
     if (entered.name !== stored.name) {
       setError('الاسم غير متطابق مع البيانات المسجلة')
       return
@@ -269,16 +267,12 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
       setError('رقم الهاتف غير متطابق مع البيانات المسجلة')
       return
     }
-
-    // جميع البيانات متطابقة → الانتقال للخطوة الثانية
     setStep(2)
   }
 
-  // الخطوة 2: إنشاء اسم مستخدم وكلمة مرور
   const handleSetCredentials = async (e) => {
     e.preventDefault()
     setError('')
-
     const usernameRegex = /^[a-zA-Z0-9]+$/
     if (!usernameRegex.test(newUsername)) {
       setError('اسم المستخدم يجب أن يحتوي على أحرف إنجليزية وأرقام فقط')
@@ -299,7 +293,6 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
 
     setLoading(true)
     try {
-      // التحقق من تفرد اسم المستخدم
       const q = query(collection(db, 'profiles'), where('username', '==', newUsername))
       const querySnap = await getDocs(q)
       let exists = false
@@ -312,7 +305,6 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
         return
       }
 
-      // تحديث الملف الشخصي في Firestore
       const profileRef = doc(db, 'profiles', user.id)
       await updateDoc(profileRef, {
         username: newUsername,
@@ -321,7 +313,6 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
         updatedAt: serverTimestamp()
       })
 
-      // تحديث البريد الإلكتروني وكلمة المرور في Firebase Authentication
       const currentUser = auth.currentUser
       if (currentUser) {
         await updateEmail(currentUser, `${newUsername}@readandrise.com`)
@@ -330,7 +321,6 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
         throw new Error('لم يتم العثور على المستخدم الحالي')
       }
 
-      // بناء كائن المستخدم المحدث
       const updatedUser = {
         ...user,
         username: newUsername,
@@ -346,7 +336,6 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
     }
   }
 
-  // عرض الخطوة 1
   if (step === 1) {
     return (
       <div className="container-center min-h-screen relative" dir="rtl">
@@ -358,22 +347,11 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
             <form onSubmit={handleVerify} className="space-y-4">
               <div>
                 <label className="text-sm text-gray-300 block mb-1">الاسم الكامل <span className="text-red-400">*</span></label>
-                <input
-                  type="text"
-                  className="input-glass w-full text-right"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  required
-                />
+                <input type="text" className="input-glass w-full text-right" value={name} onChange={e => setName(e.target.value)} required />
               </div>
               <div>
                 <label className="text-sm text-gray-300 block mb-1">الجنس <span className="text-red-400">*</span></label>
-                <select
-                  className="input-glass w-full text-right"
-                  value={gender}
-                  onChange={e => setGender(e.target.value)}
-                  required
-                >
+                <select className="input-glass w-full text-right" value={gender} onChange={e => setGender(e.target.value)} required>
                   <option value="">اختر</option>
                   <option value="ذكر">ذكر</option>
                   <option value="أنثى">أنثى</option>
@@ -381,28 +359,14 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
               </div>
               <div>
                 <label className="text-sm text-gray-300 block mb-1">العمر <span className="text-red-400">*</span></label>
-                <input
-                  type="number"
-                  className="input-glass w-full text-right"
-                  value={age}
-                  onChange={e => setAge(e.target.value)}
-                  required
-                />
+                <input type="number" className="input-glass w-full text-right" value={age} onChange={e => setAge(e.target.value)} required />
               </div>
               <div>
                 <label className="text-sm text-gray-300 block mb-1">رقم الهاتف <span className="text-red-400">*</span></label>
-                <input
-                  type="text"
-                  className="input-glass w-full text-right"
-                  value={phone}
-                  onChange={e => setPhone(e.target.value)}
-                  required
-                />
+                <input type="text" className="input-glass w-full text-right" value={phone} onChange={e => setPhone(e.target.value)} required />
               </div>
               {error && <p className="text-red-400 text-sm text-center">{error}</p>}
-              <button type="submit" className="btn-primary w-full py-3 bg-blue-600 hover:bg-blue-700">
-                تأكيد المعلومات
-              </button>
+              <button type="submit" className="btn-primary w-full py-3 bg-blue-600 hover:bg-blue-700">تأكيد المعلومات</button>
             </form>
             <button onClick={onCancel} type="button" className="text-sm text-gray-400 hover:text-white w-full text-center mt-2">تسجيل الخروج</button>
           </div>
@@ -411,7 +375,6 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
     )
   }
 
-  // عرض الخطوة 2
   return (
     <div className="container-center min-h-screen relative" dir="rtl">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
@@ -422,38 +385,15 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
           <form onSubmit={handleSetCredentials} className="space-y-4">
             <div>
               <label className="text-sm text-gray-300 block mb-1">اسم المستخدم الجديد <span className="text-red-400">*</span></label>
-              <input
-                type="text"
-                className="input-glass w-full text-right"
-                value={newUsername}
-                onChange={e => setNewUsername(e.target.value)}
-                required
-                pattern="[a-zA-Z0-9]+"
-                title="أحرف إنجليزية أو أرقام فقط"
-              />
+              <input type="text" className="input-glass w-full text-right" value={newUsername} onChange={e => setNewUsername(e.target.value)} required pattern="[a-zA-Z0-9]+" title="أحرف إنجليزية أو أرقام فقط" />
             </div>
             <div>
               <label className="text-sm text-gray-300 block mb-1">كلمة المرور الجديدة <span className="text-red-400">*</span></label>
-              <input
-                type="password"
-                className="input-glass w-full text-right"
-                value={newPassword}
-                onChange={e => setNewPassword(e.target.value)}
-                required
-                minLength="6"
-                pattern="[a-zA-Z0-9]+"
-                title="أحرف إنجليزية أو أرقام فقط، على الأقل 6 أحرف"
-              />
+              <input type="password" className="input-glass w-full text-right" value={newPassword} onChange={e => setNewPassword(e.target.value)} required minLength="6" pattern="[a-zA-Z0-9]+" title="أحرف إنجليزية أو أرقام فقط، على الأقل 6 أحرف" />
             </div>
             <div>
               <label className="text-sm text-gray-300 block mb-1">تأكيد كلمة المرور <span className="text-red-400">*</span></label>
-              <input
-                type="password"
-                className="input-glass w-full text-right"
-                value={confirmPassword}
-                onChange={e => setConfirmPassword(e.target.value)}
-                required
-              />
+              <input type="password" className="input-glass w-full text-right" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required />
             </div>
             {error && <p className="text-red-400 text-sm text-center">{error}</p>}
             <button type="submit" disabled={loading} className="btn-primary w-full py-3 bg-green-600 hover:bg-green-700">
@@ -467,7 +407,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
   )
 }
 
-// ========== Login (مع رابط "تسجيل الدخول لأول مرة" النصي الذي يعمل) ==========
+// ========== Login (بدون زر "تسجيل الدخول لأول مرة") ==========
 const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -475,98 +415,58 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const handleAuth = async (e, isFirstTime = false) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
+  const handleAuth = async (e) => {
+    e.preventDefault()
+    setLoading(true)
+    setError('')
 
     try {
-      const cleanUsername = username.trim().toLowerCase();
+      const cleanUsername = username.trim().toLowerCase()
       if (!cleanUsername) {
-        setError('يرجى إدخال اسم المستخدم');
-        setLoading(false);
-        return;
+        setError('يرجى إدخال اسم المستخدم')
+        setLoading(false)
+        return
       }
 
       // البحث عن المستخدم في Firestore
-      const q = query(collection(db, 'profiles'), where('username', '==', cleanUsername));
-      const querySnapshot = await getDocs(q);
+      const q = query(collection(db, 'profiles'), where('username', '==', cleanUsername))
+      const querySnapshot = await getDocs(q)
       if (querySnapshot.empty) {
-        setError('اسم المستخدم غير موجود. تأكد من أن المعلم قام بإضافتك.');
-        setLoading(false);
-        return;
+        setError('اسم المستخدم غير موجود. تأكد من أن المعلم قام بإضافتك.')
+        setLoading(false)
+        return
       }
 
-      const profileDoc = querySnapshot.docs[0];
-      const oldId = profileDoc.id;
-      const profileData = profileDoc.data();
-      const email = `${cleanUsername}@readandrise.com`;
+      const profileDoc = querySnapshot.docs[0]
+      const profileData = profileDoc.data()
+      const email = `${cleanUsername}@readandrise.com`
 
-      let firebaseUser = null;
-
+      let firebaseUser = null
       try {
-        // محاولة تسجيل الدخول أولاً
-        const userCredential = await signInWithEmailAndPassword(auth, email, password);
-        firebaseUser = userCredential.user;
+        const userCredential = await signInWithEmailAndPassword(auth, email, password)
+        firebaseUser = userCredential.user
       } catch (loginErr) {
-        // إذا كان المستخدم غير موجود في Firebase Authentication
         if (loginErr.code === 'auth/user-not-found') {
-          // نسمح بالإنشاء فقط إذا كان الزر "تسجيل الدخول لأول مرة"
-          if (!isFirstTime) {
-            setError('هذا الحساب غير مسجل في النظام. استخدم الرابط "تسجيل الدخول لأول مرة" أدناه.');
-            setLoading(false);
-            return;
-          }
-
-          // إنشاء حساب جديد
-          try {
-            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-            firebaseUser = userCredential.user;
-
-            // نقل بيانات الملف الشخصي من oldId إلى uid الجديد
-            const newUid = firebaseUser.uid;
-            const newDocRef = doc(db, 'profiles', newUid);
-            await setDoc(newDocRef, { ...profileData, updatedAt: serverTimestamp() });
-            await deleteDoc(doc(db, 'profiles', oldId));
-          } catch (createErr) {
-            // معالجة أخطاء الإنشاء
-            if (createErr.code === 'auth/email-already-in-use') {
-              setError('هذا الحساب موجود بالفعل في النظام. يرجى استخدام زر "تسجيل الدخول" العادي.');
-            } else if (createErr.code === 'auth/weak-password') {
-              setError('كلمة المرور ضعيفة، يجب أن تحتوي على 6 أحرف على الأقل.');
-            } else {
-              setError(createErr.message || 'حدث خطأ أثناء إنشاء الحساب.');
-            }
-            setLoading(false);
-            return;
-          }
-        } else if (loginErr.code === 'auth/wrong-password' && isFirstTime) {
-          // إذا كانت كلمة المرور خاطئة ولكن المستخدم موجود، نعطي توجيهاً
-          setError('كلمة المرور غير صحيحة. إذا كنت قد أنشأت حساباً مسبقاً، استخدم زر "تسجيل الدخول" العادي.');
-          setLoading(false);
-          return;
+          setError('لم يتم إنشاء حسابك بعد. يرجى التواصل مع المعلم لإنشاء حساب لك.')
+          setLoading(false)
+          return
         } else {
-          // أخطاء أخرى (مثل too-many-requests)
-          throw loginErr;
+          throw loginErr
         }
       }
 
-      // بعد الحصول على firebaseUser، جلب الملف الشخصي
-      const docSnap = await getDoc(doc(db, 'profiles', firebaseUser.uid));
+      // جلب الملف الشخصي
+      const docSnap = await getDoc(doc(db, 'profiles', firebaseUser.uid))
       if (!docSnap.exists()) {
-        // حالة نادرة: الملف غير موجود، نطلب إكمال الملف
-        onCompleteProfile({
-          id: firebaseUser.uid,
-          email: firebaseUser.email,
-          username: cleanUsername
-        });
-        setLoading(false);
-        return;
+        // في حال نادر: المستخدم موجود في Auth ولكن ليس في Firestore
+        // نطلب من المعلم إعادة إنشاء الحساب
+        setError('بياناتك غير مكتملة في النظام. يرجى التواصل مع المعلم.')
+        setLoading(false)
+        return
       }
 
-      const profile = docSnap.data();
+      const profile = docSnap.data()
 
-      // التحقق من التجميد
       if (profile.isFrozen) {
         onFrozen({
           id: firebaseUser.uid,
@@ -576,24 +476,23 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
           name: profile.name,
           phone: profile.phone,
           class_name: 'غير محدد'
-        });
-        setLoading(false);
-        return;
+        })
+        setLoading(false)
+        return
       }
 
-      // التحقق من اكتمال الملف الشخصي
       if (!profile.isProfileComplete) {
+        // في حال كانت الوثيقة غير مكتملة (نادراً لأن المعلم يكملها)
         onCompleteProfile({
           id: firebaseUser.uid,
           email: firebaseUser.email,
           username: profile.username || cleanUsername,
           ...profile
-        });
-        setLoading(false);
-        return;
+        })
+        setLoading(false)
+        return
       }
 
-      // تسجيل الدخول العادي
       onLogin({
         id: firebaseUser.uid,
         email: firebaseUser.email,
@@ -606,20 +505,20 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
         classId: profile.classId,
         needsPasswordChange: profile.infoVerified === false,
         isProfileComplete: true
-      });
+      })
     } catch (err) {
-      console.error(err);
+      console.error(err)
       if (err.code === 'auth/wrong-password') {
-        setError('كلمة المرور غير صحيحة');
+        setError('كلمة المرور غير صحيحة')
       } else if (err.code === 'auth/too-many-requests') {
-        setError('تم حظر الحساب مؤقتاً بسبب كثرة المحاولات، حاول لاحقاً');
+        setError('تم حظر الحساب مؤقتاً بسبب كثرة المحاولات، حاول لاحقاً')
       } else {
-        setError(err.message || 'حدث خطأ غير متوقع.');
+        setError(err.message || 'حدث خطأ غير متوقع.')
       }
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   return (
     <div className="container-center relative min-h-screen overflow-hidden" dir="rtl">
@@ -627,12 +526,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
       <div className="relative z-10 w-full max-w-md px-4">
         <div className="glass p-6 rounded-3xl shadow-2xl border border-white/20 bg-white/10 backdrop-blur-xl flex flex-col items-center relative overflow-hidden min-h-[440px] justify-center">
           <div className="absolute inset-0 flex items-start justify-center pt-6 pointer-events-none z-0 overflow-hidden">
-            <img
-              src="/images/logo.png"
-              alt=""
-              className="w-96 h-96 md:w-[420px] md:h-[420px] object-contain opacity-15 animate-logo-bg select-none"
-              onError={(e) => e.target.style.display = 'none'}
-            />
+            <img src="/images/logo.png" alt="" className="w-96 h-96 md:w-[420px] md:h-[420px] object-contain opacity-15 animate-logo-bg select-none" onError={(e) => e.target.style.display = 'none'} />
           </div>
           <div className="w-full z-10 flex flex-col items-center space-y-4">
             <div className="text-center space-y-1 w-full">
@@ -645,7 +539,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
                 </span>
               </div>
             </div>
-            <form onSubmit={(e) => handleAuth(e, false)} className="space-y-3.5 w-full">
+            <form onSubmit={handleAuth} className="space-y-3.5 w-full">
               <div className="relative flex items-center">
                 <span className="absolute right-4 text-gray-400 pointer-events-none text-sm font-medium">اسم المستخدم</span>
                 <input type="text" className="input-glass w-full text-right pr-24 pl-4 text-base bg-black/20" value={username} onChange={(e) => setUsername(e.target.value)} required />
@@ -661,18 +555,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
               <button type="submit" className="btn-primary w-full py-2.5 text-lg font-semibold tracking-wide shadow-lg" disabled={loading}>
                 {loading ? 'جاري التحميل...' : 'تسجيل الدخول'}
               </button>
-              {/* رابط نصي "تسجيل الدخول لأول مرة" */}
-              <div className="text-center mt-1">
-                <button 
-                  type="button" 
-                  onClick={(e) => handleAuth(e, true)} 
-                  className="text-sm text-green-400 hover:text-green-300 underline transition-colors cursor-pointer"
-                  disabled={loading}
-                >
-                  تسجيل الدخول لأول مرة (اضغط هنا)
-                </button>
-                <p className="text-xs text-gray-500 mt-1">🔑 أدخل كلمة مرور (6 أحرف على الأقل) لإنشاء حسابك الجديد</p>
-              </div>
             </form>
             <div className="pt-2 border-t border-white/10 text-center text-xs text-gray-400 w-full">
               <p>جميع الحقوق محفوظة © 2026 لصالح المبرمج همام هاني محمد علي</p>
@@ -684,7 +566,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   )
 }
 
-// ========== TeacherPanel (نفسه بدون تغيير) ==========
+// ========== TeacherPanel (مع إضافة زر "إنشاء حساب" للطلاب) ==========
 const TeacherPanel = ({ user, onLogout }) => {
   const [lessonTime, setLessonTime] = useState('')
   const [homeworks, setHomeworks] = useState([])
@@ -857,6 +739,59 @@ const TeacherPanel = ({ user, onLogout }) => {
       unsubscribePending()
     }
   }, [user.id])
+
+  // ========== دالة إنشاء حساب للطالب (المعلم فقط) ==========
+  const createStudentAccount = async (student) => {
+    // التأكد من أن البريد الإلكتروني مؤقت (أي لم ينشأ حساب بعد)
+    if (!student.email || !student.email.endsWith('@temp.com')) {
+      alert('هذا الطالب لديه حساب بالفعل.')
+      return
+    }
+
+    const password = prompt(`أدخل كلمة مرور مؤقتة للطالب ${student.name || student.username} (ستكون قابلة للتغيير لاحقاً):`)
+    if (!password || password.length < 6) {
+      alert('كلمة المرور يجب أن تكون 6 أحرف على الأقل.')
+      return
+    }
+
+    try {
+      // إنشاء الحساب في Firebase Authentication
+      const email = `${student.username}@readandrise.com`
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password)
+      const newUid = userCredential.user.uid
+
+      // نسخ بيانات الطالب من الوثيقة القديمة إلى الوثيقة الجديدة باستخدام uid الجديد
+      const oldDocRef = doc(db, 'profiles', student.id)
+      const oldDocSnap = await getDoc(oldDocRef)
+      if (!oldDocSnap.exists()) {
+        alert('بيانات الطالب غير موجودة.')
+        return
+      }
+      const studentData = oldDocSnap.data()
+
+      // إنشاء وثيقة جديدة بالـ uid الجديد
+      const newDocRef = doc(db, 'profiles', newUid)
+      await setDoc(newDocRef, {
+        ...studentData,
+        email: email,
+        isProfileComplete: true,
+        infoVerified: true,
+        updatedAt: serverTimestamp()
+      })
+
+      // حذف الوثيقة القديمة
+      await deleteDoc(oldDocRef)
+
+      alert(`تم إنشاء حساب للطالب ${student.name || student.username} بنجاح.\nالبريد: ${email}\nكلمة المرور: ${password}`)
+    } catch (err) {
+      console.error(err)
+      if (err.code === 'auth/email-already-in-use') {
+        alert('البريد الإلكتروني مستخدم بالفعل. قد يكون الطالب قد أنشأ حسابه مسبقاً.')
+      } else {
+        alert('فشل إنشاء الحساب: ' + err.message)
+      }
+    }
+  }
 
   const acceptReview = async (studentId) => {
     try {
@@ -1120,7 +1055,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         updatedAt: serverTimestamp()
       })
 
-      alert(`تم تسجيل الطالب ${newStudentName} بنجاح.\nاسم المستخدم المؤقت: ${username}\nسيتمكن الطالب من تعيين اسم مستخدم جديد عند تسجيل الدخول لأول مرة.`)
+      alert(`تم تسجيل الطالب ${newStudentName} بنجاح.\nاسم المستخدم: ${username}\nالآن قم بإنشاء حساب له باستخدام زر "إنشاء حساب" في قائمة الطلاب.`)
       setNewStudentName('')
       setNewStudentGender('')
       setNewStudentAge('')
@@ -1276,33 +1211,42 @@ const TeacherPanel = ({ user, onLogout }) => {
               <button onClick={() => setShowStudentsModal(false)} type="button" className="text-gray-400 hover:text-white text-2xl">✕</button>
             </div>
             <div className="space-y-3">
-              {sortedStudents.map(s => (
-                <div key={s.id} className={`p-3 rounded-xl border flex flex-wrap justify-between items-center gap-3 ${s.isFrozen ? 'bg-gray-900/60 border-gray-700 opacity-60' : 'bg-white/5 border-white/5'}`}>
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <span className="text-white text-sm font-medium">{s.name || s.username}</span>
-                    <span className="text-xs text-gray-400">({s.username})</span>
-                    {s.classes && <span className="text-xs text-blue-300 bg-blue-950/40 px-2 py-0.5 rounded border border-blue-500/20">{s.classes.name}</span>}
-                    {s.phone && <span className="text-xs text-gray-400">📱 {s.phone}</span>}
-                    {s.gender && <span className="text-xs text-gray-400">{s.gender}</span>}
-                    {s.age && <span className="text-xs text-gray-400">عمر {s.age}</span>}
-                    {s.isFrozen && <span className="text-xs text-orange-400 bg-orange-950/40 px-2 py-0.5 rounded border border-orange-500/20">⏳ مجمد</span>}
-                    {checkInactivityWarning(s.last_seen) && !s.isFrozen && (
-                      <span className="text-xs text-red-400 bg-red-950/40 px-2 py-0.5 rounded border border-red-500/30 animate-bounce">🚨 لم يفتح منذ 30 يوم!</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-4 flex-wrap">
-                    <button onClick={() => communicateWithParent(s)} type="button" className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-lg hover:bg-green-500/30">📞 تواصل مع ولي الأمر</button>
-                    <button onClick={() => handleResetStudent(s.id)} type="button" className="text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-2 py-1 rounded-lg hover:bg-yellow-500/30">🔄 إعادة تعيين</button>
-                    <button onClick={() => handleDeleteStudentPermanently(s.id)} type="button" className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg hover:bg-red-500/30">❌ حذف</button>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-400">{s.isFrozen ? 'مجمد' : 'مفعل'}</span>
-                      <div onClick={() => toggleFreezeStudent(s)} className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-300 ${s.isFrozen ? 'bg-gray-600' : 'bg-green-500'}`}>
-                        <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-300 ${s.isFrozen ? 'translate-x-0' : '-translate-x-6'}`} />
+              {sortedStudents.map(s => {
+                const hasAccount = s.email && !s.email.endsWith('@temp.com')
+                return (
+                  <div key={s.id} className={`p-3 rounded-xl border flex flex-wrap justify-between items-center gap-3 ${s.isFrozen ? 'bg-gray-900/60 border-gray-700 opacity-60' : 'bg-white/5 border-white/5'}`}>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <span className="text-white text-sm font-medium">{s.name || s.username}</span>
+                      <span className="text-xs text-gray-400">({s.username})</span>
+                      {s.classes && <span className="text-xs text-blue-300 bg-blue-950/40 px-2 py-0.5 rounded border border-blue-500/20">{s.classes.name}</span>}
+                      {s.phone && <span className="text-xs text-gray-400">📱 {s.phone}</span>}
+                      {s.gender && <span className="text-xs text-gray-400">{s.gender}</span>}
+                      {s.age && <span className="text-xs text-gray-400">عمر {s.age}</span>}
+                      {s.isFrozen && <span className="text-xs text-orange-400 bg-orange-950/40 px-2 py-0.5 rounded border border-orange-500/20">⏳ مجمد</span>}
+                      {checkInactivityWarning(s.last_seen) && !s.isFrozen && (
+                        <span className="text-xs text-red-400 bg-red-950/40 px-2 py-0.5 rounded border border-red-500/30 animate-bounce">🚨 لم يفتح منذ 30 يوم!</span>
+                      )}
+                      {!hasAccount && <span className="text-xs text-yellow-400 bg-yellow-950/40 px-2 py-0.5 rounded border border-yellow-500/30">⚠️ لم ينشأ حساب بعد</span>}
+                    </div>
+                    <div className="flex items-center gap-4 flex-wrap">
+                      {!hasAccount && (
+                        <button onClick={() => createStudentAccount(s)} type="button" className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-lg hover:bg-green-500/30">
+                          🔑 إنشاء حساب
+                        </button>
+                      )}
+                      <button onClick={() => communicateWithParent(s)} type="button" className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-lg hover:bg-green-500/30">📞 تواصل مع ولي الأمر</button>
+                      <button onClick={() => handleResetStudent(s.id)} type="button" className="text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-2 py-1 rounded-lg hover:bg-yellow-500/30">🔄 إعادة تعيين</button>
+                      <button onClick={() => handleDeleteStudentPermanently(s.id)} type="button" className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg hover:bg-red-500/30">❌ حذف</button>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-400">{s.isFrozen ? 'مجمد' : 'مفعل'}</span>
+                        <div onClick={() => toggleFreezeStudent(s)} className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-300 ${s.isFrozen ? 'bg-gray-600' : 'bg-green-500'}`}>
+                          <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-300 ${s.isFrozen ? 'translate-x-0' : '-translate-x-6'}`} />
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
               {students.length === 0 && <p className="text-gray-400 text-center py-2">لا يوجد طلاب مسجلين.</p>}
             </div>
           </div>
