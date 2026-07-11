@@ -52,6 +52,26 @@ const arabicToEnglish = (text) => {
   return text.split('').map(ch => map[ch] || ch).join('');
 };
 
+// ========== دالة موحدة لجلب أسماء الشعب ==========
+const fetchClassNames = async (classIds) => {
+  if (!classIds || classIds.length === 0) return {};
+  const names = {};
+  for (const id of classIds) {
+    try {
+      const docSnap = await getDoc(doc(db, 'classes', id));
+      if (docSnap.exists()) {
+        names[id] = docSnap.data().name;
+      } else {
+        names[id] = null; // شعبة غير موجودة
+      }
+    } catch (err) {
+      console.error('Error fetching class name:', err);
+      names[id] = null;
+    }
+  }
+  return names;
+};
+
 // ============================================================
 // 1. مكوّن إضافة الواجب (مع خيار النشر الفوري / الجدولة)
 // ============================================================
@@ -964,7 +984,9 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
   return null;
 };
 
-// ========== Login ==========
+// ============================================================
+// Login - تصميم محسّن
+// ============================================================
 const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -1237,126 +1259,136 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
 
   if (activationMode) {
     return (
-      <div className="container-center relative min-h-screen overflow-hidden" dir="rtl">
-        <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
-        <div className="relative z-10 w-full max-w-md px-4">
-          <div className="bg-gray-900 p-6 rounded-3xl shadow-2xl border border-gray-700 flex flex-col items-center relative overflow-hidden">
-            <div className="w-full z-10 flex flex-col items-center space-y-4">
-              <h2 className="text-2xl font-bold bg-gradient-to-r from-green-400 to-blue-400 text-transparent bg-clip-text">
-                تفعيل الحساب لأول مرة
-              </h2>
-
-              {activationStep === 1 && (
-                <form onSubmit={handleActivationStep1} className="space-y-4 w-full">
-                  <p className="text-gray-300 text-sm text-center">يرجى إدخال المعلومات كما هي مسجلة لدينا للتأكيد</p>
-                  <div>
-                    <label className="text-sm text-gray-300 block mb-1">الاسم الكامل</label>
-                    <input type="text" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationConfirmName} onChange={e => setActivationConfirmName(e.target.value)} required />
-                  </div>
-                  <div>
-                    <label className="text-sm text-gray-300 block mb-1">الجنس</label>
-                    <select className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationConfirmGender} onChange={e => setActivationConfirmGender(e.target.value)} required>
-                      <option value="">اختر</option>
-                      <option value="ذكر">ذكر</option>
-                      <option value="أنثى">أنثى</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-sm text-gray-300 block mb-1">العمر</label>
-                    <input type="number" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationConfirmAge} onChange={e => setActivationConfirmAge(e.target.value)} required />
-                  </div>
-                  <div>
-                    <label className="text-sm text-gray-300 block mb-1">رقم الهاتف</label>
-                    <input type="text" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationConfirmPhone} onChange={e => setActivationConfirmPhone(e.target.value)} required />
-                  </div>
-                  {activationError && <p className="text-red-400 text-sm text-center">{activationError}</p>}
-                  <button type="submit" disabled={activationLoading} className="btn-primary w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-md">
-                    {activationLoading ? 'جاري البحث...' : 'تأكيد المعلومات'}
-                  </button>
-                  <button type="button" onClick={cancelActivation} className="text-sm text-gray-400 hover:text-white w-full text-center mt-2">عودة لتسجيل الدخول</button>
-                </form>
-              )}
-
-              {activationStep === 2 && (
-                <form onSubmit={handleActivationStep2} className="space-y-4 w-full">
-                  <p className="text-gray-300 text-sm text-center">اختر اسم مستخدم وكلمة مرور جديدة</p>
-                  <div>
-                    <label className="text-sm text-gray-300 block mb-1">اسم المستخدم الجديد (أحرف إنجليزية وأرقام والرموز @ . _ -)</label>
-                    <input type="text" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationNewUsername} onChange={handleActivationNewUsernameChange} required pattern="[a-zA-Z0-9@._-]+" title="أحرف إنجليزية وأرقام والرموز @ . _ -" />
-                  </div>
-                  <div>
-                    <label className="text-sm text-gray-300 block mb-1">كلمة المرور الجديدة</label>
-                    <input type="password" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationNewPassword} onChange={e => setActivationNewPassword(e.target.value)} required minLength="6" pattern="[a-zA-Z0-9@._-]+" title="أحرف إنجليزية وأرقام والرموز @ . _ -، 6 أحرف على الأقل" />
-                  </div>
-                  <div>
-                    <label className="text-sm text-gray-300 block mb-1">تأكيد كلمة المرور</label>
-                    <input type="password" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationConfirmPassword} onChange={e => setActivationConfirmPassword(e.target.value)} required />
-                  </div>
-                  {activationError && <p className="text-red-400 text-sm text-center">{activationError}</p>}
-                  <button type="submit" disabled={activationLoading} className="btn-primary w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-md">
-                    {activationLoading ? 'جاري التفعيل...' : 'تفعيل الحساب'}
-                  </button>
-                  <button type="button" onClick={cancelActivation} className="text-sm text-gray-400 hover:text-white w-full text-center mt-2">إلغاء</button>
-                </form>
-              )}
-            </div>
-          </div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-indigo-900 to-purple-900 p-4" dir="rtl">
+        <div className="bg-gray-800/90 backdrop-blur-sm p-8 rounded-3xl shadow-2xl w-full max-w-md border border-gray-700">
+          <h2 className="text-3xl font-bold text-center bg-gradient-to-r from-green-400 to-blue-400 text-transparent bg-clip-text mb-6">
+            تفعيل الحساب لأول مرة
+          </h2>
+          {activationStep === 1 && (
+            <form onSubmit={handleActivationStep1} className="space-y-4">
+              <p className="text-gray-300 text-sm text-center">يرجى إدخال المعلومات كما هي مسجلة لدينا للتأكيد</p>
+              <div>
+                <label className="text-sm text-gray-300 block mb-1">الاسم الكامل</label>
+                <input type="text" className="w-full p-3 rounded-xl bg-gray-700 border border-gray-600 text-white focus:ring-2 focus:ring-blue-500 outline-none" value={activationConfirmName} onChange={e => setActivationConfirmName(e.target.value)} required />
+              </div>
+              <div>
+                <label className="text-sm text-gray-300 block mb-1">الجنس</label>
+                <select className="w-full p-3 rounded-xl bg-gray-700 border border-gray-600 text-white focus:ring-2 focus:ring-blue-500 outline-none" value={activationConfirmGender} onChange={e => setActivationConfirmGender(e.target.value)} required>
+                  <option value="">اختر</option>
+                  <option value="ذكر">ذكر</option>
+                  <option value="أنثى">أنثى</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-sm text-gray-300 block mb-1">العمر</label>
+                <input type="number" className="w-full p-3 rounded-xl bg-gray-700 border border-gray-600 text-white focus:ring-2 focus:ring-blue-500 outline-none" value={activationConfirmAge} onChange={e => setActivationConfirmAge(e.target.value)} required />
+              </div>
+              <div>
+                <label className="text-sm text-gray-300 block mb-1">رقم الهاتف</label>
+                <input type="text" className="w-full p-3 rounded-xl bg-gray-700 border border-gray-600 text-white focus:ring-2 focus:ring-blue-500 outline-none" value={activationConfirmPhone} onChange={e => setActivationConfirmPhone(e.target.value)} required />
+              </div>
+              {activationError && <p className="text-red-400 text-sm text-center">{activationError}</p>}
+              <button type="submit" disabled={activationLoading} className="w-full py-3 bg-blue-600 hover:bg-blue-700 rounded-xl text-white font-semibold transition duration-200">
+                {activationLoading ? 'جاري البحث...' : 'تأكيد المعلومات'}
+              </button>
+              <button type="button" onClick={cancelActivation} className="w-full text-sm text-gray-400 hover:text-white mt-2">عودة لتسجيل الدخول</button>
+            </form>
+          )}
+          {activationStep === 2 && (
+            <form onSubmit={handleActivationStep2} className="space-y-4">
+              <p className="text-gray-300 text-sm text-center">اختر اسم مستخدم وكلمة مرور جديدة</p>
+              <div>
+                <label className="text-sm text-gray-300 block mb-1">اسم المستخدم الجديد</label>
+                <input type="text" className="w-full p-3 rounded-xl bg-gray-700 border border-gray-600 text-white focus:ring-2 focus:ring-blue-500 outline-none" value={activationNewUsername} onChange={handleActivationNewUsernameChange} required pattern="[a-zA-Z0-9@._-]+" />
+              </div>
+              <div>
+                <label className="text-sm text-gray-300 block mb-1">كلمة المرور الجديدة</label>
+                <input type="password" className="w-full p-3 rounded-xl bg-gray-700 border border-gray-600 text-white focus:ring-2 focus:ring-blue-500 outline-none" value={activationNewPassword} onChange={e => setActivationNewPassword(e.target.value)} required minLength="6" />
+              </div>
+              <div>
+                <label className="text-sm text-gray-300 block mb-1">تأكيد كلمة المرور</label>
+                <input type="password" className="w-full p-3 rounded-xl bg-gray-700 border border-gray-600 text-white focus:ring-2 focus:ring-blue-500 outline-none" value={activationConfirmPassword} onChange={e => setActivationConfirmPassword(e.target.value)} required />
+              </div>
+              {activationError && <p className="text-red-400 text-sm text-center">{activationError}</p>}
+              <button type="submit" disabled={activationLoading} className="w-full py-3 bg-purple-600 hover:bg-purple-700 rounded-xl text-white font-semibold transition duration-200">
+                {activationLoading ? 'جاري التفعيل...' : 'تفعيل الحساب'}
+              </button>
+              <button type="button" onClick={cancelActivation} className="w-full text-sm text-gray-400 hover:text-white mt-2">إلغاء</button>
+            </form>
+          )}
         </div>
       </div>
     );
   }
 
+  // واجهة تسجيل الدخول المحسّنة
   return (
-    <div className="container-center relative min-h-screen overflow-hidden" dir="rtl">
-      <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
-      <div className="relative z-10 w-full max-w-md px-4">
-        <div className="bg-gray-900 p-6 rounded-3xl shadow-2xl border border-gray-700 flex flex-col items-center relative overflow-hidden min-h-[440px] justify-center">
-          <div className="absolute inset-0 flex items-start justify-center pt-6 pointer-events-none z-0 overflow-hidden">
-            <img src="/images/logo.png" alt="" className="w-96 h-96 md:w-[420px] md:h-[420px] object-contain opacity-15 animate-logo-bg select-none" onError={(e) => e.target.style.display = 'none'} />
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-indigo-900 to-purple-900 p-4" dir="rtl">
+      <div className="bg-gray-800/90 backdrop-blur-sm p-8 rounded-3xl shadow-2xl w-full max-w-md border border-gray-700">
+        <div className="text-center mb-8">
+          <h2 className="text-3xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 text-transparent bg-clip-text">
+            الفرسان التقنيين
+          </h2>
+          <p className="text-gray-400 text-sm mt-1">اقرأ وارتق</p>
+          <div className="mt-2 inline-block bg-black/40 px-4 py-1 rounded-full text-xs text-gray-300 border border-gray-600">
+            المعلم: همام هاني محمد
           </div>
-          <div className="w-full z-10 flex flex-col items-center space-y-4">
-            <div className="text-center space-y-1 w-full">
-              <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 text-transparent bg-clip-text">
-                الفرسان التقنيين - اقرآ وارتق
-              </h2>
-              <div className="w-full max-w-[310px] bg-black/50 border border-gray-700 px-4 py-1.5 rounded-full mx-auto shadow-inner">
-                <span className="text-sm font-semibold text-gray-200 tracking-wide">
-                  المعلم المسؤول : Dev / همام هاني محمد
-                </span>
-              </div>
-            </div>
-            <form onSubmit={handleAuth} className="space-y-3.5 w-full">
-              <div className="relative flex items-center">
-                <span className="absolute right-4 text-gray-400 pointer-events-none text-sm font-medium">اسم المستخدم</span>
-                <input type="text" className="bg-gray-800 w-full text-right pr-24 pl-4 text-base border border-gray-600 rounded-md text-white" value={username} onChange={handleUsernameChange} required />
-              </div>
-              <div className="relative flex items-center">
-                <span className="absolute right-4 text-gray-400 pointer-events-none text-sm font-medium">كلمة المرور</span>
-                <input type={showPassword ? "text" : "password"} className="bg-gray-800 w-full text-right pr-24 pl-12 text-base border border-gray-600 rounded-md text-white" value={password} onChange={(e) => setPassword(e.target.value)} required />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute left-4 text-xs font-semibold text-purple-400 hover:text-purple-300 transition-colors focus:outline-none bg-white/5 px-2 py-1 rounded border border-gray-600">
-                  {showPassword ? "إخفاء" : "إظهار"}
-                </button>
-              </div>
-              {error && <p className="text-red-400 text-sm text-center whitespace-pre-wrap">{error}</p>}
-              <button type="submit" className="btn-primary w-full py-2.5 text-lg font-semibold tracking-wide shadow-lg bg-blue-600 hover:bg-blue-700 text-white rounded-md" disabled={loading}>
-                {loading ? 'جاري التحميل...' : 'تسجيل الدخول'}
-              </button>
-            </form>
+        </div>
 
-            <div className="w-full text-center">
+        <form onSubmit={handleAuth} className="space-y-5">
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">اسم المستخدم</label>
+            <input
+              type="text"
+              className="w-full p-3 rounded-xl bg-gray-700 border border-gray-600 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+              value={username}
+              onChange={handleUsernameChange}
+              placeholder="أدخل اسم المستخدم"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">كلمة المرور</label>
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                className="w-full p-3 rounded-xl bg-gray-700 border border-gray-600 text-white focus:ring-2 focus:ring-blue-500 outline-none pr-10"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="أدخل كلمة المرور"
+                required
+              />
               <button
                 type="button"
-                onClick={() => setActivationMode(true)}
-                className="text-sm text-blue-400 hover:text-blue-300 underline transition-colors"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-purple-400 hover:text-purple-300 transition-colors bg-gray-600/30 px-2 py-1 rounded"
               >
-                تسجيل الدخول لأول مرة (تفعيل الحساب)
+                {showPassword ? "إخفاء" : "إظهار"}
               </button>
             </div>
-
-            <div className="pt-2 border-t border-gray-700 text-center text-xs text-gray-400 w-full">
-              <p>جميع الحقوق محفوظة © 2026 لصالح المبرمج همام هاني محمد علي</p>
-            </div>
           </div>
+          {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+          <button
+            type="submit"
+            className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-xl text-white font-semibold transition duration-200 shadow-lg"
+            disabled={loading}
+          >
+            {loading ? 'جاري التحميل...' : 'تسجيل الدخول'}
+          </button>
+        </form>
+
+        <div className="mt-4 text-center">
+          <button
+            type="button"
+            onClick={() => setActivationMode(true)}
+            className="text-sm text-blue-400 hover:text-blue-300 underline transition-colors"
+          >
+            تسجيل الدخول لأول مرة (تفعيل الحساب)
+          </button>
+        </div>
+
+        <div className="mt-6 pt-4 border-t border-gray-700 text-center text-xs text-gray-500">
+          جميع الحقوق محفوظة © 2026 همام هاني محمد علي
         </div>
       </div>
     </div>
@@ -1410,26 +1442,6 @@ const TeacherPanel = ({ user, onLogout }) => {
   const cleanPhoneNumber = (phone) => {
     if (!phone) return '';
     return phone.replace(/^0+/, '').replace(/[^0-9]/g, '');
-  };
-
-  // دالة لجلب أسماء الشعب (معدلة لتكون أكثر موثوقية)
-  const fetchClassNames = async (classIds) => {
-    if (!classIds || classIds.length === 0) return {};
-    const names = {};
-    for (const id of classIds) {
-      try {
-        const docSnap = await getDoc(doc(db, 'classes', id));
-        if (docSnap.exists()) {
-          names[id] = docSnap.data().name;
-        } else {
-          names[id] = null; // الشعبة محذوفة أو غير موجودة
-        }
-      } catch (err) {
-        console.error('Error fetching class name:', err);
-        names[id] = null;
-      }
-    }
-    return names;
   };
 
   const fetchTeacherData = async () => {
@@ -1667,7 +1679,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
   };
 
-  // ===== دالة إرسال الرسالة العامة (معدلة) =====
   const sendGeneralMessage = (student) => {
     if (!student) {
       toast.error('يرجى اختيار طالب.');
@@ -1684,7 +1695,6 @@ const TeacherPanel = ({ user, onLogout }) => {
       return;
     }
     const studentName = student.name || '';
-    // استخدام أول شعبة مسجلة، وإذا لم توجد نعرض "لا توجد شعبة"
     const material = student.classes?.length > 0 ? student.classes[0].name : 'لا توجد شعبة';
     const subject = generalMessageSubject.trim() || 'إشعار رسمي';
     const body = generalMessageText.trim() || '(نص الرسالة)';
@@ -1968,10 +1978,16 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
+  // ===== تعديل دالة إضافة طالب: رفض الإضافة إذا لم يتم اختيار شعبة =====
   const handleAddStudent = async (e) => {
     e.preventDefault();
-    if (!newStudentName || !newStudentGender || !newStudentAge || !newStudentPhone || newStudentClassIds.length === 0) {
-      toast.error('جميع الحقول مطلوبة واختيار شعبة واحدة على الأقل');
+    // التحقق من وجود شعبة محددة
+    if (newStudentClassIds.length === 0) {
+      toast.error('يرجى اختيار شعبة واحدة على الأقل للطالب.');
+      return;
+    }
+    if (!newStudentName || !newStudentGender || !newStudentAge || !newStudentPhone) {
+      toast.error('جميع الحقول مطلوبة.');
       return;
     }
 
@@ -2094,6 +2110,7 @@ const TeacherPanel = ({ user, onLogout }) => {
           <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700">
             <h3 className="text-lg font-semibold text-purple-200 mb-2">الوقت المتبقي للحصة</h3>
             {lessonTime ? (
+              // إضافة key={lessonTime} لحل مشكلة العداد
               <CountdownTimer key={lessonTime} targetDate={lessonTime} />
             ) : (
               <p className="text-gray-400 text-center py-2">لم يتم تحديد موعد</p>
@@ -2302,7 +2319,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال عرض الطلاب ===== */}
+      {/* ===== مودال عرض الطلاب (مع تصحيح عرض الشعب) ===== */}
       {showStudentsModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-40 p-4" onClick={() => setShowStudentsModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-4xl w-full max-h-[80vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
@@ -2315,21 +2332,16 @@ const TeacherPanel = ({ user, onLogout }) => {
                 const hasAccount = s.email && !s.email.endsWith('@temp.com');
                 const inactiveDays = getInactivityDays(s.last_seen);
                 const frozenDays = s.isFrozen && s.frozenAt ? Math.floor((new Date() - new Date(s.frozenAt.seconds * 1000)) / (1000 * 60 * 60 * 24)) : 0;
+                // عرض الشعب بشكل صحيح مع التأكد من وجود أسماء
+                const classNames = s.classes?.map(c => c.name).filter(Boolean).join(', ') || 'لا توجد شعبة';
                 return (
                   <div key={s.id} className={`p-3 rounded-xl border flex flex-wrap justify-between items-center gap-3 ${s.isFrozen ? 'bg-gray-800/60 border-gray-700 opacity-80' : 'bg-gray-800/30 border-gray-700'}`}>
                     <div className="flex items-center gap-3 flex-wrap">
                       <span className="text-white text-sm font-medium">{s.name || s.username}</span>
                       <span className="text-xs text-gray-400">({s.username})</span>
-                      {s.classes && s.classes.length > 0 && (
-                        <span className="text-xs text-blue-300 bg-blue-950/40 px-2 py-0.5 rounded border border-blue-500/20">
-                          الشعب: {s.classes.map(c => c.name).join(', ')}
-                        </span>
-                      )}
-                      {(!s.classes || s.classes.length === 0) && (
-                        <span className="text-xs text-yellow-400 bg-yellow-950/40 px-2 py-0.5 rounded border border-yellow-500/30">
-                          ⚠️ لا توجد شعبة
-                        </span>
-                      )}
+                      <span className="text-xs text-blue-300 bg-blue-950/40 px-2 py-0.5 rounded border border-blue-500/20">
+                        الشعب: {classNames}
+                      </span>
                       {s.phone && <span className="text-xs text-gray-400">📱 {s.phone}</span>}
                       {s.gender && <span className="text-xs text-gray-400">{s.gender}</span>}
                       {s.age && <span className="text-xs text-gray-400">عمر {s.age}</span>}
@@ -2428,6 +2440,7 @@ const TeacherPanel = ({ user, onLogout }) => {
                   ))}
                 </select>
                 <p className="text-xs text-gray-400 mt-1">اضغط Ctrl (أو ⌘) لاختيار عدة شعب</p>
+                <p className="text-xs text-red-400 mt-1">* يجب اختيار شعبة واحدة على الأقل</p>
               </div>
               <button type="submit" disabled={studentLoading} className="btn-primary w-full py-3 bg-blue-600 hover:bg-blue-700 rounded-md text-white">
                 {studentLoading ? 'جاري الإضافة...' : 'إضافة الطالب'}
@@ -2438,13 +2451,12 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال الرسالة العامة (معدل) ===== */}
+      {/* ===== مودال الرسالة العامة (مع تعديل حقل الشعبة) ===== */}
       {showGeneralMessageModal && selectedStudentForMessage && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowGeneralMessageModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-xl font-semibold text-green-300 mb-4">✉️ إرسال رسالة إلى {selectedStudentForMessage.name}</h3>
             <div className="space-y-4">
-              {/* تم تعديل الحقل هنا: تغيير التسمية إلى "الشعبة" وعرض الرسالة المناسبة */}
               <div>
                 <label className="text-sm text-gray-300 block">الشعبة</label>
                 <input
@@ -2563,22 +2575,6 @@ const StudentPanel = ({ user, onLogout }) => {
     } catch (err) {
       console.error(err);
     }
-  };
-
-  const fetchClassNames = async (classIds) => {
-    if (!classIds || classIds.length === 0) return {};
-    const names = {};
-    for (const id of classIds) {
-      try {
-        const docSnap = await getDoc(doc(db, 'classes', id));
-        if (docSnap.exists()) {
-          names[id] = docSnap.data().name;
-        }
-      } catch (err) {
-        console.error('Error fetching class name:', err);
-      }
-    }
-    return names;
   };
 
   useEffect(() => {
@@ -2784,14 +2780,6 @@ const App = () => {
 
   useDynamicBackground();
 
-  // إضافة أيقونة Favicon الجديدة
-  useEffect(() => {
-    const link = document.querySelector("link[rel*='icon']") || document.createElement('link');
-    link.rel = 'icon';
-    link.href = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='80' fill='%2300D2FF'>⟨▷⟩</text></svg>";
-    document.head.appendChild(link);
-  }, []);
-
   const handleLogout = async () => {
     await signOut(auth);
     setUser(null);
@@ -2817,22 +2805,6 @@ const App = () => {
     });
     setUser(null);
     setPendingUserForComplete(null);
-  };
-
-  const fetchClassNames = async (classIds) => {
-    if (!classIds || classIds.length === 0) return {};
-    const names = {};
-    for (const id of classIds) {
-      try {
-        const docSnap = await getDoc(doc(db, 'classes', id));
-        if (docSnap.exists()) {
-          names[id] = docSnap.data().name;
-        }
-      } catch (err) {
-        console.error('Error fetching class name:', err);
-      }
-    }
-    return names;
   };
 
   const handleCompleteProfile = (userData) => {
