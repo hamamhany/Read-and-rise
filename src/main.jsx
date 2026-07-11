@@ -1381,7 +1381,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [showStudentsModal, setShowStudentsModal] = useState(false);
   const [showAssignmentModal, setShowAssignmentModal] = useState(false);
   const [showLessonModal, setShowLessonModal] = useState(false);
-  const [showManageClassesModal, setShowManageClassesModal] = useState(false); // مودال إدارة الشعب
+  const [showManageClassesModal, setShowManageClassesModal] = useState(false);
 
   // حالات مودال الرسالة العامة
   const [showGeneralMessageModal, setShowGeneralMessageModal] = useState(false);
@@ -1412,6 +1412,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     return phone.replace(/^0+/, '').replace(/[^0-9]/g, '');
   };
 
+  // دالة لجلب أسماء الشعب (معدلة لتكون أكثر موثوقية)
   const fetchClassNames = async (classIds) => {
     if (!classIds || classIds.length === 0) return {};
     const names = {};
@@ -1420,9 +1421,12 @@ const TeacherPanel = ({ user, onLogout }) => {
         const docSnap = await getDoc(doc(db, 'classes', id));
         if (docSnap.exists()) {
           names[id] = docSnap.data().name;
+        } else {
+          names[id] = null; // الشعبة محذوفة أو غير موجودة
         }
       } catch (err) {
         console.error('Error fetching class name:', err);
+        names[id] = null;
       }
     }
     return names;
@@ -1456,7 +1460,9 @@ const TeacherPanel = ({ user, onLogout }) => {
       const classMap = await fetchClassNames(allClassIds);
       studentsList = studentsList.map(s => ({
         ...s,
-        classes: (s.classIds || []).map(id => ({ id, name: classMap[id] || null })).filter(c => c.name)
+        classes: (s.classIds || [])
+          .map(id => ({ id, name: classMap[id] || null }))
+          .filter(c => c.name) // إزالة الشعب المحذوفة
       }));
       setStudents(studentsList);
 
@@ -1490,7 +1496,9 @@ const TeacherPanel = ({ user, onLogout }) => {
       const pendingClassMap = await fetchClassNames(pendingClassIds);
       pendingList = pendingList.map(s => ({
         ...s,
-        classes: (s.classIds || []).map(id => ({ id, name: pendingClassMap[id] || null })).filter(c => c.name)
+        classes: (s.classIds || [])
+          .map(id => ({ id, name: pendingClassMap[id] || null }))
+          .filter(c => c.name)
       }));
       setPendingReviews(pendingList);
 
@@ -1521,7 +1529,9 @@ const TeacherPanel = ({ user, onLogout }) => {
       const classMap = await fetchClassNames(allClassIds);
       studentsList = studentsList.map(s => ({
         ...s,
-        classes: (s.classIds || []).map(id => ({ id, name: classMap[id] || null })).filter(c => c.name)
+        classes: (s.classIds || [])
+          .map(id => ({ id, name: classMap[id] || null }))
+          .filter(c => c.name)
       }));
       setStudents(studentsList);
     });
@@ -1543,7 +1553,9 @@ const TeacherPanel = ({ user, onLogout }) => {
       const pendingClassMap = await fetchClassNames(pendingClassIds);
       pendingList = pendingList.map(s => ({
         ...s,
-        classes: (s.classIds || []).map(id => ({ id, name: pendingClassMap[id] || null })).filter(c => c.name)
+        classes: (s.classIds || [])
+          .map(id => ({ id, name: pendingClassMap[id] || null }))
+          .filter(c => c.name)
       }));
       setPendingReviews(pendingList);
     });
@@ -1655,6 +1667,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
   };
 
+  // ===== دالة إرسال الرسالة العامة (معدلة) =====
   const sendGeneralMessage = (student) => {
     if (!student) {
       toast.error('يرجى اختيار طالب.');
@@ -1671,7 +1684,8 @@ const TeacherPanel = ({ user, onLogout }) => {
       return;
     }
     const studentName = student.name || '';
-    const material = student.classes?.length > 0 ? student.classes[0].name : 'غير محدد';
+    // استخدام أول شعبة مسجلة، وإذا لم توجد نعرض "لا توجد شعبة"
+    const material = student.classes?.length > 0 ? student.classes[0].name : 'لا توجد شعبة';
     const subject = generalMessageSubject.trim() || 'إشعار رسمي';
     const body = generalMessageText.trim() || '(نص الرسالة)';
     const dateNow = new Date().toLocaleDateString('ar-EG', { timeZone: 'Asia/Amman' });
@@ -1725,7 +1739,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     const ok = await confirm('حذف الشعبة', 'هل أنت متأكد من حذف هذه الشعبة؟ سيتم إزالتها من جميع الطلاب.');
     if (!ok) return;
     try {
-      // حذف الشعبة من جميع الطلاب
       const studentsWithClass = students.filter(s => (s.classIds || []).includes(classId));
       for (const student of studentsWithClass) {
         const newClassIds = (student.classIds || []).filter(id => id !== classId);
@@ -2307,7 +2320,16 @@ const TeacherPanel = ({ user, onLogout }) => {
                     <div className="flex items-center gap-3 flex-wrap">
                       <span className="text-white text-sm font-medium">{s.name || s.username}</span>
                       <span className="text-xs text-gray-400">({s.username})</span>
-                      {s.classes && <span className="text-xs text-blue-300 bg-blue-950/40 px-2 py-0.5 rounded border border-blue-500/20">الشعب: {s.classes.map(c => c.name).join(', ')}</span>}
+                      {s.classes && s.classes.length > 0 && (
+                        <span className="text-xs text-blue-300 bg-blue-950/40 px-2 py-0.5 rounded border border-blue-500/20">
+                          الشعب: {s.classes.map(c => c.name).join(', ')}
+                        </span>
+                      )}
+                      {(!s.classes || s.classes.length === 0) && (
+                        <span className="text-xs text-yellow-400 bg-yellow-950/40 px-2 py-0.5 rounded border border-yellow-500/30">
+                          ⚠️ لا توجد شعبة
+                        </span>
+                      )}
                       {s.phone && <span className="text-xs text-gray-400">📱 {s.phone}</span>}
                       {s.gender && <span className="text-xs text-gray-400">{s.gender}</span>}
                       {s.age && <span className="text-xs text-gray-400">عمر {s.age}</span>}
@@ -2416,18 +2438,19 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال الرسالة العامة ===== */}
+      {/* ===== مودال الرسالة العامة (معدل) ===== */}
       {showGeneralMessageModal && selectedStudentForMessage && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowGeneralMessageModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-xl font-semibold text-green-300 mb-4">✉️ إرسال رسالة إلى {selectedStudentForMessage.name}</h3>
             <div className="space-y-4">
+              {/* تم تعديل الحقل هنا: تغيير التسمية إلى "الشعبة" وعرض الرسالة المناسبة */}
               <div>
-                <label className="text-sm text-gray-300 block">المادة (تلقائياً من الشعبة)</label>
+                <label className="text-sm text-gray-300 block">الشعبة</label>
                 <input
                   type="text"
                   className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white cursor-not-allowed"
-                  value={selectedStudentForMessage.classes?.length > 0 ? selectedStudentForMessage.classes[0].name : 'غير محدد'}
+                  value={selectedStudentForMessage?.classes?.length > 0 ? selectedStudentForMessage.classes[0].name : 'لا توجد شعبة'}
                   disabled
                 />
               </div>
@@ -2760,6 +2783,14 @@ const App = () => {
   const [pendingUserForComplete, setPendingUserForComplete] = useState(null);
 
   useDynamicBackground();
+
+  // إضافة أيقونة Favicon الجديدة
+  useEffect(() => {
+    const link = document.querySelector("link[rel*='icon']") || document.createElement('link');
+    link.rel = 'icon';
+    link.href = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='80' fill='%2300D2FF'>⟨▷⟩</text></svg>";
+    document.head.appendChild(link);
+  }, []);
 
   const handleLogout = async () => {
     await signOut(auth);
