@@ -26,7 +26,9 @@ import {
   onSnapshot,
   serverTimestamp,
   arrayUnion,
-  arrayRemove
+  arrayRemove,
+  orderBy,
+  writeBatch
 } from 'firebase/firestore';
 
 // ========== Utility: generateId ==========
@@ -38,18 +40,13 @@ const generateId = () => {
   }
 };
 
-// ========== Utility: تحويل النص العربي إلى إنجليزي (فقط لاسم المستخدم) ==========
-const arabicToEnglish = (text) => {
+// ========== Utility: تحويل الأرقام العربية إلى إنجليزية ==========
+const arabicToEnglishNumber = (str) => {
   const map = {
-    'ا': 'a', 'أ': 'a', 'إ': 'a', 'آ': 'a',
-    'ب': 'b', 'ت': 't', 'ث': 'th', 'ج': 'j', 'ح': 'h', 'خ': 'kh',
-    'د': 'd', 'ذ': 'th', 'ر': 'r', 'ز': 'z', 'س': 's', 'ش': 'sh',
-    'ص': 's', 'ض': 'd', 'ط': 't', 'ظ': 'z', 'ع': 'a', 'غ': 'gh',
-    'ف': 'f', 'ق': 'q', 'ك': 'k', 'ل': 'l', 'م': 'm', 'ن': 'n',
-    'ه': 'h', 'و': 'w', 'ي': 'y', 'ة': 'h', 'ى': 'a',
-    'ء': 'a', 'ؤ': 'a', 'ئ': 'a'
+    '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4',
+    '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9'
   };
-  return text.split('').map(ch => map[ch] || ch).join('');
+  return str.replace(/[٠-٩]/g, (d) => map[d] || d);
 };
 
 // ========== دالة موحدة لجلب أسماء الشعب (محسنة) ==========
@@ -70,6 +67,57 @@ const fetchClassNames = async (classIds) => {
     }
   }));
   return names;
+};
+
+// ========== دوال الإشعارات ==========
+const sendNotificationToStudents = async (classIds, title, body, type, relatedId = null) => {
+  if (!classIds || classIds.length === 0) return;
+  try {
+    const q = query(collection(db, 'profiles'), where('role', '==', 'student'));
+    const snapshot = await getDocs(q);
+    const students = snapshot.docs.filter(doc => {
+      const data = doc.data();
+      return (data.classIds || []).some(id => classIds.includes(id));
+    });
+
+    for (const studentDoc of students) {
+      const studentId = studentDoc.id;
+      const notification = {
+        title,
+        body,
+        type,
+        relatedId,
+        createdAt: serverTimestamp(),
+        read: false,
+        readAt: null
+      };
+      await setDoc(doc(collection(db, 'notifications', studentId, 'userNotifications')), notification);
+    }
+  } catch (err) {
+    console.error('Error sending notifications:', err);
+  }
+};
+
+const sendNotificationToAllStudents = async (title, body, type, relatedId = null) => {
+  try {
+    const q = query(collection(db, 'profiles'), where('role', '==', 'student'));
+    const snapshot = await getDocs(q);
+    for (const docSnap of snapshot.docs) {
+      const studentId = docSnap.id;
+      const notification = {
+        title,
+        body,
+        type,
+        relatedId,
+        createdAt: serverTimestamp(),
+        read: false,
+        readAt: null
+      };
+      await setDoc(doc(collection(db, 'notifications', studentId, 'userNotifications')), notification);
+    }
+  } catch (err) {
+    console.error('Error sending notification to all:', err);
+  }
 };
 
 // ===== مكون اختيار نوع الإضافة (نافذة منبثقة) =====
@@ -172,8 +220,8 @@ const AddAssignmentModal = ({
       data.is_scheduled = false;
       data.reveal_time = null;
     } else if (publishMode === 'delay') {
-      const hoursNum = parseInt(delayHours);
-      const minutesNum = parseInt(delayMinutes);
+      const hoursNum = parseInt(arabicToEnglishNumber(delayHours));
+      const minutesNum = parseInt(arabicToEnglishNumber(delayMinutes));
       if (isNaN(hoursNum) || hoursNum < 0 || isNaN(minutesNum) || minutesNum < 0 || minutesNum > 59) {
         setDelayError('يرجى إدخال عدد ساعات صحيح (0 أو أكثر) ودقائق بين 0 و 59');
         return;
@@ -284,7 +332,7 @@ const AddAssignmentModal = ({
     }, [time]);
 
     const handleHoursChange = (e) => {
-      let val = e.target.value.replace(/\D/g, '');
+      let val = arabicToEnglishNumber(e.target.value);
       if (val === '') {
         setHoursStr('');
         return;
@@ -298,7 +346,7 @@ const AddAssignmentModal = ({
     };
 
     const handleMinutesChange = (e) => {
-      let val = e.target.value.replace(/\D/g, '');
+      let val = arabicToEnglishNumber(e.target.value);
       if (val === '') {
         setMinutesStr('');
         return;
@@ -340,7 +388,6 @@ const AddAssignmentModal = ({
     return (
       <div className="flex flex-col items-center">
         <div className="flex gap-6 mt-4">
-          {/* الساعات على اليسار */}
           <div className="flex flex-col items-center">
             <label className="text-sm font-medium text-gray-300">ساعات</label>
             <div className="flex items-center gap-1">
@@ -356,7 +403,6 @@ const AddAssignmentModal = ({
               <button onClick={decrementHour} className="bg-gray-700 text-white px-2 py-1 rounded hover:bg-gray-600">▼</button>
             </div>
           </div>
-          {/* الدقائق على اليمين */}
           <div className="flex flex-col items-center">
             <label className="text-sm font-medium text-gray-300">دقائق</label>
             <div className="flex items-center gap-1">
@@ -389,12 +435,12 @@ const AddAssignmentModal = ({
     }, [hours, minutes]);
 
     const handleHours = (e) => {
-      let val = e.target.value.replace(/\D/g, '');
+      let val = arabicToEnglishNumber(e.target.value);
       setHoursStr(val);
       onHoursChange(val);
     };
     const handleMinutes = (e) => {
-      let val = e.target.value.replace(/\D/g, '');
+      let val = arabicToEnglishNumber(e.target.value);
       if (val === '') {
         setMinutesStr('');
         onMinutesChange('');
@@ -758,7 +804,7 @@ const AddLessonModal = ({
     }, [time]);
 
     const handleHours = (e) => {
-      let val = e.target.value.replace(/\D/g, '');
+      let val = arabicToEnglishNumber(e.target.value);
       if (val === '') { setHoursStr(''); return; }
       let num = parseInt(val);
       if (num > 12) num = 12;
@@ -768,7 +814,7 @@ const AddLessonModal = ({
       onTimeChange({ ...time, hours: num });
     };
     const handleMinutes = (e) => {
-      let val = e.target.value.replace(/\D/g, '');
+      let val = arabicToEnglishNumber(e.target.value);
       if (val === '') { setMinutesStr(''); return; }
       let num = parseInt(val);
       if (num > 59) { setErr('الدقائق يجب أن تكون بين 0 و 59'); num = 59; } else setErr('');
@@ -1180,16 +1226,13 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
 
   const confirm = useConfirm();
 
+  // تم إزالة تحويل الحروف العربية
   const handleUsernameChange = (e) => {
-    const raw = e.target.value;
-    const converted = arabicToEnglish(raw);
-    setUsername(converted);
+    setUsername(e.target.value);
   };
 
   const handleActivationNewUsernameChange = (e) => {
-    const raw = e.target.value;
-    const converted = arabicToEnglish(raw);
-    setActivationNewUsername(converted);
+    setActivationNewUsername(e.target.value);
   };
 
   const handleAuth = async (e) => {
@@ -1299,8 +1342,8 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
 
     const name = activationConfirmName.trim();
     const gender = activationConfirmGender.trim();
-    const age = activationConfirmAge.trim();
-    const phone = activationConfirmPhone.trim();
+    const age = arabicToEnglishNumber(activationConfirmAge.trim());
+    const phone = arabicToEnglishNumber(activationConfirmPhone.trim());
 
     if (!name || !gender || !age || !phone) {
       setActivationError('جميع الحقول مطلوبة');
@@ -1455,11 +1498,11 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
                   </div>
                   <div>
                     <label className="text-sm text-gray-300 block mb-1">العمر</label>
-                    <input type="number" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationConfirmAge} onChange={e => setActivationConfirmAge(e.target.value)} required />
+                    <input type="text" inputMode="numeric" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationConfirmAge} onChange={e => setActivationConfirmAge(e.target.value)} required />
                   </div>
                   <div>
                     <label className="text-sm text-gray-300 block mb-1">رقم الهاتف</label>
-                    <input type="text" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationConfirmPhone} onChange={e => setActivationConfirmPhone(e.target.value)} required />
+                    <input type="text" inputMode="numeric" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationConfirmPhone} onChange={e => setActivationConfirmPhone(e.target.value)} required />
                   </div>
                   {activationError && <p className="text-red-400 text-sm text-center">{activationError}</p>}
                   <button type="submit" disabled={activationLoading} className="btn-primary w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-md">
@@ -1555,7 +1598,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
 };
 
 // ============================================================
-// TeacherPanel (معدل بالكامل مع زر تحديد الشعبة)
+// TeacherPanel (معدل بالكامل مع زر تحديد الشعبة والإشعارات)
 // ============================================================
 const TeacherPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -1611,6 +1654,11 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [showClassSelectionModal, setShowClassSelectionModal] = useState(false);
   const [selectedStudentForClass, setSelectedStudentForClass] = useState(null);
   const [tempClassIds, setTempClassIds] = useState([]);
+
+  // حالات الإشعارات
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showNotificationsModal, setShowNotificationsModal] = useState(false);
 
   const cleanPhoneNumber = (phone) => {
     if (!phone) return '';
@@ -1756,6 +1804,24 @@ const TeacherPanel = ({ user, onLogout }) => {
       }));
       setPendingReviews(pendingList);
     });
+
+    // الاستماع للإشعارات
+    if (user) {
+      const notifRef = collection(db, 'notifications', user.id, 'userNotifications');
+      const qNotif = query(notifRef, orderBy('createdAt', 'desc'));
+      const unsubscribeNotif = onSnapshot(qNotif, (snapshot) => {
+        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setNotifications(list);
+        setUnreadCount(list.filter(n => !n.read).length);
+      });
+      return () => {
+        unsubscribeTeacher();
+        unsubscribeStudents();
+        unsubscribeClasses();
+        unsubscribePending();
+        unsubscribeNotif();
+      };
+    }
 
     return () => {
       unsubscribeTeacher();
@@ -2080,6 +2146,18 @@ const TeacherPanel = ({ user, onLogout }) => {
         updatedAt: serverTimestamp()
       });
       toast.success(is_draft ? '💾 تم حفظ المسودة بنجاح!' : '✅ تم نشر الواجب بنجاح!');
+      
+      // إرسال إشعار للطلاب في الشعبة المحددة
+      if (!is_draft) {
+        await sendNotificationToStudents(
+          [section],
+          '📝 واجب جديد',
+          `تم نشر واجب: "${text}"`,
+          'homework',
+          newHwItem.id
+        );
+      }
+      
       setShowAssignmentModal(false);
       setSelectedAssignmentType(null);
     } catch (err) {
@@ -2094,6 +2172,14 @@ const TeacherPanel = ({ user, onLogout }) => {
         updatedAt: serverTimestamp()
       });
       toast.success('✅ تم تحديث مواعيد الحصص بنجاح!');
+      
+      // إرسال إشعار لجميع الطلاب
+      await sendNotificationToAllStudents(
+        '🕒 تحديث مواعيد الحصص',
+        `تم تحديث جدول الحصص، عدد المواعيد: ${times.length}`,
+        'lesson_schedule'
+      );
+      
       setShowLessonModal(false);
       setSelectedLessonType(null);
     } catch (err) {
@@ -2237,8 +2323,8 @@ const TeacherPanel = ({ user, onLogout }) => {
         }
       }
 
-      const cleanPhone = newStudentPhone.replace(/[^0-9]/g, '');
-      const ageNum = parseInt(newStudentAge);
+      const cleanPhone = arabicToEnglishNumber(newStudentPhone).replace(/[^0-9]/g, '');
+      const ageNum = parseInt(arabicToEnglishNumber(newStudentAge));
       if (isNaN(ageNum) || ageNum < 1 || ageNum > 99) {
         toast.error('العمر يجب أن يكون رقماً بين 1 و 99.');
         setStudentLoading(false);
@@ -2347,7 +2433,22 @@ const TeacherPanel = ({ user, onLogout }) => {
             <h2 className="text-3xl font-bold text-purple-300">لوحة تحكم المعلم</h2>
             <p className="text-gray-400 text-sm mt-1">مرحباً بك: {user.name || user.username || user.email}</p>
           </div>
-          <button onClick={onLogout} className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-full text-2xl transition shadow-lg" title="تسجيل الخروج">🚪</button>
+          <div className="flex items-center gap-2">
+            {/* زر الجرس */}
+            <button
+              onClick={() => setShowNotificationsModal(true)}
+              className="relative bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-full text-2xl transition shadow-lg"
+              title="الإشعارات"
+            >
+              🔔
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                  {unreadCount}
+                </span>
+              )}
+            </button>
+            <button onClick={onLogout} className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-full text-2xl transition shadow-lg" title="تسجيل الخروج">🚪</button>
+          </div>
         </div>
 
         {errorMsg && <p className="text-red-400 text-sm bg-red-500/10 p-3 rounded-xl border border-red-500/20">{errorMsg}</p>}
@@ -2799,11 +2900,11 @@ const TeacherPanel = ({ user, onLogout }) => {
               </div>
               <div>
                 <label className="text-xs text-gray-400 block">العمر <span className="text-red-400">*</span></label>
-                <input type="number" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentAge} onChange={e => setNewStudentAge(e.target.value)} required />
+                <input type="text" inputMode="numeric" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentAge} onChange={e => setNewStudentAge(e.target.value)} required />
               </div>
               <div>
                 <label className="text-xs text-gray-400 block">رقم الهاتف <span className="text-red-400">*</span></label>
-                <input type="text" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentPhone} onChange={e => setNewStudentPhone(e.target.value)} required />
+                <input type="text" inputMode="numeric" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentPhone} onChange={e => setNewStudentPhone(e.target.value)} required />
               </div>
               <div>
                 <label className="text-xs text-gray-400 block">الشعب <span className="text-red-400">*</span></label>
@@ -2897,6 +2998,63 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
+      {/* ===== مودال الإشعارات ===== */}
+      {showNotificationsModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowNotificationsModal(false)}>
+          <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full max-h-[70vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold text-purple-300">📢 الإشعارات</h3>
+              <button onClick={() => setShowNotificationsModal(false)} className="text-gray-400 hover:text-white text-2xl">✕</button>
+            </div>
+            {notifications.length === 0 ? (
+              <p className="text-gray-400 text-center py-4">لا توجد إشعارات</p>
+            ) : (
+              <div className="space-y-3">
+                {notifications.map((n) => (
+                  <div key={n.id} className={`p-3 rounded-xl border ${n.read ? 'bg-gray-800/30 border-gray-600' : 'bg-gray-800/60 border-blue-500/40'}`}>
+                    <div className="flex justify-between items-start">
+                      <h4 className="text-white font-medium">{n.title}</h4>
+                      <span className="text-xs text-gray-400">
+                        {n.createdAt?.toDate?.() ? new Date(n.createdAt.toDate()).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' }) : ''}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-300 mt-1">{n.body}</p>
+                    {!n.read && (
+                      <button
+                        onClick={async () => {
+                          await updateDoc(doc(db, 'notifications', user.id, 'userNotifications', n.id), {
+                            read: true,
+                            readAt: serverTimestamp()
+                          });
+                        }}
+                        className="text-xs text-blue-400 hover:text-blue-300 mt-2 block"
+                      >
+                        وضع علامة مقروء
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            {notifications.some(n => !n.read) && (
+              <button
+                onClick={async () => {
+                  const batch = writeBatch(db);
+                  notifications.filter(n => !n.read).forEach(n => {
+                    const ref = doc(db, 'notifications', user.id, 'userNotifications', n.id);
+                    batch.update(ref, { read: true, readAt: serverTimestamp() });
+                  });
+                  await batch.commit();
+                }}
+                className="mt-4 text-sm text-purple-400 hover:text-purple-300"
+              >
+                تعيين الكل كمقروء
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ===== مودال إضافة الواجب ===== */}
       <AddAssignmentModal
         isOpen={showAssignmentModal}
@@ -2925,7 +3083,7 @@ const TeacherPanel = ({ user, onLogout }) => {
 };
 
 // ============================================================
-// StudentPanel
+// StudentPanel (معدل مع زر الإشعارات)
 // ============================================================
 const StudentPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -2936,6 +3094,10 @@ const StudentPanel = ({ user, onLogout }) => {
   const [profile, setProfile] = useState(null);
   const [editing, setEditing] = useState(false);
   const [editData, setEditData] = useState({});
+  // حالات الإشعارات
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showNotificationsModal, setShowNotificationsModal] = useState(false);
 
   const fetchTeacherInfo = async () => {
     try {
@@ -3009,6 +3171,22 @@ const StudentPanel = ({ user, onLogout }) => {
         setEditData(data || {});
       }
     });
+
+    // الاستماع للإشعارات
+    if (user) {
+      const notifRef = collection(db, 'notifications', user.id, 'userNotifications');
+      const qNotif = query(notifRef, orderBy('createdAt', 'desc'));
+      const unsubscribeNotif = onSnapshot(qNotif, (snapshot) => {
+        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setNotifications(list);
+        setUnreadCount(list.filter(n => !n.read).length);
+      });
+      return () => {
+        unsubscribeTeacher();
+        unsubscribeProfile();
+        unsubscribeNotif();
+      };
+    }
 
     return () => {
       unsubscribeTeacher();
@@ -3119,7 +3297,22 @@ const StudentPanel = ({ user, onLogout }) => {
             <h2 className="text-3xl font-bold text-blue-300">لوحة تحكم الطالب</h2>
             <p className="text-gray-400 text-sm mt-1">أهلاً بك: {user.name || user.username || user.email}</p>
           </div>
-          <button onClick={onLogout} className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-full text-2xl transition shadow-lg" title="تسجيل الخروج">🚪</button>
+          <div className="flex items-center gap-2">
+            {/* زر الجرس */}
+            <button
+              onClick={() => setShowNotificationsModal(true)}
+              className="relative bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-full text-2xl transition shadow-lg"
+              title="الإشعارات"
+            >
+              🔔
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                  {unreadCount}
+                </span>
+              )}
+            </button>
+            <button onClick={onLogout} className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-full text-2xl transition shadow-lg" title="تسجيل الخروج">🚪</button>
+          </div>
         </div>
 
         {errorMsg && <p className="text-red-400 text-sm bg-red-500/10 p-3 rounded-xl border border-red-500/20">{errorMsg}</p>}
@@ -3145,11 +3338,11 @@ const StudentPanel = ({ user, onLogout }) => {
               </div>
               <div>
                 <label className="text-sm text-gray-300">العمر</label>
-                <input type="number" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={editData.age} onChange={e => setEditData({ ...editData, age: e.target.value })} />
+                <input type="text" inputMode="numeric" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={editData.age} onChange={e => setEditData({ ...editData, age: arabicToEnglishNumber(e.target.value) })} />
               </div>
               <div>
                 <label className="text-sm text-gray-300">رقم الهاتف <span className="text-red-400">*</span></label>
-                <input type="text" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={editData.phone} onChange={e => setEditData({ ...editData, phone: e.target.value })} />
+                <input type="text" inputMode="numeric" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={editData.phone} onChange={e => setEditData({ ...editData, phone: arabicToEnglishNumber(e.target.value) })} />
               </div>
               <div className="flex gap-3">
                 <button onClick={saveChanges} type="button" className="btn-primary bg-green-600 hover:bg-green-700 px-4 py-2 rounded-md text-white">حفظ</button>
@@ -3214,6 +3407,63 @@ const StudentPanel = ({ user, onLogout }) => {
           )}
         </div>
       </div>
+
+      {/* ===== مودال الإشعارات ===== */}
+      {showNotificationsModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowNotificationsModal(false)}>
+          <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full max-h-[70vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold text-purple-300">📢 الإشعارات</h3>
+              <button onClick={() => setShowNotificationsModal(false)} className="text-gray-400 hover:text-white text-2xl">✕</button>
+            </div>
+            {notifications.length === 0 ? (
+              <p className="text-gray-400 text-center py-4">لا توجد إشعارات</p>
+            ) : (
+              <div className="space-y-3">
+                {notifications.map((n) => (
+                  <div key={n.id} className={`p-3 rounded-xl border ${n.read ? 'bg-gray-800/30 border-gray-600' : 'bg-gray-800/60 border-blue-500/40'}`}>
+                    <div className="flex justify-between items-start">
+                      <h4 className="text-white font-medium">{n.title}</h4>
+                      <span className="text-xs text-gray-400">
+                        {n.createdAt?.toDate?.() ? new Date(n.createdAt.toDate()).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' }) : ''}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-300 mt-1">{n.body}</p>
+                    {!n.read && (
+                      <button
+                        onClick={async () => {
+                          await updateDoc(doc(db, 'notifications', user.id, 'userNotifications', n.id), {
+                            read: true,
+                            readAt: serverTimestamp()
+                          });
+                        }}
+                        className="text-xs text-blue-400 hover:text-blue-300 mt-2 block"
+                      >
+                        وضع علامة مقروء
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            {notifications.some(n => !n.read) && (
+              <button
+                onClick={async () => {
+                  const batch = writeBatch(db);
+                  notifications.filter(n => !n.read).forEach(n => {
+                    const ref = doc(db, 'notifications', user.id, 'userNotifications', n.id);
+                    batch.update(ref, { read: true, readAt: serverTimestamp() });
+                  });
+                  await batch.commit();
+                }}
+                className="mt-4 text-sm text-purple-400 hover:text-purple-300"
+              >
+                تعيين الكل كمقروء
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
