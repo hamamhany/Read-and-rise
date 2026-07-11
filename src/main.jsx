@@ -72,20 +72,57 @@ const fetchClassNames = async (classIds) => {
   return names;
 };
 
+// ===== مكون اختيار نوع الإضافة (نافذة منبثقة) =====
+const ChoiceModal = ({ isOpen, onClose, onSelect, title, options }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+      <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-gray-700 shadow-2xl">
+        <h3 className="text-2xl font-bold text-white text-center mb-6">{title}</h3>
+        <div className="space-y-3">
+          {options.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => onSelect(opt.value)}
+              className="w-full py-3 px-4 bg-gray-800 hover:bg-gray-700 rounded-xl text-white font-medium text-lg transition border border-gray-600"
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={onClose}
+          className="mt-4 w-full py-2 text-gray-400 hover:text-white transition text-sm"
+        >
+          إلغاء
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // ============================================================
-// 1. مكوّن إضافة الواجب (مع خيار النشر الفوري / الجدولة)
+// 1. مكوّن إضافة الواجب (مع خيارات: نشر فوراً / جدولة / مسودة)
 // ============================================================
 const AddAssignmentModal = ({
   isOpen,
   onClose,
   onSubmit,
-  classesList = []
+  classesList = [],
+  initialMode = 'now'
 }) => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [time, setTime] = useState({ hours: 12, minutes: 0 });
   const [section, setSection] = useState('');
   const [assignmentText, setAssignmentText] = useState('');
-  const [publishMode, setPublishMode] = useState('now');
+  const [publishMode, setPublishMode] = useState(initialMode);
+
+  // إعادة تعيين الوضع عند فتح المودال
+  useEffect(() => {
+    if (isOpen) {
+      setPublishMode(initialMode);
+    }
+  }, [isOpen, initialMode]);
 
   if (!isOpen) return null;
 
@@ -106,16 +143,30 @@ const AddAssignmentModal = ({
     };
 
     if (publishMode === 'now') {
-      // الوقت الحالي + يمكن تحديده
       const now = new Date();
-      // نستخدم الوقت المحدد من المستخدم (لكن نضبط التاريخ اليوم)
-      const selectedTime = new Date(now);
-      selectedTime.setHours(time.hours, time.minutes, 0, 0);
-      data.date = selectedTime;
+      now.setHours(time.hours, time.minutes, 0, 0);
+      data.date = now;
       data.time = { hours: time.hours, minutes: time.minutes };
-    } else {
+      data.is_draft = false;
+      data.is_scheduled = true;
+    } else if (publishMode === 'schedule') {
+      // التحقق من أن التاريخ ليس ماضياً ولا اليوم الحالي
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (selectedDate <= today) {
+        toast.error('يرجى اختيار يوم مستقبلي (بعد اليوم الحالي)');
+        return;
+      }
       data.date = selectedDate;
       data.time = time;
+      data.is_draft = false;
+      data.is_scheduled = true;
+    } else if (publishMode === 'draft') {
+      data.date = new Date();
+      data.time = { hours: 0, minutes: 0 };
+      data.is_draft = true;
+      data.is_scheduled = false;
+      data.reveal_time = null;
     }
 
     onSubmit(data);
@@ -155,7 +206,6 @@ const AddAssignmentModal = ({
         d1.getDate() === d2.getDate();
     };
 
-    // منع اختيار الأيام الماضية واليوم الحالي
     const isDisabled = (day) => {
       if (!day) return true;
       const today = new Date();
@@ -210,7 +260,7 @@ const AddAssignmentModal = ({
     }, [time]);
 
     const handleHoursChange = (e) => {
-      let val = e.target.value.replace(/\D/g, ''); // فقط أرقام
+      let val = e.target.value.replace(/\D/g, '');
       if (val === '') val = '';
       else {
         let num = parseInt(val);
@@ -302,7 +352,9 @@ const AddAssignmentModal = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
       <div className="bg-gray-900 p-6 rounded-3xl w-[90%] max-w-4xl max-h-[90vh] overflow-y-auto border border-gray-700 shadow-2xl">
         <div className="flex justify-between items-center p-2 border-b border-gray-700">
-          <h2 className="text-2xl font-bold text-white">إضافة واجب جديد</h2>
+          <h2 className="text-2xl font-bold text-white">
+            {publishMode === 'draft' ? '💾 حفظ مسودة جديدة' : '📝 إضافة واجب جديد'}
+          </h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">×</button>
         </div>
 
@@ -344,7 +396,7 @@ const AddAssignmentModal = ({
                 onChange={() => setPublishMode('now')}
                 className="accent-blue-500"
               />
-              نشر فوراً (تحديد وقت)
+              📤 نشر فوراً (تحديد وقت)
             </label>
             <label className="flex items-center gap-2 text-gray-300">
               <input
@@ -354,15 +406,26 @@ const AddAssignmentModal = ({
                 onChange={() => setPublishMode('schedule')}
                 className="accent-blue-500"
               />
-              جدولة
+              📅 جدولة
+            </label>
+            <label className="flex items-center gap-2 text-gray-300">
+              <input
+                type="radio"
+                value="draft"
+                checked={publishMode === 'draft'}
+                onChange={() => setPublishMode('draft')}
+                className="accent-blue-500"
+              />
+              💾 حفظ كمسودة
             </label>
           </div>
 
-          {publishMode === 'now' ? (
+          {publishMode === 'now' && (
             <div className="p-4 flex justify-center">
               <ClockPicker time={time} onTimeChange={setTime} />
             </div>
-          ) : (
+          )}
+          {publishMode === 'schedule' && (
             <div className="p-4 flex flex-col md:flex-row gap-6">
               <div className="flex-1 border-l md:border-l-0 md:border-r border-gray-700 pr-4">
                 <Calendar selectedDate={selectedDate} onDateChange={setSelectedDate} />
@@ -371,6 +434,11 @@ const AddAssignmentModal = ({
               <div className="flex-1 pl-4">
                 <ClockPicker time={time} onTimeChange={setTime} />
               </div>
+            </div>
+          )}
+          {publishMode === 'draft' && (
+            <div className="p-4 text-center text-gray-400">
+              📌 سيتم حفظ الواجب كمسودة دون نشر، يمكنك نشره لاحقاً من لوحة التحكم.
             </div>
           )}
 
@@ -386,7 +454,7 @@ const AddAssignmentModal = ({
               type="submit"
               className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700"
             >
-              إضافة الواجب
+              {publishMode === 'draft' ? '💾 حفظ المسودة' : '✅ إضافة الواجب'}
             </button>
           </div>
         </form>
@@ -396,28 +464,51 @@ const AddAssignmentModal = ({
 };
 
 // ============================================================
-// 2. مكوّن جدولة موعد الحصة (منفصل)
+// 2. مكوّن جدولة موعد الحصة (مع خيارات: موعد محدد / موعد متكرر)
 // ============================================================
 const AddLessonModal = ({
   isOpen,
   onClose,
-  onSubmit
+  onSubmit,
+  initialType = 'once'
 }) => {
+  const [scheduleType, setScheduleType] = useState(initialType);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [time, setTime] = useState({ hours: 12, minutes: 0 });
+  const [recurringDay, setRecurringDay] = useState('Sunday');
+
+  // إعادة تعيين النوع عند فتح المودال
+  useEffect(() => {
+    if (isOpen) {
+      setScheduleType(initialType);
+    }
+  }, [isOpen, initialType]);
 
   if (!isOpen) return null;
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    // التحقق من أن التاريخ ليس ماضياً ولا اليوم الحالي
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (selectedDate <= today) {
-      toast.error('يرجى اختيار يوم مستقبلي (بعد اليوم الحالي)');
-      return;
+    if (scheduleType === 'once') {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (selectedDate <= today) {
+        toast.error('يرجى اختيار يوم مستقبلي (بعد اليوم الحالي)');
+        return;
+      }
+      const combinedDate = new Date(selectedDate);
+      combinedDate.setHours(time.hours, time.minutes, 0, 0);
+      onSubmit({ 
+        type: 'once', 
+        date: combinedDate.toISOString(),
+        time: { hours: time.hours, minutes: time.minutes }
+      });
+    } else if (scheduleType === 'recurring') {
+      onSubmit({ 
+        type: 'recurring', 
+        day: recurringDay,
+        time: { hours: time.hours, minutes: time.minutes }
+      });
     }
-    onSubmit({ date: selectedDate, time });
   };
 
   // تقويم مع منع الأيام الماضية واليوم الحالي
@@ -600,20 +691,63 @@ const AddLessonModal = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
       <div className="bg-gray-900 p-6 rounded-3xl w-[90%] max-w-4xl max-h-[90vh] overflow-y-auto border border-gray-700 shadow-2xl">
         <div className="flex justify-between items-center p-2 border-b border-gray-700">
-          <h2 className="text-2xl font-bold text-white">جدولة موعد الحصة</h2>
+          <h2 className="text-2xl font-bold text-white">🕒 جدولة موعد الحصة</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">×</button>
         </div>
 
         <form onSubmit={handleSubmit}>
-          <div className="p-4 flex flex-col md:flex-row gap-6">
-            <div className="flex-1 border-l md:border-l-0 md:border-r border-gray-700 pr-4">
-              <Calendar selectedDate={selectedDate} onDateChange={setSelectedDate} />
-            </div>
-            <div className="hidden md:block w-px bg-gray-700 self-stretch"></div>
-            <div className="flex-1 pl-4">
-              <ClockPicker time={time} onTimeChange={setTime} />
-            </div>
+          <div className="px-4 pb-2 flex flex-wrap gap-4 border-b border-gray-700">
+            <label className="flex items-center gap-2 text-gray-300">
+              <input
+                type="radio"
+                value="once"
+                checked={scheduleType === 'once'}
+                onChange={() => setScheduleType('once')}
+                className="accent-blue-500"
+              />
+              📅 موعد محدد (مرة واحدة)
+            </label>
+            <label className="flex items-center gap-2 text-gray-300">
+              <input
+                type="radio"
+                value="recurring"
+                checked={scheduleType === 'recurring'}
+                onChange={() => setScheduleType('recurring')}
+                className="accent-blue-500"
+              />
+              🔄 موعد متكرر (أسبوعياً)
+            </label>
           </div>
+
+          {scheduleType === 'once' && (
+            <div className="p-4 flex flex-col md:flex-row gap-6">
+              <div className="flex-1 border-l md:border-l-0 md:border-r border-gray-700 pr-4">
+                <Calendar selectedDate={selectedDate} onDateChange={setSelectedDate} />
+              </div>
+              <div className="hidden md:block w-px bg-gray-700 self-stretch"></div>
+              <div className="flex-1 pl-4">
+                <ClockPicker time={time} onTimeChange={setTime} />
+              </div>
+            </div>
+          )}
+          {scheduleType === 'recurring' && (
+            <div className="p-4 flex flex-col items-center gap-4">
+              <div className="w-full max-w-xs">
+                <label className="block text-sm font-medium text-gray-300 mb-1">اختر يوم الأسبوع</label>
+                <select
+                  value={recurringDay}
+                  onChange={(e) => setRecurringDay(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-600 rounded-md bg-gray-800 text-white"
+                >
+                  {['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(day => (
+                    <option key={day} value={day}>{day}</option>
+                  ))}
+                </select>
+              </div>
+              <ClockPicker time={time} onTimeChange={setTime} />
+              <p className="text-xs text-gray-400 mt-2">سيتم تكرار الموعد كل أسبوع في اليوم المحدد</p>
+            </div>
+          )}
 
           <div className="px-4 py-3 border-t border-gray-700 flex justify-end gap-3">
             <button
@@ -893,7 +1027,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
 };
 
 // ============================================================
-// Login - تصميم محسّن مع الحفاظ على الخلفيات الأصلية
+// Login
 // ============================================================
 const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [username, setUsername] = useState('');
@@ -1165,7 +1299,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     setActivationError('');
   };
 
-  // وضع التفعيل - نفس الخلفية الأصلية
   if (activationMode) {
     return (
       <div className="container-center relative min-h-screen overflow-hidden" dir="rtl">
@@ -1235,7 +1368,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     );
   }
 
-  // واجهة تسجيل الدخول - نفس الخلفية الأصلية مع تحسين التنسيق الداخلي
   return (
     <div className="container-center relative min-h-screen overflow-hidden" dir="rtl">
       <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
@@ -1294,7 +1426,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
 };
 
 // ============================================================
-// TeacherPanel (معدل)
+// TeacherPanel (معدل بالكامل)
 // ============================================================
 const TeacherPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -1313,6 +1445,12 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [showAssignmentModal, setShowAssignmentModal] = useState(false);
   const [showLessonModal, setShowLessonModal] = useState(false);
   const [showManageClassesModal, setShowManageClassesModal] = useState(false);
+
+  // حالات الاختيار
+  const [showAssignmentChoice, setShowAssignmentChoice] = useState(false);
+  const [showLessonChoice, setShowLessonChoice] = useState(false);
+  const [selectedAssignmentType, setSelectedAssignmentType] = useState(null);
+  const [selectedLessonType, setSelectedLessonType] = useState(null);
 
   // حالات مودال الرسالة العامة
   const [showGeneralMessageModal, setShowGeneralMessageModal] = useState(false);
@@ -1360,14 +1498,18 @@ const TeacherPanel = ({ user, onLogout }) => {
       }
 
       const teacherData = teacherDoc.data();
-      setLessonTime(teacherData.lessonTime || '');
+      // التحقق من نوع lessonTime (قد يكون string أو object)
+      if (teacherData.lessonTime && typeof teacherData.lessonTime === 'object') {
+        setLessonTime(teacherData.lessonTime);
+      } else {
+        setLessonTime(teacherData.lessonTime || '');
+      }
       setHomeworks(teacherData.homeworks || []);
 
       const studentsQuery = query(collection(db, 'profiles'), where('role', '==', 'student'));
       const studentsSnapshot = await getDocs(studentsQuery);
       let studentsList = studentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-      // جلب أسماء الشعب
       const allClassIds = studentsList.flatMap(s => s.classIds || []);
       const classMap = await fetchClassNames(allClassIds);
       studentsList = studentsList.map(s => ({
@@ -1378,7 +1520,6 @@ const TeacherPanel = ({ user, onLogout }) => {
       }));
       setStudents(studentsList);
 
-      // التحقق من الطلاب بدون شعب
       const withoutClass = studentsList.filter(s => !s.classes || s.classes.length === 0);
       setStudentsWithoutClass(withoutClass);
       if (withoutClass.length > 0) {
@@ -1436,7 +1577,11 @@ const TeacherPanel = ({ user, onLogout }) => {
     const unsubscribeTeacher = onSnapshot(teacherRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        setLessonTime(data.lessonTime || '');
+        if (data.lessonTime && typeof data.lessonTime === 'object') {
+          setLessonTime(data.lessonTime);
+        } else {
+          setLessonTime(data.lessonTime || '');
+        }
         setHomeworks(data.homeworks || []);
       }
     });
@@ -1592,7 +1737,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
   };
 
-  // تعديل دالة sendGeneralMessage لجلب اسم الشعبة بشكل صحيح
+  // تعديل دالة sendGeneralMessage
   const sendGeneralMessage = (student) => {
     if (!student) {
       toast.error('يرجى اختيار طالب.');
@@ -1609,7 +1754,6 @@ const TeacherPanel = ({ user, onLogout }) => {
       return;
     }
     const studentName = student.name || '';
-    // الحصول على اسم الشعبة من student.classes
     const classNames = student.classes?.map(c => c.name).filter(Boolean) || [];
     const material = classNames.length > 0 ? classNames.join(', ') : 'لا توجد شعبة';
     const subject = generalMessageSubject.trim() || 'إشعار رسمي';
@@ -1784,17 +1928,23 @@ const TeacherPanel = ({ user, onLogout }) => {
   };
 
   const saveHomeworkFromModal = async (data) => {
-    const { date, time, section, text } = data;
-    const combinedDate = new Date(date);
-    combinedDate.setHours(time.hours, time.minutes, 0, 0);
-    const revealTime = combinedDate.toISOString();
+    const { date, time, section, text, is_draft } = data;
+    
+    let revealTime = null;
+    if (!is_draft) {
+      const combinedDate = new Date(date);
+      combinedDate.setHours(time.hours, time.minutes, 0, 0);
+      revealTime = combinedDate.toISOString();
+    }
 
     const newHwItem = {
       id: generateId(),
       text: text,
       section: section,
       reveal_time: revealTime,
-      is_scheduled: true
+      is_scheduled: !is_draft,
+      is_draft: is_draft || false,
+      created_at: new Date().toISOString()
     };
 
     try {
@@ -1803,26 +1953,46 @@ const TeacherPanel = ({ user, onLogout }) => {
         homeworks: arrayUnion(newHwItem),
         updatedAt: serverTimestamp()
       });
-      toast.success('تم نشر الواجب بنجاح!');
+      toast.success(is_draft ? '💾 تم حفظ المسودة بنجاح!' : '✅ تم نشر الواجب بنجاح!');
       setShowAssignmentModal(false);
+      setSelectedAssignmentType(null);
     } catch (err) {
       toast.error('فشل حفظ الواجب: ' + err.message);
     }
   };
 
   const saveLessonTimeFromModal = async (data) => {
-    const { date, time } = data;
-    const combinedDate = new Date(date);
-    combinedDate.setHours(time.hours, time.minutes, 0, 0);
-    const isoTime = combinedDate.toISOString();
+    const { type, date, time, day } = data;
+    let lessonData = {};
+
+    if (type === 'once') {
+      lessonData = { 
+        type: 'once',
+        date: date,
+        time: time,
+        lessonTime: date // للتوافق مع الكود الحالي
+      };
+    } else if (type === 'recurring') {
+      lessonData = {
+        type: 'recurring',
+        day: day,
+        time: time,
+        lessonTime: {
+          type: 'recurring',
+          day: day,
+          time: time
+        }
+      };
+    }
 
     try {
       await updateDoc(doc(db, 'teachers', user.id), {
-        lessonTime: isoTime,
+        ...lessonData,
         updatedAt: serverTimestamp()
       });
-      toast.success('تم تحديث موعد الحصة القادمة بنجاح!');
+      toast.success('✅ تم تحديث موعد الحصة بنجاح!');
       setShowLessonModal(false);
+      setSelectedLessonType(null);
     } catch (err) {
       toast.error('فشل تحديث موعد الحصة: ' + err.message);
     }
@@ -1994,7 +2164,13 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  const sortedHomeworks = [...homeworks].sort((a, b) => (b.is_scheduled ? 1 : 0) - (a.is_scheduled ? 1 : 0));
+  // ترتيب الواجبات: المسودات في الأسفل، ثم المجدولة
+  const sortedHomeworks = [...homeworks].sort((a, b) => {
+    if (a.is_draft && !b.is_draft) return 1;
+    if (!a.is_draft && b.is_draft) return -1;
+    return (b.is_scheduled ? 1 : 0) - (a.is_scheduled ? 1 : 0);
+  });
+  
   const sortedStudents = [...students].sort((a, b) => (a.isFrozen ? 1 : 0) - (b.isFrozen ? 1 : 0));
 
   if (loading) return <div className="text-center text-gray-400 p-8">جاري التحميل...</div>;
@@ -2028,7 +2204,15 @@ const TeacherPanel = ({ user, onLogout }) => {
           <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700">
             <h3 className="text-lg font-semibold text-purple-200 mb-2">الوقت المتبقي للحصة</h3>
             {lessonTime ? (
-              <CountdownTimer key={lessonTime} targetDate={lessonTime} />
+              typeof lessonTime === 'string' ? (
+                <CountdownTimer key={lessonTime} targetDate={lessonTime} />
+              ) : lessonTime.type === 'recurring' ? (
+                <p className="text-gray-300 text-center">
+                  🔄 موعد متكرر: كل {lessonTime.day} الساعة {lessonTime.time.hours}:{String(lessonTime.time.minutes).padStart(2, '0')}
+                </p>
+              ) : (
+                <CountdownTimer key={lessonTime.date} targetDate={lessonTime.date} />
+              )
             ) : (
               <p className="text-gray-400 text-center py-2">لم يتم تحديد موعد</p>
             )}
@@ -2082,7 +2266,7 @@ const TeacherPanel = ({ user, onLogout }) => {
           <div className="flex justify-between items-center">
             <h3 className="text-xl font-semibold text-pink-300">إدارة الواجبات</h3>
             <button
-              onClick={() => setShowAssignmentModal(true)}
+              onClick={() => setShowAssignmentChoice(true)}
               type="button"
               className="btn-primary bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 py-2 px-4 text-sm rounded-md text-white"
             >
@@ -2097,18 +2281,27 @@ const TeacherPanel = ({ user, onLogout }) => {
                 const classObj = classes.find(c => c.id === hw.section);
                 const displayName = classObj ? classObj.name : hw.section;
                 return (
-                  <div key={hw.id} className="p-3 bg-black/30 rounded-xl border border-gray-700 flex justify-between items-start gap-3">
+                  <div key={hw.id} className={`p-3 rounded-xl border ${hw.is_draft ? 'border-yellow-500/30 bg-yellow-900/20' : 'border-gray-700 bg-black/30'} flex justify-between items-start gap-3`}>
                     <div className="flex-1">
                       <p className="text-gray-100 text-sm">{hw.text}</p>
+                      {hw.is_draft && (
+                        <span className="text-xs bg-yellow-500/20 text-yellow-300 px-2 py-0.5 rounded-full mr-2">💾 مسودة</span>
+                      )}
                       {hw.section && (
                         <span className="text-xs text-blue-300 mr-2">(شعبة {displayName})</span>
                       )}
                       <div className="flex flex-wrap gap-2 mt-1">
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${isRevealed ? 'bg-green-500/20 text-green-300' : 'bg-yellow-500/20 text-yellow-300'}`}>
-                          {isRevealed ? '🟢 متاح' : '📅 مجدول'}
-                        </span>
+                        {!hw.is_draft && (
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${isRevealed ? 'bg-green-500/20 text-green-300' : 'bg-yellow-500/20 text-yellow-300'}`}>
+                            {isRevealed ? '🟢 متاح' : '📅 مجدول'}
+                          </span>
+                        )}
+                        {hw.is_draft && (
+                          <span className="text-xs text-yellow-400">⏳ لم ينشر بعد</span>
+                        )}
                         <span className="text-xs text-gray-400">
-                          {new Date(hw.reveal_time).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })}
+                          {hw.is_draft ? `تم الحفظ: ${new Date(hw.created_at).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })}` : 
+                          new Date(hw.reveal_time).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })}
                         </span>
                       </div>
                     </div>
@@ -2138,7 +2331,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700 space-y-4">
           <h3 className="text-xl font-semibold text-purple-200">جدولة موعد حصة</h3>
           <button
-            onClick={() => setShowLessonModal(true)}
+            onClick={() => setShowLessonChoice(true)}
             type="button"
             className="btn-primary bg-gradient-to-r from-indigo-500 to-blue-600 hover:from-indigo-600 hover:to-blue-700 py-3 px-6 w-full sm:w-auto rounded-md text-white"
           >
@@ -2146,11 +2339,56 @@ const TeacherPanel = ({ user, onLogout }) => {
           </button>
           {lessonTime && (
             <p className="text-sm text-gray-300 mt-2">
-              الموعد الحالي: {new Date(lessonTime).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })}
+              {typeof lessonTime === 'string' ? (
+                `الموعد الحالي: ${new Date(lessonTime).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })}`
+              ) : lessonTime.type === 'recurring' ? (
+                `موعد متكرر: كل ${lessonTime.day} الساعة ${lessonTime.time.hours}:${String(lessonTime.time.minutes).padStart(2, '0')}`
+              ) : (
+                `الموعد الحالي: ${new Date(lessonTime.date).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })}`
+              )}
             </p>
           )}
         </div>
       </div>
+
+      {/* ===== مودال اختيار نوع الواجب ===== */}
+      <ChoiceModal
+        isOpen={showAssignmentChoice}
+        onClose={() => {
+          setShowAssignmentChoice(false);
+          setSelectedAssignmentType(null);
+        }}
+        onSelect={(type) => {
+          setSelectedAssignmentType(type);
+          setShowAssignmentChoice(false);
+          setShowAssignmentModal(true);
+        }}
+        title="اختر نوع الواجب"
+        options={[
+          { value: 'now', label: '📤 نشر فوراً (مع تحديد وقت)' },
+          { value: 'schedule', label: '📅 جدولة (تاريخ ووقت)' },
+          { value: 'draft', label: '💾 حفظ كمسودة (نشر لاحقاً)' }
+        ]}
+      />
+
+      {/* ===== مودال اختيار نوع الحصة ===== */}
+      <ChoiceModal
+        isOpen={showLessonChoice}
+        onClose={() => {
+          setShowLessonChoice(false);
+          setSelectedLessonType(null);
+        }}
+        onSelect={(type) => {
+          setSelectedLessonType(type);
+          setShowLessonChoice(false);
+          setShowLessonModal(true);
+        }}
+        title="اختر نوع الموعد"
+        options={[
+          { value: 'once', label: '📅 موعد محدد (مرة واحدة)' },
+          { value: 'recurring', label: '🔄 موعد متكرر (أسبوعياً)' }
+        ]}
+      />
 
       {/* ===== مودال إدارة الشعب ===== */}
       {showManageClassesModal && (
@@ -2444,23 +2682,31 @@ const TeacherPanel = ({ user, onLogout }) => {
       {/* ===== مودال إضافة الواجب ===== */}
       <AddAssignmentModal
         isOpen={showAssignmentModal}
-        onClose={() => setShowAssignmentModal(false)}
+        onClose={() => {
+          setShowAssignmentModal(false);
+          setSelectedAssignmentType(null);
+        }}
         onSubmit={saveHomeworkFromModal}
         classesList={classes}
+        initialMode={selectedAssignmentType || 'now'}
       />
 
       {/* ===== مودال جدولة الحصة ===== */}
       <AddLessonModal
         isOpen={showLessonModal}
-        onClose={() => setShowLessonModal(false)}
+        onClose={() => {
+          setShowLessonModal(false);
+          setSelectedLessonType(null);
+        }}
         onSubmit={saveLessonTimeFromModal}
+        initialType={selectedLessonType || 'once'}
       />
     </div>
   );
 };
 
 // ============================================================
-// StudentPanel (معدل)
+// StudentPanel
 // ============================================================
 const StudentPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -2481,7 +2727,7 @@ const StudentPanel = ({ user, onLogout }) => {
         const data = docSnap.data();
         setTeacherData({ id: docSnap.id, ...data });
         const now = new Date().getTime();
-        const available = (data.homeworks || []).filter(hw => new Date(hw.reveal_time).getTime() <= now);
+        const available = (data.homeworks || []).filter(hw => !hw.is_draft && new Date(hw.reveal_time).getTime() <= now);
         setAvailableHomeworks(available);
       }
     } catch (err) {
@@ -2492,7 +2738,6 @@ const StudentPanel = ({ user, onLogout }) => {
     }
   };
 
-  // تعديل دالة fetchProfile لجلب أسماء الشعب
   const fetchProfile = async () => {
     try {
       const docSnap = await getDoc(doc(db, 'profiles', user.id));
@@ -2525,12 +2770,11 @@ const StudentPanel = ({ user, onLogout }) => {
         const data = docSnap.data();
         setTeacherData({ id: docSnap.id, ...data });
         const now = new Date().getTime();
-        const available = (data.homeworks || []).filter(hw => new Date(hw.reveal_time).getTime() <= now);
+        const available = (data.homeworks || []).filter(hw => !hw.is_draft && new Date(hw.reveal_time).getTime() <= now);
         setAvailableHomeworks(available);
       }
     });
 
-    // تحديث الملف الشخصي بشكل مباشر مع جلب أسماء الشعب
     const unsubscribeProfile = onSnapshot(doc(db, 'profiles', user.id), async (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
@@ -2557,7 +2801,7 @@ const StudentPanel = ({ user, onLogout }) => {
     const interval = setInterval(() => {
       if (teacherData?.homeworks) {
         const now = new Date().getTime();
-        const available = teacherData.homeworks.filter(hw => new Date(hw.reveal_time).getTime() <= now);
+        const available = teacherData.homeworks.filter(hw => !hw.is_draft && new Date(hw.reveal_time).getTime() <= now);
         setAvailableHomeworks(available);
       }
     }, 1000);
@@ -2567,7 +2811,7 @@ const StudentPanel = ({ user, onLogout }) => {
   const getNextScheduledHomework = () => {
     if (!teacherData?.homeworks) return null;
     const now = new Date().getTime();
-    const scheduled = teacherData.homeworks.filter(hw => new Date(hw.reveal_time).getTime() > now);
+    const scheduled = teacherData.homeworks.filter(hw => !hw.is_draft && new Date(hw.reveal_time).getTime() > now);
     if (scheduled.length === 0) return null;
     return scheduled.reduce((a, b) => new Date(a.reveal_time).getTime() < new Date(b.reveal_time).getTime() ? a : b);
   };
@@ -2624,15 +2868,13 @@ const StudentPanel = ({ user, onLogout }) => {
             <h2 className="text-3xl font-bold text-blue-300">لوحة تحكم الطالب</h2>
             <p className="text-gray-400 text-sm mt-1">أهلاً بك: {user.name || user.username || user.email}</p>
           </div>
-          <div className="flex gap-2">
-            <button
-              onClick={onLogout}
-              className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-full text-2xl transition shadow-lg"
-              title="تسجيل الخروج"
-            >
-              🚪
-            </button>
-          </div>
+          <button
+            onClick={onLogout}
+            className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-full text-2xl transition shadow-lg"
+            title="تسجيل الخروج"
+          >
+            🚪
+          </button>
         </div>
 
         {errorMsg && <p className="text-red-400 text-sm bg-red-500/10 p-3 rounded-xl border border-red-500/20">{errorMsg}</p>}
@@ -2683,7 +2925,19 @@ const StudentPanel = ({ user, onLogout }) => {
 
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-blue-500/20">
           <h3 className="text-xl font-semibold mb-4 text-blue-200">الوقت المتبقي لحصتك القادمة</h3>
-          {teacherData?.lessonTime ? <CountdownTimer key={teacherData.lessonTime} targetDate={teacherData.lessonTime} /> : <p className="text-gray-400 text-center py-2">لا توجد حصة مجدولة</p>}
+          {teacherData?.lessonTime ? (
+            typeof teacherData.lessonTime === 'string' ? (
+              <CountdownTimer key={teacherData.lessonTime} targetDate={teacherData.lessonTime} />
+            ) : teacherData.lessonTime.type === 'recurring' ? (
+              <p className="text-gray-300 text-center">
+                🔄 موعد متكرر: كل {teacherData.lessonTime.day} الساعة {teacherData.lessonTime.time.hours}:{String(teacherData.lessonTime.time.minutes).padStart(2, '0')}
+              </p>
+            ) : (
+              <CountdownTimer key={teacherData.lessonTime.date} targetDate={teacherData.lessonTime.date} />
+            )
+          ) : (
+            <p className="text-gray-400 text-center py-2">لا توجد حصة مجدولة</p>
+          )}
         </div>
 
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700 space-y-3">
@@ -2693,7 +2947,6 @@ const StudentPanel = ({ user, onLogout }) => {
               {availableHomeworks.map(hw => (
                 <div key={hw.id} className="p-4 bg-black/30 rounded-xl border border-gray-700">
                   <p className="text-base font-medium text-gray-100">{hw.text}</p>
-                  {/* لا نعرض الشعبة للطالب لأنها غير ضرورية */}
                   <p className="text-xs text-gray-400 mt-1">
                     نشر في: {new Date(hw.reveal_time).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })}
                   </p>
