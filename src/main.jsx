@@ -38,7 +38,7 @@ const generateId = () => {
   }
 };
 
-// ========== Utility: تحويل النص العربي إلى إنجليزي (تقريبي) ==========
+// ========== Utility: تحويل النص العربي إلى إنجليزي (فقط لاسم المستخدم) ==========
 const arabicToEnglish = (text) => {
   const map = {
     'ا': 'a', 'أ': 'a', 'إ': 'a', 'آ': 'a',
@@ -106,9 +106,13 @@ const AddAssignmentModal = ({
     };
 
     if (publishMode === 'now') {
+      // الوقت الحالي + يمكن تحديده
       const now = new Date();
-      data.date = now;
-      data.time = { hours: now.getHours(), minutes: now.getMinutes() };
+      // نستخدم الوقت المحدد من المستخدم (لكن نضبط التاريخ اليوم)
+      const selectedTime = new Date(now);
+      selectedTime.setHours(time.hours, time.minutes, 0, 0);
+      data.date = selectedTime;
+      data.time = { hours: time.hours, minutes: time.minutes };
     } else {
       data.date = selectedDate;
       data.time = time;
@@ -117,6 +121,7 @@ const AddAssignmentModal = ({
     onSubmit(data);
   };
 
+  // تقويم مع منع الأيام الماضية واليوم الحالي
   const Calendar = ({ selectedDate, onDateChange }) => {
     const [currentMonth, setCurrentMonth] = useState(new Date(selectedDate));
     const [days, setDays] = useState([]);
@@ -150,6 +155,14 @@ const AddAssignmentModal = ({
         d1.getDate() === d2.getDate();
     };
 
+    // منع اختيار الأيام الماضية واليوم الحالي
+    const isDisabled = (day) => {
+      if (!day) return true;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return day <= today;
+    };
+
     return (
       <div className="p-4 w-72">
         <div className="flex justify-between items-center mb-4">
@@ -163,31 +176,31 @@ const AddAssignmentModal = ({
           {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => <div key={d}>{d}</div>)}
         </div>
         <div className="grid grid-cols-7 gap-1 mt-1">
-          {days.map((day, idx) => (
-            <div
-              key={idx}
-              onClick={() => day && onDateChange(day)}
-              className={`text-center py-2 rounded-full cursor-pointer transition
-                ${!day ? '' :
-                  isSameDay(day, selectedDate)
-                    ? 'bg-blue-600 text-white hover:bg-blue-700'
-                    : 'hover:bg-white/10 text-white'
-                }`}
-            >
-              {day ? day.getDate() : ''}
-            </div>
-          ))}
+          {days.map((day, idx) => {
+            const disabled = isDisabled(day);
+            return (
+              <div
+                key={idx}
+                onClick={() => day && !disabled && onDateChange(day)}
+                className={`text-center py-2 rounded-full cursor-pointer transition
+                  ${!day ? '' :
+                    disabled ? 'text-gray-600 cursor-not-allowed' :
+                    isSameDay(day, selectedDate)
+                      ? 'bg-blue-600 text-white hover:bg-blue-700'
+                      : 'hover:bg-white/10 text-white'
+                  }`}
+              >
+                {day ? day.getDate() : ''}
+              </div>
+            );
+          })}
         </div>
       </div>
     );
   };
 
+  // مكون الوقت مع حقول رقمية فقط
   const ClockPicker = ({ time, onTimeChange }) => {
-    const svgRef = useRef(null);
-    const radius = 120;
-    const center = 140;
-    const [dragging, setDragging] = useState(null);
-
     const [hoursStr, setHoursStr] = useState(time.hours.toString().padStart(2, '0'));
     const [minutesStr, setMinutesStr] = useState(time.minutes.toString().padStart(2, '0'));
 
@@ -196,151 +209,89 @@ const AddAssignmentModal = ({
       setMinutesStr(time.minutes.toString().padStart(2, '0'));
     }, [time]);
 
-    const getAngle = (hours, minutes) => {
-      const hAngle = (hours % 12) * (Math.PI / 6) + minutes * (Math.PI / 360);
-      const mAngle = minutes * (Math.PI / 30);
-      return { hAngle, mAngle };
-    };
-
-    const getCoords = (angle) => {
-      const x = center + radius * 0.7 * Math.sin(angle);
-      const y = center - radius * 0.7 * Math.cos(angle);
-      return { x, y };
-    };
-
-    const handleMouseDown = (type) => (e) => {
-      e.preventDefault();
-      setDragging(type);
-    };
-
-    const handleMouseMove = (e) => {
-      if (!dragging) return;
-      const svg = svgRef.current;
-      const rect = svg.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left - center;
-      const mouseY = e.clientY - rect.top - center;
-      let angle = Math.atan2(mouseX, -mouseY);
-      if (angle < 0) angle += 2 * Math.PI;
-
-      let newHours = time.hours;
-      let newMinutes = time.minutes;
-
-      if (dragging === 'hour') {
-        const hoursFromAngle = (angle / (2 * Math.PI)) * 12;
-        newHours = Math.round(hoursFromAngle) % 12 || 12;
-      } else if (dragging === 'minute') {
-        const minutesFromAngle = (angle / (2 * Math.PI)) * 60;
-        newMinutes = Math.round(minutesFromAngle) % 60;
-      }
-
-      onTimeChange({ hours: newHours, minutes: newMinutes });
-    };
-
-    const handleMouseUp = () => {
-      setDragging(null);
-    };
-
-    useEffect(() => {
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
-      return () => {
-        window.removeEventListener('mousemove', handleMouseMove);
-        window.removeEventListener('mouseup', handleMouseUp);
-      };
-    }, [dragging]);
-
-    const { hAngle, mAngle } = getAngle(time.hours, time.minutes);
-    const hourCoords = getCoords(hAngle);
-    const minuteCoords = getCoords(mAngle);
-
     const handleHoursChange = (e) => {
-      const val = e.target.value;
+      let val = e.target.value.replace(/\D/g, ''); // فقط أرقام
+      if (val === '') val = '';
+      else {
+        let num = parseInt(val);
+        if (num > 12) num = 12;
+        if (num < 1 && val.length > 0) num = 1;
+        val = num.toString();
+      }
       setHoursStr(val);
-    };
-
-    const handleHoursBlur = () => {
-      let val = parseInt(hoursStr);
-      if (isNaN(val) || val < 1) val = 1;
-      if (val > 12) val = 12;
-      setHoursStr(val.toString().padStart(2, '0'));
-      onTimeChange({ ...time, hours: val });
+      if (val !== '') {
+        onTimeChange({ ...time, hours: parseInt(val) });
+      }
     };
 
     const handleMinutesChange = (e) => {
-      const val = e.target.value;
+      let val = e.target.value.replace(/\D/g, '');
+      if (val === '') val = '';
+      else {
+        let num = parseInt(val);
+        if (num > 59) num = 59;
+        if (num < 0) num = 0;
+        val = num.toString();
+      }
       setMinutesStr(val);
+      if (val !== '') {
+        onTimeChange({ ...time, minutes: parseInt(val) });
+      }
     };
 
-    const handleMinutesBlur = () => {
-      let val = parseInt(minutesStr);
-      if (isNaN(val) || val < 0) val = 0;
-      if (val > 59) val = 59;
-      setMinutesStr(val.toString().padStart(2, '0'));
-      onTimeChange({ ...time, minutes: val });
+    const incrementHour = () => {
+      let h = time.hours + 1;
+      if (h > 12) h = 1;
+      onTimeChange({ ...time, hours: h });
+    };
+    const decrementHour = () => {
+      let h = time.hours - 1;
+      if (h < 1) h = 12;
+      onTimeChange({ ...time, hours: h });
+    };
+    const incrementMinute = () => {
+      let m = time.minutes + 1;
+      if (m > 59) m = 0;
+      onTimeChange({ ...time, minutes: m });
+    };
+    const decrementMinute = () => {
+      let m = time.minutes - 1;
+      if (m < 0) m = 59;
+      onTimeChange({ ...time, minutes: m });
     };
 
     return (
       <div className="flex flex-col items-center">
-        <svg ref={svgRef} width={280} height={280} viewBox="0 0 280 280" className="cursor-pointer">
-          <circle cx={center} cy={center} r={radius} fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.3)" strokeWidth="2" />
-          {[...Array(12)].map((_, i) => {
-            const angle = (i / 12) * 2 * Math.PI;
-            const x1 = center + radius * 0.85 * Math.sin(angle);
-            const y1 = center - radius * 0.85 * Math.cos(angle);
-            const x2 = center + radius * 0.95 * Math.sin(angle);
-            const y2 = center - radius * 0.95 * Math.cos(angle);
-            return (
-              <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(255,255,255,0.6)" strokeWidth="3" />
-            );
-          })}
-          <line
-            x1={center} y1={center}
-            x2={hourCoords.x} y2={hourCoords.y}
-            stroke="#fff" strokeWidth="6" strokeLinecap="round"
-            onMouseDown={handleMouseDown('hour')}
-          />
-          <line
-            x1={center} y1={center}
-            x2={minuteCoords.x} y2={minuteCoords.y}
-            stroke="#3b82f6" strokeWidth="4" strokeLinecap="round"
-            onMouseDown={handleMouseDown('minute')}
-          />
-          <circle cx={center} cy={center} r={8} fill="#ef4444" />
-          {[...Array(12)].map((_, i) => {
-            const num = i === 0 ? 12 : i;
-            const angle = (i / 12) * 2 * Math.PI;
-            const x = center + radius * 0.72 * Math.sin(angle);
-            const y = center - radius * 0.72 * Math.cos(angle);
-            return (
-              <text key={i} x={x} y={y + 5} textAnchor="middle" fontSize="14" fill="#fff" fontWeight="bold">
-                {num}
-              </text>
-            );
-          })}
-        </svg>
-
-        <div className="flex gap-4 mt-4">
+        <div className="flex gap-6 mt-4">
           <div className="flex flex-col items-center">
             <label className="text-sm font-medium text-gray-300">ساعات</label>
-            <input
-              type="text"
-              maxLength="2"
-              value={hoursStr}
-              onChange={handleHoursChange}
-              onBlur={handleHoursBlur}
-              className="w-20 px-3 py-2 border border-gray-600 rounded-md text-center bg-gray-800 text-white focus:ring-2 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-            />
+            <div className="flex items-center gap-1">
+              <button onClick={incrementHour} className="bg-gray-700 text-white px-2 py-1 rounded hover:bg-gray-600">▲</button>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={hoursStr}
+                onChange={handleHoursChange}
+                className="w-16 px-3 py-2 border border-gray-600 rounded-md text-center bg-gray-800 text-white focus:ring-2 focus:ring-blue-500"
+                maxLength="2"
+              />
+              <button onClick={decrementHour} className="bg-gray-700 text-white px-2 py-1 rounded hover:bg-gray-600">▼</button>
+            </div>
           </div>
           <div className="flex flex-col items-center">
             <label className="text-sm font-medium text-gray-300">دقائق</label>
-            <input
-              type="text"
-              maxLength="2"
-              value={minutesStr}
-              onChange={handleMinutesChange}
-              onBlur={handleMinutesBlur}
-              className="w-20 px-3 py-2 border border-gray-600 rounded-md text-center bg-gray-800 text-white focus:ring-2 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-            />
+            <div className="flex items-center gap-1">
+              <button onClick={incrementMinute} className="bg-gray-700 text-white px-2 py-1 rounded hover:bg-gray-600">▲</button>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={minutesStr}
+                onChange={handleMinutesChange}
+                className="w-16 px-3 py-2 border border-gray-600 rounded-md text-center bg-gray-800 text-white focus:ring-2 focus:ring-blue-500"
+                maxLength="2"
+              />
+              <button onClick={decrementMinute} className="bg-gray-700 text-white px-2 py-1 rounded hover:bg-gray-600">▼</button>
+            </div>
           </div>
         </div>
       </div>
@@ -393,7 +344,7 @@ const AddAssignmentModal = ({
                 onChange={() => setPublishMode('now')}
                 className="accent-blue-500"
               />
-              نشر فوراً
+              نشر فوراً (تحديد وقت)
             </label>
             <label className="flex items-center gap-2 text-gray-300">
               <input
@@ -407,7 +358,11 @@ const AddAssignmentModal = ({
             </label>
           </div>
 
-          {publishMode === 'schedule' && (
+          {publishMode === 'now' ? (
+            <div className="p-4 flex justify-center">
+              <ClockPicker time={time} onTimeChange={setTime} />
+            </div>
+          ) : (
             <div className="p-4 flex flex-col md:flex-row gap-6">
               <div className="flex-1 border-l md:border-l-0 md:border-r border-gray-700 pr-4">
                 <Calendar selectedDate={selectedDate} onDateChange={setSelectedDate} />
@@ -455,9 +410,17 @@ const AddLessonModal = ({
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    // التحقق من أن التاريخ ليس ماضياً ولا اليوم الحالي
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (selectedDate <= today) {
+      toast.error('يرجى اختيار يوم مستقبلي (بعد اليوم الحالي)');
+      return;
+    }
     onSubmit({ date: selectedDate, time });
   };
 
+  // تقويم مع منع الأيام الماضية واليوم الحالي
   const Calendar = ({ selectedDate, onDateChange }) => {
     const [currentMonth, setCurrentMonth] = useState(new Date(selectedDate));
     const [days, setDays] = useState([]);
@@ -491,6 +454,13 @@ const AddLessonModal = ({
         d1.getDate() === d2.getDate();
     };
 
+    const isDisabled = (day) => {
+      if (!day) return true;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return day <= today;
+    };
+
     return (
       <div className="p-4 w-72">
         <div className="flex justify-between items-center mb-4">
@@ -504,31 +474,31 @@ const AddLessonModal = ({
           {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => <div key={d}>{d}</div>)}
         </div>
         <div className="grid grid-cols-7 gap-1 mt-1">
-          {days.map((day, idx) => (
-            <div
-              key={idx}
-              onClick={() => day && onDateChange(day)}
-              className={`text-center py-2 rounded-full cursor-pointer transition
-                ${!day ? '' :
-                  isSameDay(day, selectedDate)
-                    ? 'bg-blue-600 text-white hover:bg-blue-700'
-                    : 'hover:bg-white/10 text-white'
-                }`}
-            >
-              {day ? day.getDate() : ''}
-            </div>
-          ))}
+          {days.map((day, idx) => {
+            const disabled = isDisabled(day);
+            return (
+              <div
+                key={idx}
+                onClick={() => day && !disabled && onDateChange(day)}
+                className={`text-center py-2 rounded-full cursor-pointer transition
+                  ${!day ? '' :
+                    disabled ? 'text-gray-600 cursor-not-allowed' :
+                    isSameDay(day, selectedDate)
+                      ? 'bg-blue-600 text-white hover:bg-blue-700'
+                      : 'hover:bg-white/10 text-white'
+                  }`}
+              >
+                {day ? day.getDate() : ''}
+              </div>
+            );
+          })}
         </div>
       </div>
     );
   };
 
+  // مكون الوقت مع حقول رقمية فقط
   const ClockPicker = ({ time, onTimeChange }) => {
-    const svgRef = useRef(null);
-    const radius = 120;
-    const center = 140;
-    const [dragging, setDragging] = useState(null);
-
     const [hoursStr, setHoursStr] = useState(time.hours.toString().padStart(2, '0'));
     const [minutesStr, setMinutesStr] = useState(time.minutes.toString().padStart(2, '0'));
 
@@ -537,151 +507,89 @@ const AddLessonModal = ({
       setMinutesStr(time.minutes.toString().padStart(2, '0'));
     }, [time]);
 
-    const getAngle = (hours, minutes) => {
-      const hAngle = (hours % 12) * (Math.PI / 6) + minutes * (Math.PI / 360);
-      const mAngle = minutes * (Math.PI / 30);
-      return { hAngle, mAngle };
-    };
-
-    const getCoords = (angle) => {
-      const x = center + radius * 0.7 * Math.sin(angle);
-      const y = center - radius * 0.7 * Math.cos(angle);
-      return { x, y };
-    };
-
-    const handleMouseDown = (type) => (e) => {
-      e.preventDefault();
-      setDragging(type);
-    };
-
-    const handleMouseMove = (e) => {
-      if (!dragging) return;
-      const svg = svgRef.current;
-      const rect = svg.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left - center;
-      const mouseY = e.clientY - rect.top - center;
-      let angle = Math.atan2(mouseX, -mouseY);
-      if (angle < 0) angle += 2 * Math.PI;
-
-      let newHours = time.hours;
-      let newMinutes = time.minutes;
-
-      if (dragging === 'hour') {
-        const hoursFromAngle = (angle / (2 * Math.PI)) * 12;
-        newHours = Math.round(hoursFromAngle) % 12 || 12;
-      } else if (dragging === 'minute') {
-        const minutesFromAngle = (angle / (2 * Math.PI)) * 60;
-        newMinutes = Math.round(minutesFromAngle) % 60;
-      }
-
-      onTimeChange({ hours: newHours, minutes: newMinutes });
-    };
-
-    const handleMouseUp = () => {
-      setDragging(null);
-    };
-
-    useEffect(() => {
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
-      return () => {
-        window.removeEventListener('mousemove', handleMouseMove);
-        window.removeEventListener('mouseup', handleMouseUp);
-      };
-    }, [dragging]);
-
-    const { hAngle, mAngle } = getAngle(time.hours, time.minutes);
-    const hourCoords = getCoords(hAngle);
-    const minuteCoords = getCoords(mAngle);
-
     const handleHoursChange = (e) => {
-      const val = e.target.value;
+      let val = e.target.value.replace(/\D/g, '');
+      if (val === '') val = '';
+      else {
+        let num = parseInt(val);
+        if (num > 12) num = 12;
+        if (num < 1 && val.length > 0) num = 1;
+        val = num.toString();
+      }
       setHoursStr(val);
-    };
-
-    const handleHoursBlur = () => {
-      let val = parseInt(hoursStr);
-      if (isNaN(val) || val < 1) val = 1;
-      if (val > 12) val = 12;
-      setHoursStr(val.toString().padStart(2, '0'));
-      onTimeChange({ ...time, hours: val });
+      if (val !== '') {
+        onTimeChange({ ...time, hours: parseInt(val) });
+      }
     };
 
     const handleMinutesChange = (e) => {
-      const val = e.target.value;
+      let val = e.target.value.replace(/\D/g, '');
+      if (val === '') val = '';
+      else {
+        let num = parseInt(val);
+        if (num > 59) num = 59;
+        if (num < 0) num = 0;
+        val = num.toString();
+      }
       setMinutesStr(val);
+      if (val !== '') {
+        onTimeChange({ ...time, minutes: parseInt(val) });
+      }
     };
 
-    const handleMinutesBlur = () => {
-      let val = parseInt(minutesStr);
-      if (isNaN(val) || val < 0) val = 0;
-      if (val > 59) val = 59;
-      setMinutesStr(val.toString().padStart(2, '0'));
-      onTimeChange({ ...time, minutes: val });
+    const incrementHour = () => {
+      let h = time.hours + 1;
+      if (h > 12) h = 1;
+      onTimeChange({ ...time, hours: h });
+    };
+    const decrementHour = () => {
+      let h = time.hours - 1;
+      if (h < 1) h = 12;
+      onTimeChange({ ...time, hours: h });
+    };
+    const incrementMinute = () => {
+      let m = time.minutes + 1;
+      if (m > 59) m = 0;
+      onTimeChange({ ...time, minutes: m });
+    };
+    const decrementMinute = () => {
+      let m = time.minutes - 1;
+      if (m < 0) m = 59;
+      onTimeChange({ ...time, minutes: m });
     };
 
     return (
       <div className="flex flex-col items-center">
-        <svg ref={svgRef} width={280} height={280} viewBox="0 0 280 280" className="cursor-pointer">
-          <circle cx={center} cy={center} r={radius} fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.3)" strokeWidth="2" />
-          {[...Array(12)].map((_, i) => {
-            const angle = (i / 12) * 2 * Math.PI;
-            const x1 = center + radius * 0.85 * Math.sin(angle);
-            const y1 = center - radius * 0.85 * Math.cos(angle);
-            const x2 = center + radius * 0.95 * Math.sin(angle);
-            const y2 = center - radius * 0.95 * Math.cos(angle);
-            return (
-              <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(255,255,255,0.6)" strokeWidth="3" />
-            );
-          })}
-          <line
-            x1={center} y1={center}
-            x2={hourCoords.x} y2={hourCoords.y}
-            stroke="#fff" strokeWidth="6" strokeLinecap="round"
-            onMouseDown={handleMouseDown('hour')}
-          />
-          <line
-            x1={center} y1={center}
-            x2={minuteCoords.x} y2={minuteCoords.y}
-            stroke="#3b82f6" strokeWidth="4" strokeLinecap="round"
-            onMouseDown={handleMouseDown('minute')}
-          />
-          <circle cx={center} cy={center} r={8} fill="#ef4444" />
-          {[...Array(12)].map((_, i) => {
-            const num = i === 0 ? 12 : i;
-            const angle = (i / 12) * 2 * Math.PI;
-            const x = center + radius * 0.72 * Math.sin(angle);
-            const y = center - radius * 0.72 * Math.cos(angle);
-            return (
-              <text key={i} x={x} y={y + 5} textAnchor="middle" fontSize="14" fill="#fff" fontWeight="bold">
-                {num}
-              </text>
-            );
-          })}
-        </svg>
-
-        <div className="flex gap-4 mt-4">
+        <div className="flex gap-6 mt-4">
           <div className="flex flex-col items-center">
             <label className="text-sm font-medium text-gray-300">ساعات</label>
-            <input
-              type="text"
-              maxLength="2"
-              value={hoursStr}
-              onChange={handleHoursChange}
-              onBlur={handleHoursBlur}
-              className="w-20 px-3 py-2 border border-gray-600 rounded-md text-center bg-gray-800 text-white focus:ring-2 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-            />
+            <div className="flex items-center gap-1">
+              <button onClick={incrementHour} className="bg-gray-700 text-white px-2 py-1 rounded hover:bg-gray-600">▲</button>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={hoursStr}
+                onChange={handleHoursChange}
+                className="w-16 px-3 py-2 border border-gray-600 rounded-md text-center bg-gray-800 text-white focus:ring-2 focus:ring-blue-500"
+                maxLength="2"
+              />
+              <button onClick={decrementHour} className="bg-gray-700 text-white px-2 py-1 rounded hover:bg-gray-600">▼</button>
+            </div>
           </div>
           <div className="flex flex-col items-center">
             <label className="text-sm font-medium text-gray-300">دقائق</label>
-            <input
-              type="text"
-              maxLength="2"
-              value={minutesStr}
-              onChange={handleMinutesChange}
-              onBlur={handleMinutesBlur}
-              className="w-20 px-3 py-2 border border-gray-600 rounded-md text-center bg-gray-800 text-white focus:ring-2 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-            />
+            <div className="flex items-center gap-1">
+              <button onClick={incrementMinute} className="bg-gray-700 text-white px-2 py-1 rounded hover:bg-gray-600">▲</button>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={minutesStr}
+                onChange={handleMinutesChange}
+                className="w-16 px-3 py-2 border border-gray-600 rounded-md text-center bg-gray-800 text-white focus:ring-2 focus:ring-blue-500"
+                maxLength="2"
+              />
+              <button onClick={decrementMinute} className="bg-gray-700 text-white px-2 py-1 rounded hover:bg-gray-600">▼</button>
+            </div>
           </div>
         </div>
       </div>
@@ -1397,7 +1305,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [pendingReviews, setPendingReviews] = useState([]);
-  const [studentsWithoutClass, setStudentsWithoutClass] = useState([]); // حالة جديدة
+  const [studentsWithoutClass, setStudentsWithoutClass] = useState([]);
 
   // حالات المودالات
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
@@ -1546,7 +1454,6 @@ const TeacherPanel = ({ user, onLogout }) => {
       }));
       setStudents(studentsList);
 
-      // تحديث قائمة الطلاب بدون شعبة
       const withoutClass = studentsList.filter(s => !s.classes || s.classes.length === 0);
       setStudentsWithoutClass(withoutClass);
       if (withoutClass.length > 0) {
@@ -1685,7 +1592,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
   };
 
-  // تعديل دالة sendGeneralMessage لاستخدام student.classes
+  // تعديل دالة sendGeneralMessage لجلب اسم الشعبة بشكل صحيح
   const sendGeneralMessage = (student) => {
     if (!student) {
       toast.error('يرجى اختيار طالب.');
@@ -1702,7 +1609,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       return;
     }
     const studentName = student.name || '';
-    // الحصول على اسم الشعبة بشكل صحيح
+    // الحصول على اسم الشعبة من student.classes
     const classNames = student.classes?.map(c => c.name).filter(Boolean) || [];
     const material = classNames.length > 0 ? classNames.join(', ') : 'لا توجد شعبة';
     const subject = generalMessageSubject.trim() || 'إشعار رسمي';
@@ -2102,7 +2009,7 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
           <button
             onClick={onLogout}
-            className="text-2xl p-2 rounded-full hover:bg-gray-700 transition"
+            className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-full text-2xl transition shadow-lg"
             title="تسجيل الخروج"
           >
             🚪
@@ -2187,7 +2094,6 @@ const TeacherPanel = ({ user, onLogout }) => {
             <div className="space-y-3 max-h-60 overflow-y-auto">
               {sortedHomeworks.map(hw => {
                 const isRevealed = new Date(hw.reveal_time).getTime() <= new Date().getTime();
-                // الحصول على اسم الشعبة من معرفها
                 const classObj = classes.find(c => c.id === hw.section);
                 const displayName = classObj ? classObj.name : hw.section;
                 return (
@@ -2721,7 +2627,7 @@ const StudentPanel = ({ user, onLogout }) => {
           <div className="flex gap-2">
             <button
               onClick={onLogout}
-              className="text-2xl p-2 rounded-full hover:bg-gray-700 transition"
+              className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-full text-2xl transition shadow-lg"
               title="تسجيل الخروج"
             >
               🚪
@@ -2787,10 +2693,7 @@ const StudentPanel = ({ user, onLogout }) => {
               {availableHomeworks.map(hw => (
                 <div key={hw.id} className="p-4 bg-black/30 rounded-xl border border-gray-700">
                   <p className="text-base font-medium text-gray-100">{hw.text}</p>
-                  {hw.section && (() => {
-                    // لا نحتاج لعرض الشعبة هنا لأن الطالب يعرفها، لكن يمكن إظهارها اختيارياً
-                    return null;
-                  })()}
+                  {/* لا نعرض الشعبة للطالب لأنها غير ضرورية */}
                   <p className="text-xs text-gray-400 mt-1">
                     نشر في: {new Date(hw.reveal_time).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })}
                   </p>
