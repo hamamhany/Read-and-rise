@@ -116,12 +116,10 @@ const AddAssignmentModal = ({
   const [section, setSection] = useState('');
   const [assignmentText, setAssignmentText] = useState('');
   const [publishMode, setPublishMode] = useState(initialMode);
-  // حقول النشر بعد وقت
   const [delayHours, setDelayHours] = useState('');
   const [delayMinutes, setDelayMinutes] = useState('');
   const [delayError, setDelayError] = useState('');
 
-  // إعادة تعيين الوضع عند فتح المودال
   useEffect(() => {
     if (isOpen) {
       setPublishMode(initialMode);
@@ -174,7 +172,6 @@ const AddAssignmentModal = ({
       data.is_scheduled = false;
       data.reveal_time = null;
     } else if (publishMode === 'delay') {
-      // النشر بعد وقت
       const hoursNum = parseInt(delayHours);
       const minutesNum = parseInt(delayMinutes);
       if (isNaN(hoursNum) || hoursNum < 0 || isNaN(minutesNum) || minutesNum < 0 || minutesNum > 59) {
@@ -586,7 +583,7 @@ const AddLessonModal = ({
   isOpen,
   onClose,
   onSubmit,
-  initialTimes = [] // مصفوفة من المواعيد الحالية
+  initialTimes = []
 }) => {
   const [schedules, setSchedules] = useState([]);
   const [error, setError] = useState('');
@@ -626,7 +623,6 @@ const AddLessonModal = ({
 
   const validateAndSubmit = (e) => {
     e.preventDefault();
-    // التحقق من صحة كل موعد
     for (const s of schedules) {
       if (s.type === 'once') {
         const today = new Date();
@@ -653,7 +649,6 @@ const AddLessonModal = ({
       }
     }
     setError('');
-    // تحويل البيانات إلى الشكل المطلوب
     const times = schedules.map(s => {
       if (s.type === 'once') {
         const combined = new Date(s.date);
@@ -948,7 +943,6 @@ const useDynamicBackground = () => {
   }, []);
 };
 
-// تم تعديل CountdownTimer لعرض الأصفار دائماً إذا لم يكن هناك targetDate
 const CountdownTimer = ({ targetDate }) => {
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
 
@@ -1561,11 +1555,11 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
 };
 
 // ============================================================
-// TeacherPanel (معدل بالكامل)
+// TeacherPanel (معدل بالكامل مع زر تحديد الشعبة)
 // ============================================================
 const TeacherPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
-  const [lessonTimes, setLessonTimes] = useState([]); // مصفوفة
+  const [lessonTimes, setLessonTimes] = useState([]);
   const [homeworks, setHomeworks] = useState([]);
   const [students, setStudents] = useState([]);
   const [classes, setClasses] = useState([]);
@@ -1599,6 +1593,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [editingClassId, setEditingClassId] = useState(null);
   const [editingClassName, setEditingClassName] = useState('');
 
+  // حالات إضافة طالب
   const [newStudentName, setNewStudentName] = useState('');
   const [newStudentGender, setNewStudentGender] = useState('');
   const [newStudentAge, setNewStudentAge] = useState('');
@@ -1611,6 +1606,11 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [newlyAddedStudent, setNewlyAddedStudent] = useState(null);
   const [showFreezeNotificationModal, setShowFreezeNotificationModal] = useState(false);
   const [frozenStudent, setFrozenStudent] = useState(null);
+
+  // حالات تحديد الشعبة عبر الزر
+  const [showClassSelectionModal, setShowClassSelectionModal] = useState(false);
+  const [selectedStudentForClass, setSelectedStudentForClass] = useState(null);
+  const [tempClassIds, setTempClassIds] = useState([]);
 
   const cleanPhoneNumber = (phone) => {
     if (!phone) return '';
@@ -1653,7 +1653,6 @@ const TeacherPanel = ({ user, onLogout }) => {
 
       const withoutClass = studentsList.filter(s => !s.classes || s.classes.length === 0);
       setStudentsWithoutClass(withoutClass);
-      // فتح المودال إذا كان هناك طلاب بدون شعب
       if (withoutClass.length > 0 && !showStudentsWithoutClassModal) {
         setShowStudentsWithoutClassModal(true);
       }
@@ -1865,7 +1864,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
   };
 
-  // تعديل دالة sendGeneralMessage
   const sendGeneralMessage = (student) => {
     if (!student) {
       toast.error('يرجى اختيار طالب.');
@@ -2169,7 +2167,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // دالة تحديث شعبة الطالب من مودال عرض الطلاب
+  // دالة تحديث شعبة الطالب
   const updateStudentClasses = async (studentId, newClassIds) => {
     try {
       await updateDoc(doc(db, 'profiles', studentId), {
@@ -2180,6 +2178,22 @@ const TeacherPanel = ({ user, onLogout }) => {
     } catch (err) {
       toast.error('فشل تحديث الشعبة: ' + err.message);
     }
+  };
+
+  // دالة فتح مودال تحديد الشعبة
+  const openClassSelection = (student) => {
+    setSelectedStudentForClass(student);
+    setTempClassIds(student.classIds || []);
+    setShowClassSelectionModal(true);
+  };
+
+  // دالة حفظ التغييرات من مودال تحديد الشعبة
+  const saveClassSelection = async () => {
+    if (!selectedStudentForClass) return;
+    await updateStudentClasses(selectedStudentForClass.id, tempClassIds);
+    setShowClassSelectionModal(false);
+    setSelectedStudentForClass(null);
+    setTempClassIds([]);
   };
 
   const handleAddStudent = async (e) => {
@@ -2282,16 +2296,14 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ترتيب الواجبات: المسودات في الأسفل، ثم المجدولة
+  // ترتيب الواجبات والطلاب
   const sortedHomeworks = [...homeworks].sort((a, b) => {
     if (a.is_draft && !b.is_draft) return 1;
     if (!a.is_draft && b.is_draft) return -1;
     return (b.is_scheduled ? 1 : 0) - (a.is_scheduled ? 1 : 0);
   });
-  
   const sortedStudents = [...students].sort((a, b) => (a.isFrozen ? 1 : 0) - (b.isFrozen ? 1 : 0));
 
-  // حساب أقرب موعد قادم من lessonTimes لعرضه في العد التنازلي
   const getNextLessonTime = () => {
     if (!lessonTimes || lessonTimes.length === 0) return null;
     const now = new Date();
@@ -2303,7 +2315,6 @@ const TeacherPanel = ({ user, onLogout }) => {
           if (!nearest || date < new Date(nearest.date)) nearest = lt;
         }
       } else if (lt.type === 'recurring') {
-        // نحسب أقرب تاريخ قادم لهذا اليوم
         const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
         const dayIndex = days.indexOf(lt.day);
         const today = new Date();
@@ -2330,22 +2341,18 @@ const TeacherPanel = ({ user, onLogout }) => {
   return (
     <div className="container-center min-h-screen p-4 relative" dir="rtl">
       <div className="bg-gray-900/80 p-8 max-w-4xl w-full space-y-6 z-10 border border-gray-700 rounded-3xl backdrop-blur-sm">
+        {/* رأس الصفحة */}
         <div className="flex justify-between items-center flex-wrap gap-4 border-b border-gray-700 pb-4">
           <div>
             <h2 className="text-3xl font-bold text-purple-300">لوحة تحكم المعلم</h2>
             <p className="text-gray-400 text-sm mt-1">مرحباً بك: {user.name || user.username || user.email}</p>
           </div>
-          <button
-            onClick={onLogout}
-            className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-full text-2xl transition shadow-lg"
-            title="تسجيل الخروج"
-          >
-            🚪
-          </button>
+          <button onClick={onLogout} className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-full text-2xl transition shadow-lg" title="تسجيل الخروج">🚪</button>
         </div>
 
         {errorMsg && <p className="text-red-400 text-sm bg-red-500/10 p-3 rounded-xl border border-red-500/20">{errorMsg}</p>}
 
+        {/* عدد الطلاب والعد التنازلي */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-gray-800/60 p-6 rounded-2xl border border-purple-500/20 flex flex-col justify-center">
             <h3 className="text-lg font-semibold text-purple-200">عدد الطلاب</h3>
@@ -2355,7 +2362,6 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
           <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700">
             <h3 className="text-lg font-semibold text-purple-200 mb-2">الوقت المتبقي للحصة القادمة</h3>
-            {/* عرض العداد دائماً مع الأصفار إذا لم يوجد موعد */}
             <CountdownTimer targetDate={nextLesson ? nextLesson.date : null} />
             {lessonTimes && lessonTimes.length > 0 && (
               <div className="text-sm text-gray-300 mt-2">
@@ -2375,6 +2381,7 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
+        {/* تنبيه الطلاب بدون شعب */}
         {studentsWithoutClass.length > 0 && (
           <div className="bg-red-900/20 border border-red-500/30 p-4 rounded-2xl">
             <h4 className="text-red-300 font-semibold">⚠️ طلاب بدون شعبة</h4>
@@ -2383,10 +2390,11 @@ const TeacherPanel = ({ user, onLogout }) => {
                 <li key={s.id}>{s.name || s.username}</li>
               ))}
             </ul>
-            <p className="text-xs text-gray-400 mt-2">يرجى تحديد شعبة لهم من خلال إدارة الطلاب (زر عرض قوائم الطلبة).</p>
+            <p className="text-xs text-gray-400 mt-2">يرجى تحديد شعبة لهم من خلال زر "تحديد الشعبة" في قائمة الطلاب.</p>
           </div>
         )}
 
+        {/* مراجعات الملفات الشخصية */}
         {pendingReviews.length > 0 && (
           <div className="bg-gray-800/60 p-6 rounded-2xl border border-yellow-500/30 bg-yellow-500/5">
             <h3 className="text-xl font-semibold text-yellow-300 mb-3">📋 مراجعات الملفات الشخصية</h3>
@@ -2417,19 +2425,12 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
         )}
 
-        {/* ===== قسم إدارة الواجبات ===== */}
+        {/* إدارة الواجبات */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700 space-y-4">
           <div className="flex justify-between items-center">
             <h3 className="text-xl font-semibold text-pink-300">إدارة الواجبات</h3>
-            <button
-              onClick={() => setShowAssignmentChoice(true)}
-              type="button"
-              className="btn-primary bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 py-2 px-4 text-sm rounded-md text-white"
-            >
-              📝 إضافة واجب جديد
-            </button>
+            <button onClick={() => setShowAssignmentChoice(true)} type="button" className="btn-primary bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 py-2 px-4 text-sm rounded-md text-white">📝 إضافة واجب جديد</button>
           </div>
-
           {homeworks.length > 0 ? (
             <div className="space-y-3 max-h-60 overflow-y-auto">
               {sortedHomeworks.map(hw => {
@@ -2440,29 +2441,21 @@ const TeacherPanel = ({ user, onLogout }) => {
                   <div key={hw.id} className={`p-3 rounded-xl border ${hw.is_draft ? 'border-yellow-500/30 bg-yellow-900/20' : 'border-gray-700 bg-black/30'} flex justify-between items-start gap-3`}>
                     <div className="flex-1">
                       <p className="text-gray-100 text-sm">{hw.text}</p>
-                      {hw.is_draft && (
-                        <span className="text-xs bg-yellow-500/20 text-yellow-300 px-2 py-0.5 rounded-full mr-2">💾 مسودة</span>
-                      )}
-                      {hw.section && (
-                        <span className="text-xs text-blue-300 mr-2">(شعبة {displayName})</span>
-                      )}
+                      {hw.is_draft && <span className="text-xs bg-yellow-500/20 text-yellow-300 px-2 py-0.5 rounded-full mr-2">💾 مسودة</span>}
+                      {hw.section && <span className="text-xs text-blue-300 mr-2">(شعبة {displayName})</span>}
                       <div className="flex flex-wrap gap-2 mt-1">
                         {!hw.is_draft && (
                           <span className={`text-xs px-2 py-0.5 rounded-full ${isRevealed ? 'bg-green-500/20 text-green-300' : 'bg-yellow-500/20 text-yellow-300'}`}>
                             {isRevealed ? '🟢 متاح' : '📅 مجدول'}
                           </span>
                         )}
-                        {hw.is_draft && (
-                          <span className="text-xs text-yellow-400">⏳ لم ينشر بعد</span>
-                        )}
+                        {hw.is_draft && <span className="text-xs text-yellow-400">⏳ لم ينشر بعد</span>}
                         <span className="text-xs text-gray-400">
                           {hw.is_draft ? `تم الحفظ: ${new Date(hw.created_at).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })}` : 
                           new Date(hw.reveal_time).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })}
                         </span>
                       </div>
-                      {!hw.is_draft && !isRevealed && (
-                        <HomeworkTextCountdown targetDate={hw.reveal_time} />
-                      )}
+                      {!hw.is_draft && !isRevealed && <HomeworkTextCountdown targetDate={hw.reveal_time} />}
                     </div>
                     <button onClick={() => deleteHomework(hw.id)} type="button" className="p-1.5 bg-red-600/30 text-red-300 rounded-lg border border-red-500/30 hover:bg-red-600/50 text-xs">حذف</button>
                   </div>
@@ -2474,7 +2467,7 @@ const TeacherPanel = ({ user, onLogout }) => {
           )}
         </div>
 
-        {/* ===== قسم إدارة الطلاب ===== */}
+        {/* إدارة الطلاب */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700">
           <div className="flex flex-wrap justify-between items-center gap-3">
             <h3 className="text-xl font-semibold text-blue-300">إدارة الطلاب</h3>
@@ -2486,16 +2479,10 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* ===== قسم جدولة موعد حصة ===== */}
+        {/* جدولة مواعيد الحصص */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700 space-y-4">
           <h3 className="text-xl font-semibold text-purple-200">جدولة مواعيد الحصص</h3>
-          <button
-            onClick={() => setShowLessonChoice(true)}
-            type="button"
-            className="btn-primary bg-gradient-to-r from-indigo-500 to-blue-600 hover:from-indigo-600 hover:to-blue-700 py-3 px-6 w-full sm:w-auto rounded-md text-white"
-          >
-            🕒 إدارة المواعيد (حتى 6)
-          </button>
+          <button onClick={() => setShowLessonChoice(true)} type="button" className="btn-primary bg-gradient-to-r from-indigo-500 to-blue-600 hover:from-indigo-600 hover:to-blue-700 py-3 px-6 w-full sm:w-auto rounded-md text-white">🕒 إدارة المواعيد (حتى 6)</button>
           {lessonTimes && lessonTimes.length > 0 && (
             <div className="text-sm text-gray-300 mt-2">
               <p>المواعيد الحالية:</p>
@@ -2602,43 +2589,68 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال الطلاب بدون شعب (يظهر تلقائياً) ===== */}
+      {/* ===== مودال الطلاب بدون شعب (محسّن) ===== */}
       {showStudentsWithoutClassModal && studentsWithoutClass.length > 0 && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowStudentsWithoutClassModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-2xl w-full max-h-[80vh] overflow-y-auto border border-yellow-500/30" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-xl font-semibold text-yellow-300 mb-4">⚠️ طلاب بدون شعبة</h3>
-            <p className="text-gray-300 text-sm mb-4">يرجى تحديد شعبة لكل طالب من القائمة أدناه (يمكنك اختيار أكثر من شعبة بالضغط على Ctrl أو ⌘):</p>
+            <p className="text-gray-300 text-sm mb-4">يرجى تحديد شعبة لكل طالب من خلال زر "تحديد الشعبة" بجانب كل طالب.</p>
             <div className="space-y-4">
               {studentsWithoutClass.map(s => (
-                <div key={s.id} className="p-3 bg-black/30 rounded-xl border border-yellow-500/20 flex flex-wrap justify-between items-center gap-3">
+                <div key={s.id} className="p-3 bg-black/30 rounded-xl border border-yellow-500/20 flex justify-between items-center">
                   <span className="text-white font-medium">{s.name || s.username}</span>
-                  <select
-                    multiple
-                    className="bg-gray-800 text-white text-sm rounded-md border border-gray-600 h-16 min-w-[150px]"
-                    value={s.classIds || []}
-                    onChange={(e) => {
-                      const selected = Array.from(e.target.options)
-                        .filter(o => o.selected)
-                        .map(o => o.value);
-                      updateStudentClasses(s.id, selected);
+                  <button
+                    onClick={() => {
+                      setShowStudentsWithoutClassModal(false);
+                      openClassSelection(s);
                     }}
+                    className="btn-primary bg-blue-600 hover:bg-blue-700 py-1 px-3 text-sm rounded-md text-white"
                   >
-                    {classes.map(cls => (
-                      <option key={cls.id} value={cls.id}>{cls.name}</option>
-                    ))}
-                  </select>
-                  <span className="text-xs text-gray-400">اختر شعبة</span>
+                    تحديد الشعبة
+                  </button>
                 </div>
               ))}
             </div>
-            <button onClick={() => setShowStudentsWithoutClassModal(false)} className="mt-4 btn-primary bg-blue-600 hover:bg-blue-700 w-full py-2 rounded-md text-white">
-              إغلاق
-            </button>
+            <button onClick={() => setShowStudentsWithoutClassModal(false)} className="mt-4 btn-primary bg-gray-600 hover:bg-gray-700 w-full py-2 rounded-md text-white">إغلاق</button>
           </div>
         </div>
       )}
 
-      {/* ===== مودالات إجبارية ===== */}
+      {/* ===== مودال تحديد الشعبة (الزر الجديد) ===== */}
+      {showClassSelectionModal && selectedStudentForClass && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowClassSelectionModal(false)}>
+          <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-semibold text-blue-300 mb-4">تحديد شعبة الطالب</h3>
+            <p className="text-gray-300 text-sm mb-2">الطالب: <strong>{selectedStudentForClass.name || selectedStudentForClass.username}</strong></p>
+            <div className="space-y-2">
+              {classes.map(cls => (
+                <label key={cls.id} className="flex items-center gap-2 text-gray-200">
+                  <input
+                    type="checkbox"
+                    checked={tempClassIds.includes(cls.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setTempClassIds([...tempClassIds, cls.id]);
+                      } else {
+                        setTempClassIds(tempClassIds.filter(id => id !== cls.id));
+                      }
+                    }}
+                    className="accent-blue-500"
+                  />
+                  {cls.name}
+                </label>
+              ))}
+              {classes.length === 0 && <p className="text-gray-400">لا توجد شعب مسجلة. أضف شعبة أولاً.</p>}
+            </div>
+            <div className="flex gap-3 mt-4">
+              <button onClick={saveClassSelection} className="btn-primary bg-green-600 hover:bg-green-700 px-4 py-2 rounded-md text-white">حفظ</button>
+              <button onClick={() => setShowClassSelectionModal(false)} className="btn-primary bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-md text-white">إلغاء</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== مودالات إجبارية (إضافة طالب وتجميد) ===== */}
       {showAddNotificationModal && newlyAddedStudent && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-green-500/30">
@@ -2689,7 +2701,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال عرض الطلاب (معدل: إضافة اختيار الشعبة) ===== */}
+      {/* ===== مودال عرض قوائم الطلبة (محسّن مع زر تحديد الشعبة) ===== */}
       {showStudentsModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-40 p-4" onClick={() => setShowStudentsModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-4xl w-full max-h-[80vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
@@ -2703,8 +2715,6 @@ const TeacherPanel = ({ user, onLogout }) => {
                 const inactiveDays = getInactivityDays(s.last_seen);
                 const frozenDays = s.isFrozen && s.frozenAt ? Math.floor((new Date() - new Date(s.frozenAt.seconds * 1000)) / (1000 * 60 * 60 * 24)) : 0;
                 const classNames = s.classes?.map(c => c.name).filter(Boolean).join(', ') || 'لا توجد شعبة';
-                // قيم محددة للشعب المختارة حالياً
-                const selectedClassIds = s.classIds || [];
                 return (
                   <div key={s.id} className={`p-3 rounded-xl border flex flex-wrap justify-between items-center gap-3 ${s.isFrozen ? 'bg-gray-800/60 border-gray-700 opacity-80' : 'bg-gray-800/30 border-gray-700'}`}>
                     <div className="flex items-center gap-3 flex-wrap flex-1">
@@ -2729,27 +2739,13 @@ const TeacherPanel = ({ user, onLogout }) => {
                       {!hasAccount && <span className="text-xs text-yellow-400 bg-yellow-950/40 px-2 py-0.5 rounded border border-yellow-500/30">⚠️ لم يتم التفعيل بعد</span>}
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      {/* قائمة منسدلة متعددة لاختيار الشعب */}
-                      <select
-                        multiple
-                        className="bg-gray-800 text-white text-sm rounded-md border border-gray-600 h-16 max-w-[120px]"
-                        value={selectedClassIds}
-                        onChange={(e) => {
-                          const options = e.target.options;
-                          const selected = [];
-                          for (let i = 0; i < options.length; i++) {
-                            if (options[i].selected) {
-                              selected.push(options[i].value);
-                            }
-                          }
-                          updateStudentClasses(s.id, selected);
-                        }}
+                      {/* زر تحديد الشعبة الجديد */}
+                      <button
+                        onClick={() => openClassSelection(s)}
+                        className="text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-1 rounded-lg hover:bg-blue-500/30"
                       >
-                        {classes.map(cls => (
-                          <option key={cls.id} value={cls.id}>{cls.name}</option>
-                        ))}
-                      </select>
-                      <span className="text-xs text-gray-400">اختر الشعبة</span>
+                        📌 تحديد الشعبة
+                      </button>
                       <button
                         onClick={() => {
                           setSelectedStudentForMessage(s);
@@ -2923,6 +2919,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         onSubmit={saveLessonTimesFromModal}
         initialTimes={lessonTimes}
       />
+
     </div>
   );
 };
@@ -3040,7 +3037,6 @@ const StudentPanel = ({ user, onLogout }) => {
 
   const nextScheduled = getNextScheduledHomework();
 
-  // دالة لعرض أقرب موعد حصة من lessonTimes
   const getNextLessonTime = () => {
     if (!teacherData?.lessonTimes || teacherData.lessonTimes.length === 0) return null;
     const now = new Date();
@@ -3073,6 +3069,46 @@ const StudentPanel = ({ user, onLogout }) => {
 
   const nextLesson = getNextLessonTime();
 
+  const startEditing = () => {
+    setEditing(true);
+    setEditData({
+      name: profile?.name || '',
+      gender: profile?.gender || '',
+      age: profile?.age || '',
+      phone: profile?.phone || ''
+    });
+  };
+
+  const saveChanges = async () => {
+    if (!editData.name || !editData.phone) {
+      toast.error('الاسم ورقم الهاتف إلزاميان');
+      return;
+    }
+    try {
+      const updates = {
+        name: editData.name,
+        gender: editData.gender,
+        age: parseInt(editData.age) || null,
+        phone: editData.phone,
+        infoVerified: false,
+        pendingChanges: {
+          updated_at: new Date().toISOString(),
+          name: editData.name,
+          gender: editData.gender,
+          age: parseInt(editData.age) || null,
+          phone: editData.phone
+        },
+        updatedAt: serverTimestamp()
+      };
+      await updateDoc(doc(db, 'profiles', user.id), updates);
+      toast.success('سيتم مراجعة البيانات خلال 48 ساعة.');
+      setEditing(false);
+      fetchProfile();
+    } catch (err) {
+      toast.error('فشل حفظ التغييرات: ' + err.message);
+    }
+  };
+
   if (loading) return <div className="text-center text-gray-400 p-8">جاري التحميل...</div>;
 
   return (
@@ -3083,13 +3119,7 @@ const StudentPanel = ({ user, onLogout }) => {
             <h2 className="text-3xl font-bold text-blue-300">لوحة تحكم الطالب</h2>
             <p className="text-gray-400 text-sm mt-1">أهلاً بك: {user.name || user.username || user.email}</p>
           </div>
-          <button
-            onClick={onLogout}
-            className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-full text-2xl transition shadow-lg"
-            title="تسجيل الخروج"
-          >
-            🚪
-          </button>
+          <button onClick={onLogout} className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-full text-2xl transition shadow-lg" title="تسجيل الخروج">🚪</button>
         </div>
 
         {errorMsg && <p className="text-red-400 text-sm bg-red-500/10 p-3 rounded-xl border border-red-500/20">{errorMsg}</p>}
@@ -3140,7 +3170,6 @@ const StudentPanel = ({ user, onLogout }) => {
 
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-blue-500/20">
           <h3 className="text-xl font-semibold mb-4 text-blue-200">الوقت المتبقي لحصتك القادمة</h3>
-          {/* عرض العداد دائماً مع الأصفار إذا لم يوجد موعد */}
           <CountdownTimer targetDate={nextLesson ? nextLesson.date : null} />
           {teacherData?.lessonTimes && teacherData.lessonTimes.length > 0 && (
             <div className="text-gray-300 text-center mt-2">
