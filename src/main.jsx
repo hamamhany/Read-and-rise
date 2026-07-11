@@ -251,7 +251,7 @@ const AddAssignmentModal = ({
 
   // تقويم مع منع الأيام الماضية واليوم الحالي
   const Calendar = ({ selectedDate, onDateChange }) => {
-    const [currentMonth, setCurrentMonth] = useState(safeDate(selectedDate)); // تم التعديل
+    const [currentMonth, setCurrentMonth] = useState(safeDate(selectedDate));
     const [days, setDays] = useState([]);
 
     useEffect(() => {
@@ -629,27 +629,48 @@ const AddAssignmentModal = ({
 };
 
 // ============================================================
-// 2. مكوّن جدولة موعد الحصة (يدعم حتى 6 مواعيد)
+// 2. مكوّن جدولة موعد الحصة (يدعم حتى 6 مواعيد، مع اختيار الشعبة لكل موعد)
 // ============================================================
 const AddLessonModal = ({
   isOpen,
   onClose,
   onSubmit,
-  initialTimes = []
+  initialTimes = [],
+  classesList = [] // أضفنا هذا
 }) => {
   const [schedules, setSchedules] = useState([]);
   const [error, setError] = useState('');
+  const [selectedClassId, setSelectedClassId] = useState('');
 
   useEffect(() => {
     if (isOpen) {
+      // تعيين الشعبة الافتراضية
+      let defaultClassId = '';
+      if (classesList.length > 0) {
+        const existingClassId = initialTimes.find(t => t.classId)?.classId;
+        defaultClassId = existingClassId || classesList[0].id;
+      }
+      setSelectedClassId(defaultClassId);
+
       if (initialTimes && initialTimes.length > 0) {
-        setSchedules(initialTimes.map(t => ({ ...t, id: generateId() })));
+        const timesWithClass = initialTimes.map(t => ({
+          ...t,
+          classId: t.classId || null
+        }));
+        setSchedules(timesWithClass.map(t => ({ ...t, id: generateId() })));
       } else {
-        setSchedules([{ type: 'once', date: new Date(), time: { hours: 12, minutes: 0 }, day: 'Sunday', id: generateId() }]);
+        setSchedules([{
+          type: 'once',
+          date: new Date(),
+          time: { hours: 12, minutes: 0 },
+          day: 'Sunday',
+          id: generateId(),
+          classId: defaultClassId
+        }]);
       }
       setError('');
     }
-  }, [isOpen, initialTimes]);
+  }, [isOpen, initialTimes, classesList]);
 
   if (!isOpen) return null;
 
@@ -658,7 +679,14 @@ const AddLessonModal = ({
       toast.error('لا يمكن إضافة أكثر من 6 مواعيد.');
       return;
     }
-    setSchedules([...schedules, { type: 'once', date: new Date(), time: { hours: 12, minutes: 0 }, day: 'Sunday', id: generateId() }]);
+    setSchedules([...schedules, {
+      type: 'once',
+      date: new Date(),
+      time: { hours: 12, minutes: 0 },
+      day: 'Sunday',
+      id: generateId(),
+      classId: selectedClassId
+    }]);
   };
 
   const removeSchedule = (id) => {
@@ -676,6 +704,10 @@ const AddLessonModal = ({
   const validateAndSubmit = (e) => {
     e.preventDefault();
     for (const s of schedules) {
+      if (!s.classId) {
+        setError('يرجى اختيار شعبة لكل موعد.');
+        return;
+      }
       if (s.type === 'once') {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -708,22 +740,24 @@ const AddLessonModal = ({
         return {
           type: 'once',
           date: combined.toISOString(),
-          time: { hours: s.time.hours, minutes: s.time.minutes }
+          time: { hours: s.time.hours, minutes: s.time.minutes },
+          classId: s.classId
         };
       } else {
         return {
           type: 'recurring',
           day: s.day,
-          time: { hours: s.time.hours, minutes: s.time.minutes }
+          time: { hours: s.time.hours, minutes: s.time.minutes },
+          classId: s.classId
         };
       }
     });
     onSubmit(times);
   };
 
-  // تقويم (مكرر) مع safeDate
+  // تقويم (مكرر)
   const Calendar = ({ selectedDate, onDateChange }) => {
-    const [currentMonth, setCurrentMonth] = useState(safeDate(selectedDate)); // تم التعديل
+    const [currentMonth, setCurrentMonth] = useState(safeDate(selectedDate));
     const [days, setDays] = useState([]);
 
     useEffect(() => {
@@ -882,6 +916,21 @@ const AddLessonModal = ({
         </div>
 
         <form onSubmit={validateAndSubmit}>
+          {/* إضافة اختيار الشعبة الرئيسي للمواعيد الجديدة */}
+          <div className="p-4 border-b border-gray-700 flex items-center gap-4">
+            <label className="text-sm text-gray-300">اختر الشعبة للمواعيد الجديدة:</label>
+            <select
+              value={selectedClassId}
+              onChange={(e) => setSelectedClassId(e.target.value)}
+              className="bg-gray-700 text-white rounded-md px-3 py-1 border border-gray-600"
+            >
+              {classesList.map(cls => (
+                <option key={cls.id} value={cls.id}>{cls.name}</option>
+              ))}
+            </select>
+            <span className="text-xs text-gray-400">(يمكن تغييرها لكل موعد على حدة)</span>
+          </div>
+
           <div className="space-y-6 p-4">
             {schedules.map((s, idx) => (
               <div key={s.id} className="bg-gray-800/40 p-4 rounded-xl border border-gray-700 relative">
@@ -890,6 +939,18 @@ const AddLessonModal = ({
                   <button type="button" onClick={() => removeSchedule(s.id)} className="text-red-400 hover:text-red-300 text-sm">✕ إزالة</button>
                 </div>
                 <div className="flex flex-wrap gap-4 items-center mt-2">
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm text-gray-300">الشعبة:</label>
+                    <select
+                      value={s.classId || ''}
+                      onChange={(e) => updateSchedule(s.id, 'classId', e.target.value)}
+                      className="bg-gray-700 text-white text-sm rounded-md px-2 py-1 border border-gray-600"
+                    >
+                      {classesList.map(cls => (
+                        <option key={cls.id} value={cls.id}>{cls.name}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div className="flex items-center gap-2">
                     <label className="text-sm text-gray-300">النوع:</label>
                     <select
@@ -903,7 +964,7 @@ const AddLessonModal = ({
                   </div>
                   {s.type === 'once' && (
                     <div className="flex items-center gap-2">
-                      <Calendar selectedDate={safeDate(s.date)} onDateChange={(date) => updateSchedule(s.id, 'date', date)} /> {/* تم التعديل */}
+                      <Calendar selectedDate={safeDate(s.date)} onDateChange={(date) => updateSchedule(s.id, 'date', date)} />
                     </div>
                   )}
                   {s.type === 'recurring' && (
@@ -1666,6 +1727,9 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
 
+  // حالة اختيار الشعبة للعداد
+  const [selectedClassForLesson, setSelectedClassForLesson] = useState('');
+
   const cleanPhoneNumber = (phone) => {
     if (!phone) return '';
     return phone.replace(/^0+/, '').replace(/[^0-9]/g, '');
@@ -1730,6 +1794,11 @@ const TeacherPanel = ({ user, onLogout }) => {
       }
       setClasses(classesList);
 
+      // تعيين الشعبة الافتراضية للعداد
+      if (classesList.length > 0 && !selectedClassForLesson) {
+        setSelectedClassForLesson(classesList[0].id);
+      }
+
       const pendingQuery = query(
         collection(db, 'profiles'),
         where('role', '==', 'student'),
@@ -1791,6 +1860,10 @@ const TeacherPanel = ({ user, onLogout }) => {
     const unsubscribeClasses = onSnapshot(classesQuery, (snapshot) => {
       const classesList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setClasses(classesList);
+      // تحديث الشعبة المختارة إذا كانت فارغة
+      if (classesList.length > 0 && !selectedClassForLesson) {
+        setSelectedClassForLesson(classesList[0].id);
+      }
     });
 
     const pendingQuery = query(
@@ -2396,11 +2469,14 @@ const TeacherPanel = ({ user, onLogout }) => {
   });
   const sortedStudents = [...students].sort((a, b) => (a.isFrozen ? 1 : 0) - (b.isFrozen ? 1 : 0));
 
-  const getNextLessonTime = () => {
+  const getNextLessonTime = (classId) => {
     if (!lessonTimes || lessonTimes.length === 0) return null;
     const now = new Date();
     let nearest = null;
     for (const lt of lessonTimes) {
+      // إذا كان classId محدداً و الموعد له classId مختلف وليس null، نتجاوزه
+      if (classId && lt.classId && lt.classId !== classId) continue;
+      // المواعيد التي ليس لها classId تعتبر عامة وتظهر للجميع
       if (lt.type === 'once') {
         const date = new Date(lt.date);
         if (date > now) {
@@ -2426,7 +2502,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     return nearest;
   };
 
-  const nextLesson = getNextLessonTime();
+  const nextLesson = getNextLessonTime(selectedClassForLesson);
 
   if (loading) return <div className="text-center text-gray-400 p-8">جاري التحميل...</div>;
 
@@ -2468,20 +2544,42 @@ const TeacherPanel = ({ user, onLogout }) => {
             </p>
           </div>
           <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700">
-            <h3 className="text-lg font-semibold text-purple-200 mb-2">الوقت المتبقي للحصة القادمة</h3>
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="text-lg font-semibold text-purple-200">الوقت المتبقي للحصة القادمة</h3>
+              {classes.length > 0 && (
+                <select
+                  value={selectedClassForLesson}
+                  onChange={(e) => setSelectedClassForLesson(e.target.value)}
+                  className="bg-gray-700 text-white rounded-md px-3 py-1 text-sm border border-gray-600"
+                >
+                  {classes.map(cls => (
+                    <option key={cls.id} value={cls.id}>{cls.name}</option>
+                  ))}
+                </select>
+              )}
+            </div>
             <CountdownTimer targetDate={nextLesson ? nextLesson.date : null} />
+            {nextLesson && (
+              <div className="text-xs text-gray-400 mt-1">
+                الموعد القادم للشعبة المختارة: {nextLesson.type === 'once' ? 'مرة واحدة' : 'متكرر'}
+              </div>
+            )}
             {lessonTimes && lessonTimes.length > 0 && (
               <div className="text-sm text-gray-300 mt-2">
                 <p>المواعيد المحددة:</p>
                 <ul className="list-disc list-inside">
-                  {lessonTimes.map((lt, idx) => (
-                    <li key={idx}>
-                      {lt.type === 'once' ? 
-                        `مرة واحدة: ${new Date(lt.date).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })}` :
-                        `متكرر: كل ${lt.day} الساعة ${lt.time.hours}:${String(lt.time.minutes).padStart(2, '0')}`
-                      }
-                    </li>
-                  ))}
+                  {lessonTimes.map((lt, idx) => {
+                    const classObj = classes.find(c => c.id === lt.classId);
+                    const className = classObj ? classObj.name : 'عام';
+                    return (
+                      <li key={idx}>
+                        {lt.type === 'once' ? 
+                          `مرة واحدة: ${new Date(lt.date).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })} (${className})` :
+                          `متكرر: كل ${lt.day} الساعة ${lt.time.hours}:${String(lt.time.minutes).padStart(2, '0')} (${className})`
+                        }
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             )}
@@ -2594,14 +2692,18 @@ const TeacherPanel = ({ user, onLogout }) => {
             <div className="text-sm text-gray-300 mt-2">
               <p>المواعيد الحالية:</p>
               <ul className="list-disc list-inside">
-                {lessonTimes.map((lt, idx) => (
-                  <li key={idx}>
-                    {lt.type === 'once' ? 
-                      `مرة واحدة: ${new Date(lt.date).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })}` :
-                      `متكرر: كل ${lt.day} الساعة ${lt.time.hours}:${String(lt.time.minutes).padStart(2, '0')}`
-                    }
-                  </li>
-                ))}
+                {lessonTimes.map((lt, idx) => {
+                  const classObj = classes.find(c => c.id === lt.classId);
+                  const className = classObj ? classObj.name : 'عام';
+                  return (
+                    <li key={idx}>
+                      {lt.type === 'once' ? 
+                        `مرة واحدة: ${new Date(lt.date).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })} (${className})` :
+                        `متكرر: كل ${lt.day} الساعة ${lt.time.hours}:${String(lt.time.minutes).padStart(2, '0')} (${className})`
+                      }
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           )}
@@ -3073,7 +3175,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         initialMode={selectedAssignmentType || 'now'}
       />
 
-      {/* ===== مودال جدولة الحصة (مع دعم حتى 6 مواعيد) ===== */}
+      {/* ===== مودال جدولة الحصة (مع دعم حتى 6 مواعيد واختيار الشعبة) ===== */}
       <AddLessonModal
         isOpen={showLessonModal}
         onClose={() => {
@@ -3082,6 +3184,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         }}
         onSubmit={saveLessonTimesFromModal}
         initialTimes={lessonTimes}
+        classesList={classes}
       />
 
     </div>
@@ -3226,6 +3329,7 @@ const StudentPanel = ({ user, onLogout }) => {
     const now = new Date();
     let nearest = null;
     for (const lt of teacherData.lessonTimes) {
+      // الطالب يرى جميع المواعيد (لا يوجد فلترة حسب الشعبة لأنه قد يكون في أكثر من شعبة)
       if (lt.type === 'once') {
         const date = new Date(lt.date);
         if (date > now) {
