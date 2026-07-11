@@ -948,6 +948,7 @@ const useDynamicBackground = () => {
   }, []);
 };
 
+// تم تعديل CountdownTimer لعرض الأصفار دائماً إذا لم يكن هناك targetDate
 const CountdownTimer = ({ targetDate }) => {
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
 
@@ -1579,6 +1580,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [showAssignmentModal, setShowAssignmentModal] = useState(false);
   const [showLessonModal, setShowLessonModal] = useState(false);
   const [showManageClassesModal, setShowManageClassesModal] = useState(false);
+  const [showStudentsWithoutClassModal, setShowStudentsWithoutClassModal] = useState(false);
 
   // حالات الاختيار
   const [showAssignmentChoice, setShowAssignmentChoice] = useState(false);
@@ -1651,7 +1653,10 @@ const TeacherPanel = ({ user, onLogout }) => {
 
       const withoutClass = studentsList.filter(s => !s.classes || s.classes.length === 0);
       setStudentsWithoutClass(withoutClass);
-      // تم إزالة toast error
+      // فتح المودال إذا كان هناك طلاب بدون شعب
+      if (withoutClass.length > 0 && !showStudentsWithoutClassModal) {
+        setShowStudentsWithoutClassModal(true);
+      }
 
       const classesQuery = query(collection(db, 'classes'), where('teacherId', '==', teacherId));
       const classesSnapshot = await getDocs(classesQuery);
@@ -1724,7 +1729,9 @@ const TeacherPanel = ({ user, onLogout }) => {
 
       const withoutClass = studentsList.filter(s => !s.classes || s.classes.length === 0);
       setStudentsWithoutClass(withoutClass);
-      // no toast
+      if (withoutClass.length > 0 && !showStudentsWithoutClassModal) {
+        setShowStudentsWithoutClassModal(true);
+      }
     });
 
     const classesQuery = query(collection(db, 'classes'), where('teacherId', '==', user.id));
@@ -2348,12 +2355,12 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
           <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700">
             <h3 className="text-lg font-semibold text-purple-200 mb-2">الوقت المتبقي للحصة القادمة</h3>
-            {nextLesson ? (
-              <CountdownTimer key={nextLesson.date} targetDate={nextLesson.date} />
-            ) : lessonTimes && lessonTimes.length > 0 ? (
-              <div className="text-gray-300 text-center">
-                <p>جميع المواعيد المحددة:</p>
-                <ul className="text-sm list-disc list-inside">
+            {/* عرض العداد دائماً مع الأصفار إذا لم يوجد موعد */}
+            <CountdownTimer targetDate={nextLesson ? nextLesson.date : null} />
+            {lessonTimes && lessonTimes.length > 0 && (
+              <div className="text-sm text-gray-300 mt-2">
+                <p>المواعيد المحددة:</p>
+                <ul className="list-disc list-inside">
                   {lessonTimes.map((lt, idx) => (
                     <li key={idx}>
                       {lt.type === 'once' ? 
@@ -2364,8 +2371,6 @@ const TeacherPanel = ({ user, onLogout }) => {
                   ))}
                 </ul>
               </div>
-            ) : (
-              <p className="text-gray-400 text-center py-2">لم يتم تحديد مواعيد</p>
             )}
           </div>
         </div>
@@ -2593,6 +2598,42 @@ const TeacherPanel = ({ user, onLogout }) => {
               </div>
               <button onClick={() => setShowManageClassesModal(false)} className="btn-primary bg-gray-600 hover:bg-gray-700 w-full py-2 rounded-md text-white">إغلاق</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== مودال الطلاب بدون شعب (يظهر تلقائياً) ===== */}
+      {showStudentsWithoutClassModal && studentsWithoutClass.length > 0 && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowStudentsWithoutClassModal(false)}>
+          <div className="bg-gray-900 p-6 rounded-3xl max-w-2xl w-full max-h-[80vh] overflow-y-auto border border-yellow-500/30" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-semibold text-yellow-300 mb-4">⚠️ طلاب بدون شعبة</h3>
+            <p className="text-gray-300 text-sm mb-4">يرجى تحديد شعبة لكل طالب من القائمة أدناه (يمكنك اختيار أكثر من شعبة بالضغط على Ctrl أو ⌘):</p>
+            <div className="space-y-4">
+              {studentsWithoutClass.map(s => (
+                <div key={s.id} className="p-3 bg-black/30 rounded-xl border border-yellow-500/20 flex flex-wrap justify-between items-center gap-3">
+                  <span className="text-white font-medium">{s.name || s.username}</span>
+                  <select
+                    multiple
+                    className="bg-gray-800 text-white text-sm rounded-md border border-gray-600 h-16 min-w-[150px]"
+                    value={s.classIds || []}
+                    onChange={(e) => {
+                      const selected = Array.from(e.target.options)
+                        .filter(o => o.selected)
+                        .map(o => o.value);
+                      updateStudentClasses(s.id, selected);
+                    }}
+                  >
+                    {classes.map(cls => (
+                      <option key={cls.id} value={cls.id}>{cls.name}</option>
+                    ))}
+                  </select>
+                  <span className="text-xs text-gray-400">اختر شعبة</span>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => setShowStudentsWithoutClassModal(false)} className="mt-4 btn-primary bg-blue-600 hover:bg-blue-700 w-full py-2 rounded-md text-white">
+              إغلاق
+            </button>
           </div>
         </div>
       )}
@@ -3032,46 +3073,6 @@ const StudentPanel = ({ user, onLogout }) => {
 
   const nextLesson = getNextLessonTime();
 
-  const startEditing = () => {
-    setEditing(true);
-    setEditData({
-      name: profile?.name || '',
-      gender: profile?.gender || '',
-      age: profile?.age || '',
-      phone: profile?.phone || ''
-    });
-  };
-
-  const saveChanges = async () => {
-    if (!editData.name || !editData.phone) {
-      toast.error('الاسم ورقم الهاتف إلزاميان');
-      return;
-    }
-    try {
-      const updates = {
-        name: editData.name,
-        gender: editData.gender,
-        age: parseInt(editData.age) || null,
-        phone: editData.phone,
-        infoVerified: false,
-        pendingChanges: {
-          updated_at: new Date().toISOString(),
-          name: editData.name,
-          gender: editData.gender,
-          age: parseInt(editData.age) || null,
-          phone: editData.phone
-        },
-        updatedAt: serverTimestamp()
-      };
-      await updateDoc(doc(db, 'profiles', user.id), updates);
-      toast.success('سيتم مراجعة البيانات خلال 48 ساعة.');
-      setEditing(false);
-      fetchProfile();
-    } catch (err) {
-      toast.error('فشل حفظ التغييرات: ' + err.message);
-    }
-  };
-
   if (loading) return <div className="text-center text-gray-400 p-8">جاري التحميل...</div>;
 
   return (
@@ -3139,10 +3140,10 @@ const StudentPanel = ({ user, onLogout }) => {
 
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-blue-500/20">
           <h3 className="text-xl font-semibold mb-4 text-blue-200">الوقت المتبقي لحصتك القادمة</h3>
-          {nextLesson ? (
-            <CountdownTimer key={nextLesson.date} targetDate={nextLesson.date} />
-          ) : teacherData?.lessonTimes && teacherData.lessonTimes.length > 0 ? (
-            <div className="text-gray-300 text-center">
+          {/* عرض العداد دائماً مع الأصفار إذا لم يوجد موعد */}
+          <CountdownTimer targetDate={nextLesson ? nextLesson.date : null} />
+          {teacherData?.lessonTimes && teacherData.lessonTimes.length > 0 && (
+            <div className="text-gray-300 text-center mt-2">
               <p>جميع المواعيد المحددة:</p>
               <ul className="text-sm list-disc list-inside">
                 {teacherData.lessonTimes.map((lt, idx) => (
@@ -3155,8 +3156,6 @@ const StudentPanel = ({ user, onLogout }) => {
                 ))}
               </ul>
             </div>
-          ) : (
-            <p className="text-gray-400 text-center py-2">لا توجد حصة مجدولة</p>
           )}
         </div>
 
