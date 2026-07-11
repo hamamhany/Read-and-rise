@@ -49,6 +49,12 @@ const arabicToEnglishNumber = (str) => {
   return str.replace(/[٠-٩]/g, (d) => map[d] || d);
 };
 
+// ========== دالة مساعدة لتحويل أي قيمة إلى Date صالح ==========
+const safeDate = (d) => {
+  const date = new Date(d);
+  return isNaN(date.getTime()) ? new Date() : date;
+};
+
 // ========== دالة موحدة لجلب أسماء الشعب (محسنة) ==========
 const fetchClassNames = async (classIds) => {
   if (!classIds || classIds.length === 0) return {};
@@ -245,7 +251,7 @@ const AddAssignmentModal = ({
 
   // تقويم مع منع الأيام الماضية واليوم الحالي
   const Calendar = ({ selectedDate, onDateChange }) => {
-    const [currentMonth, setCurrentMonth] = useState(new Date(selectedDate));
+    const [currentMonth, setCurrentMonth] = useState(safeDate(selectedDate)); // تم التعديل
     const [days, setDays] = useState([]);
 
     useEffect(() => {
@@ -715,9 +721,9 @@ const AddLessonModal = ({
     onSubmit(times);
   };
 
-  // تقويم (مكرر)
+  // تقويم (مكرر) مع safeDate
   const Calendar = ({ selectedDate, onDateChange }) => {
-    const [currentMonth, setCurrentMonth] = useState(new Date(selectedDate));
+    const [currentMonth, setCurrentMonth] = useState(safeDate(selectedDate)); // تم التعديل
     const [days, setDays] = useState([]);
 
     useEffect(() => {
@@ -897,7 +903,7 @@ const AddLessonModal = ({
                   </div>
                   {s.type === 'once' && (
                     <div className="flex items-center gap-2">
-                      <Calendar selectedDate={s.date} onDateChange={(date) => updateSchedule(s.id, 'date', date)} />
+                      <Calendar selectedDate={safeDate(s.date)} onDateChange={(date) => updateSchedule(s.id, 'date', date)} /> {/* تم التعديل */}
                     </div>
                   )}
                   {s.type === 'recurring' && (
