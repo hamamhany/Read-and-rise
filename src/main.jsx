@@ -52,11 +52,11 @@ const arabicToEnglish = (text) => {
   return text.split('').map(ch => map[ch] || ch).join('');
 };
 
-// ========== دالة موحدة لجلب أسماء الشعب ==========
+// ========== دالة موحدة لجلب أسماء الشعب (محسنة) ==========
 const fetchClassNames = async (classIds) => {
   if (!classIds || classIds.length === 0) return {};
   const names = {};
-  for (const id of classIds) {
+  await Promise.all(classIds.map(async (id) => {
     try {
       const docSnap = await getDoc(doc(db, 'classes', id));
       if (docSnap.exists()) {
@@ -65,10 +65,10 @@ const fetchClassNames = async (classIds) => {
         names[id] = null;
       }
     } catch (err) {
-      console.error('Error fetching class name:', err);
+      console.error('Error fetching class name for id', id, err);
       names[id] = null;
     }
-  }
+  }));
   return names;
 };
 
@@ -1397,6 +1397,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [pendingReviews, setPendingReviews] = useState([]);
+  const [studentsWithoutClass, setStudentsWithoutClass] = useState([]); // حالة جديدة
 
   // حالات المودالات
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
@@ -1458,6 +1459,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       const studentsSnapshot = await getDocs(studentsQuery);
       let studentsList = studentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
+      // جلب أسماء الشعب
       const allClassIds = studentsList.flatMap(s => s.classIds || []);
       const classMap = await fetchClassNames(allClassIds);
       studentsList = studentsList.map(s => ({
@@ -1467,6 +1469,13 @@ const TeacherPanel = ({ user, onLogout }) => {
           .filter(c => c.name)
       }));
       setStudents(studentsList);
+
+      // التحقق من الطلاب بدون شعب
+      const withoutClass = studentsList.filter(s => !s.classes || s.classes.length === 0);
+      setStudentsWithoutClass(withoutClass);
+      if (withoutClass.length > 0) {
+        toast.error(`⚠️ يوجد ${withoutClass.length} طالب بدون شعبة. يرجى تحديد شعبة لهم.`, { duration: 6000 });
+      }
 
       const classesQuery = query(collection(db, 'classes'), where('teacherId', '==', teacherId));
       const classesSnapshot = await getDocs(classesQuery);
@@ -1536,6 +1545,13 @@ const TeacherPanel = ({ user, onLogout }) => {
           .filter(c => c.name)
       }));
       setStudents(studentsList);
+
+      // تحديث قائمة الطلاب بدون شعبة
+      const withoutClass = studentsList.filter(s => !s.classes || s.classes.length === 0);
+      setStudentsWithoutClass(withoutClass);
+      if (withoutClass.length > 0) {
+        toast.error(`⚠️ يوجد ${withoutClass.length} طالب بدون شعبة.`, { duration: 6000 });
+      }
     });
 
     const classesQuery = query(collection(db, 'classes'), where('teacherId', '==', user.id));
@@ -1669,6 +1685,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
   };
 
+  // تعديل دالة sendGeneralMessage لاستخدام student.classes
   const sendGeneralMessage = (student) => {
     if (!student) {
       toast.error('يرجى اختيار طالب.');
@@ -1685,7 +1702,9 @@ const TeacherPanel = ({ user, onLogout }) => {
       return;
     }
     const studentName = student.name || '';
-    const material = student.classes?.length > 0 ? student.classes[0].name : 'لا توجد شعبة';
+    // الحصول على اسم الشعبة بشكل صحيح
+    const classNames = student.classes?.map(c => c.name).filter(Boolean) || [];
+    const material = classNames.length > 0 ? classNames.join(', ') : 'لا توجد شعبة';
     const subject = generalMessageSubject.trim() || 'إشعار رسمي';
     const body = generalMessageText.trim() || '(نص الرسالة)';
     const dateNow = new Date().toLocaleDateString('ar-EG', { timeZone: 'Asia/Amman' });
@@ -2079,10 +2098,14 @@ const TeacherPanel = ({ user, onLogout }) => {
         <div className="flex justify-between items-center flex-wrap gap-4 border-b border-gray-700 pb-4">
           <div>
             <h2 className="text-3xl font-bold text-purple-300">لوحة تحكم المعلم</h2>
-            <p className="text-gray-400 text-sm mt-1">مرحباً بك: {user.username || user.email}</p>
+            <p className="text-gray-400 text-sm mt-1">مرحباً بك: {user.name || user.username || user.email}</p>
           </div>
-          <button onClick={onLogout} type="button" className="btn-primary bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 shadow-lg text-sm px-4 py-2 rounded-md text-white">
-            تسجيل الخروج
+          <button
+            onClick={onLogout}
+            className="text-2xl p-2 rounded-full hover:bg-gray-700 transition"
+            title="تسجيل الخروج"
+          >
+            🚪
           </button>
         </div>
 
@@ -2104,6 +2127,18 @@ const TeacherPanel = ({ user, onLogout }) => {
             )}
           </div>
         </div>
+
+        {studentsWithoutClass.length > 0 && (
+          <div className="bg-red-900/20 border border-red-500/30 p-4 rounded-2xl">
+            <h4 className="text-red-300 font-semibold">⚠️ طلاب بدون شعبة</h4>
+            <ul className="list-disc list-inside text-sm text-gray-300">
+              {studentsWithoutClass.map(s => (
+                <li key={s.id}>{s.name || s.username}</li>
+              ))}
+            </ul>
+            <p className="text-xs text-gray-400 mt-2">يرجى تحديد شعبة لهم من خلال إدارة الطلاب.</p>
+          </div>
+        )}
 
         {pendingReviews.length > 0 && (
           <div className="bg-gray-800/60 p-6 rounded-2xl border border-yellow-500/30 bg-yellow-500/5">
@@ -2152,11 +2187,16 @@ const TeacherPanel = ({ user, onLogout }) => {
             <div className="space-y-3 max-h-60 overflow-y-auto">
               {sortedHomeworks.map(hw => {
                 const isRevealed = new Date(hw.reveal_time).getTime() <= new Date().getTime();
+                // الحصول على اسم الشعبة من معرفها
+                const classObj = classes.find(c => c.id === hw.section);
+                const displayName = classObj ? classObj.name : hw.section;
                 return (
                   <div key={hw.id} className="p-3 bg-black/30 rounded-xl border border-gray-700 flex justify-between items-start gap-3">
                     <div className="flex-1">
                       <p className="text-gray-100 text-sm">{hw.text}</p>
-                      {hw.section && <span className="text-xs text-blue-300 mr-2">(شعبة {hw.section})</span>}
+                      {hw.section && (
+                        <span className="text-xs text-blue-300 mr-2">(شعبة {displayName})</span>
+                      )}
                       <div className="flex flex-wrap gap-2 mt-1">
                         <span className={`text-xs px-2 py-0.5 rounded-full ${isRevealed ? 'bg-green-500/20 text-green-300' : 'bg-yellow-500/20 text-yellow-300'}`}>
                           {isRevealed ? '🟢 متاح' : '📅 مجدول'}
@@ -2448,7 +2488,7 @@ const TeacherPanel = ({ user, onLogout }) => {
                 <input
                   type="text"
                   className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white cursor-not-allowed"
-                  value={selectedStudentForMessage?.classes?.length > 0 ? selectedStudentForMessage.classes[0].name : 'لا توجد شعبة'}
+                  value={selectedStudentForMessage?.classes?.length > 0 ? selectedStudentForMessage.classes.map(c => c.name).join(', ') : 'لا توجد شعبة'}
                   disabled
                 />
               </div>
@@ -2546,15 +2586,20 @@ const StudentPanel = ({ user, onLogout }) => {
     }
   };
 
+  // تعديل دالة fetchProfile لجلب أسماء الشعب
   const fetchProfile = async () => {
     try {
       const docSnap = await getDoc(doc(db, 'profiles', user.id));
       if (docSnap.exists()) {
         const data = docSnap.data();
-        if (data.classIds) {
-          const classMap = await fetchClassNames(data.classIds);
-          data.classes = data.classIds.map(id => ({ id, name: classMap[id] || null })).filter(c => c.name);
+        let classNames = {};
+        if (data.classIds && data.classIds.length > 0) {
+          classNames = await fetchClassNames(data.classIds);
         }
+        data.classes = (data.classIds || []).map(id => ({
+          id,
+          name: classNames[id] || null
+        })).filter(c => c.name);
         setProfile(data);
         setEditData(data || {});
       }
@@ -2579,13 +2624,18 @@ const StudentPanel = ({ user, onLogout }) => {
       }
     });
 
+    // تحديث الملف الشخصي بشكل مباشر مع جلب أسماء الشعب
     const unsubscribeProfile = onSnapshot(doc(db, 'profiles', user.id), async (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        if (data.classIds) {
-          const classMap = await fetchClassNames(data.classIds);
-          data.classes = data.classIds.map(id => ({ id, name: classMap[id] || null })).filter(c => c.name);
+        let classNames = {};
+        if (data.classIds && data.classIds.length > 0) {
+          classNames = await fetchClassNames(data.classIds);
         }
+        data.classes = (data.classIds || []).map(id => ({
+          id,
+          name: classNames[id] || null
+        })).filter(c => c.name);
         setProfile(data);
         setEditData(data || {});
       }
@@ -2666,10 +2716,16 @@ const StudentPanel = ({ user, onLogout }) => {
         <div className="flex justify-between items-center flex-wrap gap-4 border-b border-gray-700 pb-4">
           <div>
             <h2 className="text-3xl font-bold text-blue-300">لوحة تحكم الطالب</h2>
-            <p className="text-gray-400 text-sm mt-1">أهلاً بك: {user.username || user.email}</p>
+            <p className="text-gray-400 text-sm mt-1">أهلاً بك: {user.name || user.username || user.email}</p>
           </div>
           <div className="flex gap-2">
-            <button onClick={onLogout} type="button" className="btn-primary bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 shadow-lg text-sm px-4 py-2 rounded-md text-white">تسجيل الخروج</button>
+            <button
+              onClick={onLogout}
+              className="text-2xl p-2 rounded-full hover:bg-gray-700 transition"
+              title="تسجيل الخروج"
+            >
+              🚪
+            </button>
           </div>
         </div>
 
@@ -2731,7 +2787,10 @@ const StudentPanel = ({ user, onLogout }) => {
               {availableHomeworks.map(hw => (
                 <div key={hw.id} className="p-4 bg-black/30 rounded-xl border border-gray-700">
                   <p className="text-base font-medium text-gray-100">{hw.text}</p>
-                  {hw.section && <span className="text-xs text-blue-300 mr-2">(شعبة {hw.section})</span>}
+                  {hw.section && (() => {
+                    // لا نحتاج لعرض الشعبة هنا لأن الطالب يعرفها، لكن يمكن إظهارها اختيارياً
+                    return null;
+                  })()}
                   <p className="text-xs text-gray-400 mt-1">
                     نشر في: {new Date(hw.reveal_time).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })}
                   </p>
