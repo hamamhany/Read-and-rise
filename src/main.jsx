@@ -62,7 +62,7 @@ const fetchClassNames = async (classIds) => {
       if (docSnap.exists()) {
         names[id] = docSnap.data().name;
       } else {
-        names[id] = null; // شعبة غير موجودة
+        names[id] = null;
       }
     } catch (err) {
       console.error('Error fetching class name:', err);
@@ -985,7 +985,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
 };
 
 // ============================================================
-// Login - تصميم محسّن
+// Login - تصميم محسّن مع الحفاظ على الخلفيات الزجاجية والمتحركة
 // ============================================================
 const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [username, setUsername] = useState('');
@@ -1257,138 +1257,145 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     setActivationError('');
   };
 
+  // وضع التفعيل
   if (activationMode) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-indigo-900 to-purple-900 p-4" dir="rtl">
-        <div className="bg-gray-800/90 backdrop-blur-sm p-8 rounded-3xl shadow-2xl w-full max-w-md border border-gray-700">
-          <h2 className="text-3xl font-bold text-center bg-gradient-to-r from-green-400 to-blue-400 text-transparent bg-clip-text mb-6">
-            تفعيل الحساب لأول مرة
-          </h2>
-          {activationStep === 1 && (
-            <form onSubmit={handleActivationStep1} className="space-y-4">
-              <p className="text-gray-300 text-sm text-center">يرجى إدخال المعلومات كما هي مسجلة لدينا للتأكيد</p>
-              <div>
-                <label className="text-sm text-gray-300 block mb-1">الاسم الكامل</label>
-                <input type="text" className="w-full p-3 rounded-xl bg-gray-700 border border-gray-600 text-white focus:ring-2 focus:ring-blue-500 outline-none" value={activationConfirmName} onChange={e => setActivationConfirmName(e.target.value)} required />
-              </div>
-              <div>
-                <label className="text-sm text-gray-300 block mb-1">الجنس</label>
-                <select className="w-full p-3 rounded-xl bg-gray-700 border border-gray-600 text-white focus:ring-2 focus:ring-blue-500 outline-none" value={activationConfirmGender} onChange={e => setActivationConfirmGender(e.target.value)} required>
-                  <option value="">اختر</option>
-                  <option value="ذكر">ذكر</option>
-                  <option value="أنثى">أنثى</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-sm text-gray-300 block mb-1">العمر</label>
-                <input type="number" className="w-full p-3 rounded-xl bg-gray-700 border border-gray-600 text-white focus:ring-2 focus:ring-blue-500 outline-none" value={activationConfirmAge} onChange={e => setActivationConfirmAge(e.target.value)} required />
-              </div>
-              <div>
-                <label className="text-sm text-gray-300 block mb-1">رقم الهاتف</label>
-                <input type="text" className="w-full p-3 rounded-xl bg-gray-700 border border-gray-600 text-white focus:ring-2 focus:ring-blue-500 outline-none" value={activationConfirmPhone} onChange={e => setActivationConfirmPhone(e.target.value)} required />
-              </div>
-              {activationError && <p className="text-red-400 text-sm text-center">{activationError}</p>}
-              <button type="submit" disabled={activationLoading} className="w-full py-3 bg-blue-600 hover:bg-blue-700 rounded-xl text-white font-semibold transition duration-200">
-                {activationLoading ? 'جاري البحث...' : 'تأكيد المعلومات'}
-              </button>
-              <button type="button" onClick={cancelActivation} className="w-full text-sm text-gray-400 hover:text-white mt-2">عودة لتسجيل الدخول</button>
-            </form>
-          )}
-          {activationStep === 2 && (
-            <form onSubmit={handleActivationStep2} className="space-y-4">
-              <p className="text-gray-300 text-sm text-center">اختر اسم مستخدم وكلمة مرور جديدة</p>
-              <div>
-                <label className="text-sm text-gray-300 block mb-1">اسم المستخدم الجديد</label>
-                <input type="text" className="w-full p-3 rounded-xl bg-gray-700 border border-gray-600 text-white focus:ring-2 focus:ring-blue-500 outline-none" value={activationNewUsername} onChange={handleActivationNewUsernameChange} required pattern="[a-zA-Z0-9@._-]+" />
-              </div>
-              <div>
-                <label className="text-sm text-gray-300 block mb-1">كلمة المرور الجديدة</label>
-                <input type="password" className="w-full p-3 rounded-xl bg-gray-700 border border-gray-600 text-white focus:ring-2 focus:ring-blue-500 outline-none" value={activationNewPassword} onChange={e => setActivationNewPassword(e.target.value)} required minLength="6" />
-              </div>
-              <div>
-                <label className="text-sm text-gray-300 block mb-1">تأكيد كلمة المرور</label>
-                <input type="password" className="w-full p-3 rounded-xl bg-gray-700 border border-gray-600 text-white focus:ring-2 focus:ring-blue-500 outline-none" value={activationConfirmPassword} onChange={e => setActivationConfirmPassword(e.target.value)} required />
-              </div>
-              {activationError && <p className="text-red-400 text-sm text-center">{activationError}</p>}
-              <button type="submit" disabled={activationLoading} className="w-full py-3 bg-purple-600 hover:bg-purple-700 rounded-xl text-white font-semibold transition duration-200">
-                {activationLoading ? 'جاري التفعيل...' : 'تفعيل الحساب'}
-              </button>
-              <button type="button" onClick={cancelActivation} className="w-full text-sm text-gray-400 hover:text-white mt-2">إلغاء</button>
-            </form>
-          )}
+      <div className="container-center relative min-h-screen overflow-hidden" dir="rtl">
+        <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
+        <div className="relative z-10 w-full max-w-md px-4">
+          <div className="glass p-8 flex flex-col items-center">
+            <h2 className="text-2xl font-bold bg-gradient-to-r from-green-400 to-blue-400 text-transparent bg-clip-text mb-4">
+              تفعيل الحساب لأول مرة
+            </h2>
+            {activationStep === 1 && (
+              <form onSubmit={handleActivationStep1} className="space-y-4 w-full">
+                <p className="text-gray-300 text-sm text-center">يرجى إدخال المعلومات كما هي مسجلة لدينا للتأكيد</p>
+                <div>
+                  <label className="text-sm text-gray-300 block mb-1">الاسم الكامل</label>
+                  <input type="text" className="input-glass" value={activationConfirmName} onChange={e => setActivationConfirmName(e.target.value)} required />
+                </div>
+                <div>
+                  <label className="text-sm text-gray-300 block mb-1">الجنس</label>
+                  <select className="input-glass" value={activationConfirmGender} onChange={e => setActivationConfirmGender(e.target.value)} required>
+                    <option value="">اختر</option>
+                    <option value="ذكر">ذكر</option>
+                    <option value="أنثى">أنثى</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-sm text-gray-300 block mb-1">العمر</label>
+                  <input type="number" className="input-glass" value={activationConfirmAge} onChange={e => setActivationConfirmAge(e.target.value)} required />
+                </div>
+                <div>
+                  <label className="text-sm text-gray-300 block mb-1">رقم الهاتف</label>
+                  <input type="text" className="input-glass" value={activationConfirmPhone} onChange={e => setActivationConfirmPhone(e.target.value)} required />
+                </div>
+                {activationError && <p className="text-red-400 text-sm text-center">{activationError}</p>}
+                <button type="submit" disabled={activationLoading} className="btn-primary w-full">
+                  {activationLoading ? 'جاري البحث...' : 'تأكيد المعلومات'}
+                </button>
+                <button type="button" onClick={cancelActivation} className="text-sm text-gray-400 hover:text-white w-full text-center mt-2">عودة لتسجيل الدخول</button>
+              </form>
+            )}
+            {activationStep === 2 && (
+              <form onSubmit={handleActivationStep2} className="space-y-4 w-full">
+                <p className="text-gray-300 text-sm text-center">اختر اسم مستخدم وكلمة مرور جديدة</p>
+                <div>
+                  <label className="text-sm text-gray-300 block mb-1">اسم المستخدم الجديد</label>
+                  <input type="text" className="input-glass" value={activationNewUsername} onChange={handleActivationNewUsernameChange} required pattern="[a-zA-Z0-9@._-]+" />
+                </div>
+                <div>
+                  <label className="text-sm text-gray-300 block mb-1">كلمة المرور الجديدة</label>
+                  <input type="password" className="input-glass" value={activationNewPassword} onChange={e => setActivationNewPassword(e.target.value)} required minLength="6" />
+                </div>
+                <div>
+                  <label className="text-sm text-gray-300 block mb-1">تأكيد كلمة المرور</label>
+                  <input type="password" className="input-glass" value={activationConfirmPassword} onChange={e => setActivationConfirmPassword(e.target.value)} required />
+                </div>
+                {activationError && <p className="text-red-400 text-sm text-center">{activationError}</p>}
+                <button type="submit" disabled={activationLoading} className="btn-primary w-full bg-gradient-to-r from-purple-500 to-purple-700">
+                  {activationLoading ? 'جاري التفعيل...' : 'تفعيل الحساب'}
+                </button>
+                <button type="button" onClick={cancelActivation} className="text-sm text-gray-400 hover:text-white w-full text-center mt-2">إلغاء</button>
+              </form>
+            )}
+          </div>
         </div>
       </div>
     );
   }
 
-  // واجهة تسجيل الدخول المحسّنة
+  // واجهة تسجيل الدخول المحسّنة (مع الحفاظ على الخلفيات)
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-indigo-900 to-purple-900 p-4" dir="rtl">
-      <div className="bg-gray-800/90 backdrop-blur-sm p-8 rounded-3xl shadow-2xl w-full max-w-md border border-gray-700">
-        <div className="text-center mb-8">
-          <h2 className="text-3xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 text-transparent bg-clip-text">
-            الفرسان التقنيين
-          </h2>
-          <p className="text-gray-400 text-sm mt-1">اقرأ وارتق</p>
-          <div className="mt-2 inline-block bg-black/40 px-4 py-1 rounded-full text-xs text-gray-300 border border-gray-600">
-            المعلم: همام هاني محمد
-          </div>
-        </div>
-
-        <form onSubmit={handleAuth} className="space-y-5">
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">اسم المستخدم</label>
-            <input
-              type="text"
-              className="w-full p-3 rounded-xl bg-gray-700 border border-gray-600 text-white focus:ring-2 focus:ring-blue-500 outline-none"
-              value={username}
-              onChange={handleUsernameChange}
-              placeholder="أدخل اسم المستخدم"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">كلمة المرور</label>
-            <div className="relative">
-              <input
-                type={showPassword ? "text" : "password"}
-                className="w-full p-3 rounded-xl bg-gray-700 border border-gray-600 text-white focus:ring-2 focus:ring-blue-500 outline-none pr-10"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="أدخل كلمة المرور"
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-purple-400 hover:text-purple-300 transition-colors bg-gray-600/30 px-2 py-1 rounded"
-              >
-                {showPassword ? "إخفاء" : "إظهار"}
-              </button>
+    <div className="container-center relative min-h-screen overflow-hidden" dir="rtl">
+      <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
+      <div className="relative z-10 w-full max-w-md px-4">
+        <div className="glass p-8 flex flex-col items-center">
+          <div className="text-center mb-6">
+            <h2 className="text-3xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 text-transparent bg-clip-text">
+              الفرسان التقنيين
+            </h2>
+            <p className="text-gray-300 text-sm mt-1">اقرأ وارتق</p>
+            <div className="mt-2 inline-block bg-black/30 px-4 py-1 rounded-full text-xs text-gray-300 border border-gray-600">
+              المعلم: همام هاني محمد
             </div>
           </div>
-          {error && <p className="text-red-400 text-sm text-center">{error}</p>}
-          <button
-            type="submit"
-            className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-xl text-white font-semibold transition duration-200 shadow-lg"
-            disabled={loading}
-          >
-            {loading ? 'جاري التحميل...' : 'تسجيل الدخول'}
-          </button>
-        </form>
 
-        <div className="mt-4 text-center">
-          <button
-            type="button"
-            onClick={() => setActivationMode(true)}
-            className="text-sm text-blue-400 hover:text-blue-300 underline transition-colors"
-          >
-            تسجيل الدخول لأول مرة (تفعيل الحساب)
-          </button>
-        </div>
+          <form onSubmit={handleAuth} className="space-y-5 w-full">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">اسم المستخدم</label>
+              <input
+                type="text"
+                className="input-glass"
+                placeholder="أدخل اسم المستخدم"
+                value={username}
+                onChange={handleUsernameChange}
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">كلمة المرور</label>
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  className="input-glass pr-12"
+                  placeholder="أدخل كلمة المرور"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-medium text-purple-400 hover:text-purple-300 transition-colors bg-gray-700/30 px-2 py-1 rounded"
+                >
+                  {showPassword ? "إخفاء" : "إظهار"}
+                </button>
+              </div>
+            </div>
+            {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+            <button
+              type="submit"
+              className="btn-primary w-full py-3 text-lg"
+              disabled={loading}
+            >
+              {loading ? 'جاري التحميل...' : 'تسجيل الدخول'}
+            </button>
+          </form>
 
-        <div className="mt-6 pt-4 border-t border-gray-700 text-center text-xs text-gray-500">
-          جميع الحقوق محفوظة © 2026 همام هاني محمد علي
+          <div className="mt-4 text-center">
+            <button
+              type="button"
+              onClick={() => setActivationMode(true)}
+              className="text-sm text-blue-400 hover:text-blue-300 underline transition-colors"
+            >
+              تسجيل الدخول لأول مرة (تفعيل الحساب)
+            </button>
+          </div>
+
+          <div className="mt-6 pt-4 border-t border-gray-700 text-center text-xs text-gray-500 w-full">
+            جميع الحقوق محفوظة © 2026 همام هاني محمد علي
+          </div>
         </div>
       </div>
     </div>
@@ -1474,7 +1481,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         ...s,
         classes: (s.classIds || [])
           .map(id => ({ id, name: classMap[id] || null }))
-          .filter(c => c.name) // إزالة الشعب المحذوفة
+          .filter(c => c.name)
       }));
       setStudents(studentsList);
 
@@ -1978,10 +1985,8 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ===== تعديل دالة إضافة طالب: رفض الإضافة إذا لم يتم اختيار شعبة =====
   const handleAddStudent = async (e) => {
     e.preventDefault();
-    // التحقق من وجود شعبة محددة
     if (newStudentClassIds.length === 0) {
       toast.error('يرجى اختيار شعبة واحدة على الأقل للطالب.');
       return;
@@ -2110,7 +2115,6 @@ const TeacherPanel = ({ user, onLogout }) => {
           <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700">
             <h3 className="text-lg font-semibold text-purple-200 mb-2">الوقت المتبقي للحصة</h3>
             {lessonTime ? (
-              // إضافة key={lessonTime} لحل مشكلة العداد
               <CountdownTimer key={lessonTime} targetDate={lessonTime} />
             ) : (
               <p className="text-gray-400 text-center py-2">لم يتم تحديد موعد</p>
@@ -2319,7 +2323,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال عرض الطلاب (مع تصحيح عرض الشعب) ===== */}
+      {/* ===== مودال عرض الطلاب ===== */}
       {showStudentsModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-40 p-4" onClick={() => setShowStudentsModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-4xl w-full max-h-[80vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
@@ -2332,7 +2336,6 @@ const TeacherPanel = ({ user, onLogout }) => {
                 const hasAccount = s.email && !s.email.endsWith('@temp.com');
                 const inactiveDays = getInactivityDays(s.last_seen);
                 const frozenDays = s.isFrozen && s.frozenAt ? Math.floor((new Date() - new Date(s.frozenAt.seconds * 1000)) / (1000 * 60 * 60 * 24)) : 0;
-                // عرض الشعب بشكل صحيح مع التأكد من وجود أسماء
                 const classNames = s.classes?.map(c => c.name).filter(Boolean).join(', ') || 'لا توجد شعبة';
                 return (
                   <div key={s.id} className={`p-3 rounded-xl border flex flex-wrap justify-between items-center gap-3 ${s.isFrozen ? 'bg-gray-800/60 border-gray-700 opacity-80' : 'bg-gray-800/30 border-gray-700'}`}>
@@ -2451,7 +2454,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال الرسالة العامة (مع تعديل حقل الشعبة) ===== */}
+      {/* ===== مودال الرسالة العامة ===== */}
       {showGeneralMessageModal && selectedStudentForMessage && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowGeneralMessageModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
