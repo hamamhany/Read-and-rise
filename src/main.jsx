@@ -985,7 +985,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
 };
 
 // ============================================================
-// Login - تصميم محسّن مع الحفاظ على الخلفيات الزجاجية والمتحركة
+// Login - تصميم محسّن مع الحفاظ على الخلفيات الأصلية
 // ============================================================
 const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [username, setUsername] = useState('');
@@ -1257,144 +1257,127 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     setActivationError('');
   };
 
-  // وضع التفعيل
+  // وضع التفعيل - نفس الخلفية الأصلية
   if (activationMode) {
     return (
       <div className="container-center relative min-h-screen overflow-hidden" dir="rtl">
         <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
         <div className="relative z-10 w-full max-w-md px-4">
-          <div className="glass p-8 flex flex-col items-center">
-            <h2 className="text-2xl font-bold bg-gradient-to-r from-green-400 to-blue-400 text-transparent bg-clip-text mb-4">
-              تفعيل الحساب لأول مرة
-            </h2>
-            {activationStep === 1 && (
-              <form onSubmit={handleActivationStep1} className="space-y-4 w-full">
-                <p className="text-gray-300 text-sm text-center">يرجى إدخال المعلومات كما هي مسجلة لدينا للتأكيد</p>
-                <div>
-                  <label className="text-sm text-gray-300 block mb-1">الاسم الكامل</label>
-                  <input type="text" className="input-glass" value={activationConfirmName} onChange={e => setActivationConfirmName(e.target.value)} required />
-                </div>
-                <div>
-                  <label className="text-sm text-gray-300 block mb-1">الجنس</label>
-                  <select className="input-glass" value={activationConfirmGender} onChange={e => setActivationConfirmGender(e.target.value)} required>
-                    <option value="">اختر</option>
-                    <option value="ذكر">ذكر</option>
-                    <option value="أنثى">أنثى</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-sm text-gray-300 block mb-1">العمر</label>
-                  <input type="number" className="input-glass" value={activationConfirmAge} onChange={e => setActivationConfirmAge(e.target.value)} required />
-                </div>
-                <div>
-                  <label className="text-sm text-gray-300 block mb-1">رقم الهاتف</label>
-                  <input type="text" className="input-glass" value={activationConfirmPhone} onChange={e => setActivationConfirmPhone(e.target.value)} required />
-                </div>
-                {activationError && <p className="text-red-400 text-sm text-center">{activationError}</p>}
-                <button type="submit" disabled={activationLoading} className="btn-primary w-full">
-                  {activationLoading ? 'جاري البحث...' : 'تأكيد المعلومات'}
-                </button>
-                <button type="button" onClick={cancelActivation} className="text-sm text-gray-400 hover:text-white w-full text-center mt-2">عودة لتسجيل الدخول</button>
-              </form>
-            )}
-            {activationStep === 2 && (
-              <form onSubmit={handleActivationStep2} className="space-y-4 w-full">
-                <p className="text-gray-300 text-sm text-center">اختر اسم مستخدم وكلمة مرور جديدة</p>
-                <div>
-                  <label className="text-sm text-gray-300 block mb-1">اسم المستخدم الجديد</label>
-                  <input type="text" className="input-glass" value={activationNewUsername} onChange={handleActivationNewUsernameChange} required pattern="[a-zA-Z0-9@._-]+" />
-                </div>
-                <div>
-                  <label className="text-sm text-gray-300 block mb-1">كلمة المرور الجديدة</label>
-                  <input type="password" className="input-glass" value={activationNewPassword} onChange={e => setActivationNewPassword(e.target.value)} required minLength="6" />
-                </div>
-                <div>
-                  <label className="text-sm text-gray-300 block mb-1">تأكيد كلمة المرور</label>
-                  <input type="password" className="input-glass" value={activationConfirmPassword} onChange={e => setActivationConfirmPassword(e.target.value)} required />
-                </div>
-                {activationError && <p className="text-red-400 text-sm text-center">{activationError}</p>}
-                <button type="submit" disabled={activationLoading} className="btn-primary w-full bg-gradient-to-r from-purple-500 to-purple-700">
-                  {activationLoading ? 'جاري التفعيل...' : 'تفعيل الحساب'}
-                </button>
-                <button type="button" onClick={cancelActivation} className="text-sm text-gray-400 hover:text-white w-full text-center mt-2">إلغاء</button>
-              </form>
-            )}
+          <div className="bg-gray-900 p-6 rounded-3xl shadow-2xl border border-gray-700 flex flex-col items-center relative overflow-hidden">
+            <div className="w-full z-10 flex flex-col items-center space-y-4">
+              <h2 className="text-2xl font-bold bg-gradient-to-r from-green-400 to-blue-400 text-transparent bg-clip-text">
+                تفعيل الحساب لأول مرة
+              </h2>
+              {activationStep === 1 && (
+                <form onSubmit={handleActivationStep1} className="space-y-4 w-full">
+                  <p className="text-gray-300 text-sm text-center">يرجى إدخال المعلومات كما هي مسجلة لدينا للتأكيد</p>
+                  <div>
+                    <label className="text-sm text-gray-300 block mb-1">الاسم الكامل</label>
+                    <input type="text" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationConfirmName} onChange={e => setActivationConfirmName(e.target.value)} required />
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-300 block mb-1">الجنس</label>
+                    <select className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationConfirmGender} onChange={e => setActivationConfirmGender(e.target.value)} required>
+                      <option value="">اختر</option>
+                      <option value="ذكر">ذكر</option>
+                      <option value="أنثى">أنثى</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-300 block mb-1">العمر</label>
+                    <input type="number" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationConfirmAge} onChange={e => setActivationConfirmAge(e.target.value)} required />
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-300 block mb-1">رقم الهاتف</label>
+                    <input type="text" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationConfirmPhone} onChange={e => setActivationConfirmPhone(e.target.value)} required />
+                  </div>
+                  {activationError && <p className="text-red-400 text-sm text-center">{activationError}</p>}
+                  <button type="submit" disabled={activationLoading} className="btn-primary w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-md">
+                    {activationLoading ? 'جاري البحث...' : 'تأكيد المعلومات'}
+                  </button>
+                  <button type="button" onClick={cancelActivation} className="text-sm text-gray-400 hover:text-white w-full text-center mt-2">عودة لتسجيل الدخول</button>
+                </form>
+              )}
+              {activationStep === 2 && (
+                <form onSubmit={handleActivationStep2} className="space-y-4 w-full">
+                  <p className="text-gray-300 text-sm text-center">اختر اسم مستخدم وكلمة مرور جديدة</p>
+                  <div>
+                    <label className="text-sm text-gray-300 block mb-1">اسم المستخدم الجديد (أحرف إنجليزية وأرقام والرموز @ . _ -)</label>
+                    <input type="text" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationNewUsername} onChange={handleActivationNewUsernameChange} required pattern="[a-zA-Z0-9@._-]+" title="أحرف إنجليزية وأرقام والرموز @ . _ -" />
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-300 block mb-1">كلمة المرور الجديدة</label>
+                    <input type="password" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationNewPassword} onChange={e => setActivationNewPassword(e.target.value)} required minLength="6" pattern="[a-zA-Z0-9@._-]+" title="أحرف إنجليزية وأرقام والرموز @ . _ -، 6 أحرف على الأقل" />
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-300 block mb-1">تأكيد كلمة المرور</label>
+                    <input type="password" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationConfirmPassword} onChange={e => setActivationConfirmPassword(e.target.value)} required />
+                  </div>
+                  {activationError && <p className="text-red-400 text-sm text-center">{activationError}</p>}
+                  <button type="submit" disabled={activationLoading} className="btn-primary w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-md">
+                    {activationLoading ? 'جاري التفعيل...' : 'تفعيل الحساب'}
+                  </button>
+                  <button type="button" onClick={cancelActivation} className="text-sm text-gray-400 hover:text-white w-full text-center mt-2">إلغاء</button>
+                </form>
+              )}
+            </div>
           </div>
         </div>
       </div>
     );
   }
 
-  // واجهة تسجيل الدخول المحسّنة (مع الحفاظ على الخلفيات)
+  // واجهة تسجيل الدخول - نفس الخلفية الأصلية مع تحسين التنسيق الداخلي
   return (
     <div className="container-center relative min-h-screen overflow-hidden" dir="rtl">
       <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
       <div className="relative z-10 w-full max-w-md px-4">
-        <div className="glass p-8 flex flex-col items-center">
-          <div className="text-center mb-6">
-            <h2 className="text-3xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 text-transparent bg-clip-text">
-              الفرسان التقنيين
-            </h2>
-            <p className="text-gray-300 text-sm mt-1">اقرأ وارتق</p>
-            <div className="mt-2 inline-block bg-black/30 px-4 py-1 rounded-full text-xs text-gray-300 border border-gray-600">
-              المعلم: همام هاني محمد
-            </div>
+        <div className="bg-gray-900 p-6 rounded-3xl shadow-2xl border border-gray-700 flex flex-col items-center relative overflow-hidden min-h-[440px] justify-center">
+          <div className="absolute inset-0 flex items-start justify-center pt-6 pointer-events-none z-0 overflow-hidden">
+            <img src="/images/logo.png" alt="" className="w-96 h-96 md:w-[420px] md:h-[420px] object-contain opacity-15 animate-logo-bg select-none" onError={(e) => e.target.style.display = 'none'} />
           </div>
-
-          <form onSubmit={handleAuth} className="space-y-5 w-full">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">اسم المستخدم</label>
-              <input
-                type="text"
-                className="input-glass"
-                placeholder="أدخل اسم المستخدم"
-                value={username}
-                onChange={handleUsernameChange}
-                required
-              />
+          <div className="w-full z-10 flex flex-col items-center space-y-4">
+            <div className="text-center space-y-1 w-full">
+              <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 text-transparent bg-clip-text">
+                الفرسان التقنيين - اقرآ وارتق
+              </h2>
+              <div className="w-full max-w-[310px] bg-black/50 border border-gray-700 px-4 py-1.5 rounded-full mx-auto shadow-inner">
+                <span className="text-sm font-semibold text-gray-200 tracking-wide">
+                  المعلم المسؤول : Dev / همام هاني محمد
+                </span>
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">كلمة المرور</label>
-              <div className="relative">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  className="input-glass pr-12"
-                  placeholder="أدخل كلمة المرور"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-medium text-purple-400 hover:text-purple-300 transition-colors bg-gray-700/30 px-2 py-1 rounded"
-                >
+            <form onSubmit={handleAuth} className="space-y-3.5 w-full">
+              <div className="relative flex items-center">
+                <span className="absolute right-4 text-gray-400 pointer-events-none text-sm font-medium">اسم المستخدم</span>
+                <input type="text" className="bg-gray-800 w-full text-right pr-24 pl-4 text-base border border-gray-600 rounded-md text-white" value={username} onChange={handleUsernameChange} required />
+              </div>
+              <div className="relative flex items-center">
+                <span className="absolute right-4 text-gray-400 pointer-events-none text-sm font-medium">كلمة المرور</span>
+                <input type={showPassword ? "text" : "password"} className="bg-gray-800 w-full text-right pr-24 pl-12 text-base border border-gray-600 rounded-md text-white" value={password} onChange={(e) => setPassword(e.target.value)} required />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute left-4 text-xs font-semibold text-purple-400 hover:text-purple-300 transition-colors focus:outline-none bg-white/5 px-2 py-1 rounded border border-gray-600">
                   {showPassword ? "إخفاء" : "إظهار"}
                 </button>
               </div>
+              {error && <p className="text-red-400 text-sm text-center whitespace-pre-wrap">{error}</p>}
+              <button type="submit" className="btn-primary w-full py-2.5 text-lg font-semibold tracking-wide shadow-lg bg-blue-600 hover:bg-blue-700 text-white rounded-md" disabled={loading}>
+                {loading ? 'جاري التحميل...' : 'تسجيل الدخول'}
+              </button>
+            </form>
+
+            <div className="w-full text-center">
+              <button
+                type="button"
+                onClick={() => setActivationMode(true)}
+                className="text-sm text-blue-400 hover:text-blue-300 underline transition-colors"
+              >
+                تسجيل الدخول لأول مرة (تفعيل الحساب)
+              </button>
             </div>
-            {error && <p className="text-red-400 text-sm text-center">{error}</p>}
-            <button
-              type="submit"
-              className="btn-primary w-full py-3 text-lg"
-              disabled={loading}
-            >
-              {loading ? 'جاري التحميل...' : 'تسجيل الدخول'}
-            </button>
-          </form>
 
-          <div className="mt-4 text-center">
-            <button
-              type="button"
-              onClick={() => setActivationMode(true)}
-              className="text-sm text-blue-400 hover:text-blue-300 underline transition-colors"
-            >
-              تسجيل الدخول لأول مرة (تفعيل الحساب)
-            </button>
-          </div>
-
-          <div className="mt-6 pt-4 border-t border-gray-700 text-center text-xs text-gray-500 w-full">
-            جميع الحقوق محفوظة © 2026 همام هاني محمد علي
+            <div className="pt-2 border-t border-gray-700 text-center text-xs text-gray-400 w-full">
+              <p>جميع الحقوق محفوظة © 2026 لصالح المبرمج همام هاني محمد علي</p>
+            </div>
           </div>
         </div>
       </div>
