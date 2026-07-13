@@ -126,6 +126,25 @@ const sendNotificationToAllStudents = async (title, body, type, relatedId = null
   }
 };
 
+// ========== دالة إرسال إشعار للمعلم (مضافة) ==========
+const sendNotificationToTeacher = async (teacherId, title, body, type, relatedId = null) => {
+  if (!teacherId) return;
+  try {
+    const notification = {
+      title,
+      body,
+      type,
+      relatedId,
+      createdAt: serverTimestamp(),
+      read: false,
+      readAt: null
+    };
+    await setDoc(doc(collection(db, 'notifications', teacherId, 'userNotifications')), notification);
+  } catch (err) {
+    console.error('Error sending notification to teacher:', err);
+  }
+};
+
 // ===== مكون اختيار نوع الإضافة (نافذة منبثقة) =====
 const ChoiceModal = ({ isOpen, onClose, onSelect, title, options }) => {
   if (!isOpen) return null;
@@ -636,7 +655,7 @@ const AddLessonModal = ({
   onClose,
   onSubmit,
   initialTimes = [],
-  classesList = [] // أضفنا هذا
+  classesList = []
 }) => {
   const [schedules, setSchedules] = useState([]);
   const [error, setError] = useState('');
@@ -644,7 +663,6 @@ const AddLessonModal = ({
 
   useEffect(() => {
     if (isOpen) {
-      // تعيين الشعبة الافتراضية
       let defaultClassId = '';
       if (classesList.length > 0) {
         const existingClassId = initialTimes.find(t => t.classId)?.classId;
@@ -655,7 +673,8 @@ const AddLessonModal = ({
       if (initialTimes && initialTimes.length > 0) {
         const timesWithClass = initialTimes.map(t => ({
           ...t,
-          classId: t.classId || null
+          classId: t.classId || null,
+          type: 'once'
         }));
         setSchedules(timesWithClass.map(t => ({ ...t, id: generateId() })));
       } else {
@@ -663,7 +682,6 @@ const AddLessonModal = ({
           type: 'once',
           date: new Date(),
           time: { hours: 12, minutes: 0 },
-          day: 'Sunday',
           id: generateId(),
           classId: defaultClassId
         }]);
@@ -683,7 +701,6 @@ const AddLessonModal = ({
       type: 'once',
       date: new Date(),
       time: { hours: 12, minutes: 0 },
-      day: 'Sunday',
       id: generateId(),
       classId: selectedClassId
     }]);
@@ -708,49 +725,29 @@ const AddLessonModal = ({
         setError('يرجى اختيار شعبة لكل موعد.');
         return;
       }
-      if (s.type === 'once') {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const selected = new Date(s.date);
-        selected.setHours(0, 0, 0, 0);
-        if (selected <= today) {
-          setError('يجب اختيار يوم مستقبلي (بعد اليوم الحالي) لجميع المواعيد من نوع "مرة واحدة".');
-          return;
-        }
-        if (s.time.hours < 0 || s.time.hours > 12 || s.time.minutes < 0 || s.time.minutes > 59) {
-          setError('تأكد من صحة الوقت (الساعات 1-12، الدقائق 0-59).');
-          return;
-        }
-      } else if (s.type === 'recurring') {
-        if (s.time.hours < 0 || s.time.hours > 12 || s.time.minutes < 0 || s.time.minutes > 59) {
-          setError('تأكد من صحة الوقت (الساعات 1-12، الدقائق 0-59).');
-          return;
-        }
-        if (!s.day) {
-          setError('يرجى اختيار يوم الأسبوع للمواعيد المتكررة.');
-          return;
-        }
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const selected = new Date(s.date);
+      selected.setHours(0, 0, 0, 0);
+      if (selected <= today) {
+        setError('يجب اختيار يوم مستقبلي (بعد اليوم الحالي) لجميع المواعيد.');
+        return;
+      }
+      if (s.time.hours < 0 || s.time.hours > 12 || s.time.minutes < 0 || s.time.minutes > 59) {
+        setError('تأكد من صحة الوقت (الساعات 1-12، الدقائق 0-59).');
+        return;
       }
     }
     setError('');
     const times = schedules.map(s => {
-      if (s.type === 'once') {
-        const combined = new Date(s.date);
-        combined.setHours(s.time.hours, s.time.minutes, 0, 0);
-        return {
-          type: 'once',
-          date: combined.toISOString(),
-          time: { hours: s.time.hours, minutes: s.time.minutes },
-          classId: s.classId
-        };
-      } else {
-        return {
-          type: 'recurring',
-          day: s.day,
-          time: { hours: s.time.hours, minutes: s.time.minutes },
-          classId: s.classId
-        };
-      }
+      const combined = new Date(s.date);
+      combined.setHours(s.time.hours, s.time.minutes, 0, 0);
+      return {
+        type: 'once',
+        date: combined.toISOString(),
+        time: { hours: s.time.hours, minutes: s.time.minutes },
+        classId: s.classId
+      };
     });
     onSubmit(times);
   };
@@ -916,7 +913,6 @@ const AddLessonModal = ({
         </div>
 
         <form onSubmit={validateAndSubmit}>
-          {/* إضافة اختيار الشعبة الرئيسي للمواعيد الجديدة */}
           <div className="p-4 border-b border-gray-700 flex items-center gap-4">
             <label className="text-sm text-gray-300">اختر الشعبة للمواعيد الجديدة:</label>
             <select
@@ -952,33 +948,8 @@ const AddLessonModal = ({
                     </select>
                   </div>
                   <div className="flex items-center gap-2">
-                    <label className="text-sm text-gray-300">النوع:</label>
-                    <select
-                      value={s.type}
-                      onChange={(e) => updateSchedule(s.id, 'type', e.target.value)}
-                      className="bg-gray-700 text-white text-sm rounded-md px-2 py-1 border border-gray-600"
-                    >
-                      <option value="once">مرة واحدة</option>
-                      <option value="recurring">متكرر</option>
-                    </select>
+                    <Calendar selectedDate={safeDate(s.date)} onDateChange={(date) => updateSchedule(s.id, 'date', date)} />
                   </div>
-                  {s.type === 'once' && (
-                    <div className="flex items-center gap-2">
-                      <Calendar selectedDate={safeDate(s.date)} onDateChange={(date) => updateSchedule(s.id, 'date', date)} />
-                    </div>
-                  )}
-                  {s.type === 'recurring' && (
-                    <div className="flex items-center gap-2">
-                      <label className="text-sm text-gray-300">اليوم:</label>
-                      <select
-                        value={s.day}
-                        onChange={(e) => updateSchedule(s.id, 'day', e.target.value)}
-                        className="bg-gray-700 text-white text-sm rounded-md px-2 py-1 border border-gray-600"
-                      >
-                        {['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(d => <option key={d} value={d}>{d}</option>)}
-                      </select>
-                    </div>
-                  )}
                   <div className="flex items-center gap-2">
                     <ClockPicker
                       time={s.time}
@@ -986,9 +957,6 @@ const AddLessonModal = ({
                     />
                   </div>
                 </div>
-                {s.type === 'recurring' && (
-                  <p className="text-xs text-gray-400 mt-1">سيتم تكرار هذا الموعد أسبوعياً في اليوم المحدد</p>
-                )}
               </div>
             ))}
             <button
@@ -1293,7 +1261,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
 
   const confirm = useConfirm();
 
-  // تم إزالة تحويل الحروف العربية
   const handleUsernameChange = (e) => {
     setUsername(e.target.value);
   };
@@ -1665,7 +1632,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
 };
 
 // ============================================================
-// TeacherPanel (معدل بالكامل مع زر تحديد الشعبة والإشعارات)
+// TeacherPanel (معدل بالكامل مع زر تحديد الشعبة والإشعارات للمعلم)
 // ============================================================
 const TeacherPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -1734,181 +1701,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     if (!phone) return '';
     return phone.replace(/^0+/, '').replace(/[^0-9]/g, '');
   };
-
-  const fetchTeacherData = async () => {
-    try {
-      const teacherId = user.id;
-      const teacherRef = doc(db, 'teachers', teacherId);
-      let teacherDoc = await getDoc(teacherRef);
-
-      if (!teacherDoc.exists()) {
-        await setDoc(teacherRef, {
-          lessonTimes: [],
-          homeworks: [],
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
-        teacherDoc = await getDoc(teacherRef);
-      }
-
-      const teacherData = teacherDoc.data();
-      setLessonTimes(teacherData.lessonTimes || []);
-      setHomeworks(teacherData.homeworks || []);
-
-      const studentsQuery = query(collection(db, 'profiles'), where('role', '==', 'student'));
-      const studentsSnapshot = await getDocs(studentsQuery);
-      let studentsList = studentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-      const allClassIds = studentsList.flatMap(s => s.classIds || []);
-      const classMap = await fetchClassNames(allClassIds);
-      studentsList = studentsList.map(s => ({
-        ...s,
-        classes: (s.classIds || [])
-          .map(id => ({ id, name: classMap[id] || null }))
-          .filter(c => c.name)
-      }));
-      setStudents(studentsList);
-
-      const withoutClass = studentsList.filter(s => !s.classes || s.classes.length === 0);
-      setStudentsWithoutClass(withoutClass);
-      if (withoutClass.length > 0 && !showStudentsWithoutClassModal) {
-        setShowStudentsWithoutClassModal(true);
-      }
-
-      const classesQuery = query(collection(db, 'classes'), where('teacherId', '==', teacherId));
-      const classesSnapshot = await getDocs(classesQuery);
-      let classesList = classesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-      if (classesList.length === 0) {
-        const defaultClasses = [
-          { name: 'أساسيات البرمجة', teacherId: teacherId },
-          { name: 'بايثون (Python)', teacherId: teacherId }
-        ];
-        const created = [];
-        for (const cls of defaultClasses) {
-          const ref = doc(collection(db, 'classes'));
-          await setDoc(ref, { ...cls, createdAt: serverTimestamp() });
-          created.push({ id: ref.id, ...cls });
-        }
-        classesList = created;
-      }
-      setClasses(classesList);
-
-      // تعيين الشعبة الافتراضية للعداد
-      if (classesList.length > 0 && !selectedClassForLesson) {
-        setSelectedClassForLesson(classesList[0].id);
-      }
-
-      const pendingQuery = query(
-        collection(db, 'profiles'),
-        where('role', '==', 'student'),
-        where('pendingChanges', '!=', null)
-      );
-      const pendingSnapshot = await getDocs(pendingQuery);
-      let pendingList = pendingSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const pendingClassIds = pendingList.flatMap(s => s.classIds || []);
-      const pendingClassMap = await fetchClassNames(pendingClassIds);
-      pendingList = pendingList.map(s => ({
-        ...s,
-        classes: (s.classIds || [])
-          .map(id => ({ id, name: pendingClassMap[id] || null }))
-          .filter(c => c.name)
-      }));
-      setPendingReviews(pendingList);
-
-    } catch (err) {
-      console.error('Error fetching teacher data:', err);
-      setErrorMsg('فشل تحميل البيانات: ' + err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchTeacherData();
-
-    const teacherRef = doc(db, 'teachers', user.id);
-    const unsubscribeTeacher = onSnapshot(teacherRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setLessonTimes(data.lessonTimes || []);
-        setHomeworks(data.homeworks || []);
-      }
-    });
-
-    const studentsQuery = query(collection(db, 'profiles'), where('role', '==', 'student'));
-    const unsubscribeStudents = onSnapshot(studentsQuery, async (snapshot) => {
-      let studentsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const allClassIds = studentsList.flatMap(s => s.classIds || []);
-      const classMap = await fetchClassNames(allClassIds);
-      studentsList = studentsList.map(s => ({
-        ...s,
-        classes: (s.classIds || [])
-          .map(id => ({ id, name: classMap[id] || null }))
-          .filter(c => c.name)
-      }));
-      setStudents(studentsList);
-
-      const withoutClass = studentsList.filter(s => !s.classes || s.classes.length === 0);
-      setStudentsWithoutClass(withoutClass);
-      if (withoutClass.length > 0 && !showStudentsWithoutClassModal) {
-        setShowStudentsWithoutClassModal(true);
-      }
-    });
-
-    const classesQuery = query(collection(db, 'classes'), where('teacherId', '==', user.id));
-    const unsubscribeClasses = onSnapshot(classesQuery, (snapshot) => {
-      const classesList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setClasses(classesList);
-      // تحديث الشعبة المختارة إذا كانت فارغة
-      if (classesList.length > 0 && !selectedClassForLesson) {
-        setSelectedClassForLesson(classesList[0].id);
-      }
-    });
-
-    const pendingQuery = query(
-      collection(db, 'profiles'),
-      where('role', '==', 'student'),
-      where('pendingChanges', '!=', null)
-    );
-    const unsubscribePending = onSnapshot(pendingQuery, async (snapshot) => {
-      let pendingList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const pendingClassIds = pendingList.flatMap(s => s.classIds || []);
-      const pendingClassMap = await fetchClassNames(pendingClassIds);
-      pendingList = pendingList.map(s => ({
-        ...s,
-        classes: (s.classIds || [])
-          .map(id => ({ id, name: pendingClassMap[id] || null }))
-          .filter(c => c.name)
-      }));
-      setPendingReviews(pendingList);
-    });
-
-    // الاستماع للإشعارات
-    if (user) {
-      const notifRef = collection(db, 'notifications', user.id, 'userNotifications');
-      const qNotif = query(notifRef, orderBy('createdAt', 'desc'));
-      const unsubscribeNotif = onSnapshot(qNotif, (snapshot) => {
-        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setNotifications(list);
-        setUnreadCount(list.filter(n => !n.read).length);
-      });
-      return () => {
-        unsubscribeTeacher();
-        unsubscribeStudents();
-        unsubscribeClasses();
-        unsubscribePending();
-        unsubscribeNotif();
-      };
-    }
-
-    return () => {
-      unsubscribeTeacher();
-      unsubscribeStudents();
-      unsubscribeClasses();
-      unsubscribePending();
-    };
-  }, [user.id]);
 
   // ===== دوال إرسال رسائل واتساب =====
   const sendActivationMessage = (student) => {
@@ -2125,6 +1917,15 @@ const TeacherPanel = ({ user, onLogout }) => {
         updatedAt: serverTimestamp()
       });
 
+      // إشعار للمعلم
+      await sendNotificationToTeacher(
+        user.id,
+        '🔄 إعادة تعيين حساب',
+        `تم إعادة تعيين حساب الطالب (${studentId})`,
+        'reset_student',
+        studentId
+      );
+
       const student = students.find(s => s.id === studentId);
       if (student) {
         sendResetPasswordMessage(student);
@@ -2176,6 +1977,16 @@ const TeacherPanel = ({ user, onLogout }) => {
       };
 
       await updateDoc(docRef, newData);
+      
+      // إشعار للمعلم
+      await sendNotificationToTeacher(
+        user.id,
+        '✅ قبول مراجعة',
+        `تم قبول تغييرات الطالب ${student.name || ''}`,
+        'review_accepted',
+        studentId
+      );
+
       toast.success('تم قبول التغييرات وتحديث بيانات الطالب بنجاح.');
     } catch (err) {
       console.error('Error accepting review:', err);
@@ -2191,6 +2002,16 @@ const TeacherPanel = ({ user, onLogout }) => {
         pendingChanges: null,
         updatedAt: serverTimestamp()
       });
+      
+      // إشعار للمعلم
+      await sendNotificationToTeacher(
+        user.id,
+        '❌ رفض مراجعة',
+        `تم رفض تغييرات الطالب (${studentId})`,
+        'review_rejected',
+        studentId
+      );
+
       toast.success('تم رفض التغييرات.');
     } catch (err) {
       console.error('Error rejecting review:', err);
@@ -2226,7 +2047,17 @@ const TeacherPanel = ({ user, onLogout }) => {
       });
       toast.success(is_draft ? '💾 تم حفظ المسودة بنجاح!' : '✅ تم نشر الواجب بنجاح!');
       
-      // إرسال إشعار للطلاب في الشعبة المحددة
+      // إشعار للمعلم (اختياري)
+      if (!is_draft) {
+        await sendNotificationToTeacher(
+          user.id,
+          '📝 واجب جديد',
+          `تم نشر واجب: "${text}"`,
+          'homework_added',
+          newHwItem.id
+        );
+      }
+
       if (!is_draft) {
         await sendNotificationToStudents(
           [section],
@@ -2252,7 +2083,14 @@ const TeacherPanel = ({ user, onLogout }) => {
       });
       toast.success('✅ تم تحديث مواعيد الحصص بنجاح!');
       
-      // إرسال إشعار لجميع الطلاب
+      // إشعار للمعلم
+      await sendNotificationToTeacher(
+        user.id,
+        '🕒 تحديث مواعيد الحصص',
+        `تم تحديث جدول الحصص، عدد المواعيد: ${times.length}`,
+        'lesson_schedule_updated'
+      );
+
       await sendNotificationToAllStudents(
         '🕒 تحديث مواعيد الحصص',
         `تم تحديث جدول الحصص، عدد المواعيد: ${times.length}`,
@@ -2302,6 +2140,15 @@ const TeacherPanel = ({ user, onLogout }) => {
         updatedAt: serverTimestamp()
       });
 
+      // إشعار للمعلم
+      await sendNotificationToTeacher(
+        user.id,
+        nextStatus ? '🚫 تجميد حساب' : '✅ فك تجميد حساب',
+        `تم ${nextStatus ? 'تجميد' : 'فك تجميد'} حساب الطالب ${student.name || ''}`,
+        nextStatus ? 'freeze_student' : 'unfreeze_student',
+        student.id
+      );
+
       if (nextStatus) {
         setFrozenStudent(student);
         setShowFreezeNotificationModal(true);
@@ -2326,33 +2173,50 @@ const TeacherPanel = ({ user, onLogout }) => {
     if (!ok) return;
     try {
       await deleteDoc(doc(db, 'profiles', studentId));
+      
+      // إشعار للمعلم
+      await sendNotificationToTeacher(
+        user.id,
+        '🗑️ حذف طالب',
+        `تم حذف حساب الطالب (${studentId})`,
+        'delete_student',
+        studentId
+      );
+
       toast.success('تم حذف الطالب من النظام.');
     } catch (err) {
       toast.error('فشل حذف الطالب: ' + err.message);
     }
   };
 
-  // دالة تحديث شعبة الطالب
   const updateStudentClasses = async (studentId, newClassIds) => {
     try {
       await updateDoc(doc(db, 'profiles', studentId), {
         classIds: newClassIds,
         updatedAt: serverTimestamp()
       });
+      
+      // إشعار للمعلم
+      await sendNotificationToTeacher(
+        user.id,
+        '📌 تحديث الشعبة',
+        `تم تحديث شعبة الطالب (${studentId})`,
+        'update_class',
+        studentId
+      );
+
       toast.success('تم تحديث شعبة الطالب بنجاح');
     } catch (err) {
       toast.error('فشل تحديث الشعبة: ' + err.message);
     }
   };
 
-  // دالة فتح مودال تحديد الشعبة
   const openClassSelection = (student) => {
     setSelectedStudentForClass(student);
     setTempClassIds(student.classIds || []);
     setShowClassSelectionModal(true);
   };
 
-  // دالة حفظ التغييرات من مودال تحديد الشعبة
   const saveClassSelection = async () => {
     if (!selectedStudentForClass) return;
     await updateStudentClasses(selectedStudentForClass.id, tempClassIds);
@@ -2433,6 +2297,15 @@ const TeacherPanel = ({ user, onLogout }) => {
         updatedAt: serverTimestamp()
       });
 
+      // إشعار للمعلم
+      await sendNotificationToTeacher(
+        user.id,
+        '➕ إضافة طالب جديد',
+        `تم إضافة الطالب ${newStudentName.trim()}`,
+        'add_student',
+        newId
+      );
+
       const classMap = await fetchClassNames(newStudentClassIds);
       const classNames = newStudentClassIds.map(id => classMap[id] || null).filter(Boolean);
       const addedStudent = {
@@ -2461,7 +2334,181 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ترتيب الواجبات والطلاب
+  // ===== جلب البيانات والاستماع =====
+  const fetchTeacherData = async () => {
+    try {
+      const teacherId = user.id;
+      const teacherRef = doc(db, 'teachers', teacherId);
+      let teacherDoc = await getDoc(teacherRef);
+
+      if (!teacherDoc.exists()) {
+        await setDoc(teacherRef, {
+          lessonTimes: [],
+          homeworks: [],
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+        teacherDoc = await getDoc(teacherRef);
+      }
+
+      const teacherData = teacherDoc.data();
+      setLessonTimes(teacherData.lessonTimes || []);
+      setHomeworks(teacherData.homeworks || []);
+
+      const studentsQuery = query(collection(db, 'profiles'), where('role', '==', 'student'));
+      const studentsSnapshot = await getDocs(studentsQuery);
+      let studentsList = studentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+      const allClassIds = studentsList.flatMap(s => s.classIds || []);
+      const classMap = await fetchClassNames(allClassIds);
+      studentsList = studentsList.map(s => ({
+        ...s,
+        classes: (s.classIds || [])
+          .map(id => ({ id, name: classMap[id] || null }))
+          .filter(c => c.name)
+      }));
+      setStudents(studentsList);
+
+      const withoutClass = studentsList.filter(s => !s.classes || s.classes.length === 0);
+      setStudentsWithoutClass(withoutClass);
+      if (withoutClass.length > 0 && !showStudentsWithoutClassModal) {
+        setShowStudentsWithoutClassModal(true);
+      }
+
+      const classesQuery = query(collection(db, 'classes'), where('teacherId', '==', teacherId));
+      const classesSnapshot = await getDocs(classesQuery);
+      let classesList = classesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+      if (classesList.length === 0) {
+        const defaultClasses = [
+          { name: 'أساسيات البرمجة', teacherId: teacherId },
+          { name: 'بايثون (Python)', teacherId: teacherId }
+        ];
+        const created = [];
+        for (const cls of defaultClasses) {
+          const ref = doc(collection(db, 'classes'));
+          await setDoc(ref, { ...cls, createdAt: serverTimestamp() });
+          created.push({ id: ref.id, ...cls });
+        }
+        classesList = created;
+      }
+      setClasses(classesList);
+
+      if (classesList.length > 0 && !selectedClassForLesson) {
+        setSelectedClassForLesson(classesList[0].id);
+      }
+
+      const pendingQuery = query(
+        collection(db, 'profiles'),
+        where('role', '==', 'student'),
+        where('pendingChanges', '!=', null)
+      );
+      const pendingSnapshot = await getDocs(pendingQuery);
+      let pendingList = pendingSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const pendingClassIds = pendingList.flatMap(s => s.classIds || []);
+      const pendingClassMap = await fetchClassNames(pendingClassIds);
+      pendingList = pendingList.map(s => ({
+        ...s,
+        classes: (s.classIds || [])
+          .map(id => ({ id, name: pendingClassMap[id] || null }))
+          .filter(c => c.name)
+      }));
+      setPendingReviews(pendingList);
+
+    } catch (err) {
+      console.error('Error fetching teacher data:', err);
+      setErrorMsg('فشل تحميل البيانات: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTeacherData();
+
+    const teacherRef = doc(db, 'teachers', user.id);
+    const unsubscribeTeacher = onSnapshot(teacherRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setLessonTimes(data.lessonTimes || []);
+        setHomeworks(data.homeworks || []);
+      }
+    });
+
+    const studentsQuery = query(collection(db, 'profiles'), where('role', '==', 'student'));
+    const unsubscribeStudents = onSnapshot(studentsQuery, async (snapshot) => {
+      let studentsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const allClassIds = studentsList.flatMap(s => s.classIds || []);
+      const classMap = await fetchClassNames(allClassIds);
+      studentsList = studentsList.map(s => ({
+        ...s,
+        classes: (s.classIds || [])
+          .map(id => ({ id, name: classMap[id] || null }))
+          .filter(c => c.name)
+      }));
+      setStudents(studentsList);
+
+      const withoutClass = studentsList.filter(s => !s.classes || s.classes.length === 0);
+      setStudentsWithoutClass(withoutClass);
+      if (withoutClass.length > 0 && !showStudentsWithoutClassModal) {
+        setShowStudentsWithoutClassModal(true);
+      }
+    });
+
+    const classesQuery = query(collection(db, 'classes'), where('teacherId', '==', user.id));
+    const unsubscribeClasses = onSnapshot(classesQuery, (snapshot) => {
+      const classesList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setClasses(classesList);
+      if (classesList.length > 0 && !selectedClassForLesson) {
+        setSelectedClassForLesson(classesList[0].id);
+      }
+    });
+
+    const pendingQuery = query(
+      collection(db, 'profiles'),
+      where('role', '==', 'student'),
+      where('pendingChanges', '!=', null)
+    );
+    const unsubscribePending = onSnapshot(pendingQuery, async (snapshot) => {
+      let pendingList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const pendingClassIds = pendingList.flatMap(s => s.classIds || []);
+      const pendingClassMap = await fetchClassNames(pendingClassIds);
+      pendingList = pendingList.map(s => ({
+        ...s,
+        classes: (s.classIds || [])
+          .map(id => ({ id, name: pendingClassMap[id] || null }))
+          .filter(c => c.name)
+      }));
+      setPendingReviews(pendingList);
+    });
+
+    // ===== الاستماع للإشعارات (موجود مسبقاً) =====
+    if (user) {
+      const notifRef = collection(db, 'notifications', user.id, 'userNotifications');
+      const qNotif = query(notifRef, orderBy('createdAt', 'desc'));
+      const unsubscribeNotif = onSnapshot(qNotif, (snapshot) => {
+        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setNotifications(list);
+        setUnreadCount(list.filter(n => !n.read).length);
+      });
+      return () => {
+        unsubscribeTeacher();
+        unsubscribeStudents();
+        unsubscribeClasses();
+        unsubscribePending();
+        unsubscribeNotif();
+      };
+    }
+
+    return () => {
+      unsubscribeTeacher();
+      unsubscribeStudents();
+      unsubscribeClasses();
+      unsubscribePending();
+    };
+  }, [user.id]);
+
+  // ===== ترتيب الواجبات والطلاب =====
   const sortedHomeworks = [...homeworks].sort((a, b) => {
     if (a.is_draft && !b.is_draft) return 1;
     if (!a.is_draft && b.is_draft) return -1;
@@ -2474,9 +2521,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     const now = new Date();
     let nearest = null;
     for (const lt of lessonTimes) {
-      // إذا كان classId محدداً و الموعد له classId مختلف وليس null، نتجاوزه
       if (classId && lt.classId && lt.classId !== classId) continue;
-      // المواعيد التي ليس لها classId تعتبر عامة وتظهر للجميع
       if (lt.type === 'once') {
         const date = new Date(lt.date);
         if (date > now) {
@@ -2798,7 +2843,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال الطلاب بدون شعب (محسّن) ===== */}
+      {/* ===== مودال الطلاب بدون شعب ===== */}
       {showStudentsWithoutClassModal && studentsWithoutClass.length > 0 && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowStudentsWithoutClassModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-2xl w-full max-h-[80vh] overflow-y-auto border border-yellow-500/30" onClick={(e) => e.stopPropagation()}>
@@ -2825,7 +2870,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال تحديد الشعبة (الزر الجديد) ===== */}
+      {/* ===== مودال تحديد الشعبة ===== */}
       {showClassSelectionModal && selectedStudentForClass && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowClassSelectionModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
@@ -2859,7 +2904,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودالات إجبارية (إضافة طالب وتجميد) ===== */}
+      {/* ===== مودالات إجبارية ===== */}
       {showAddNotificationModal && newlyAddedStudent && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-green-500/30">
@@ -2910,7 +2955,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال عرض قوائم الطلبة (محسّن مع زر تحديد الشعبة) ===== */}
+      {/* ===== مودال عرض قوائم الطلبة ===== */}
       {showStudentsModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-40 p-4" onClick={() => setShowStudentsModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-4xl w-full max-h-[80vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
@@ -2948,7 +2993,6 @@ const TeacherPanel = ({ user, onLogout }) => {
                       {!hasAccount && <span className="text-xs text-yellow-400 bg-yellow-950/40 px-2 py-0.5 rounded border border-yellow-500/30">⚠️ لم يتم التفعيل بعد</span>}
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      {/* زر تحديد الشعبة الجديد */}
                       <button
                         onClick={() => openClassSelection(s)}
                         className="text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-1 rounded-lg hover:bg-blue-500/30"
@@ -3175,7 +3219,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         initialMode={selectedAssignmentType || 'now'}
       />
 
-      {/* ===== مودال جدولة الحصة (مع دعم حتى 6 مواعيد واختيار الشعبة) ===== */}
+      {/* ===== مودال جدولة الحصة ===== */}
       <AddLessonModal
         isOpen={showLessonModal}
         onClose={() => {
@@ -3192,7 +3236,7 @@ const TeacherPanel = ({ user, onLogout }) => {
 };
 
 // ============================================================
-// StudentPanel (معدل مع زر الإشعارات)
+// StudentPanel
 // ============================================================
 const StudentPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -3329,7 +3373,6 @@ const StudentPanel = ({ user, onLogout }) => {
     const now = new Date();
     let nearest = null;
     for (const lt of teacherData.lessonTimes) {
-      // الطالب يرى جميع المواعيد (لا يوجد فلترة حسب الشعبة لأنه قد يكون في أكثر من شعبة)
       if (lt.type === 'once') {
         const date = new Date(lt.date);
         if (date > now) {
@@ -3408,7 +3451,6 @@ const StudentPanel = ({ user, onLogout }) => {
             <p className="text-gray-400 text-sm mt-1">أهلاً بك: {user.name || user.username || user.email}</p>
           </div>
           <div className="flex items-center gap-2">
-            {/* زر الجرس */}
             <button
               onClick={() => setShowNotificationsModal(true)}
               className="relative bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-full text-2xl transition shadow-lg"

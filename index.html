@@ -6,13 +6,11 @@
     <meta name="theme-color" content="#1a1a2e" />
     <title>الفرسان التقنيين - اقرآ وارتق</title>
 
-    <!-- ===== أيقونات PWA (خاصة بالهواتف والتطبيقات) ===== -->
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-    <link rel="manifest" href="/manifest.json" />
-    
-    <!-- ===== تم حذف أيقونة SVG المخصصة، سيظهر النص الموجود في العنوان ===== -->
-    
-    <!-- دعم iOS -->
+    <!-- ===== أيقونة التبويب (مضمّنة SVG، لا حاجة لملفات خارجية) ===== -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='80' fill='%2300D2FF'>⟨▷⟩</text></svg>" />
+
+    <!-- ===== حُذفت جميع روابط الصور الخارجية (apple-touch-icon, manifest) لتجنب أخطاء 404 ===== -->
+
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
@@ -89,15 +87,9 @@
         animation: gradientShift 12s ease infinite;
       }
       @keyframes gradientShift {
-        0% {
-          background-position: 0% 50%;
-        }
-        50% {
-          background-position: 100% 50%;
-        }
-        100% {
-          background-position: 0% 50%;
-        }
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
       }
     </style>
   </head>
