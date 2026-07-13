@@ -126,7 +126,6 @@ const sendNotificationToAllStudents = async (title, body, type, relatedId = null
   }
 };
 
-// ========== دالة إرسال إشعار للمعلم (مضافة) ==========
 const sendNotificationToTeacher = async (teacherId, title, body, type, relatedId = null) => {
   if (!teacherId) return;
   try {
@@ -220,13 +219,14 @@ const AddAssignmentModal = ({
       text: assignmentText,
     };
 
+    // ===== التعديل هنا: نشر فوراً بدون تحديد وقت =====
     if (publishMode === 'now') {
       const now = new Date();
-      now.setHours(time.hours, time.minutes, 0, 0);
       data.date = now;
-      data.time = { hours: time.hours, minutes: time.minutes };
+      data.time = { hours: now.getHours(), minutes: now.getMinutes() };
       data.is_draft = false;
-      data.is_scheduled = true;
+      data.is_scheduled = false; // ليس مجدولاً
+      data.reveal_time = now.toISOString();
     } else if (publishMode === 'schedule') {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -238,6 +238,9 @@ const AddAssignmentModal = ({
       data.time = time;
       data.is_draft = false;
       data.is_scheduled = true;
+      const combined = new Date(selectedDate);
+      combined.setHours(time.hours, time.minutes, 0, 0);
+      data.reveal_time = combined.toISOString();
     } else if (publishMode === 'draft') {
       data.date = new Date();
       data.time = { hours: 0, minutes: 0 };
@@ -558,7 +561,7 @@ const AddAssignmentModal = ({
                 onChange={() => setPublishMode('now')}
                 className="accent-blue-500"
               />
-              📤 نشر فوراً (تحديد وقت)
+              📤 نشر فوراً
             </label>
             <label className="flex items-center gap-2 text-gray-300">
               <input
@@ -592,9 +595,10 @@ const AddAssignmentModal = ({
             </label>
           </div>
 
+          {/* ===== التعديل: نشر فوراً بدون تحديد وقت ===== */}
           {publishMode === 'now' && (
-            <div className="p-4 flex justify-center">
-              <ClockPicker time={time} onTimeChange={setTime} />
+            <div className="p-4 text-center text-gray-300">
+              ⏳ سيتم نشر الواجب فوراً دون تأخير.
             </div>
           )}
           {publishMode === 'schedule' && (
@@ -1369,6 +1373,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     }
   };
 
+  // ===== تحسين عملية التفعيل (التعديل) =====
   const handleActivationStep1 = async (e) => {
     e.preventDefault();
     setActivationError('');
@@ -1376,11 +1381,19 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
 
     const name = activationConfirmName.trim();
     const gender = activationConfirmGender.trim();
-    const age = arabicToEnglishNumber(activationConfirmAge.trim());
-    const phone = arabicToEnglishNumber(activationConfirmPhone.trim());
+    const ageInput = arabicToEnglishNumber(activationConfirmAge.trim());
+    const phoneInput = arabicToEnglishNumber(activationConfirmPhone.trim());
 
-    if (!name || !gender || !age || !phone) {
+    if (!name || !gender || !ageInput || !phoneInput) {
       setActivationError('جميع الحقول مطلوبة');
+      setActivationLoading(false);
+      return;
+    }
+
+    const ageNum = Number(ageInput);
+    const phoneNum = Number(phoneInput);
+    if (isNaN(ageNum) || isNaN(phoneNum)) {
+      setActivationError('العمر ورقم الهاتف يجب أن يكونا أرقاماً');
       setActivationLoading(false);
       return;
     }
@@ -1392,7 +1405,10 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
       let foundProfile = null;
       snapshot.forEach(doc => {
         const data = doc.data();
-        if (data.gender === gender && String(data.age) === age && data.phone === phone) {
+        // تحويل القيم المخزنة إلى أرقام للمقارنة
+        const dataAge = Number(data.age);
+        const dataPhone = Number(data.phone);
+        if (data.gender === gender && dataAge === ageNum && dataPhone === phoneNum) {
           foundProfile = { id: doc.id, ...data };
         }
       });
@@ -1467,6 +1483,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
       }
       const studentData = oldDocSnap.data();
 
+      // إنشاء المستند الجديد
       const newDocRef = doc(db, 'profiles', newUid);
       await setDoc(newDocRef, {
         ...studentData,
@@ -1474,10 +1491,17 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
         email: email,
         isProfileComplete: true,
         infoVerified: true,
-        updatedAt: serverTimestamp()
+        updatedAt: serverTimestamp(),
+        isActive: true
       });
 
-      await deleteDoc(oldDocRef);
+      // محاولة حذف القديم، وإذا فشل نضع علامة غير نشط
+      try {
+        await deleteDoc(oldDocRef);
+      } catch (err) {
+        console.warn('فشل حذف المستند القديم، سيتم تعطيله:', err);
+        await updateDoc(oldDocRef, { isActive: false, isProfileComplete: false });
+      }
 
       toast.success(`تم تفعيل حسابك بنجاح!\nاسم المستخدم: ${newUsername}\nيمكنك الآن تسجيل الدخول باستخدام اسم المستخدم وكلمة المرور.`);
       setActivationMode(false);
@@ -1702,7 +1726,36 @@ const TeacherPanel = ({ user, onLogout }) => {
     return phone.replace(/^0+/, '').replace(/[^0-9]/g, '');
   };
 
-  // ===== دوال إرسال رسائل واتساب =====
+  // ===== التعديل: دالة حذف الإشعارات القديمة =====
+  const cleanOldNotifications = async () => {
+    if (!user) return;
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const oldOnes = notifications.filter(n => {
+      if (!n.createdAt) return false;
+      const date = n.createdAt.toDate ? n.createdAt.toDate() : new Date(n.createdAt);
+      return date < sevenDaysAgo;
+    });
+    if (oldOnes.length === 0) return;
+    try {
+      const batch = writeBatch(db);
+      oldOnes.forEach(n => {
+        const ref = doc(db, 'notifications', user.id, 'userNotifications', n.id);
+        batch.delete(ref);
+      });
+      await batch.commit();
+      toast.success(`تم حذف ${oldOnes.length} إشعار قديم`);
+    } catch (err) {
+      console.error('خطأ في حذف الإشعارات القديمة:', err);
+    }
+  };
+
+  const handleOpenNotifications = () => {
+    cleanOldNotifications();
+    setShowNotificationsModal(true);
+  };
+
+  // ===== دوال إرسال رسائل واتساب (كما هي) =====
   const sendActivationMessage = (student) => {
     const phone = student.phone || '';
     if (!phone) {
@@ -1917,7 +1970,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         updatedAt: serverTimestamp()
       });
 
-      // إشعار للمعلم
       await sendNotificationToTeacher(
         user.id,
         '🔄 إعادة تعيين حساب',
@@ -1978,7 +2030,6 @@ const TeacherPanel = ({ user, onLogout }) => {
 
       await updateDoc(docRef, newData);
       
-      // إشعار للمعلم
       await sendNotificationToTeacher(
         user.id,
         '✅ قبول مراجعة',
@@ -2003,7 +2054,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         updatedAt: serverTimestamp()
       });
       
-      // إشعار للمعلم
       await sendNotificationToTeacher(
         user.id,
         '❌ رفض مراجعة',
@@ -2047,7 +2097,6 @@ const TeacherPanel = ({ user, onLogout }) => {
       });
       toast.success(is_draft ? '💾 تم حفظ المسودة بنجاح!' : '✅ تم نشر الواجب بنجاح!');
       
-      // إشعار للمعلم (اختياري)
       if (!is_draft) {
         await sendNotificationToTeacher(
           user.id,
@@ -2083,7 +2132,6 @@ const TeacherPanel = ({ user, onLogout }) => {
       });
       toast.success('✅ تم تحديث مواعيد الحصص بنجاح!');
       
-      // إشعار للمعلم
       await sendNotificationToTeacher(
         user.id,
         '🕒 تحديث مواعيد الحصص',
@@ -2140,7 +2188,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         updatedAt: serverTimestamp()
       });
 
-      // إشعار للمعلم
       await sendNotificationToTeacher(
         user.id,
         nextStatus ? '🚫 تجميد حساب' : '✅ فك تجميد حساب',
@@ -2174,7 +2221,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     try {
       await deleteDoc(doc(db, 'profiles', studentId));
       
-      // إشعار للمعلم
       await sendNotificationToTeacher(
         user.id,
         '🗑️ حذف طالب',
@@ -2196,7 +2242,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         updatedAt: serverTimestamp()
       });
       
-      // إشعار للمعلم
       await sendNotificationToTeacher(
         user.id,
         '📌 تحديث الشعبة',
@@ -2297,7 +2342,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         updatedAt: serverTimestamp()
       });
 
-      // إشعار للمعلم
       await sendNotificationToTeacher(
         user.id,
         '➕ إضافة طالب جديد',
@@ -2482,7 +2526,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       setPendingReviews(pendingList);
     });
 
-    // ===== الاستماع للإشعارات (موجود مسبقاً) =====
+    // ===== الاستماع للإشعارات مع التنظيف التلقائي =====
     if (user) {
       const notifRef = collection(db, 'notifications', user.id, 'userNotifications');
       const qNotif = query(notifRef, orderBy('createdAt', 'desc'));
@@ -2563,7 +2607,7 @@ const TeacherPanel = ({ user, onLogout }) => {
           <div className="flex items-center gap-2">
             {/* زر الجرس */}
             <button
-              onClick={() => setShowNotificationsModal(true)}
+              onClick={handleOpenNotifications} // تم التعديل هنا
               className="relative bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-full text-2xl transition shadow-lg"
               title="الإشعارات"
             >
@@ -2609,27 +2653,46 @@ const TeacherPanel = ({ user, onLogout }) => {
                 الموعد القادم للشعبة المختارة: {nextLesson.type === 'once' ? 'مرة واحدة' : 'متكرر'}
               </div>
             )}
-            {lessonTimes && lessonTimes.length > 0 && (
-              <div className="text-sm text-gray-300 mt-2">
-                <p>المواعيد المحددة:</p>
-                <ul className="list-disc list-inside">
-                  {lessonTimes.map((lt, idx) => {
-                    const classObj = classes.find(c => c.id === lt.classId);
-                    const className = classObj ? classObj.name : 'عام';
-                    return (
-                      <li key={idx}>
-                        {lt.type === 'once' ? 
-                          `مرة واحدة: ${new Date(lt.date).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })} (${className})` :
-                          `متكرر: كل ${lt.day} الساعة ${lt.time.hours}:${String(lt.time.minutes).padStart(2, '0')} (${className})`
-                        }
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            )}
           </div>
         </div>
+
+        {/* ===== التعديل: عرض المواعيد المحددة بشكل منظم ===== */}
+        {lessonTimes && lessonTimes.length > 0 && (
+          <div className="bg-gray-800/40 p-4 rounded-2xl border border-gray-600">
+            <h4 className="text-md font-semibold text-purple-200 mb-3">📋 جدول المواعيد المحددة</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {lessonTimes.map((lt, idx) => {
+                const classObj = classes.find(c => c.id === lt.classId);
+                const className = classObj ? classObj.name : 'عام';
+                return (
+                  <div key={idx} className="bg-black/30 p-3 rounded-xl border border-gray-700 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-300">الشعبة:</span>
+                      <span className="text-white font-medium">{className}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-300">النوع:</span>
+                      <span className="text-blue-300">{lt.type === 'once' ? 'مرة واحدة' : 'متكرر'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-300">التاريخ/اليوم:</span>
+                      <span className="text-white">
+                        {lt.type === 'once' 
+                          ? new Date(lt.date).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })
+                          : `كل ${lt.day}`
+                        }
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-300">الوقت:</span>
+                      <span className="text-white">{lt.time.hours}:{String(lt.time.minutes).padStart(2, '0')}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* تنبيه الطلاب بدون شعب */}
         {studentsWithoutClass.length > 0 && (
@@ -2733,25 +2796,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700 space-y-4">
           <h3 className="text-xl font-semibold text-purple-200">جدولة مواعيد الحصص</h3>
           <button onClick={() => setShowLessonChoice(true)} type="button" className="btn-primary bg-gradient-to-r from-indigo-500 to-blue-600 hover:from-indigo-600 hover:to-blue-700 py-3 px-6 w-full sm:w-auto rounded-md text-white">🕒 إدارة المواعيد (حتى 6)</button>
-          {lessonTimes && lessonTimes.length > 0 && (
-            <div className="text-sm text-gray-300 mt-2">
-              <p>المواعيد الحالية:</p>
-              <ul className="list-disc list-inside">
-                {lessonTimes.map((lt, idx) => {
-                  const classObj = classes.find(c => c.id === lt.classId);
-                  const className = classObj ? classObj.name : 'عام';
-                  return (
-                    <li key={idx}>
-                      {lt.type === 'once' ? 
-                        `مرة واحدة: ${new Date(lt.date).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })} (${className})` :
-                        `متكرر: كل ${lt.day} الساعة ${lt.time.hours}:${String(lt.time.minutes).padStart(2, '0')} (${className})`
-                      }
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
         </div>
       </div>
 
@@ -2769,7 +2813,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         }}
         title="اختر نوع الواجب"
         options={[
-          { value: 'now', label: '📤 نشر فوراً (مع تحديد وقت)' },
+          { value: 'now', label: '📤 نشر فوراً' },
           { value: 'schedule', label: '📅 جدولة (تاريخ ووقت)' },
           { value: 'draft', label: '💾 حفظ كمسودة (نشر لاحقاً)' },
           { value: 'delay', label: '⏱️ نشر بعد وقت (ساعات/دقائق)' }
@@ -3252,6 +3296,35 @@ const StudentPanel = ({ user, onLogout }) => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
 
+  // دالة تنظيف الإشعارات للطالب
+  const cleanOldNotifications = async () => {
+    if (!user) return;
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const oldOnes = notifications.filter(n => {
+      if (!n.createdAt) return false;
+      const date = n.createdAt.toDate ? n.createdAt.toDate() : new Date(n.createdAt);
+      return date < sevenDaysAgo;
+    });
+    if (oldOnes.length === 0) return;
+    try {
+      const batch = writeBatch(db);
+      oldOnes.forEach(n => {
+        const ref = doc(db, 'notifications', user.id, 'userNotifications', n.id);
+        batch.delete(ref);
+      });
+      await batch.commit();
+      toast.success(`تم حذف ${oldOnes.length} إشعار قديم`);
+    } catch (err) {
+      console.error('خطأ في حذف الإشعارات القديمة:', err);
+    }
+  };
+
+  const handleOpenNotifications = () => {
+    cleanOldNotifications();
+    setShowNotificationsModal(true);
+  };
+
   const fetchTeacherInfo = async () => {
     try {
       const q = query(collection(db, 'teachers'));
@@ -3452,7 +3525,7 @@ const StudentPanel = ({ user, onLogout }) => {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setShowNotificationsModal(true)}
+              onClick={handleOpenNotifications}
               className="relative bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-full text-2xl transition shadow-lg"
               title="الإشعارات"
             >
