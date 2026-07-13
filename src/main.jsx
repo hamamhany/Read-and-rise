@@ -219,13 +219,13 @@ const AddAssignmentModal = ({
       text: assignmentText,
     };
 
-    // ===== التعديل هنا: نشر فوراً بدون تحديد وقت =====
+    // نشر فوراً: الوقت الحالي
     if (publishMode === 'now') {
       const now = new Date();
       data.date = now;
       data.time = { hours: now.getHours(), minutes: now.getMinutes() };
       data.is_draft = false;
-      data.is_scheduled = false; // ليس مجدولاً
+      data.is_scheduled = false;
       data.reveal_time = now.toISOString();
     } else if (publishMode === 'schedule') {
       const today = new Date();
@@ -595,7 +595,6 @@ const AddAssignmentModal = ({
             </label>
           </div>
 
-          {/* ===== التعديل: نشر فوراً بدون تحديد وقت ===== */}
           {publishMode === 'now' && (
             <div className="p-4 text-center text-gray-300">
               ⏳ سيتم نشر الواجب فوراً دون تأخير.
@@ -1373,7 +1372,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     }
   };
 
-  // ===== تحسين عملية التفعيل (التعديل) =====
+  // ===== تحسين عملية التفعيل =====
   const handleActivationStep1 = async (e) => {
     e.preventDefault();
     setActivationError('');
@@ -1405,7 +1404,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
       let foundProfile = null;
       snapshot.forEach(doc => {
         const data = doc.data();
-        // تحويل القيم المخزنة إلى أرقام للمقارنة
         const dataAge = Number(data.age);
         const dataPhone = Number(data.phone);
         if (data.gender === gender && dataAge === ageNum && dataPhone === phoneNum) {
@@ -1483,7 +1481,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
       }
       const studentData = oldDocSnap.data();
 
-      // إنشاء المستند الجديد
       const newDocRef = doc(db, 'profiles', newUid);
       await setDoc(newDocRef, {
         ...studentData,
@@ -1495,7 +1492,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
         isActive: true
       });
 
-      // محاولة حذف القديم، وإذا فشل نضع علامة غير نشط
       try {
         await deleteDoc(oldDocRef);
       } catch (err) {
@@ -1755,7 +1751,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     setShowNotificationsModal(true);
   };
 
-  // ===== دوال إرسال رسائل واتساب (كما هي) =====
+  // ===== دوال إرسال رسائل واتساب =====
   const sendActivationMessage = (student) => {
     const phone = student.phone || '';
     if (!phone) {
@@ -2029,7 +2025,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       };
 
       await updateDoc(docRef, newData);
-      
+
       await sendNotificationToTeacher(
         user.id,
         '✅ قبول مراجعة',
@@ -2053,7 +2049,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         pendingChanges: null,
         updatedAt: serverTimestamp()
       });
-      
+
       await sendNotificationToTeacher(
         user.id,
         '❌ رفض مراجعة',
@@ -2069,9 +2065,10 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
+  // ===== تعديل: حفظ الواجب =====
   const saveHomeworkFromModal = async (data) => {
     const { date, time, section, text, is_draft } = data;
-    
+
     let revealTime = null;
     if (!is_draft) {
       const combinedDate = new Date(date);
@@ -2096,7 +2093,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         updatedAt: serverTimestamp()
       });
       toast.success(is_draft ? '💾 تم حفظ المسودة بنجاح!' : '✅ تم نشر الواجب بنجاح!');
-      
+
       if (!is_draft) {
         await sendNotificationToTeacher(
           user.id,
@@ -2116,7 +2113,7 @@ const TeacherPanel = ({ user, onLogout }) => {
           newHwItem.id
         );
       }
-      
+
       setShowAssignmentModal(false);
       setSelectedAssignmentType(null);
     } catch (err) {
@@ -2124,14 +2121,16 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
+  // ===== تعديل: حفظ مواعيد الحصص مع إضافة id =====
   const saveLessonTimesFromModal = async (times) => {
     try {
+      const timesWithId = times.map(t => ({ ...t, id: generateId() }));
       await updateDoc(doc(db, 'teachers', user.id), {
-        lessonTimes: times,
+        lessonTimes: timesWithId,
         updatedAt: serverTimestamp()
       });
       toast.success('✅ تم تحديث مواعيد الحصص بنجاح!');
-      
+
       await sendNotificationToTeacher(
         user.id,
         '🕒 تحديث مواعيد الحصص',
@@ -2144,11 +2143,32 @@ const TeacherPanel = ({ user, onLogout }) => {
         `تم تحديث جدول الحصص، عدد المواعيد: ${times.length}`,
         'lesson_schedule'
       );
-      
+
       setShowLessonModal(false);
       setSelectedLessonType(null);
     } catch (err) {
       toast.error('فشل تحديث المواعيد: ' + err.message);
+    }
+  };
+
+  // ===== تعديل: حذف موعد =====
+  const deleteLessonTime = async (id) => {
+    const ok = await confirm('حذف موعد', 'هل أنت متأكد من حذف هذا الموعد؟');
+    if (!ok) return;
+    try {
+      const teacherRef = doc(db, 'teachers', user.id);
+      const docSnap = await getDoc(teacherRef);
+      if (docSnap.exists()) {
+        const currentTimes = docSnap.data().lessonTimes || [];
+        const filtered = currentTimes.filter(t => t.id !== id);
+        await updateDoc(teacherRef, {
+          lessonTimes: filtered,
+          updatedAt: serverTimestamp()
+        });
+        toast.success('تم حذف الموعد بنجاح');
+      }
+    } catch (err) {
+      toast.error('فشل حذف الموعد: ' + err.message);
     }
   };
 
@@ -2220,7 +2240,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     if (!ok) return;
     try {
       await deleteDoc(doc(db, 'profiles', studentId));
-      
+
       await sendNotificationToTeacher(
         user.id,
         '🗑️ حذف طالب',
@@ -2241,7 +2261,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         classIds: newClassIds,
         updatedAt: serverTimestamp()
       });
-      
+
       await sendNotificationToTeacher(
         user.id,
         '📌 تحديث الشعبة',
@@ -2607,7 +2627,7 @@ const TeacherPanel = ({ user, onLogout }) => {
           <div className="flex items-center gap-2">
             {/* زر الجرس */}
             <button
-              onClick={handleOpenNotifications} // تم التعديل هنا
+              onClick={handleOpenNotifications}
               className="relative bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-full text-2xl transition shadow-lg"
               title="الإشعارات"
             >
@@ -2656,16 +2676,25 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* ===== التعديل: عرض المواعيد المحددة بشكل منظم ===== */}
+        {/* ===== عرض المواعيد المحددة بشكل منظم مع زر حذف ===== */}
         {lessonTimes && lessonTimes.length > 0 && (
           <div className="bg-gray-800/40 p-4 rounded-2xl border border-gray-600">
-            <h4 className="text-md font-semibold text-purple-200 mb-3">📋 جدول المواعيد المحددة</h4>
+            <div className="flex justify-between items-center mb-3">
+              <h4 className="text-md font-semibold text-purple-200">📋 جدول المواعيد المحددة</h4>
+              <span className="text-xs text-gray-400">(يمكنك حذف أي موعد)</span>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {lessonTimes.map((lt, idx) => {
+              {lessonTimes.map((lt) => {
                 const classObj = classes.find(c => c.id === lt.classId);
                 const className = classObj ? classObj.name : 'عام';
                 return (
-                  <div key={idx} className="bg-black/30 p-3 rounded-xl border border-gray-700 text-sm">
+                  <div key={lt.id} className="bg-black/30 p-3 rounded-xl border border-gray-700 text-sm relative">
+                    <button
+                      onClick={() => deleteLessonTime(lt.id)}
+                      className="absolute top-2 left-2 text-red-400 hover:text-red-300 text-xs bg-red-950/40 px-2 py-1 rounded border border-red-500/30"
+                    >
+                      🗑️ حذف
+                    </button>
                     <div className="flex justify-between">
                       <span className="text-gray-300">الشعبة:</span>
                       <span className="text-white font-medium">{className}</span>
@@ -3291,7 +3320,6 @@ const StudentPanel = ({ user, onLogout }) => {
   const [profile, setProfile] = useState(null);
   const [editing, setEditing] = useState(false);
   const [editData, setEditData] = useState({});
-  // حالات الإشعارات
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
@@ -3398,7 +3426,6 @@ const StudentPanel = ({ user, onLogout }) => {
       }
     });
 
-    // الاستماع للإشعارات
     if (user) {
       const notifRef = collection(db, 'notifications', user.id, 'userNotifications');
       const qNotif = query(notifRef, orderBy('createdAt', 'desc'));
