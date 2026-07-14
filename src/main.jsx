@@ -1510,7 +1510,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     } catch (err) {
       console.error(err);
       if (err.code === 'auth/email-already-in-use') {
-        setActivationError('البريد الإلكتروني مستخدم بالفعل. قد يكون الحساب مفعلاً مسبقاً.');
+        setActivationError('البريد الإلكتروني مستخدم بالفعل. قد يكون الحساب مفعلاً مسبقاً، أو اسم المستخدم هذا محجوز. يرجى اختيار اسم مستخدم آخر.');
       } else {
         setActivationError('فشل التفعيل: ' + (err.message || 'خطأ غير معروف'));
       }
@@ -2689,9 +2689,10 @@ const TeacherPanel = ({ user, onLogout }) => {
                 const className = classObj ? classObj.name : 'عام';
                 return (
                   <div key={lt.id} className="bg-black/30 p-3 rounded-xl border border-gray-700 text-sm relative">
+                    {/* زر الحذف في الزاوية العلوية اليمنى مع خلفية شفافة */}
                     <button
                       onClick={() => deleteLessonTime(lt.id)}
-                      className="absolute top-2 left-2 text-red-400 hover:text-red-300 text-xs bg-red-950/40 px-2 py-1 rounded border border-red-500/30"
+                      className="absolute top-2 right-2 text-red-400 hover:text-red-300 text-xs bg-red-950/40 px-2 py-1 rounded border border-red-500/30"
                     >
                       🗑️ حذف
                     </button>
