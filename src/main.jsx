@@ -11,7 +11,8 @@ import {
   onAuthStateChanged,
   updatePassword,
   updateEmail,
-  signOut
+  signOut,
+  fetchSignInMethodsForEmail
 } from 'firebase/auth';
 import {
   doc,
@@ -651,7 +652,7 @@ const AddAssignmentModal = ({
 };
 
 // ============================================================
-// 2. مكوّن جدولة موعد الحصة (يدعم حتى 6 مواعيد، مع اختيار الشعبة لكل موعد)
+// 2. مكوّن جدولة موعد الحصة (يدعم حتى 6 مواعيد، مع اختيار الشعبة لكل موعد ونوع الموعد)
 // ============================================================
 const AddLessonModal = ({
   isOpen,
@@ -677,7 +678,8 @@ const AddLessonModal = ({
         const timesWithClass = initialTimes.map(t => ({
           ...t,
           classId: t.classId || null,
-          type: 'once'
+          type: t.type || 'once',
+          day: t.day || null
         }));
         setSchedules(timesWithClass.map(t => ({ ...t, id: generateId() })));
       } else {
@@ -685,6 +687,7 @@ const AddLessonModal = ({
           type: 'once',
           date: new Date(),
           time: { hours: 12, minutes: 0 },
+          day: null,
           id: generateId(),
           classId: defaultClassId
         }]);
@@ -704,6 +707,7 @@ const AddLessonModal = ({
       type: 'once',
       date: new Date(),
       time: { hours: 12, minutes: 0 },
+      day: null,
       id: generateId(),
       classId: selectedClassId
     }]);
@@ -728,13 +732,20 @@ const AddLessonModal = ({
         setError('يرجى اختيار شعبة لكل موعد.');
         return;
       }
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const selected = new Date(s.date);
-      selected.setHours(0, 0, 0, 0);
-      if (selected <= today) {
-        setError('يجب اختيار يوم مستقبلي (بعد اليوم الحالي) لجميع المواعيد.');
-        return;
+      if (s.type === 'once') {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const selected = new Date(s.date);
+        selected.setHours(0, 0, 0, 0);
+        if (selected <= today) {
+          setError('يجب اختيار يوم مستقبلي (بعد اليوم الحالي) للمواعيد من نوع "مرة واحدة".');
+          return;
+        }
+      } else if (s.type === 'recurring') {
+        if (!s.day) {
+          setError('يرجى اختيار يوم من أيام الأسبوع للمواعيد المتكررة.');
+          return;
+        }
       }
       if (s.time.hours < 0 || s.time.hours > 12 || s.time.minutes < 0 || s.time.minutes > 59) {
         setError('تأكد من صحة الوقت (الساعات 1-12، الدقائق 0-59).');
@@ -743,14 +754,25 @@ const AddLessonModal = ({
     }
     setError('');
     const times = schedules.map(s => {
-      const combined = new Date(s.date);
-      combined.setHours(s.time.hours, s.time.minutes, 0, 0);
-      return {
-        type: 'once',
-        date: combined.toISOString(),
-        time: { hours: s.time.hours, minutes: s.time.minutes },
-        classId: s.classId
-      };
+      if (s.type === 'once') {
+        const combined = new Date(s.date);
+        combined.setHours(s.time.hours, s.time.minutes, 0, 0);
+        return {
+          type: 'once',
+          date: combined.toISOString(),
+          time: { hours: s.time.hours, minutes: s.time.minutes },
+          classId: s.classId,
+          day: null
+        };
+      } else {
+        return {
+          type: 'recurring',
+          day: s.day,
+          time: { hours: s.time.hours, minutes: s.time.minutes },
+          classId: s.classId,
+          date: null
+        };
+      }
     });
     onSubmit(times);
   };
@@ -907,6 +929,9 @@ const AddLessonModal = ({
     );
   };
 
+  // أيام الأسبوع للقائمة المنسدلة
+  const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
       <div className="bg-gray-900 p-6 rounded-3xl w-[95%] max-w-5xl max-h-[90vh] overflow-y-auto border border-gray-700 shadow-2xl">
@@ -950,9 +975,49 @@ const AddLessonModal = ({
                       ))}
                     </select>
                   </div>
+
                   <div className="flex items-center gap-2">
-                    <Calendar selectedDate={safeDate(s.date)} onDateChange={(date) => updateSchedule(s.id, 'date', date)} />
+                    <label className="text-sm text-gray-300">النوع:</label>
+                    <select
+                      value={s.type || 'once'}
+                      onChange={(e) => {
+                        const newType = e.target.value;
+                        updateSchedule(s.id, 'type', newType);
+                        if (newType === 'once') {
+                          updateSchedule(s.id, 'day', null);
+                        } else {
+                          updateSchedule(s.id, 'date', null);
+                        }
+                      }}
+                      className="bg-gray-700 text-white text-sm rounded-md px-2 py-1 border border-gray-600"
+                    >
+                      <option value="once">مرة واحدة</option>
+                      <option value="recurring">متكرر (أسبوعياً)</option>
+                    </select>
                   </div>
+
+                  {s.type === 'once' && (
+                    <div className="flex items-center gap-2">
+                      <Calendar selectedDate={safeDate(s.date)} onDateChange={(date) => updateSchedule(s.id, 'date', date)} />
+                    </div>
+                  )}
+
+                  {s.type === 'recurring' && (
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm text-gray-300">اليوم:</label>
+                      <select
+                        value={s.day || ''}
+                        onChange={(e) => updateSchedule(s.id, 'day', e.target.value)}
+                        className="bg-gray-700 text-white text-sm rounded-md px-2 py-1 border border-gray-600"
+                      >
+                        <option value="">اختر اليوم</option>
+                        {daysOfWeek.map(day => (
+                          <option key={day} value={day}>{day}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-2">
                     <ClockPicker
                       time={s.time}
@@ -1456,6 +1521,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
       return;
     }
 
+    // تحقق من اسم المستخدم في Firestore
     const q = query(collection(db, 'profiles'), where('username', '==', newUsername));
     const querySnap = await getDocs(q);
     let exists = false;
@@ -1467,10 +1533,22 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
       return;
     }
 
+    // تحقق من وجود البريد الإلكتروني في Authentication
+    const email = `${newUsername}@readandrise.com`;
+    try {
+      const methods = await fetchSignInMethodsForEmail(auth, email);
+      if (methods.length > 0) {
+        setActivationError('اسم المستخدم هذا مستخدم بالفعل، يرجى اختيار آخر');
+        return;
+      }
+    } catch (checkErr) {
+      console.warn('خطأ في التحقق من البريد:', checkErr);
+      // نكمل على أي حال، لأن الخطأ قد يكون شبكة مؤقتة
+    }
+
     setActivationLoading(true);
 
     try {
-      const email = `${newUsername}@readandrise.com`;
       const userCredential = await createUserWithEmailAndPassword(auth, email, activationNewPassword);
       const newUid = userCredential.user.uid;
 
@@ -1510,7 +1588,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     } catch (err) {
       console.error(err);
       if (err.code === 'auth/email-already-in-use') {
-        setActivationError('البريد الإلكتروني مستخدم بالفعل. قد يكون الحساب مفعلاً مسبقاً، أو اسم المستخدم هذا محجوز. يرجى اختيار اسم مستخدم آخر.');
+        setActivationError('اسم المستخدم هذا مستخدم بالفعل، يرجى اختيار آخر');
       } else {
         setActivationError('فشل التفعيل: ' + (err.message || 'خطأ غير معروف'));
       }
@@ -2235,21 +2313,45 @@ const TeacherPanel = ({ user, onLogout }) => {
     return Math.floor(diffTime / (1000 * 60 * 60 * 24));
   };
 
+  // ========== تعديل دالة حذف الطالب مع إرسال إشعار للطلاب ==========
   const handleDeleteStudentPermanently = async (studentId) => {
-    const ok = await confirm('حذف دائم', 'إجراء خطير: هل أنت متأكد من حذف حساب هذا الطالب نهائياً وفوراً؟');
+    // جلب الطالب لمعرفة شعبه قبل الحذف
+    let studentClassIds = [];
+    try {
+      const docSnap = await getDoc(doc(db, 'profiles', studentId));
+      if (docSnap.exists()) {
+        studentClassIds = docSnap.data().classIds || [];
+      }
+    } catch (err) {
+      console.warn('فشل جلب بيانات الطالب قبل الحذف', err);
+    }
+
+    const ok = await confirm('حذف دائم', 'إجراء خطير: سيتم حذف الملف الشخصي للطالب نهائياً. ملاحظة: يجب حذف حساب المصادقة (Authentication) يدوياً من Firebase Console لتحرير اسم المستخدم.');
     if (!ok) return;
     try {
+      // حذف الملف الشخصي من Firestore
       await deleteDoc(doc(db, 'profiles', studentId));
 
       await sendNotificationToTeacher(
         user.id,
         '🗑️ حذف طالب',
-        `تم حذف حساب الطالب (${studentId})`,
+        `تم حذف الملف الشخصي للطالب (${studentId})`,
         'delete_student',
         studentId
       );
 
-      toast.success('تم حذف الطالب من النظام.');
+      // إرسال إشعار للطلاب في نفس الشعب (بدون اسم)
+      if (studentClassIds.length > 0) {
+        await sendNotificationToStudents(
+          studentClassIds,
+          '📢 إشعار',
+          'تم طرد طالب من شعبتك',
+          'delete_student_notification',
+          studentId
+        );
+      }
+
+      toast.success('تم حذف الملف الشخصي للطالب. تذكر حذف حساب المصادقة يدوياً من Firebase Console.');
     } catch (err) {
       toast.error('فشل حذف الطالب: ' + err.message);
     }
@@ -2290,6 +2392,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     setTempClassIds([]);
   };
 
+  // ========== تعديل دالة إضافة الطالب مع إرسال إشعار للطلاب ==========
   const handleAddStudent = async (e) => {
     e.preventDefault();
     if (newStudentClassIds.length === 0) {
@@ -2320,6 +2423,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       let username = baseUsername;
       let counter = 1;
       let exists = true;
+      // التحقق من اسم المستخدم في Firestore
       while (exists) {
         const q = query(collection(db, 'profiles'), where('username', '==', username));
         const querySnap = await getDocs(q);
@@ -2329,6 +2433,20 @@ const TeacherPanel = ({ user, onLogout }) => {
           username = `${baseUsername}${counter}`;
           counter++;
         }
+      }
+
+      // التحقق من وجود البريد الإلكتروني في Firebase Authentication
+      const email = `${username}@readandrise.com`;
+      try {
+        const methods = await fetchSignInMethodsForEmail(auth, email);
+        if (methods.length > 0) {
+          toast.error('اسم المستخدم هذا مستخدم بالفعل، يرجى اختيار اسم آخر.');
+          setStudentLoading(false);
+          return;
+        }
+      } catch (checkErr) {
+        console.warn('خطأ في التحقق من البريد:', checkErr);
+        // نكمل على أي حال
       }
 
       const cleanPhone = arabicToEnglishNumber(newStudentPhone).replace(/[^0-9]/g, '');
@@ -2369,6 +2487,17 @@ const TeacherPanel = ({ user, onLogout }) => {
         'add_student',
         newId
       );
+
+      // إرسال إشعار للطلاب في نفس الشعب (بدون اسم)
+      if (newStudentClassIds.length > 0) {
+        await sendNotificationToStudents(
+          newStudentClassIds,
+          '📢 إشعار',
+          'تم إضافة طالب جديد إلى شعبتك',
+          'add_student_notification',
+          newId
+        );
+      }
 
       const classMap = await fetchClassNames(newStudentClassIds);
       const classNames = newStudentClassIds.map(id => classMap[id] || null).filter(Boolean);
@@ -2677,54 +2806,55 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
 
         {/* ===== عرض المواعيد المحددة بشكل منظم مع زر حذف ===== */}
-{lessonTimes && lessonTimes.length > 0 && (
-  <div className="bg-gray-800/40 p-4 rounded-2xl border border-gray-600">
-    <div className="flex justify-between items-center mb-3">
-      <h4 className="text-md font-semibold text-purple-200">📋 جدول المواعيد المحددة</h4>
-      <span className="text-xs text-gray-400">(يمكنك حذف أي موعد)</span>
-    </div>
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-      {lessonTimes.map((lt) => {
-        const classObj = classes.find(c => c.id === lt.classId);
-        const className = classObj ? classObj.name : 'عام';
-        return (
-          <div key={lt.id} className="bg-black/30 p-3 rounded-xl border border-gray-700 text-sm">
-            {/* زر الحذف في سطر منفصل في الأعلى */}
-            <div className="flex justify-start mb-2">
-              <button
-                onClick={() => deleteLessonTime(lt.id)}
-                className="text-red-400 hover:text-red-300 text-xs bg-red-950/40 px-2 py-1 rounded border border-red-500/30"
-              >
-                🗑️ حذف
-              </button>
+        {lessonTimes && lessonTimes.length > 0 && (
+          <div className="bg-gray-800/40 p-4 rounded-2xl border border-gray-600">
+            <div className="flex justify-between items-center mb-3">
+              <h4 className="text-md font-semibold text-purple-200">📋 جدول المواعيد المحددة</h4>
+              <span className="text-xs text-gray-400">(يمكنك حذف أي موعد)</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-gray-300">الشعبة:</span>
-              <span className="text-white font-medium">{className}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-300">النوع:</span>
-              <span className="text-blue-300">{lt.type === 'once' ? 'مرة واحدة' : 'متكرر'}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-300">التاريخ/اليوم:</span>
-              <span className="text-white">
-                {lt.type === 'once' 
-                  ? new Date(lt.date).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })
-                  : `كل ${lt.day}`
-                }
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-300">الوقت:</span>
-              <span className="text-white">{lt.time.hours}:{String(lt.time.minutes).padStart(2, '0')}</span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {lessonTimes.map((lt) => {
+                const classObj = classes.find(c => c.id === lt.classId);
+                const className = classObj ? classObj.name : 'عام';
+                return (
+                  <div key={lt.id} className="bg-black/30 p-3 rounded-xl border border-gray-700 text-sm">
+                    {/* زر الحذف في سطر منفصل في الأعلى */}
+                    <div className="flex justify-start mb-2">
+                      <button
+                        onClick={() => deleteLessonTime(lt.id)}
+                        className="text-red-400 hover:text-red-300 text-xs bg-red-950/40 px-2 py-1 rounded border border-red-500/30"
+                      >
+                        🗑️ حذف
+                      </button>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-300">الشعبة:</span>
+                      <span className="text-white font-medium">{className}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-300">النوع:</span>
+                      <span className="text-blue-300">{lt.type === 'once' ? 'مرة واحدة' : 'متكرر'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-300">التاريخ/اليوم:</span>
+                      <span className="text-white">
+                        {lt.type === 'once' 
+                          ? new Date(lt.date).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })
+                          : `كل ${lt.day}`
+                        }
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-300">الوقت:</span>
+                      <span className="text-white">{lt.time.hours}:{String(lt.time.minutes).padStart(2, '0')}</span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
-        );
-      })}
-    </div>
-  </div>
-)}
+        )}
+
         {/* تنبيه الطلاب بدون شعب */}
         {studentsWithoutClass.length > 0 && (
           <div className="bg-red-900/20 border border-red-500/30 p-4 rounded-2xl">
