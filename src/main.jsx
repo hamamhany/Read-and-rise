@@ -2095,10 +2095,10 @@ const TeacherPanel = ({ user, onLogout }) => {
     // إرسال رسالة واتساب
     sendWarningMessage(student, newWarningNumber, desc.trim());
 
-    // تحديث البيانات في Firestore
+    // تحديث البيانات في Firestore - استخدام ISO string بدلاً من serverTimestamp()
     const warningObj = {
       id: generateId(),
-      issuedAt: serverTimestamp(),
+      issuedAt: new Date().toISOString(),
       type: newWarningNumber,
       description: desc.trim()
     };
