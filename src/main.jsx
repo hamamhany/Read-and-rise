@@ -698,12 +698,17 @@ const AddLessonModal = ({
 
   if (!isOpen) return null;
 
+  // دالة محدثة لتحديث جدول المواعيد باستخدام الشكل الوظيفي وقبول كائن
+  const updateSchedule = (id, updates) => {
+    setSchedules(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+  };
+
   const addSchedule = () => {
     if (schedules.length >= 6) {
       toast.error('لا يمكن إضافة أكثر من 6 مواعيد.');
       return;
     }
-    setSchedules([...schedules, {
+    setSchedules(prev => [...prev, {
       type: 'once',
       date: new Date(),
       time: { hours: 12, minutes: 0 },
@@ -718,11 +723,7 @@ const AddLessonModal = ({
       toast.error('يجب أن يكون هناك موعد واحد على الأقل.');
       return;
     }
-    setSchedules(schedules.filter(s => s.id !== id));
-  };
-
-  const updateSchedule = (id, field, value) => {
-    setSchedules(schedules.map(s => s.id === id ? { ...s, [field]: value } : s));
+    setSchedules(prev => prev.filter(s => s.id !== id));
   };
 
   const validateAndSubmit = (e) => {
@@ -967,7 +968,7 @@ const AddLessonModal = ({
                     <label className="text-sm text-gray-300">الشعبة:</label>
                     <select
                       value={s.classId || ''}
-                      onChange={(e) => updateSchedule(s.id, 'classId', e.target.value)}
+                      onChange={(e) => updateSchedule(s.id, { classId: e.target.value })}
                       className="bg-gray-700 text-white text-sm rounded-md px-2 py-1 border border-gray-600"
                     >
                       {classesList.map(cls => (
@@ -982,12 +983,14 @@ const AddLessonModal = ({
                       value={s.type || 'once'}
                       onChange={(e) => {
                         const newType = e.target.value;
-                        updateSchedule(s.id, 'type', newType);
+                        // تحديث النوع ومسح الحقول غير المناسبة في خطوة واحدة
+                        const updates = { type: newType };
                         if (newType === 'once') {
-                          updateSchedule(s.id, 'day', null);
+                          updates.day = null;
                         } else {
-                          updateSchedule(s.id, 'date', null);
+                          updates.date = null;
                         }
+                        updateSchedule(s.id, updates);
                       }}
                       className="bg-gray-700 text-white text-sm rounded-md px-2 py-1 border border-gray-600"
                     >
@@ -998,7 +1001,7 @@ const AddLessonModal = ({
 
                   {s.type === 'once' && (
                     <div className="flex items-center gap-2">
-                      <Calendar selectedDate={safeDate(s.date)} onDateChange={(date) => updateSchedule(s.id, 'date', date)} />
+                      <Calendar selectedDate={safeDate(s.date)} onDateChange={(date) => updateSchedule(s.id, { date })} />
                     </div>
                   )}
 
@@ -1007,7 +1010,7 @@ const AddLessonModal = ({
                       <label className="text-sm text-gray-300">اليوم:</label>
                       <select
                         value={s.day || ''}
-                        onChange={(e) => updateSchedule(s.id, 'day', e.target.value)}
+                        onChange={(e) => updateSchedule(s.id, { day: e.target.value })}
                         className="bg-gray-700 text-white text-sm rounded-md px-2 py-1 border border-gray-600"
                       >
                         <option value="">اختر اليوم</option>
@@ -1021,7 +1024,7 @@ const AddLessonModal = ({
                   <div className="flex items-center gap-2">
                     <ClockPicker
                       time={s.time}
-                      onTimeChange={(newTime) => updateSchedule(s.id, 'time', newTime)}
+                      onTimeChange={(newTime) => updateSchedule(s.id, { time: newTime })}
                     />
                   </div>
                 </div>
@@ -1896,6 +1899,34 @@ const TeacherPanel = ({ user, onLogout }) => {
     window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
   };
 
+  // ===== دالة إرسال رسالة حذف الحساب (مضافة) =====
+  const sendDeleteMessage = (student) => {
+    const phone = student.phone || '';
+    if (!phone) {
+      toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
+      return;
+    }
+    const cleanedPhone = cleanPhoneNumber(phone);
+    if (!cleanedPhone) {
+      toast.error('رقم الهاتف غير صالح.');
+      return;
+    }
+    const studentName = student.name || '';
+    const message = encodeURIComponent(
+      `الموضوع: إشعار بخصوص إلغاء حساب الطالب ${studentName} في نظامنا الأكاديمي\n\n` +
+      `عزيزي ولي أمر الطالب ${studentName} المحترم،\n` +
+      `تحية طيبة وبعد،،\n` +
+      `نود إعلامكم بأنه قد تم إغلاق وحذف حساب الطالب ${studentName} من نظامنا الأكاديمي، وذلك بناءً على [ تعدد الإنذارات / ارتكاب خطأ أدى لحذف حسابه بناءً على تعليمات الأكاديمية ].\n` +
+      `يُرجى العلم أن هذا الإجراء يتضمن ما يلي:\n` +
+      `- إيقاف صلاحية الدخول والوصول الكامل للحساب عبر المنصة الأكاديمية.\n` +
+      `- حذف كافة البيانات، السجلات، والتقارير المرتبطة بالحساب نهائياً من قاعدة بياناتنا.\n\n` +
+      `نود أن نشكركم على ثقتكم بنا خلال فترة انضمام الطالب للأكاديمية، ونتمنى له دوام التوفيق والنجاح في مسيرته التعليمية القادمة.\n\n` +
+      `مع خالص التحية والتقدير،\n` +
+      `إدارة الأكاديمية`
+    );
+    window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
+  };
+
   const sendResetPasswordMessage = (student) => {
     const phone = student.phone || '';
     if (!phone) {
@@ -2315,12 +2346,21 @@ const TeacherPanel = ({ user, onLogout }) => {
 
   // ========== تعديل دالة حذف الطالب مع إرسال إشعار للطلاب ==========
   const handleDeleteStudentPermanently = async (studentId) => {
-    // جلب الطالب لمعرفة شعبه قبل الحذف
-    let studentClassIds = [];
+    // جلب بيانات الطالب قبل الحذف (للاستخدام في الرسالة والإشعارات)
+    let studentData = null;
     try {
       const docSnap = await getDoc(doc(db, 'profiles', studentId));
       if (docSnap.exists()) {
-        studentClassIds = docSnap.data().classIds || [];
+        const data = docSnap.data();
+        let classNames = [];
+        if (data.classIds) {
+          const classMap = await fetchClassNames(data.classIds);
+          classNames = data.classIds.map(id => classMap[id] || null).filter(Boolean);
+        }
+        studentData = {
+          ...data,
+          classes: classNames.map(name => ({ name }))
+        };
       }
     } catch (err) {
       console.warn('فشل جلب بيانات الطالب قبل الحذف', err);
@@ -2328,6 +2368,7 @@ const TeacherPanel = ({ user, onLogout }) => {
 
     const ok = await confirm('حذف دائم', 'إجراء خطير: سيتم حذف الملف الشخصي للطالب نهائياً. ملاحظة: يجب حذف حساب المصادقة (Authentication) يدوياً من Firebase Console لتحرير اسم المستخدم.');
     if (!ok) return;
+
     try {
       // حذف الملف الشخصي من Firestore
       await deleteDoc(doc(db, 'profiles', studentId));
@@ -2341,9 +2382,9 @@ const TeacherPanel = ({ user, onLogout }) => {
       );
 
       // إرسال إشعار للطلاب في نفس الشعب (بدون اسم)
-      if (studentClassIds.length > 0) {
+      if (studentData && studentData.classIds && studentData.classIds.length > 0) {
         await sendNotificationToStudents(
-          studentClassIds,
+          studentData.classIds,
           '📢 إشعار',
           'تم طرد طالب من شعبتك',
           'delete_student_notification',
@@ -2351,7 +2392,14 @@ const TeacherPanel = ({ user, onLogout }) => {
         );
       }
 
-      toast.success('تم حذف الملف الشخصي للطالب. تذكر حذف حساب المصادقة يدوياً من Firebase Console.');
+      // إرسال رسالة واتساب لولي الأمر (إذا توفر رقم الهاتف)
+      if (studentData && studentData.phone) {
+        sendDeleteMessage(studentData);
+      } else {
+        toast.info('لم يتم إرسال رسالة واتساب لأن رقم الهاتف غير مسجل.');
+      }
+
+      toast.success('تم حذف الملف الشخصي للطالب وإرسال رسالة إشعار لولي الأمر. تذكر حذف حساب المصادقة يدوياً من Firebase Console.');
     } catch (err) {
       toast.error('فشل حذف الطالب: ' + err.message);
     }
