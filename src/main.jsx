@@ -1380,7 +1380,8 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const [activationMode, setActivationMode] = useState(false);
+  // جعل شاشة التفعيل هي الافتراضية
+  const [activationMode, setActivationMode] = useState(true);
   const [activationStep, setActivationStep] = useState(1);
   const [activationProfile, setActivationProfile] = useState(null);
   const [activationConfirmName, setActivationConfirmName] = useState('');
@@ -1644,7 +1645,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
       }
 
       toast.success(`تم تفعيل حسابك بنجاح!\nاسم المستخدم: ${newUsername}\nيمكنك الآن تسجيل الدخول باستخدام اسم المستخدم وكلمة المرور.`);
-      setActivationMode(false);
+      setActivationMode(false); // بعد التفعيل ننتقل إلى شاشة تسجيل الدخول
       setActivationStep(1);
       setActivationProfile(null);
       setActivationNewUsername('');
@@ -1663,12 +1664,13 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   };
 
   const cancelActivation = () => {
-    setActivationMode(false);
+    setActivationMode(false); // عند الإلغاء نذهب إلى شاشة تسجيل الدخول
     setActivationStep(1);
     setActivationProfile(null);
     setActivationError('');
   };
 
+  // إذا كان في وضع التفعيل، نعرض شاشة التفعيل
   if (activationMode) {
     return (
       <div className="container-center relative min-h-screen overflow-hidden" dir="rtl">
@@ -1706,7 +1708,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
                   <button type="submit" disabled={activationLoading} className="btn-primary w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-md">
                     {activationLoading ? 'جاري البحث...' : 'تأكيد المعلومات'}
                   </button>
-                  <button type="button" onClick={cancelActivation} className="text-sm text-gray-400 hover:text-white w-full text-center mt-2">عودة لتسجيل الدخول</button>
+                  <button type="button" onClick={cancelActivation} className="text-sm text-gray-400 hover:text-white w-full text-center mt-2">لديك حساب؟ سجل الدخول</button>
                 </form>
               )}
               {activationStep === 2 && (
@@ -1738,6 +1740,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     );
   }
 
+  // شاشة تسجيل الدخول العادية
   return (
     <div className="container-center relative min-h-screen overflow-hidden" dir="rtl">
       <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
@@ -1781,7 +1784,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
                 onClick={() => setActivationMode(true)}
                 className="text-sm text-blue-400 hover:text-blue-300 underline transition-colors"
               >
-                تسجيل الدخول لأول مرة (تفعيل الحساب)
+                تفعيل الحساب لأول مرة
               </button>
             </div>
 
@@ -1900,8 +1903,8 @@ const TeacherPanel = ({ user, onLogout }) => {
     setShowNotificationsModal(true);
   };
 
-  // ===== دوال إرسال رسائل واتساب =====
-  const sendActivationMessage = (student) => {
+  // ===== دوال إرسال رسائل واتساب (تم تعديل رسالة التفعيل) =====
+  const sendActivationMessage = (student, tempUsername, tempPassword) => {
     const phone = student.phone || '';
     if (!phone) {
       toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
@@ -1924,7 +1927,9 @@ const TeacherPanel = ({ user, onLogout }) => {
       `الصف الدراسي: ${studentClass}\n` +
       `رقم الهاتف: ${student.phone || 'غير مسجل'}\n` +
       `العمر: ${studentAge}\n` +
-      `الجنس: ${studentGender}\n\n` +
+      `الجنس: ${studentGender}\n` +
+      `اسم المستخدم المؤقت: ${tempUsername}\n` +
+      `كلمة المرور المؤقتة: ${tempPassword}\n\n` +
       `خطوة أخيرة لتفعيل الحساب:\n` +
       `لإتمام عملية التسجيل، يرجى الانتقال إلى الرابط أدناه وتسجيل الدخول لأول مرة لملء البيانات اللازمة وتأكيد حسابك:\n` +
       `https://read-and-rise-two.vercel.app/\n\n` +
@@ -2590,7 +2595,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     setTempClassIds([]);
   };
 
-  // ========== تعديل دالة إضافة الطالب مع إرسال إشعار للطلاب ==========
+  // ========== تعديل دالة إضافة الطالب مع توليد اسم مستخدم تلقائي ==========
   const handleAddStudent = async (e) => {
     e.preventDefault();
     if (newStudentClassIds.length === 0) {
@@ -2619,31 +2624,31 @@ const TeacherPanel = ({ user, onLogout }) => {
         }
       }
 
-      const newId = generateId();
-      const tempEmail = `student_${newId}@temp.com`;
-
-      const baseUsername = sanitizedName.replace(/\s+/g, '.').toLowerCase();
-      let username = baseUsername;
-      let counter = 1;
-      let exists = true;
-      // التحقق من اسم المستخدم في Firestore
-      while (exists) {
-        const q = query(collection(db, 'profiles'), where('username', '==', username));
-        const querySnap = await getDocs(q);
-        if (querySnap.empty) {
-          exists = false;
-        } else {
-          username = `${baseUsername}${counter}`;
-          counter++;
+      // ===== توليد اسم مستخدم تلقائي على شكل Knight + رقم =====
+      let maxNum = 0;
+      // جلب جميع الطلاب الذين تبدأ أسماؤهم بـ "Knight"
+      const q = query(collection(db, 'profiles'), where('username', '>=', 'Knight'), where('username', '<', 'Knight\uF7FF'));
+      const querySnapshot = await getDocs(q);
+      querySnapshot.forEach(doc => {
+        const uname = doc.data().username;
+        if (uname && uname.startsWith('Knight')) {
+          const numPart = uname.substring(6);
+          const num = parseInt(numPart, 10);
+          if (!isNaN(num) && num > maxNum) {
+            maxNum = num;
+          }
         }
-      }
+      });
 
-      // التحقق من وجود البريد الإلكتروني في Firebase Authentication
-      const email = `${username}@readandrise.com`;
+      const newUsername = `Knight${maxNum + 1}`;
+      const tempPassword = '123456';
+
+      // التحقق من عدم وجود اسم المستخدم في Authentication (تأكيد)
+      const email = `${newUsername}@readandrise.com`;
       try {
         const methods = await fetchSignInMethodsForEmail(auth, email);
         if (methods.length > 0) {
-          toast.error('اسم المستخدم هذا مستخدم بالفعل، يرجى اختيار اسم آخر.');
+          toast.error('تعارض في اسم المستخدم، حاول مرة أخرى.');
           setStudentLoading(false);
           return;
         }
@@ -2652,6 +2657,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         // نكمل على أي حال
       }
 
+      const newId = generateId();
       const cleanPhone = sanitizedPhone.replace(/[^0-9]/g, '');
       const ageNum = parseInt(sanitizedAge);
       if (isNaN(ageNum) || ageNum < 1 || ageNum > 99) {
@@ -2667,8 +2673,8 @@ const TeacherPanel = ({ user, onLogout }) => {
       }
 
       await setDoc(doc(db, 'profiles', newId), {
-        email: tempEmail,
-        username: username,
+        email: email,
+        username: newUsername,
         name: sanitizedName,
         gender: sanitizedGender,
         age: ageNum,
@@ -2711,7 +2717,9 @@ const TeacherPanel = ({ user, onLogout }) => {
         age: ageNum,
         phone: cleanPhone,
         classIds: newStudentClassIds,
-        classes: classNames.map(name => ({ name }))
+        classes: classNames.map(name => ({ name })),
+        username: newUsername,
+        password: tempPassword
       };
 
       setNewlyAddedStudent(addedStudent);
@@ -3328,7 +3336,8 @@ const TeacherPanel = ({ user, onLogout }) => {
             <div className="flex flex-col gap-3">
               <button
                 onClick={() => {
-                  sendActivationMessage(newlyAddedStudent);
+                  // تمرير اسم المستخدم وكلمة المرور المؤقتة
+                  sendActivationMessage(newlyAddedStudent, newlyAddedStudent.username, newlyAddedStudent.password);
                   setShowAddNotificationModal(false);
                   setNewlyAddedStudent(null);
                 }}
