@@ -2677,53 +2677,54 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
 
         {/* ===== عرض المواعيد المحددة بشكل منظم مع زر حذف ===== */}
-        {lessonTimes && lessonTimes.length > 0 && (
-          <div className="bg-gray-800/40 p-4 rounded-2xl border border-gray-600">
-            <div className="flex justify-between items-center mb-3">
-              <h4 className="text-md font-semibold text-purple-200">📋 جدول المواعيد المحددة</h4>
-              <span className="text-xs text-gray-400">(يمكنك حذف أي موعد)</span>
+{lessonTimes && lessonTimes.length > 0 && (
+  <div className="bg-gray-800/40 p-4 rounded-2xl border border-gray-600">
+    <div className="flex justify-between items-center mb-3">
+      <h4 className="text-md font-semibold text-purple-200">📋 جدول المواعيد المحددة</h4>
+      <span className="text-xs text-gray-400">(يمكنك حذف أي موعد)</span>
+    </div>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {lessonTimes.map((lt) => {
+        const classObj = classes.find(c => c.id === lt.classId);
+        const className = classObj ? classObj.name : 'عام';
+        return (
+          <div key={lt.id} className="bg-black/30 p-3 rounded-xl border border-gray-700 text-sm">
+            {/* زر الحذف في سطر منفصل في الأعلى */}
+            <div className="flex justify-start mb-2">
+              <button
+                onClick={() => deleteLessonTime(lt.id)}
+                className="text-red-400 hover:text-red-300 text-xs bg-red-950/40 px-2 py-1 rounded border border-red-500/30"
+              >
+                🗑️ حذف
+              </button>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {lessonTimes.map((lt) => {
-                const classObj = classes.find(c => c.id === lt.classId);
-                const className = classObj ? classObj.name : 'عام';
-                return (
-                  <div key={lt.id} className="bg-black/30 p-3 rounded-xl border border-gray-700 text-sm relative">
-                    {/* زر الحذف في الزاوية العلوية اليمنى مع خلفية شفافة */}
-                    <button
-                      onClick={() => deleteLessonTime(lt.id)}
-                      className="absolute top-2 right-2 text-red-400 hover:text-red-300 text-xs bg-red-950/40 px-2 py-1 rounded border border-red-500/30"
-                    >
-                      🗑️ حذف
-                    </button>
-                    <div className="flex justify-between">
-                      <span className="text-gray-300">الشعبة:</span>
-                      <span className="text-white font-medium">{className}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-300">النوع:</span>
-                      <span className="text-blue-300">{lt.type === 'once' ? 'مرة واحدة' : 'متكرر'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-300">التاريخ/اليوم:</span>
-                      <span className="text-white">
-                        {lt.type === 'once' 
-                          ? new Date(lt.date).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })
-                          : `كل ${lt.day}`
-                        }
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-300">الوقت:</span>
-                      <span className="text-white">{lt.time.hours}:{String(lt.time.minutes).padStart(2, '0')}</span>
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="flex justify-between">
+              <span className="text-gray-300">الشعبة:</span>
+              <span className="text-white font-medium">{className}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-300">النوع:</span>
+              <span className="text-blue-300">{lt.type === 'once' ? 'مرة واحدة' : 'متكرر'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-300">التاريخ/اليوم:</span>
+              <span className="text-white">
+                {lt.type === 'once' 
+                  ? new Date(lt.date).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })
+                  : `كل ${lt.day}`
+                }
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-300">الوقت:</span>
+              <span className="text-white">{lt.time.hours}:{String(lt.time.minutes).padStart(2, '0')}</span>
             </div>
           </div>
-        )}
-
+        );
+      })}
+    </div>
+  </div>
+)}
         {/* تنبيه الطلاب بدون شعب */}
         {studentsWithoutClass.length > 0 && (
           <div className="bg-red-900/20 border border-red-500/30 p-4 rounded-2xl">
