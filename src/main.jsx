@@ -50,6 +50,12 @@ const arabicToEnglishNumber = (str) => {
   return str.replace(/[٠-٩]/g, (d) => map[d] || d);
 };
 
+// ========== دالة تنقية النصوص (Sanitization) ==========
+const sanitizeInput = (text) => {
+  if (typeof text !== 'string') return '';
+  return text.replace(/<[^>]*>/g, '').trim();
+};
+
 // ========== دالة مساعدة لتحويل أي قيمة إلى Date صالح ==========
 const safeDate = (d) => {
   const date = new Date(d);
@@ -145,6 +151,63 @@ const sendNotificationToTeacher = async (teacherId, title, body, type, relatedId
   }
 };
 
+// ========== دوال الإنذارات وإرسال رسائل واتساب ==========
+const cleanPhoneNumber = (phone) => {
+  if (!phone) return '';
+  return phone.replace(/^0+/, '').replace(/[^0-9]/g, '');
+};
+
+const sendWarningMessage = (student, warningNumber, description) => {
+  const phone = student.phone || '';
+  if (!phone) {
+    toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
+    return;
+  }
+  const cleanedPhone = cleanPhoneNumber(phone);
+  if (!cleanedPhone) {
+    toast.error('رقم الهاتف غير صالح.');
+    return;
+  }
+
+  const studentName = student.name || 'الطالب';
+  const currentDate = new Date().toLocaleDateString('ar-EG', { timeZone: 'Asia/Amman' });
+  const descriptionText = description || 'مخالفة غير محددة';
+
+  let subject, body;
+  if (warningNumber === 1) {
+    subject = `إشعار إنذار أكاديمي أول – الطالب ${studentName}`;
+    body = `عزيزي ولي أمر الطالب ${studentName} المحترم،\n` +
+           `نحيطكم علماً بأن الطالب قد ارتكب مخالفة للوائح الأكاديمية بتاريخ ${currentDate} تتمثل في: ${descriptionText}.\n` +
+           `يُعد هذا إشعاراً رسمياً أول، ونود التأكيد أننا نطبق سياسة صارمة للحفاظ على بيئة تعليمية مناسبة. تبقى للطالب 2 إنذاران قبل اتخاذ إجراء الحذف النهائي للحساب.\n` +
+           `يرجى العلم أنه في حال تلقي إنذار آخر خلال فترة 90 يوماً من تاريخ اليوم، سيتم إيقاف الحساب مؤقتاً كإجراء تأديبي.\n` +
+           `مع تحيات إدارة الأكاديمية`;
+  } else if (warningNumber === 2) {
+    subject = `إشعار إنذار أكاديمي ثانٍ – الطالب ${studentName}`;
+    body = `عزيزي ولي أمر الطالب ${studentName} المحترم،\n` +
+           `بالإشارة إلى المخالفات السابقة، نبلغكم بأن الطالب ${studentName} قد ارتكب مخالفة إضافية بتاريخ ${currentDate} تتمثل في: ${descriptionText}.\n` +
+           `نحيطكم علماً بأن هذا هو الإنذار الثاني، ويتبقى للطالب إنذار واحد فقط قبل أن يتم حذف حسابه نهائياً من الأكاديمية.\n` +
+           `نؤكد لكم أن أي مخالفة إضافية خلال فترة الـ 90 يوماً القادمة ستؤدي إلى إيقاف الحساب مؤقتاً فوراً وتصعيد الموقف نحو الإجراء النهائي (الحذف).\n` +
+           `مع تحيات إدارة الأكاديمية`;
+  } else if (warningNumber === 3) {
+    subject = `إنذار أكاديمي نهائي – الطالب ${studentName}`;
+    body = `عزيزي ولي أمر الطالب ${studentName} المحترم،\n` +
+           `نكتب إليكم ببالغ الجدية بخصوص التجاوزات المستمرة من قِبل الطالب ${studentName} للوائح الأكاديمية، حيث سجلنا مخالفة جديدة بتاريخ ${currentDate} تتمثل في: ${descriptionText}.\n` +
+           `هذا هو الإنذار الأخير الموجه لكم. نود إبلاغكم وبشكل قاطع أن ارتكاب أي مخالفة إضافية خلال فترة الـ 90 يوماً القادمة سيؤدي إلى إغلاق وحذف الحساب نهائياً من أنظمتنا دون إشعار آخر.\n` +
+           `نرجو منكم أخذ هذا الإنذار على محمل الجد التام، حيث إننا لا نستطيع التهاون أكثر في تطبيق قوانين الأكاديمية.\n` +
+           `مع تحيات إدارة الأكاديمية`;
+  } else {
+    return;
+  }
+
+  const fullMessage = encodeURIComponent(
+    `الموضوع: ${subject}\n\n` +
+    body +
+    `\n\nللتواصل والدعم: +962 7 8611 7388`
+  );
+
+  window.open(`https://wa.me/${cleanedPhone}?text=${fullMessage}`, '_blank');
+};
+
 // ===== مكون اختيار نوع الإضافة (نافذة منبثقة) =====
 const ChoiceModal = ({ isOpen, onClose, onSelect, title, options }) => {
   if (!isOpen) return null;
@@ -206,7 +269,8 @@ const AddAssignmentModal = ({
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!assignmentText.trim()) {
+    const sanitizedText = sanitizeInput(assignmentText);
+    if (!sanitizedText.trim()) {
       toast.error('يرجى كتابة نص الواجب.');
       return;
     }
@@ -217,7 +281,7 @@ const AddAssignmentModal = ({
 
     const data = {
       section,
-      text: assignmentText,
+      text: sanitizedText,
     };
 
     // نشر فوراً: الوقت الحالي
@@ -983,7 +1047,6 @@ const AddLessonModal = ({
                       value={s.type || 'once'}
                       onChange={(e) => {
                         const newType = e.target.value;
-                        // تحديث النوع ومسح الحقول غير المناسبة في خطوة واحدة
                         const updates = { type: newType };
                         if (newType === 'once') {
                           updates.day = null;
@@ -1446,10 +1509,10 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     setActivationError('');
     setActivationLoading(true);
 
-    const name = activationConfirmName.trim();
-    const gender = activationConfirmGender.trim();
-    const ageInput = arabicToEnglishNumber(activationConfirmAge.trim());
-    const phoneInput = arabicToEnglishNumber(activationConfirmPhone.trim());
+    const name = sanitizeInput(activationConfirmName);
+    const gender = sanitizeInput(activationConfirmGender);
+    const ageInput = arabicToEnglishNumber(sanitizeInput(activationConfirmAge));
+    const phoneInput = arabicToEnglishNumber(sanitizeInput(activationConfirmPhone));
 
     if (!name || !gender || !ageInput || !phoneInput) {
       setActivationError('جميع الحقول مطلوبة');
@@ -1506,7 +1569,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     setActivationError('');
 
     const usernameRegex = /^[a-zA-Z0-9@._-]+$/;
-    const newUsername = activationNewUsername.trim();
+    const newUsername = sanitizeInput(activationNewUsername);
     if (!usernameRegex.test(newUsername)) {
       setActivationError('اسم المستخدم يجب أن يحتوي على أحرف إنجليزية وأرقام والرموز (@ . _ -) فقط');
       return;
@@ -1798,6 +1861,11 @@ const TeacherPanel = ({ user, onLogout }) => {
   // حالة اختيار الشعبة للعداد
   const [selectedClassForLesson, setSelectedClassForLesson] = useState('');
 
+  // ===== حالات الإنذارات =====
+  const [showWarningModal, setShowWarningModal] = useState(false);
+  const [selectedStudentForWarning, setSelectedStudentForWarning] = useState(null);
+  const [warningDescription, setWarningDescription] = useState('');
+
   const cleanPhoneNumber = (phone) => {
     if (!phone) return '';
     return phone.replace(/^0+/, '').replace(/[^0-9]/g, '');
@@ -1899,7 +1967,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
   };
 
-  // ===== دالة إرسال رسالة حذف الحساب (مضافة) =====
   const sendDeleteMessage = (student) => {
     const phone = student.phone || '';
     if (!phone) {
@@ -1977,8 +2044,8 @@ const TeacherPanel = ({ user, onLogout }) => {
     const studentName = student.name || '';
     const classNames = student.classes?.map(c => c.name).filter(Boolean) || [];
     const material = classNames.length > 0 ? classNames.join(', ') : 'لا توجد شعبة';
-    const subject = generalMessageSubject.trim() || 'إشعار رسمي';
-    const body = generalMessageText.trim() || '(نص الرسالة)';
+    const subject = sanitizeInput(generalMessageSubject) || 'إشعار رسمي';
+    const body = sanitizeInput(generalMessageText) || '(نص الرسالة)';
     const dateNow = new Date().toLocaleDateString('ar-EG', { timeZone: 'Asia/Amman' });
     const fullMessage = encodeURIComponent(
       `السلام عليكم ورحمة الله وبركاته\n` +
@@ -2001,9 +2068,91 @@ const TeacherPanel = ({ user, onLogout }) => {
     setSelectedStudentForMessage(null);
   };
 
+  // ===== دوال الإنذارات =====
+  const openWarningModal = (student) => {
+    setSelectedStudentForWarning(student);
+    setWarningDescription('');
+    setShowWarningModal(true);
+  };
+
+  const confirmWarning = async () => {
+    if (!selectedStudentForWarning) return;
+    const desc = sanitizeInput(warningDescription);
+    if (!desc.trim()) {
+      toast.error('يرجى كتابة وصف المخالفة.');
+      return;
+    }
+
+    const student = selectedStudentForWarning;
+    const currentWarnings = student.warnings || [];
+    const newWarningNumber = currentWarnings.length + 1;
+
+    if (newWarningNumber > 3) {
+      toast.error('تم تجاوز عدد الإنذارات المسموح به.');
+      return;
+    }
+
+    // إرسال رسالة واتساب
+    sendWarningMessage(student, newWarningNumber, desc.trim());
+
+    // تحديث البيانات في Firestore
+    const warningObj = {
+      id: generateId(),
+      issuedAt: serverTimestamp(),
+      type: newWarningNumber,
+      description: desc.trim()
+    };
+
+    try {
+      const studentRef = doc(db, 'profiles', student.id);
+      await updateDoc(studentRef, {
+        warnings: arrayUnion(warningObj),
+        updatedAt: serverTimestamp()
+      });
+
+      // إذا كان هذا الإنذار الثالث، نقوم بتجميد الحساب تلقائياً
+      if (newWarningNumber === 3) {
+        await updateDoc(studentRef, {
+          isFrozen: true,
+          frozenAt: serverTimestamp(),
+          freezeReason: 'تجاوز عدد الإنذارات (3 إنذارات)'
+        });
+
+        await sendNotificationToTeacher(
+          user.id,
+          '🚫 تجميد تلقائي للحساب',
+          `تم تجميد حساب الطالب ${student.name} بسبب تجاوز عدد الإنذارات.`,
+          'auto_freeze',
+          student.id
+        );
+
+        if (student.classIds && student.classIds.length > 0) {
+          await sendNotificationToStudents(
+            student.classIds,
+            '🚫 حساب مجمد',
+            `تم تجميد حساب الطالب ${student.name} بسبب تجاوز عدد الإنذارات.`,
+            'auto_freeze_notification',
+            student.id
+          );
+        }
+
+        toast.error('⚠️ تم تجميد الحساب تلقائياً لأن عدد الإنذارات بلغ 3. يجب على المعلم حذف الحساب نهائياً.');
+      } else {
+        toast.success(`✅ تم إرسال الإنذار رقم ${newWarningNumber} بنجاح.`);
+      }
+
+      setShowWarningModal(false);
+      setSelectedStudentForWarning(null);
+      setWarningDescription('');
+    } catch (err) {
+      console.error('Error issuing warning:', err);
+      toast.error('فشل إصدار الإنذار: ' + err.message);
+    }
+  };
+
   // ===== إدارة الشعب =====
   const handleAddClass = async () => {
-    const name = newClassName.trim();
+    const name = sanitizeInput(newClassName);
     if (!name) {
       toast.error('يرجى إدخال اسم الشعبة');
       return;
@@ -2047,9 +2196,10 @@ const TeacherPanel = ({ user, onLogout }) => {
 
   const handleEditClass = async () => {
     if (!editingClassId || !editingClassName.trim()) return;
+    const name = sanitizeInput(editingClassName);
     try {
       await updateDoc(doc(db, 'classes', editingClassId), {
-        name: editingClassName.trim(),
+        name: name,
         updatedAt: serverTimestamp()
       });
       setEditingClassId(null);
@@ -2447,7 +2597,12 @@ const TeacherPanel = ({ user, onLogout }) => {
       toast.error('يرجى اختيار شعبة واحدة على الأقل للطالب.');
       return;
     }
-    if (!newStudentName || !newStudentGender || !newStudentAge || !newStudentPhone) {
+    const sanitizedName = sanitizeInput(newStudentName);
+    const sanitizedGender = sanitizeInput(newStudentGender);
+    const sanitizedAge = sanitizeInput(arabicToEnglishNumber(newStudentAge));
+    const sanitizedPhone = sanitizeInput(arabicToEnglishNumber(newStudentPhone));
+
+    if (!sanitizedName || !sanitizedGender || !sanitizedAge || !sanitizedPhone) {
       toast.error('جميع الحقول مطلوبة.');
       return;
     }
@@ -2467,7 +2622,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       const newId = generateId();
       const tempEmail = `student_${newId}@temp.com`;
 
-      const baseUsername = newStudentName.trim().replace(/\s+/g, '.').toLowerCase();
+      const baseUsername = sanitizedName.replace(/\s+/g, '.').toLowerCase();
       let username = baseUsername;
       let counter = 1;
       let exists = true;
@@ -2497,15 +2652,15 @@ const TeacherPanel = ({ user, onLogout }) => {
         // نكمل على أي حال
       }
 
-      const cleanPhone = arabicToEnglishNumber(newStudentPhone).replace(/[^0-9]/g, '');
-      const ageNum = parseInt(arabicToEnglishNumber(newStudentAge));
+      const cleanPhone = sanitizedPhone.replace(/[^0-9]/g, '');
+      const ageNum = parseInt(sanitizedAge);
       if (isNaN(ageNum) || ageNum < 1 || ageNum > 99) {
         toast.error('العمر يجب أن يكون رقماً بين 1 و 99.');
         setStudentLoading(false);
         return;
       }
 
-      if (!['ذكر', 'أنثى'].includes(newStudentGender)) {
+      if (!['ذكر', 'أنثى'].includes(sanitizedGender)) {
         toast.error('الجنس يجب أن يكون ذكر أو أنثى.');
         setStudentLoading(false);
         return;
@@ -2514,8 +2669,8 @@ const TeacherPanel = ({ user, onLogout }) => {
       await setDoc(doc(db, 'profiles', newId), {
         email: tempEmail,
         username: username,
-        name: newStudentName.trim(),
-        gender: newStudentGender,
+        name: sanitizedName,
+        gender: sanitizedGender,
         age: ageNum,
         phone: cleanPhone,
         classIds: newStudentClassIds,
@@ -2524,6 +2679,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         infoVerified: false,
         isProfileComplete: false,
         pendingChanges: null,
+        warnings: [],
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
@@ -2531,7 +2687,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       await sendNotificationToTeacher(
         user.id,
         '➕ إضافة طالب جديد',
-        `تم إضافة الطالب ${newStudentName.trim()}`,
+        `تم إضافة الطالب ${sanitizedName}`,
         'add_student',
         newId
       );
@@ -2550,8 +2706,8 @@ const TeacherPanel = ({ user, onLogout }) => {
       const classMap = await fetchClassNames(newStudentClassIds);
       const classNames = newStudentClassIds.map(id => classMap[id] || null).filter(Boolean);
       const addedStudent = {
-        name: newStudentName.trim(),
-        gender: newStudentGender,
+        name: sanitizedName,
+        gender: sanitizedGender,
         age: ageNum,
         phone: cleanPhone,
         classIds: newStudentClassIds,
@@ -2604,6 +2760,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       const classMap = await fetchClassNames(allClassIds);
       studentsList = studentsList.map(s => ({
         ...s,
+        warnings: s.warnings || [],
         classes: (s.classIds || [])
           .map(id => ({ id, name: classMap[id] || null }))
           .filter(c => c.name)
@@ -2683,6 +2840,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       const classMap = await fetchClassNames(allClassIds);
       studentsList = studentsList.map(s => ({
         ...s,
+        warnings: s.warnings || [],
         classes: (s.classIds || [])
           .map(id => ({ id, name: classMap[id] || null }))
           .filter(c => c.name)
@@ -3222,6 +3380,7 @@ const TeacherPanel = ({ user, onLogout }) => {
                 const inactiveDays = getInactivityDays(s.last_seen);
                 const frozenDays = s.isFrozen && s.frozenAt ? Math.floor((new Date() - new Date(s.frozenAt.seconds * 1000)) / (1000 * 60 * 60 * 24)) : 0;
                 const classNames = s.classes?.map(c => c.name).filter(Boolean).join(', ') || 'لا توجد شعبة';
+                const warningCount = (s.warnings || []).length;
                 return (
                   <div key={s.id} className={`p-3 rounded-xl border flex flex-wrap justify-between items-center gap-3 ${s.isFrozen ? 'bg-gray-800/60 border-gray-700 opacity-80' : 'bg-gray-800/30 border-gray-700'}`}>
                     <div className="flex items-center gap-3 flex-wrap flex-1">
@@ -3244,8 +3403,31 @@ const TeacherPanel = ({ user, onLogout }) => {
                         </span>
                       )}
                       {!hasAccount && <span className="text-xs text-yellow-400 bg-yellow-950/40 px-2 py-0.5 rounded border border-yellow-500/30">⚠️ لم يتم التفعيل بعد</span>}
+                      <span className="text-xs text-yellow-300 bg-yellow-950/40 px-2 py-0.5 rounded border border-yellow-500/30">
+                        ⚠️ الإنذارات: {warningCount}/3
+                      </span>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
+                      {warningCount < 3 ? (
+                        <button
+                          onClick={() => openWarningModal(s)}
+                          className="text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-2 py-1 rounded-lg hover:bg-yellow-500/30"
+                        >
+                          ⚠️ إنذار ({warningCount}/3)
+                        </button>
+                      ) : (
+                        <span className="text-xs text-red-400 bg-red-950/40 px-2 py-1 rounded border border-red-500/30">
+                          ⛔ إنذارات مكتملة
+                        </span>
+                      )}
+                      {warningCount >= 3 && (
+                        <button
+                          onClick={() => handleDeleteStudentPermanently(s.id)}
+                          className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg hover:bg-red-500/30 animate-pulse"
+                        >
+                          🗑️ حذف الحساب (إجباري)
+                        </button>
+                      )}
                       <button
                         onClick={() => openClassSelection(s)}
                         className="text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-1 rounded-lg hover:bg-blue-500/30"
@@ -3484,6 +3666,44 @@ const TeacherPanel = ({ user, onLogout }) => {
         classesList={classes}
       />
 
+      {/* ===== مودال الإنذارات ===== */}
+      {showWarningModal && selectedStudentForWarning && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowWarningModal(false)}>
+          <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-yellow-500/30" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-semibold text-yellow-300 mb-4">⚠️ إصدار إنذار للطالب</h3>
+            <p className="text-gray-300 text-sm mb-2">
+              الطالب: <strong>{selectedStudentForWarning.name}</strong>
+              <br />
+              الإنذار الحالي: رقم { (selectedStudentForWarning.warnings || []).length + 1 } من 3
+            </p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm text-gray-300 block mb-1">وصف المخالفة</label>
+                <textarea
+                  className="bg-gray-800 w-full h-24 text-right p-2 border border-gray-600 rounded-md text-white resize-none"
+                  placeholder="اكتب وصف المخالفة..."
+                  value={warningDescription}
+                  onChange={(e) => setWarningDescription(e.target.value)}
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={confirmWarning}
+                  className="btn-primary bg-yellow-600 hover:bg-yellow-700 px-6 py-2 rounded-md text-white"
+                >
+                  إرسال الإنذار
+                </button>
+                <button
+                  onClick={() => setShowWarningModal(false)}
+                  className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-md text-white"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -3691,23 +3911,25 @@ const StudentPanel = ({ user, onLogout }) => {
   };
 
   const saveChanges = async () => {
-    if (!editData.name || !editData.phone) {
+    const sanitizedName = sanitizeInput(editData.name);
+    const sanitizedPhone = sanitizeInput(editData.phone);
+    if (!sanitizedName || !sanitizedPhone) {
       toast.error('الاسم ورقم الهاتف إلزاميان');
       return;
     }
     try {
       const updates = {
-        name: editData.name,
+        name: sanitizedName,
         gender: editData.gender,
         age: parseInt(editData.age) || null,
-        phone: editData.phone,
+        phone: sanitizedPhone,
         infoVerified: false,
         pendingChanges: {
           updated_at: new Date().toISOString(),
-          name: editData.name,
+          name: sanitizedName,
           gender: editData.gender,
           age: parseInt(editData.age) || null,
-          phone: editData.phone
+          phone: sanitizedPhone
         },
         updatedAt: serverTimestamp()
       };
@@ -3789,6 +4011,12 @@ const StudentPanel = ({ user, onLogout }) => {
               <p><span className="text-gray-400">رقم الهاتف:</span> {profile?.phone || 'غير مسجل'}</p>
               <p className="col-span-2"><span className="text-gray-400">الشعب:</span> {profile?.classes?.map(c => c.name).join(', ') || 'غير محددة'}</p>
               <p className="col-span-2"><span className="text-gray-400">حالة التحقق:</span> {profile?.infoVerified ? '✅ تم التحقق' : '⏳ قيد المراجعة'}</p>
+              <p className="col-span-2"><span className="text-gray-400">الإنذارات:</span> {profile?.warnings?.length ? profile.warnings.map(w => `#${w.type}`).join(', ') : 'لا يوجد'}</p>
+              {profile?.isFrozen && profile?.freezeReason === 'تجاوز عدد الإنذارات (3 إنذارات)' && (
+                <div className="col-span-2 bg-red-900/30 p-2 rounded-xl border border-red-500/30 text-red-300 text-sm">
+                  ⛔ تم تجميد حسابك بسبب تجاوز عدد الإنذارات. يرجى التواصل مع المعلم.
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -3970,7 +4198,17 @@ const App = () => {
         return;
       }
 
-      const profile = docSnap.data();
+      let profile = docSnap.data();
+
+      // التحقق من الإنذارات: إذا كان عدد الإنذارات 3 ولم يكن مجمداً، نقوم بتجميده
+      if (!profile.isFrozen && profile.warnings && profile.warnings.length >= 3) {
+        await updateDoc(doc(db, 'profiles', firebaseUser.uid), {
+          isFrozen: true,
+          frozenAt: serverTimestamp(),
+          freezeReason: 'تجاوز عدد الإنذارات (3 إنذارات)'
+        });
+        profile.isFrozen = true;
+      }
 
       if (profile.isFrozen) {
         let classNames = [];
