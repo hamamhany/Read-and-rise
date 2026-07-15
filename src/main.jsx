@@ -13,7 +13,8 @@ import {
   updatePassword,
   updateEmail,
   signOut,
-  fetchSignInMethodsForEmail
+  fetchSignInMethodsForEmail,
+  onAuthStateChanged  // <--- تمت إضافتها
 } from 'firebase/auth';
 import {
   doc,
