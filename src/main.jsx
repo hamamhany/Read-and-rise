@@ -1,4 +1,4 @@
-// ===================== main.jsx (الكامل بعد التعديلات النهائية) =====================
+// ===================== main.jsx (الكامل بعد التعديل النهائي) =====================
 
 import './index.css';
 import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
@@ -1535,7 +1535,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
 };
 
 // ============================================================
-// Login (معدل - معالجة auth/invalid-credential)
+// Login (معدل - معالجة auth/invalid-credential باستخدام createUser مباشرة)
 // ============================================================
 const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [username, setUsername] = useState('');
@@ -1578,37 +1578,36 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
       } catch (loginErr) {
         // إذا كان الخطأ بسبب عدم وجود المستخدم أو بيانات غير صالحة
         if (loginErr.code === 'auth/user-not-found' || loginErr.code === 'auth/invalid-credential') {
-          // نتحقق من وجود البريد في Auth بشكل دقيق
-          const methods = await fetchSignInMethodsForEmail(auth, email);
-          if (methods.length === 0) {
-            // البريد غير موجود → نقوم بإنشاء الحساب
-            try {
-              const tempPassword = '123456';
-              const userCredential = await createUserWithEmailAndPassword(auth, email, tempPassword);
-              firebaseUser = userCredential.user;
-              // تسجيل الخروج وإعادة الدخول بكلمة المرور المؤقتة
-              await signOut(auth);
-              const finalCred = await signInWithEmailAndPassword(auth, email, tempPassword);
-              firebaseUser = finalCred.user;
-            } catch (createErr) {
+          // نحاول إنشاء حساب جديد بكلمة مرور مؤقتة
+          try {
+            const tempPassword = '123456';
+            const userCredential = await createUserWithEmailAndPassword(auth, email, tempPassword);
+            firebaseUser = userCredential.user;
+            // تسجيل الخروج وإعادة الدخول بكلمة المرور المؤقتة
+            await signOut(auth);
+            const finalCred = await signInWithEmailAndPassword(auth, email, tempPassword);
+            firebaseUser = finalCred.user;
+          } catch (createErr) {
+            // إذا فشل الإنشاء بسبب وجود البريد مسبقاً
+            if (createErr.code === 'auth/email-already-in-use') {
+              setError('كلمة المرور غير صحيحة. الحساب موجود مسبقاً، يرجى التواصل مع المعلم لإعادة تعيين كلمة المرور.');
+              setLoading(false);
+              return;
+            } else {
+              // أي خطأ آخر أثناء الإنشاء
               console.error('فشل إنشاء الحساب:', createErr);
               setError('فشل إنشاء الحساب. يرجى التأكد من صحة البيانات أو التواصل مع المعلم.');
               setLoading(false);
               return;
             }
-          } else {
-            // البريد موجود ولكن كلمة المرور خاطئة
-            setError('كلمة المرور غير صحيحة. إذا كنت قد نسيتها، تواصل مع المعلم لإعادة تعيينها.');
-            setLoading(false);
-            return;
           }
         } else {
-          // خطأ آخر
+          // خطأ آخر غير متوقع
           throw loginErr;
         }
       }
 
-      // 3. جلب الملف الشخصي (بعد التأكد من وجود المستخدم)
+      // 3. جلب الملف الشخصي بعد التأكد من وجود المستخدم
       const docSnap = await getDoc(doc(db, 'profiles', firebaseUser.uid));
       if (!docSnap.exists()) {
         setError('بياناتك غير مكتملة في النظام. يرجى التواصل مع المعلم.');
