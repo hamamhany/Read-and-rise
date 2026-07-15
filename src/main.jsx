@@ -2526,19 +2526,19 @@ const TeacherPanel = ({ user, onLogout }) => {
         }
       }
 
-      // توليد اسم مستخدم تلقائي
+      // توليد اسم مستخدم تلقائي - الآن بالحروف الصغيرة
       let maxNum = 0;
-      const q = query(collection(db, 'profiles'), where('username', '>=', 'Knight'), where('username', '<', 'Knight\uF7FF'));
+      const q = query(collection(db, 'profiles'), where('username', '>=', 'knight'), where('username', '<', 'knight\uF7FF'));
       const querySnapshot = await getDocs(q);
       querySnapshot.forEach(doc => {
         const uname = doc.data().username;
-        if (uname && uname.startsWith('Knight')) {
+        if (uname && uname.startsWith('knight')) {
           const numPart = uname.substring(6);
           const num = parseInt(numPart, 10);
           if (!isNaN(num) && num > maxNum) maxNum = num;
         }
       });
-      const newUsername = `Knight${maxNum + 1}`;
+      const newUsername = `knight${maxNum + 1}`;  // حروف صغيرة
       const tempPassword = '123456';
       const email = `${newUsername}@readandrise.com`;
 
