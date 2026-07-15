@@ -10,7 +10,6 @@ import { auth, db } from './firebase.js';
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  onAuthStateChanged,
   updatePassword,
   updateEmail,
   signOut,
@@ -1373,6 +1372,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // ===== الدالة المعدلة =====
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -1398,7 +1398,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
 
     const email = `${cleanUsername}@readandrise.com`;
 
-    // التحقق من عدم استخدام اسم المستخدم من قبل (في Firestore)
+    // التحقق من عدم استخدام اسم المستخدم من قبل (في Firestore فقط)
     try {
       const q = query(collection(db, 'profiles'), where('username', '==', cleanUsername));
       const querySnap = await getDocs(q);
@@ -1410,13 +1410,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
         setError('اسم المستخدم هذا مستخدم بالفعل، يرجى اختيار آخر');
         return;
       }
-
-      // التحقق من عدم استخدام البريد في Auth
-      const methods = await fetchSignInMethodsForEmail(auth, email);
-      if (methods.length > 0) {
-        setError('اسم المستخدم هذا مستخدم بالفعل، يرجى اختيار آخر');
-        return;
-      }
+      // لا نتحقق من Auth لأننا لن نغير البريد الإلكتروني في Auth
     } catch (err) {
       console.warn('خطأ في التحقق:', err);
       setError('حدث خطأ أثناء التحقق، حاول مرة أخرى.');
@@ -1430,22 +1424,19 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
         throw new Error('المستخدم غير مسجل الدخول');
       }
 
-      // تحديث البريد الإلكتروني في Auth
-      await updateEmail(currentUser, email);
-      // تحديث كلمة المرور
+      // تحديث كلمة المرور فقط (لا نغير البريد الإلكتروني)
       await updatePassword(currentUser, newPassword);
 
-      // تحديث المستند في Firestore
+      // تحديث المستند في Firestore (نغير username ونحدث email ولكن لا نغير Auth)
       await updateDoc(doc(db, 'profiles', user.id), {
         username: cleanUsername,
-        email: email,
+        email: email, // نخزن البريد الجديد في Firestore للاستخدام المستقبلي
         isProfileComplete: true,
         infoVerified: true,
         updatedAt: serverTimestamp()
       });
 
       toast.success('تم تفعيل حسابك بنجاح! يمكنك الآن استخدام اسم المستخدم الجديد وكلمة المرور.');
-      // إعادة تحميل المستخدم
       onSuccess({
         ...user,
         username: cleanUsername,
@@ -1454,9 +1445,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
       });
     } catch (err) {
       console.error('خطأ في التفعيل:', err);
-      if (err.code === 'auth/email-already-in-use') {
-        setError('اسم المستخدم هذا مستخدم بالفعل، يرجى اختيار آخر');
-      } else if (err.code === 'auth/requires-recent-login') {
+      if (err.code === 'auth/requires-recent-login') {
         setError('لأسباب أمنية، يرجى تسجيل الخروج والدخول مرة أخرى ثم محاولة التفعيل.');
       } else {
         setError('فشل التفعيل: ' + (err.message || 'خطأ غير معروف'));
@@ -1934,7 +1923,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     const message = encodeURIComponent(
       `الموضوع: تم إعادة تعيين بيانات دخولك - بانتظار تحديث حسابك في "اقرأ وارتق"\n\n` +
       `عزيزي الطالب ${studentName}،\n` +
-      `نود إعلامك بأنه قد تمت إعادة تعيين بيانات الدخول الخاصة بحسابك في منصة الفرسان التقنيين - اقرأ وارتق لتصحيح بياناتك.\n\n` +
+      `نود إعلامك بأنه قد تمت إعادة تعيين البيانات الدخول الخاصة بحسابك في منصة الفرسان التقنيين - اقرأ وارتق لتصحيح بياناتك.\n\n` +
       `ما الخطوة التالية؟\n` +
       `بما أن الحساب الآن يحتاج لبيانات جديدة، يرجى التوجه إلى رابط تسجيل الدخول لأول مرة وتعبئة اسم المستخدم وكلمة المرور الخاصة بك من جديد:\n` +
       `https://read-and-rise-two.vercel.app/\n\n` +
