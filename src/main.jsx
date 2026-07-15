@@ -1,4 +1,4 @@
-// ===================== main.jsx (الكامل بعد التعديل) =====================
+// ===================== main.jsx (الكامل بعد التعديلات النهائية) =====================
 
 import './index.css';
 import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
@@ -1535,7 +1535,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
 };
 
 // ============================================================
-// Login (معدل)
+// Login (معدل - معالجة auth/invalid-credential)
 // ============================================================
 const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [username, setUsername] = useState('');
@@ -1557,6 +1557,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
         return;
       }
 
+      // 1. البحث عن الملف الشخصي في Firestore
       const q = query(collection(db, 'profiles'), where('username', '==', cleanUsername));
       const querySnapshot = await getDocs(q);
       if (querySnapshot.empty) {
@@ -1570,33 +1571,44 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
       const email = `${cleanUsername}@readandrise.com`;
       let firebaseUser = null;
 
-      // محاولة تسجيل الدخول
+      // 2. محاولة تسجيل الدخول
       try {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         firebaseUser = userCredential.user;
       } catch (loginErr) {
-        if (loginErr.code === 'auth/user-not-found') {
-          // لا يوجد حساب Auth، نقوم بإنشائه باستخدام كلمة المرور المؤقتة
-          try {
-            const tempPassword = '123456';
-            const userCredential = await createUserWithEmailAndPassword(auth, email, tempPassword);
-            firebaseUser = userCredential.user;
-            // تسجيل الخروج وإعادة الدخول بكلمة المرور المؤقتة
-            await signOut(auth);
-            const finalCred = await signInWithEmailAndPassword(auth, email, tempPassword);
-            firebaseUser = finalCred.user;
-          } catch (createErr) {
-            console.error('فشل إنشاء الحساب:', createErr);
-            setError('فشل إنشاء الحساب. يرجى التأكد من صحة البيانات أو التواصل مع المعلم.');
+        // إذا كان الخطأ بسبب عدم وجود المستخدم أو بيانات غير صالحة
+        if (loginErr.code === 'auth/user-not-found' || loginErr.code === 'auth/invalid-credential') {
+          // نتحقق من وجود البريد في Auth بشكل دقيق
+          const methods = await fetchSignInMethodsForEmail(auth, email);
+          if (methods.length === 0) {
+            // البريد غير موجود → نقوم بإنشاء الحساب
+            try {
+              const tempPassword = '123456';
+              const userCredential = await createUserWithEmailAndPassword(auth, email, tempPassword);
+              firebaseUser = userCredential.user;
+              // تسجيل الخروج وإعادة الدخول بكلمة المرور المؤقتة
+              await signOut(auth);
+              const finalCred = await signInWithEmailAndPassword(auth, email, tempPassword);
+              firebaseUser = finalCred.user;
+            } catch (createErr) {
+              console.error('فشل إنشاء الحساب:', createErr);
+              setError('فشل إنشاء الحساب. يرجى التأكد من صحة البيانات أو التواصل مع المعلم.');
+              setLoading(false);
+              return;
+            }
+          } else {
+            // البريد موجود ولكن كلمة المرور خاطئة
+            setError('كلمة المرور غير صحيحة. إذا كنت قد نسيتها، تواصل مع المعلم لإعادة تعيينها.');
             setLoading(false);
             return;
           }
         } else {
+          // خطأ آخر
           throw loginErr;
         }
       }
 
-      // جلب الملف الشخصي
+      // 3. جلب الملف الشخصي (بعد التأكد من وجود المستخدم)
       const docSnap = await getDoc(doc(db, 'profiles', firebaseUser.uid));
       if (!docSnap.exists()) {
         setError('بياناتك غير مكتملة في النظام. يرجى التواصل مع المعلم.');
@@ -1605,7 +1617,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
       }
       const profile = docSnap.data();
 
-      // التحقق من التجميد
+      // 4. التحقق من التجميد
       if (profile.isFrozen) {
         onFrozen({
           id: firebaseUser.uid,
@@ -1620,7 +1632,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
         return;
       }
 
-      // التحقق من اكتمال الملف الشخصي
+      // 5. التحقق من اكتمال الملف الشخصي
       if (!profile.isProfileComplete) {
         onCompleteProfile({
           id: firebaseUser.uid,
@@ -1632,7 +1644,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
         return;
       }
 
-      // تسجيل الدخول العادي
+      // 6. تسجيل الدخول العادي
       onLogin({
         id: firebaseUser.uid,
         email: firebaseUser.email,
