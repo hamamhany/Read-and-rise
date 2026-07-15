@@ -1,3 +1,5 @@
+// ===================== main.jsx (الكامل بعد التعديل) =====================
+
 import './index.css';
 import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
@@ -1361,17 +1363,179 @@ const FrozenAccount = ({ user, onLogout }) => {
   );
 };
 
-// ========== CompleteProfile ==========
+// ============================================================
+// CompleteProfile (الجديد)
+// ============================================================
 const CompleteProfile = ({ user, onSuccess, onCancel }) => {
-  useEffect(() => {
-    toast('يرجى استخدام رابط "تسجيل الدخول لأول مرة" لإكمال حسابك.', { icon: 'ℹ️' });
-    onCancel();
-  }, [onCancel]);
-  return null;
+  const [newUsername, setNewUsername] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+
+    const usernameRegex = /^[a-zA-Z0-9@._-]+$/;
+    const cleanUsername = sanitizeInput(newUsername);
+    if (!usernameRegex.test(cleanUsername)) {
+      setError('اسم المستخدم يجب أن يحتوي على أحرف إنجليزية وأرقام والرموز (@ . _ -) فقط');
+      return;
+    }
+    if (!usernameRegex.test(newPassword)) {
+      setError('كلمة المرور يجب أن تحتوي على أحرف إنجليزية وأرقام والرموز (@ . _ -) فقط');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError('كلمة المرور غير متطابقة مع تأكيدها');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setError('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+      return;
+    }
+
+    const email = `${cleanUsername}@readandrise.com`;
+
+    // التحقق من عدم استخدام اسم المستخدم من قبل (في Firestore)
+    try {
+      const q = query(collection(db, 'profiles'), where('username', '==', cleanUsername));
+      const querySnap = await getDocs(q);
+      let exists = false;
+      querySnap.forEach(doc => {
+        if (doc.id !== user.id) exists = true;
+      });
+      if (exists) {
+        setError('اسم المستخدم هذا مستخدم بالفعل، يرجى اختيار آخر');
+        return;
+      }
+
+      // التحقق من عدم استخدام البريد في Auth
+      const methods = await fetchSignInMethodsForEmail(auth, email);
+      if (methods.length > 0) {
+        setError('اسم المستخدم هذا مستخدم بالفعل، يرجى اختيار آخر');
+        return;
+      }
+    } catch (err) {
+      console.warn('خطأ في التحقق:', err);
+      setError('حدث خطأ أثناء التحقق، حاول مرة أخرى.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        throw new Error('المستخدم غير مسجل الدخول');
+      }
+
+      // تحديث البريد الإلكتروني في Auth
+      await updateEmail(currentUser, email);
+      // تحديث كلمة المرور
+      await updatePassword(currentUser, newPassword);
+
+      // تحديث المستند في Firestore
+      await updateDoc(doc(db, 'profiles', user.id), {
+        username: cleanUsername,
+        email: email,
+        isProfileComplete: true,
+        infoVerified: true,
+        updatedAt: serverTimestamp()
+      });
+
+      toast.success('تم تفعيل حسابك بنجاح! يمكنك الآن استخدام اسم المستخدم الجديد وكلمة المرور.');
+      // إعادة تحميل المستخدم
+      onSuccess({
+        ...user,
+        username: cleanUsername,
+        email: email,
+        isProfileComplete: true
+      });
+    } catch (err) {
+      console.error('خطأ في التفعيل:', err);
+      if (err.code === 'auth/email-already-in-use') {
+        setError('اسم المستخدم هذا مستخدم بالفعل، يرجى اختيار آخر');
+      } else if (err.code === 'auth/requires-recent-login') {
+        setError('لأسباب أمنية، يرجى تسجيل الخروج والدخول مرة أخرى ثم محاولة التفعيل.');
+      } else {
+        setError('فشل التفعيل: ' + (err.message || 'خطأ غير معروف'));
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="container-center min-h-screen relative" dir="rtl">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-md" />
+      <div className="relative z-10 w-full max-w-md px-4">
+        <div className="bg-gray-900 p-6 rounded-3xl shadow-2xl border border-gray-700 flex flex-col items-center">
+          <h2 className="text-2xl font-bold bg-gradient-to-r from-green-400 to-blue-400 text-transparent bg-clip-text mb-4">
+            إكمال تفعيل الحساب
+          </h2>
+          <p className="text-gray-300 text-sm text-center mb-4">
+            مرحباً {user.name || 'الطالب'}، يرجى اختيار اسم مستخدم وكلمة مرور جديدين لتأكيد حسابك.
+          </p>
+          <form onSubmit={handleSubmit} className="space-y-4 w-full">
+            <div>
+              <label className="text-sm text-gray-300 block mb-1">اسم المستخدم الجديد (أحرف إنجليزية وأرقام والرموز @ . _ -)</label>
+              <input
+                type="text"
+                className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white"
+                value={newUsername}
+                onChange={(e) => setNewUsername(e.target.value)}
+                required
+                pattern="[a-zA-Z0-9@._-]+"
+                title="أحرف إنجليزية وأرقام والرموز @ . _ -"
+              />
+            </div>
+            <div>
+              <label className="text-sm text-gray-300 block mb-1">كلمة المرور الجديدة (6 أحرف على الأقل)</label>
+              <input
+                type="password"
+                className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                required
+                minLength="6"
+                pattern="[a-zA-Z0-9@._-]+"
+              />
+            </div>
+            <div>
+              <label className="text-sm text-gray-300 block mb-1">تأكيد كلمة المرور</label>
+              <input
+                type="password"
+                className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+              />
+            </div>
+            {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+            <button
+              type="submit"
+              disabled={loading}
+              className="btn-primary w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-md"
+            >
+              {loading ? 'جاري التفعيل...' : 'تفعيل الحساب'}
+            </button>
+            <button
+              type="button"
+              onClick={onCancel}
+              className="text-sm text-gray-400 hover:text-white w-full text-center mt-2"
+            >
+              تسجيل الخروج
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 // ============================================================
-// Login
+// Login (معدل)
 // ============================================================
 const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [username, setUsername] = useState('');
@@ -1379,30 +1543,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
-  // جعل شاشة التفعيل هي الافتراضية
-  const [activationMode, setActivationMode] = useState(true);
-  const [activationStep, setActivationStep] = useState(1);
-  const [activationProfile, setActivationProfile] = useState(null);
-  const [activationConfirmName, setActivationConfirmName] = useState('');
-  const [activationConfirmGender, setActivationConfirmGender] = useState('');
-  const [activationConfirmAge, setActivationConfirmAge] = useState('');
-  const [activationConfirmPhone, setActivationConfirmPhone] = useState('');
-  const [activationNewUsername, setActivationNewUsername] = useState('');
-  const [activationNewPassword, setActivationNewPassword] = useState('');
-  const [activationConfirmPassword, setActivationConfirmPassword] = useState('');
-  const [activationLoading, setActivationLoading] = useState(false);
-  const [activationError, setActivationError] = useState('');
-
-  const confirm = useConfirm();
-
-  const handleUsernameChange = (e) => {
-    setUsername(e.target.value);
-  };
-
-  const handleActivationNewUsernameChange = (e) => {
-    setActivationNewUsername(e.target.value);
-  };
 
   const handleAuth = async (e) => {
     e.preventDefault();
@@ -1428,30 +1568,44 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
       const profileDoc = querySnapshot.docs[0];
       const profileData = profileDoc.data();
       const email = `${cleanUsername}@readandrise.com`;
-
       let firebaseUser = null;
+
+      // محاولة تسجيل الدخول
       try {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         firebaseUser = userCredential.user;
       } catch (loginErr) {
         if (loginErr.code === 'auth/user-not-found') {
-          setError('لم يتم إنشاء حسابك بعد. يرجى استخدام رابط "تسجيل الدخول لأول مرة" لتفعيل الحساب.');
-          setLoading(false);
-          return;
+          // لا يوجد حساب Auth، نقوم بإنشائه باستخدام كلمة المرور المؤقتة
+          try {
+            const tempPassword = '123456';
+            const userCredential = await createUserWithEmailAndPassword(auth, email, tempPassword);
+            firebaseUser = userCredential.user;
+            // تسجيل الخروج وإعادة الدخول بكلمة المرور المؤقتة
+            await signOut(auth);
+            const finalCred = await signInWithEmailAndPassword(auth, email, tempPassword);
+            firebaseUser = finalCred.user;
+          } catch (createErr) {
+            console.error('فشل إنشاء الحساب:', createErr);
+            setError('فشل إنشاء الحساب. يرجى التأكد من صحة البيانات أو التواصل مع المعلم.');
+            setLoading(false);
+            return;
+          }
         } else {
           throw loginErr;
         }
       }
 
+      // جلب الملف الشخصي
       const docSnap = await getDoc(doc(db, 'profiles', firebaseUser.uid));
       if (!docSnap.exists()) {
         setError('بياناتك غير مكتملة في النظام. يرجى التواصل مع المعلم.');
         setLoading(false);
         return;
       }
-
       const profile = docSnap.data();
 
+      // التحقق من التجميد
       if (profile.isFrozen) {
         onFrozen({
           id: firebaseUser.uid,
@@ -1466,6 +1620,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
         return;
       }
 
+      // التحقق من اكتمال الملف الشخصي
       if (!profile.isProfileComplete) {
         onCompleteProfile({
           id: firebaseUser.uid,
@@ -1477,6 +1632,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
         return;
       }
 
+      // تسجيل الدخول العادي
       onLogin({
         id: firebaseUser.uid,
         email: firebaseUser.email,
@@ -1504,243 +1660,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     }
   };
 
-  // ===== تحسين عملية التفعيل =====
-  const handleActivationStep1 = async (e) => {
-    e.preventDefault();
-    setActivationError('');
-    setActivationLoading(true);
-
-    const name = sanitizeInput(activationConfirmName);
-    const gender = sanitizeInput(activationConfirmGender);
-    const ageInput = arabicToEnglishNumber(sanitizeInput(activationConfirmAge));
-    const phoneInput = arabicToEnglishNumber(sanitizeInput(activationConfirmPhone));
-
-    if (!name || !gender || !ageInput || !phoneInput) {
-      setActivationError('جميع الحقول مطلوبة');
-      setActivationLoading(false);
-      return;
-    }
-
-    const ageNum = Number(ageInput);
-    const phoneNum = Number(phoneInput);
-    if (isNaN(ageNum) || isNaN(phoneNum)) {
-      setActivationError('العمر ورقم الهاتف يجب أن يكونا أرقاماً');
-      setActivationLoading(false);
-      return;
-    }
-
-    try {
-      const qName = query(collection(db, 'profiles'), where('name', '==', name));
-      const snapshot = await getDocs(qName);
-
-      let foundProfile = null;
-      snapshot.forEach(doc => {
-        const data = doc.data();
-        const dataAge = Number(data.age);
-        const dataPhone = Number(data.phone);
-        if (data.gender === gender && dataAge === ageNum && dataPhone === phoneNum) {
-          foundProfile = { id: doc.id, ...data };
-        }
-      });
-
-      if (!foundProfile) {
-        setActivationError('لا يوجد طالب بهذه المعلومات. تأكد من دقة البيانات أو تواصل مع المعلم.');
-        setActivationLoading(false);
-        return;
-      }
-
-      if (foundProfile.isProfileComplete) {
-        setActivationError('هذا الحساب مفعل بالفعل. يرجى تسجيل الدخول باستخدام اسم المستخدم وكلمة المرور.');
-        setActivationLoading(false);
-        return;
-      }
-
-      setActivationProfile(foundProfile);
-      setActivationStep(2);
-      setActivationLoading(false);
-    } catch (err) {
-      console.error(err);
-      setActivationError('حدث خطأ أثناء البحث: ' + err.message);
-      setActivationLoading(false);
-    }
-  };
-
-  const handleActivationStep2 = async (e) => {
-    e.preventDefault();
-    setActivationError('');
-
-    const usernameRegex = /^[a-zA-Z0-9@._-]+$/;
-    const newUsername = sanitizeInput(activationNewUsername);
-    if (!usernameRegex.test(newUsername)) {
-      setActivationError('اسم المستخدم يجب أن يحتوي على أحرف إنجليزية وأرقام والرموز (@ . _ -) فقط');
-      return;
-    }
-    if (!usernameRegex.test(activationNewPassword)) {
-      setActivationError('كلمة المرور يجب أن تحتوي على أحرف إنجليزية وأرقام والرموز (@ . _ -) فقط');
-      return;
-    }
-    if (activationNewPassword !== activationConfirmPassword) {
-      setActivationError('كلمة المرور غير متطابقة مع تأكيدها');
-      return;
-    }
-    if (activationNewPassword.length < 6) {
-      setActivationError('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
-      return;
-    }
-
-    // تحقق من اسم المستخدم في Firestore
-    const q = query(collection(db, 'profiles'), where('username', '==', newUsername));
-    const querySnap = await getDocs(q);
-    let exists = false;
-    querySnap.forEach(doc => {
-      if (doc.id !== activationProfile.id) exists = true;
-    });
-    if (exists) {
-      setActivationError('اسم المستخدم هذا مستخدم بالفعل، يرجى اختيار آخر');
-      return;
-    }
-
-    // تحقق من وجود البريد الإلكتروني في Authentication
-    const email = `${newUsername}@readandrise.com`;
-    try {
-      const methods = await fetchSignInMethodsForEmail(auth, email);
-      if (methods.length > 0) {
-        setActivationError('اسم المستخدم هذا مستخدم بالفعل، يرجى اختيار آخر');
-        return;
-      }
-    } catch (checkErr) {
-      console.warn('خطأ في التحقق من البريد:', checkErr);
-      // نكمل على أي حال، لأن الخطأ قد يكون شبكة مؤقتة
-    }
-
-    setActivationLoading(true);
-
-    try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, activationNewPassword);
-      const newUid = userCredential.user.uid;
-
-      const oldDocRef = doc(db, 'profiles', activationProfile.id);
-      const oldDocSnap = await getDoc(oldDocRef);
-      if (!oldDocSnap.exists()) {
-        throw new Error('بيانات الملف الشخصي غير موجودة');
-      }
-      const studentData = oldDocSnap.data();
-
-      const newDocRef = doc(db, 'profiles', newUid);
-      await setDoc(newDocRef, {
-        ...studentData,
-        username: newUsername,
-        email: email,
-        isProfileComplete: true,
-        infoVerified: true,
-        updatedAt: serverTimestamp(),
-        isActive: true
-      });
-
-      try {
-        await deleteDoc(oldDocRef);
-      } catch (err) {
-        console.warn('فشل حذف المستند القديم، سيتم تعطيله:', err);
-        await updateDoc(oldDocRef, { isActive: false, isProfileComplete: false });
-      }
-
-      toast.success(`تم تفعيل حسابك بنجاح!\nاسم المستخدم: ${newUsername}\nيمكنك الآن تسجيل الدخول باستخدام اسم المستخدم وكلمة المرور.`);
-      setActivationMode(false); // بعد التفعيل ننتقل إلى شاشة تسجيل الدخول
-      setActivationStep(1);
-      setActivationProfile(null);
-      setActivationNewUsername('');
-      setActivationNewPassword('');
-      setActivationConfirmPassword('');
-      setActivationLoading(false);
-    } catch (err) {
-      console.error(err);
-      if (err.code === 'auth/email-already-in-use') {
-        setActivationError('اسم المستخدم هذا مستخدم بالفعل، يرجى اختيار آخر');
-      } else {
-        setActivationError('فشل التفعيل: ' + (err.message || 'خطأ غير معروف'));
-      }
-      setActivationLoading(false);
-    }
-  };
-
-  const cancelActivation = () => {
-    setActivationMode(false); // عند الإلغاء نذهب إلى شاشة تسجيل الدخول
-    setActivationStep(1);
-    setActivationProfile(null);
-    setActivationError('');
-  };
-
-  // إذا كان في وضع التفعيل، نعرض شاشة التفعيل
-  if (activationMode) {
-    return (
-      <div className="container-center relative min-h-screen overflow-hidden" dir="rtl">
-        <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
-        <div className="relative z-10 w-full max-w-md px-4">
-          <div className="bg-gray-900 p-6 rounded-3xl shadow-2xl border border-gray-700 flex flex-col items-center relative overflow-hidden">
-            <div className="w-full z-10 flex flex-col items-center space-y-4">
-              <h2 className="text-2xl font-bold bg-gradient-to-r from-green-400 to-blue-400 text-transparent bg-clip-text">
-                تفعيل الحساب لأول مرة
-              </h2>
-              {activationStep === 1 && (
-                <form onSubmit={handleActivationStep1} className="space-y-4 w-full">
-                  <p className="text-gray-300 text-sm text-center">يرجى إدخال المعلومات كما هي مسجلة لدينا للتأكيد</p>
-                  <div>
-                    <label className="text-sm text-gray-300 block mb-1">الاسم الكامل</label>
-                    <input type="text" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationConfirmName} onChange={e => setActivationConfirmName(e.target.value)} required />
-                  </div>
-                  <div>
-                    <label className="text-sm text-gray-300 block mb-1">الجنس</label>
-                    <select className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationConfirmGender} onChange={e => setActivationConfirmGender(e.target.value)} required>
-                      <option value="">اختر</option>
-                      <option value="ذكر">ذكر</option>
-                      <option value="أنثى">أنثى</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-sm text-gray-300 block mb-1">العمر</label>
-                    <input type="text" inputMode="numeric" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationConfirmAge} onChange={e => setActivationConfirmAge(e.target.value)} required />
-                  </div>
-                  <div>
-                    <label className="text-sm text-gray-300 block mb-1">رقم الهاتف</label>
-                    <input type="text" inputMode="numeric" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationConfirmPhone} onChange={e => setActivationConfirmPhone(e.target.value)} required />
-                  </div>
-                  {activationError && <p className="text-red-400 text-sm text-center">{activationError}</p>}
-                  <button type="submit" disabled={activationLoading} className="btn-primary w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-md">
-                    {activationLoading ? 'جاري البحث...' : 'تأكيد المعلومات'}
-                  </button>
-                  <button type="button" onClick={cancelActivation} className="text-sm text-gray-400 hover:text-white w-full text-center mt-2">لديك حساب؟ سجل الدخول</button>
-                </form>
-              )}
-              {activationStep === 2 && (
-                <form onSubmit={handleActivationStep2} className="space-y-4 w-full">
-                  <p className="text-gray-300 text-sm text-center">اختر اسم مستخدم وكلمة مرور جديدة</p>
-                  <div>
-                    <label className="text-sm text-gray-300 block mb-1">اسم المستخدم الجديد (أحرف إنجليزية وأرقام والرموز @ . _ -)</label>
-                    <input type="text" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationNewUsername} onChange={handleActivationNewUsernameChange} required pattern="[a-zA-Z0-9@._-]+" title="أحرف إنجليزية وأرقام والرموز @ . _ -" />
-                  </div>
-                  <div>
-                    <label className="text-sm text-gray-300 block mb-1">كلمة المرور الجديدة</label>
-                    <input type="password" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationNewPassword} onChange={e => setActivationNewPassword(e.target.value)} required minLength="6" pattern="[a-zA-Z0-9@._-]+" title="أحرف إنجليزية وأرقام والرموز @ . _ -، 6 أحرف على الأقل" />
-                  </div>
-                  <div>
-                    <label className="text-sm text-gray-300 block mb-1">تأكيد كلمة المرور</label>
-                    <input type="password" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={activationConfirmPassword} onChange={e => setActivationConfirmPassword(e.target.value)} required />
-                  </div>
-                  {activationError && <p className="text-red-400 text-sm text-center">{activationError}</p>}
-                  <button type="submit" disabled={activationLoading} className="btn-primary w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-md">
-                    {activationLoading ? 'جاري التفعيل...' : 'تفعيل الحساب'}
-                  </button>
-                  <button type="button" onClick={cancelActivation} className="text-sm text-gray-400 hover:text-white w-full text-center mt-2">إلغاء</button>
-                </form>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // شاشة تسجيل الدخول العادية
   return (
     <div className="container-center relative min-h-screen overflow-hidden" dir="rtl">
       <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
@@ -1763,7 +1682,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
             <form onSubmit={handleAuth} className="space-y-3.5 w-full">
               <div className="relative flex items-center">
                 <span className="absolute right-4 text-gray-400 pointer-events-none text-sm font-medium">اسم المستخدم</span>
-                <input type="text" className="bg-gray-800 w-full text-right pr-24 pl-4 text-base border border-gray-600 rounded-md text-white" value={username} onChange={handleUsernameChange} required />
+                <input type="text" className="bg-gray-800 w-full text-right pr-24 pl-4 text-base border border-gray-600 rounded-md text-white" value={username} onChange={(e) => setUsername(e.target.value)} required />
               </div>
               <div className="relative flex items-center">
                 <span className="absolute right-4 text-gray-400 pointer-events-none text-sm font-medium">كلمة المرور</span>
@@ -1778,16 +1697,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
               </button>
             </form>
 
-            <div className="w-full text-center">
-              <button
-                type="button"
-                onClick={() => setActivationMode(true)}
-                className="text-sm text-blue-400 hover:text-blue-300 underline transition-colors"
-              >
-                تفعيل الحساب لأول مرة
-              </button>
-            </div>
-
             <div className="pt-2 border-t border-gray-700 text-center text-xs text-gray-400 w-full">
               <p>جميع الحقوق محفوظة © 2026 لصالح المبرمج همام هاني محمد علي</p>
             </div>
@@ -1799,7 +1708,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
 };
 
 // ============================================================
-// TeacherPanel (معدل بالكامل مع زر تحديد الشعبة والإشعارات للمعلم)
+// TeacherPanel (معدل في دالة handleAddStudent فقط)
 // ============================================================
 const TeacherPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -2097,10 +2006,8 @@ const TeacherPanel = ({ user, onLogout }) => {
       return;
     }
 
-    // إرسال رسالة واتساب
     sendWarningMessage(student, newWarningNumber, desc.trim());
 
-    // تحديث البيانات في Firestore - استخدام ISO string بدلاً من serverTimestamp()
     const warningObj = {
       id: generateId(),
       issuedAt: new Date().toISOString(),
@@ -2115,7 +2022,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         updatedAt: serverTimestamp()
       });
 
-      // إذا كان هذا الإنذار الثالث، نقوم بتجميد الحساب تلقائياً
       if (newWarningNumber === 3) {
         await updateDoc(studentRef, {
           isFrozen: true,
@@ -2501,7 +2407,6 @@ const TeacherPanel = ({ user, onLogout }) => {
 
   // ========== تعديل دالة حذف الطالب مع إرسال إشعار للطلاب ==========
   const handleDeleteStudentPermanently = async (studentId) => {
-    // جلب بيانات الطالب قبل الحذف (للاستخدام في الرسالة والإشعارات)
     let studentData = null;
     try {
       const docSnap = await getDoc(doc(db, 'profiles', studentId));
@@ -2525,7 +2430,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     if (!ok) return;
 
     try {
-      // حذف الملف الشخصي من Firestore
       await deleteDoc(doc(db, 'profiles', studentId));
 
       await sendNotificationToTeacher(
@@ -2536,7 +2440,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         studentId
       );
 
-      // إرسال إشعار للطلاب في نفس الشعب (بدون اسم)
       if (studentData && studentData.classIds && studentData.classIds.length > 0) {
         await sendNotificationToStudents(
           studentData.classIds,
@@ -2547,7 +2450,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         );
       }
 
-      // إرسال رسالة واتساب لولي الأمر (إذا توفر رقم الهاتف)
       if (studentData && studentData.phone) {
         sendDeleteMessage(studentData);
       } else {
@@ -2595,7 +2497,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     setTempClassIds([]);
   };
 
-  // ========== تعديل دالة إضافة الطالب مع توليد اسم مستخدم تلقائي ==========
+  // ========== تعديل دالة إضافة الطالب (بدون إنشاء Auth) ==========
   const handleAddStudent = async (e) => {
     e.preventDefault();
     if (newStudentClassIds.length === 0) {
@@ -2624,9 +2526,8 @@ const TeacherPanel = ({ user, onLogout }) => {
         }
       }
 
-      // ===== توليد اسم مستخدم تلقائي على شكل Knight + رقم =====
+      // توليد اسم مستخدم تلقائي
       let maxNum = 0;
-      // جلب جميع الطلاب الذين تبدأ أسماؤهم بـ "Knight"
       const q = query(collection(db, 'profiles'), where('username', '>=', 'Knight'), where('username', '<', 'Knight\uF7FF'));
       const querySnapshot = await getDocs(q);
       querySnapshot.forEach(doc => {
@@ -2634,40 +2535,19 @@ const TeacherPanel = ({ user, onLogout }) => {
         if (uname && uname.startsWith('Knight')) {
           const numPart = uname.substring(6);
           const num = parseInt(numPart, 10);
-          if (!isNaN(num) && num > maxNum) {
-            maxNum = num;
-          }
+          if (!isNaN(num) && num > maxNum) maxNum = num;
         }
       });
-
       const newUsername = `Knight${maxNum + 1}`;
       const tempPassword = '123456';
-
-      // التحقق من عدم وجود اسم المستخدم في Authentication (تأكيد)
       const email = `${newUsername}@readandrise.com`;
-      try {
-        const methods = await fetchSignInMethodsForEmail(auth, email);
-        if (methods.length > 0) {
-          toast.error('تعارض في اسم المستخدم، حاول مرة أخرى.');
-          setStudentLoading(false);
-          return;
-        }
-      } catch (checkErr) {
-        console.warn('خطأ في التحقق من البريد:', checkErr);
-        // نكمل على أي حال
-      }
 
+      // إنشاء مستند فقط (بدون Auth)
       const newId = generateId();
       const cleanPhone = sanitizedPhone.replace(/[^0-9]/g, '');
       const ageNum = parseInt(sanitizedAge);
       if (isNaN(ageNum) || ageNum < 1 || ageNum > 99) {
         toast.error('العمر يجب أن يكون رقماً بين 1 و 99.');
-        setStudentLoading(false);
-        return;
-      }
-
-      if (!['ذكر', 'أنثى'].includes(sanitizedGender)) {
-        toast.error('الجنس يجب أن يكون ذكر أو أنثى.');
         setStudentLoading(false);
         return;
       }
@@ -2693,12 +2573,11 @@ const TeacherPanel = ({ user, onLogout }) => {
       await sendNotificationToTeacher(
         user.id,
         '➕ إضافة طالب جديد',
-        `تم إضافة الطالب ${sanitizedName}`,
+        `تم إضافة الطالب ${sanitizedName} (اسم المستخدم: ${newUsername})`,
         'add_student',
         newId
       );
 
-      // إرسال إشعار للطلاب في نفس الشعب (بدون اسم)
       if (newStudentClassIds.length > 0) {
         await sendNotificationToStudents(
           newStudentClassIds,
@@ -2968,7 +2847,6 @@ const TeacherPanel = ({ user, onLogout }) => {
             <p className="text-gray-400 text-sm mt-1">مرحباً بك: {user.name || user.username || user.email}</p>
           </div>
           <div className="flex items-center gap-2">
-            {/* زر الجرس */}
             <button
               onClick={handleOpenNotifications}
               className="relative bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-full text-2xl transition shadow-lg"
@@ -3032,7 +2910,6 @@ const TeacherPanel = ({ user, onLogout }) => {
                 const className = classObj ? classObj.name : 'عام';
                 return (
                   <div key={lt.id} className="bg-black/30 p-3 rounded-xl border border-gray-700 text-sm">
-                    {/* زر الحذف في سطر منفصل في الأعلى */}
                     <div className="flex justify-start mb-2">
                       <button
                         onClick={() => deleteLessonTime(lt.id)}
@@ -3336,7 +3213,6 @@ const TeacherPanel = ({ user, onLogout }) => {
             <div className="flex flex-col gap-3">
               <button
                 onClick={() => {
-                  // تمرير اسم المستخدم وكلمة المرور المؤقتة
                   sendActivationMessage(newlyAddedStudent, newlyAddedStudent.username, newlyAddedStudent.password);
                   setShowAddNotificationModal(false);
                   setNewlyAddedStudent(null);
