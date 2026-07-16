@@ -1605,6 +1605,11 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
       }
       const profile = docSnap.data();
 
+      // تحديث uid في المستند إذا لم يكن موجوداً أو مختلفاً
+      if (!profile.uid || profile.uid !== firebaseUser.uid) {
+        await updateDoc(doc(db, 'profiles', docId), { uid: firebaseUser.uid });
+      }
+
       // 4. التحقق من التجميد
       if (profile.isFrozen) {
         onFrozen({
@@ -4063,6 +4068,7 @@ const App = () => {
     setPendingUserForComplete(null);
   };
 
+  // ===== الدالة المعدلة checkSessionAndProfile =====
   const checkSessionAndProfile = async (firebaseUser) => {
     if (!firebaseUser) {
       setUser(null);
@@ -4073,26 +4079,41 @@ const App = () => {
     }
 
     try {
-      // البحث عن المستند باستخدام uid المخزن
-      const q = query(collection(db, 'profiles'), where('uid', '==', firebaseUser.uid));
-      const querySnapshot = await getDocs(q);
-      if (querySnapshot.empty) {
-        // إذا لم يوجد مستند مرتبط، نتعامل كحالة غير مكتملة (قد يكون مستنداً جديداً)
-        setPendingUserForComplete({
-          id: firebaseUser.uid,
-          uid: firebaseUser.uid,
-          email: firebaseUser.email,
-          username: firebaseUser.displayName || ''
-        });
-        setUser(null);
-        setFrozenUser(null);
-        setLoading(false);
-        return;
-      }
+      // 1. البحث باستخدام uid
+      let q = query(collection(db, 'profiles'), where('uid', '==', firebaseUser.uid));
+      let querySnapshot = await getDocs(q);
+      let docSnap = null;
+      let docId = null;
+      let profile = null;
 
-      const docSnap = querySnapshot.docs[0];
-      const profile = docSnap.data();
-      const docId = docSnap.id;
+      if (!querySnapshot.empty) {
+        docSnap = querySnapshot.docs[0];
+        docId = docSnap.id;
+        profile = docSnap.data();
+      } else {
+        // 2. البحث باستخدام البريد الإلكتروني (لحالات الربط القديمة)
+        q = query(collection(db, 'profiles'), where('email', '==', firebaseUser.email));
+        querySnapshot = await getDocs(q);
+        if (!querySnapshot.empty) {
+          docSnap = querySnapshot.docs[0];
+          docId = docSnap.id;
+          profile = docSnap.data();
+          // تحديث uid لربطه
+          await updateDoc(doc(db, 'profiles', docId), { uid: firebaseUser.uid });
+        } else {
+          // لا يوجد مستند، نتعامل كحالة جديدة (يطلب التفعيل)
+          setPendingUserForComplete({
+            id: firebaseUser.uid,
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            username: firebaseUser.displayName || ''
+          });
+          setUser(null);
+          setFrozenUser(null);
+          setLoading(false);
+          return;
+        }
+      }
 
       // التحقق من التجميد
       if (profile.isFrozen) {
