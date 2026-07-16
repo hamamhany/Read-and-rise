@@ -210,6 +210,117 @@ const sendWarningMessage = (student, warningNumber, description) => {
   window.open(`https://wa.me/${cleanedPhone}?text=${fullMessage}`, '_blank');
 };
 
+// ===== دوال إرسال رسائل واتساب جديدة =====
+const sendDataUpdateApprovalMessage = (student, newData) => {
+  const phone = student.phone || '';
+  if (!phone) {
+    toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
+    return;
+  }
+  const cleanedPhone = cleanPhoneNumber(phone);
+  if (!cleanedPhone) {
+    toast.error('رقم الهاتف غير صالح.');
+    return;
+  }
+  const studentName = student.name || 'الطالب';
+  const message = encodeURIComponent(
+    `الموضوع: تأكيد الموافقة على طلب تصحيح البيانات – الطالب ${studentName}\n\n` +
+    `عزيزي الطالب ${studentName}،\n` +
+    `تحية طيبة،،\n` +
+    `نود إعلامكم بأنه قد تم قبول طلبكم المقدم بخصوص تصحيح وتحديث البيانات الخاصة بكم في نظامنا الأكاديمي.\n` +
+    `لقد تم إجراء التعديلات المطلوبة بنجاح، وأصبحت سجلاتكم الآن محدثة وفقاً للبيانات الجديدة التي قدمتموها. يمكنكم الآن الاطلاع على ملفكم الشخصي للتأكد من صحة التعديلات.\n` +
+    `نشكر لكم حرصكم على دقة بياناتكم، ونتمنى لكم التوفيق في مسيرتكم الدراسية.\n\n` +
+    `مع تحيات إدارة الأكاديمية`
+  );
+  window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
+};
+
+const sendDataUpdateRejectionMessage = (student, reason = 'عدم مطابقة الوثائق الرسمية / الحاجة لتقديم إثبات رسمي آخر / عدم استيفاء الشروط المطلوبة') => {
+  const phone = student.phone || '';
+  if (!phone) {
+    toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
+    return;
+  }
+  const cleanedPhone = cleanPhoneNumber(phone);
+  if (!cleanedPhone) {
+    toast.error('رقم الهاتف غير صالح.');
+    return;
+  }
+  const studentName = student.name || 'الطالب';
+  const message = encodeURIComponent(
+    `الموضوع: بخصوص طلبكم الخاص بتصحيح البيانات – الطالب ${studentName}\n\n` +
+    `عزيزي الطالب ${studentName}،\n` +
+    `تحية طيبة،،\n` +
+    `بالإشارة إلى طلبكم المتعلق بتصحيح البيانات في نظام الأكاديمية، نود إعلامكم بأنه قد تعذر قبول الطلب في الوقت الحالي وذلك بسبب:\n` +
+    `[${reason}].\n` +
+    `نحن نحرص دائماً على دقة البيانات لضمان سلامة السجلات الأكاديمية. في حال كان لديكم أي اعتراض على هذا القرار، يمكنكم إرسال إثباتات أو مستندات داعمة إضافية عبر الرد على هذه الرسالة لإعادة النظر في طلبكم.\n` +
+    `شاكرين لكم تفهمكم.\n\n` +
+    `مع تحيات إدارة الأكاديمية`
+  );
+  window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
+};
+
+const sendAccelerateMessage = (student, requestType) => {
+  const phone = student.phone || '';
+  if (!phone) {
+    toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
+    return;
+  }
+  const cleanedPhone = cleanPhoneNumber(phone);
+  if (!cleanedPhone) {
+    toast.error('رقم الهاتف غير صالح.');
+    return;
+  }
+  const studentName = student.name || 'الطالب';
+  const studentClass = student.classes?.map(c => c.name).join(', ') || 'غير محدد';
+  const studentPhone = student.phone || 'غير مسجل';
+  const purpose = requestType === 'update' ? 'تحديث' : 'تأكيد';
+  const message = encodeURIComponent(
+    `الموضوع: طلب تأكيد بيانات الطالب - ${studentName}\n\n` +
+    `إلى إدارة الأكاديمية،\n` +
+    `أتقدم إليكم بهذا الطلب لتأكيد وتحديث بياناتي في نظام الأكاديمية، وذلك لضمان استمرارية الخدمات التعليمية المقدمة لي بشكل صحيح.\n` +
+    `بيانات الطالب المطلوبة:\n` +
+    `الاسم الكامل: ${studentName}\n` +
+    `الصف/المستوى الدراسي: ${studentClass}\n` +
+    `رقم الهاتف للتواصل: ${studentPhone}\n` +
+    `الغرض من الطلب (تحديث/تأكيد): ${purpose}\n\n` +
+    `أقر بأن كافة البيانات المذكورة أعلاه صحيحة ومحدثة، وأتحمل مسؤولية أي خطأ فيها.\n` +
+    `شاكراً لكم جهودكم في تسريع معالجة هذا الطلب.\n\n` +
+    `مع التحية،\n` +
+    `${studentName}`
+  );
+  window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
+};
+
+const sendAccelerateReminderMessage = (student) => {
+  const phone = student.phone || '';
+  if (!phone) {
+    toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
+    return;
+  }
+  const cleanedPhone = cleanPhoneNumber(phone);
+  if (!cleanedPhone) {
+    toast.error('رقم الهاتف غير صالح.');
+    return;
+  }
+  const studentName = student.name || 'الطالب';
+  const studentPhone = student.phone || 'غير مسجل';
+  const message = encodeURIComponent(
+    `الموضوع: طلب عاجل: استكمال تصحيح وتأكيد بيانات الطالب - ${studentName}\n\n` +
+    `إلى إدارة الأكاديمية الموقرة،\n` +
+    `تحية طيبة وبعد،،\n` +
+    `أرجو من حضراتكم التكرم بالموافقة على معالجة طلبي المتعلق بتصحيح وتأكيد بياناتي الأكاديمية في أقرب وقت ممكن.\n` +
+    `اسم الطالب: ${studentName}\n` +
+    `الرقم المسجل : ${studentPhone}\n` +
+    `نوع الطلب: تصحيح وتحديث بيانات\n` +
+    `إنني بحاجة ماسة لاستكمال هذا الإجراء لضمان دقة سجلاتي في النظام وتجنب أي تأخير في الخدمات الأكاديمية المقدمة لي.\n` +
+    `شاكراً لكم حسن تعاونكم وسرعة استجابتكم.\n\n` +
+    `مع خالص التحية،\n` +
+    `${studentName}`
+  );
+  window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
+};
+
 // ===== مكون اختيار نوع الإضافة (نافذة منبثقة) =====
 const ChoiceModal = ({ isOpen, onClose, onSelect, title, options }) => {
   if (!isOpen) return null;
@@ -1786,6 +1897,10 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [selectedStudentForWarning, setSelectedStudentForWarning] = useState(null);
   const [warningDescription, setWarningDescription] = useState('');
 
+  // ===== حالات مراجعة طلبات تعديل البيانات =====
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [selectedReviewStudent, setSelectedReviewStudent] = useState(null);
+
   const cleanPhoneNumber = (phone) => {
     if (!phone) return '';
     return phone.replace(/^0+/, '').replace(/[^0-9]/g, '');
@@ -2129,6 +2244,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
+  // ===== تعديل دالة إعادة التعيين لجعل isProfileComplete = false =====
   const handleResetStudent = async (studentId) => {
     const ok = await confirm(
       'إعادة تعيين الحساب',
@@ -2140,6 +2256,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       await updateDoc(doc(db, 'profiles', studentId), {
         infoVerified: false,
         isFrozen: false,
+        isProfileComplete: false,   // لإجبار الطالب على إكمال الملف مرة أخرى
         pendingChanges: null,
         updatedAt: serverTimestamp()
       });
@@ -2178,6 +2295,12 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
+  // ===== دوال مراجعة طلبات تعديل البيانات =====
+  const openReviewModal = (student) => {
+    setSelectedReviewStudent(student);
+    setShowReviewModal(true);
+  };
+
   const acceptReview = async (studentId) => {
     try {
       const docRef = doc(db, 'profiles', studentId);
@@ -2204,6 +2327,10 @@ const TeacherPanel = ({ user, onLogout }) => {
 
       await updateDoc(docRef, newData);
 
+      // إرسال رسالة موافقة لولي الأمر
+      const updatedStudent = { ...student, ...newData };
+      sendDataUpdateApprovalMessage(updatedStudent, newData);
+
       await sendNotificationToTeacher(
         user.id,
         '✅ قبول مراجعة',
@@ -2213,6 +2340,8 @@ const TeacherPanel = ({ user, onLogout }) => {
       );
 
       toast.success('تم قبول التغييرات وتحديث بيانات الطالب بنجاح.');
+      setShowReviewModal(false);
+      setSelectedReviewStudent(null);
     } catch (err) {
       console.error('Error accepting review:', err);
       toast.error('فشل قبول المراجعة: ' + (err.message || 'خطأ غير معروف'));
@@ -2223,10 +2352,25 @@ const TeacherPanel = ({ user, onLogout }) => {
     const ok = await confirm('رفض التغييرات', 'هل أنت متأكد من رفض هذه التغييرات؟');
     if (!ok) return;
     try {
-      await updateDoc(doc(db, 'profiles', studentId), {
+      const docRef = doc(db, 'profiles', studentId);
+      const docSnap = await getDoc(docRef);
+      if (!docSnap.exists()) {
+        toast.error('الطالب غير موجود.');
+        return;
+      }
+      const student = docSnap.data();
+      if (!student.pendingChanges) {
+        toast.error('لا توجد تغييرات معلقة لهذا الطالب.');
+        return;
+      }
+
+      await updateDoc(docRef, {
         pendingChanges: null,
         updatedAt: serverTimestamp()
       });
+
+      // إرسال رسالة رفض لولي الأمر
+      sendDataUpdateRejectionMessage(student, 'عدم مطابقة الوثائق الرسمية / الحاجة لتقديم إثبات رسمي آخر / عدم استيفاء الشروط المطلوبة');
 
       await sendNotificationToTeacher(
         user.id,
@@ -2237,6 +2381,8 @@ const TeacherPanel = ({ user, onLogout }) => {
       );
 
       toast.success('تم رفض التغييرات.');
+      setShowReviewModal(false);
+      setSelectedReviewStudent(null);
     } catch (err) {
       console.error('Error rejecting review:', err);
       toast.error('فشل رفض المراجعة: ' + (err.message || 'خطأ غير معروف'));
@@ -2967,33 +3113,51 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
         )}
 
-        {/* مراجعات الملفات الشخصية */}
+        {/* مراجعات الملفات الشخصية (طلبات تعديل البيانات) */}
         {pendingReviews.length > 0 && (
           <div className="bg-gray-800/60 p-6 rounded-2xl border border-yellow-500/30 bg-yellow-500/5">
             <h3 className="text-xl font-semibold text-yellow-300 mb-3">📋 مراجعات الملفات الشخصية</h3>
             <div className="space-y-3 max-h-60 overflow-y-auto">
-              {pendingReviews.map(student => (
-                <div key={student.id} className="p-3 bg-black/30 rounded-xl border border-yellow-500/20">
-                  <div className="flex flex-wrap justify-between items-start gap-2">
-                    <div>
-                      <p className="text-white font-medium">{student.name || student.username}</p>
-                      <p className="text-xs text-gray-400">اسم المستخدم: {student.username}</p>
-                      {student.classes && <p className="text-xs text-blue-300">الشعب: {student.classes.map(c => c.name).join(', ')}</p>}
-                      <div className="mt-1 text-xs text-gray-300 bg-yellow-950/30 p-2 rounded border border-yellow-500/10">
-                        <p className="font-semibold text-yellow-200">التغييرات المطلوبة:</p>
-                        {student.pendingChanges?.name && <p>الاسم: {student.pendingChanges.name}</p>}
-                        {student.pendingChanges?.gender && <p>الجنس: {student.pendingChanges.gender}</p>}
-                        {student.pendingChanges?.age && <p>العمر: {student.pendingChanges.age}</p>}
-                        {student.pendingChanges?.phone && <p>رقم الهاتف: {student.pendingChanges.phone}</p>}
+              {pendingReviews.map(student => {
+                // استخراج التغييرات فقط
+                const changes = [];
+                if (student.pendingChanges?.name && student.pendingChanges.name !== student.name) {
+                  changes.push({ field: 'الاسم', old: student.name, new: student.pendingChanges.name });
+                }
+                if (student.pendingChanges?.gender && student.pendingChanges.gender !== student.gender) {
+                  changes.push({ field: 'الجنس', old: student.gender, new: student.pendingChanges.gender });
+                }
+                if (student.pendingChanges?.age && student.pendingChanges.age != student.age) {
+                  changes.push({ field: 'العمر', old: student.age, new: student.pendingChanges.age });
+                }
+                if (student.pendingChanges?.phone && student.pendingChanges.phone !== student.phone) {
+                  changes.push({ field: 'رقم الهاتف', old: student.phone, new: student.pendingChanges.phone });
+                }
+                if (changes.length === 0) {
+                  // إذا لم تكن هناك تغييرات فعلية، نعرض جميع الحقول المعلقة
+                  changes.push({ field: 'جميع البيانات', old: '(غير معروض)', new: 'طلب تعديل' });
+                }
+                return (
+                  <div key={student.id} className="p-3 bg-black/30 rounded-xl border border-yellow-500/20">
+                    <div className="flex flex-wrap justify-between items-start gap-2">
+                      <div>
+                        <p className="text-white font-medium">{student.name || student.username}</p>
+                        <p className="text-xs text-gray-400">اسم المستخدم: {student.username}</p>
+                        {student.classes && <p className="text-xs text-blue-300">الشعب: {student.classes.map(c => c.name).join(', ')}</p>}
+                        <div className="mt-1 text-xs text-gray-300 bg-yellow-950/30 p-2 rounded border border-yellow-500/10">
+                          <p className="font-semibold text-yellow-200">التغييرات المطلوبة:</p>
+                          {changes.map((c, idx) => (
+                            <p key={idx}><span className="text-gray-400">{c.field}:</span> <span className="text-red-400 line-through">{c.old}</span> → <span className="text-green-300">{c.new}</span></p>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => openReviewModal(student)} className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg">مراجعة الطلب</button>
                       </div>
                     </div>
-                    <div className="flex gap-2">
-                      <button onClick={() => acceptReview(student.id)} type="button" className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg">قبول ✅</button>
-                      <button onClick={() => rejectReview(student.id)} type="button" className="text-xs bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg">رفض ❌</button>
-                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -3597,12 +3761,48 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
         </div>
       )}
+
+      {/* ===== مودال مراجعة الطلب ===== */}
+      {showReviewModal && selectedReviewStudent && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => { setShowReviewModal(false); setSelectedReviewStudent(null); }}>
+          <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-blue-500/30" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-semibold text-blue-300 mb-4">📋 مراجعة طلب تعديل البيانات</h3>
+            <p className="text-gray-300 text-sm mb-2">
+              الطالب: <strong>{selectedReviewStudent.name}</strong> (اسم المستخدم: {selectedReviewStudent.username})
+            </p>
+            <div className="space-y-2 bg-black/20 p-4 rounded-xl border border-gray-700">
+              <p className="text-yellow-200 text-sm font-semibold">التغييرات المطلوبة:</p>
+              {selectedReviewStudent.pendingChanges && (
+                <>
+                  {selectedReviewStudent.pendingChanges.name && selectedReviewStudent.pendingChanges.name !== selectedReviewStudent.name && (
+                    <div className="flex justify-between text-sm"><span className="text-gray-400">الاسم:</span> <span><span className="text-red-400 line-through">{selectedReviewStudent.name}</span> → <span className="text-green-300">{selectedReviewStudent.pendingChanges.name}</span></span></div>
+                  )}
+                  {selectedReviewStudent.pendingChanges.gender && selectedReviewStudent.pendingChanges.gender !== selectedReviewStudent.gender && (
+                    <div className="flex justify-between text-sm"><span className="text-gray-400">الجنس:</span> <span><span className="text-red-400 line-through">{selectedReviewStudent.gender}</span> → <span className="text-green-300">{selectedReviewStudent.pendingChanges.gender}</span></span></div>
+                  )}
+                  {selectedReviewStudent.pendingChanges.age && selectedReviewStudent.pendingChanges.age != selectedReviewStudent.age && (
+                    <div className="flex justify-between text-sm"><span className="text-gray-400">العمر:</span> <span><span className="text-red-400 line-through">{selectedReviewStudent.age}</span> → <span className="text-green-300">{selectedReviewStudent.pendingChanges.age}</span></span></div>
+                  )}
+                  {selectedReviewStudent.pendingChanges.phone && selectedReviewStudent.pendingChanges.phone !== selectedReviewStudent.phone && (
+                    <div className="flex justify-between text-sm"><span className="text-gray-400">رقم الهاتف:</span> <span><span className="text-red-400 line-through">{selectedReviewStudent.phone}</span> → <span className="text-green-300">{selectedReviewStudent.pendingChanges.phone}</span></span></div>
+                  )}
+                </>
+              )}
+            </div>
+            <div className="flex gap-3 mt-4">
+              <button onClick={() => acceptReview(selectedReviewStudent.id)} className="btn-primary bg-green-600 hover:bg-green-700 px-6 py-2 rounded-md text-white">✅ قبول</button>
+              <button onClick={() => rejectReview(selectedReviewStudent.id)} className="btn-primary bg-red-600 hover:bg-red-700 px-6 py-2 rounded-md text-white">❌ رفض</button>
+              <button onClick={() => { setShowReviewModal(false); setSelectedReviewStudent(null); }} className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-md text-white">إلغاء</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 // ============================================================
-// StudentPanel
+// StudentPanel (معدل بالكامل)
 // ============================================================
 const StudentPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -3611,11 +3811,20 @@ const StudentPanel = ({ user, onLogout }) => {
   const [errorMsg, setErrorMsg] = useState('');
   const [availableHomeworks, setAvailableHomeworks] = useState([]);
   const [profile, setProfile] = useState(null);
-  const [editing, setEditing] = useState(false);
-  const [editData, setEditData] = useState({});
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
+
+  // حالات مودال تعديل البيانات الشخصية
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [editData, setEditData] = useState({});
+  const [editFields, setEditFields] = useState({}); // لتتبع أي حقل في وضع التحرير
+  const [pendingChanges, setPendingChanges] = useState(null); // لتخزين التغييرات المعلقة من الداتابيس
+  const [hasPendingRequest, setHasPendingRequest] = useState(false);
+  const [sentAccelerate, setSentAccelerate] = useState(false); // لتتبع إرسال رسالة التسريع
+
+  // مودال التأكيد بعد الإرسال
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   // دالة تنظيف الإشعارات للطالب
   const cleanOldNotifications = async () => {
@@ -3681,6 +3890,14 @@ const StudentPanel = ({ user, onLogout }) => {
         })).filter(c => c.name);
         setProfile(data);
         setEditData(data || {});
+        setPendingChanges(data.pendingChanges || null);
+        setHasPendingRequest(!!data.pendingChanges);
+        // إذا كان هناك طلب معلق، نتحقق إذا تم إرسال رسالة تسريع مسبقاً (يمكن تخزينها في pendingChanges.sentAccelerate)
+        if (data.pendingChanges && data.pendingChanges.sentAccelerate) {
+          setSentAccelerate(true);
+        } else {
+          setSentAccelerate(false);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -3716,6 +3933,13 @@ const StudentPanel = ({ user, onLogout }) => {
         })).filter(c => c.name);
         setProfile(data);
         setEditData(data || {});
+        setPendingChanges(data.pendingChanges || null);
+        setHasPendingRequest(!!data.pendingChanges);
+        if (data.pendingChanges && data.pendingChanges.sentAccelerate) {
+          setSentAccelerate(true);
+        } else {
+          setSentAccelerate(false);
+        }
       }
     });
 
@@ -3793,46 +4017,148 @@ const StudentPanel = ({ user, onLogout }) => {
 
   const nextLesson = getNextLessonTime();
 
-  const startEditing = () => {
-    setEditing(true);
+  // ===== دوال تعديل البيانات =====
+  const openProfileModal = () => {
+    if (hasPendingRequest) {
+      // إذا كان هناك طلب معلق، نعرض رسالة منبثقة بدلاً من فتح مودال التعديل
+      toast.error('طلبك السابق قيد المراجعة، يجب الموافقة عليه أولاً.');
+      return;
+    }
+    setShowProfileModal(true);
     setEditData({
       name: profile?.name || '',
       gender: profile?.gender || '',
       age: profile?.age || '',
       phone: profile?.phone || ''
     });
+    // إعادة تعيين editFields (كل الحقول غير قابلة للتحرير في البداية)
+    setEditFields({});
   };
 
-  const saveChanges = async () => {
-    const sanitizedName = sanitizeInput(editData.name);
-    const sanitizedPhone = sanitizeInput(editData.phone);
-    if (!sanitizedName || !sanitizedPhone) {
+  const toggleEditField = (field) => {
+    setEditFields(prev => ({
+      ...prev,
+      [field]: !prev[field]
+    }));
+  };
+
+  const handleEditChange = (field, value) => {
+    setEditData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleSendChanges = async () => {
+    // التحقق من صحة البيانات
+    const name = sanitizeInput(editData.name);
+    const phone = sanitizeInput(editData.phone);
+    if (!name || !phone) {
       toast.error('الاسم ورقم الهاتف إلزاميان');
       return;
     }
+    // التأكد من وجود تغييرات فعلية
+    const changes = {};
+    if (name !== profile.name) changes.name = name;
+    if (editData.gender !== profile.gender) changes.gender = editData.gender;
+    if (editData.age !== profile.age) changes.age = parseInt(editData.age) || null;
+    if (phone !== profile.phone) changes.phone = phone;
+    if (Object.keys(changes).length === 0) {
+      toast.error('لم تقم بأي تغيير.');
+      return;
+    }
+
     try {
+      // تحديث المستند مع إضافة pendingChanges و infoVerified = false
       const updates = {
-        name: sanitizedName,
-        gender: editData.gender,
-        age: parseInt(editData.age) || null,
-        phone: sanitizedPhone,
         infoVerified: false,
         pendingChanges: {
           updated_at: new Date().toISOString(),
-          name: sanitizedName,
-          gender: editData.gender,
-          age: parseInt(editData.age) || null,
-          phone: sanitizedPhone
+          ...changes
         },
         updatedAt: serverTimestamp()
       };
       await updateDoc(doc(db, 'profiles', user.id), updates);
-      toast.success('سيتم مراجعة البيانات خلال 48 ساعة.');
-      setEditing(false);
-      fetchProfile();
+      toast.success('تم إرسال طلب تعديل المعلومات بنجاح.');
+      setShowProfileModal(false);
+      // عرض مودال التأكيد
+      setShowConfirmModal(true);
     } catch (err) {
-      toast.error('فشل حفظ التغييرات: ' + err.message);
+      toast.error('فشل إرسال الطلب: ' + err.message);
     }
+  };
+
+  const handleContactTeacher = () => {
+    // إرسال رسالة تسريع
+    const student = profile;
+    const requestType = 'update'; // تحديث (لأنه أتى من مودال التعديل)
+    sendAccelerateMessage(student, requestType);
+    // تحديث sentAccelerate في قاعدة البيانات (اختياري) لتتبع أن الرسالة أرسلت
+    if (profile && profile.pendingChanges) {
+      updateDoc(doc(db, 'profiles', user.id), {
+        'pendingChanges.sentAccelerate': true
+      }).catch(err => console.error(err));
+    }
+    setShowConfirmModal(false);
+  };
+
+  // ===== دوال إرسال رسائل واتساب خاصة بالطلاب =====
+  const sendAccelerateMessage = (student, requestType) => {
+    const phone = student.phone || '';
+    if (!phone) {
+      toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
+      return;
+    }
+    const cleanedPhone = cleanPhoneNumber(phone);
+    if (!cleanedPhone) {
+      toast.error('رقم الهاتف غير صالح.');
+      return;
+    }
+    const studentName = student.name || 'الطالب';
+    const studentClass = student.classes?.map(c => c.name).join(', ') || 'غير محدد';
+    const studentPhone = student.phone || 'غير مسجل';
+    const purpose = requestType === 'update' ? 'تحديث' : 'تأكيد';
+    const message = encodeURIComponent(
+      `الموضوع: طلب تأكيد بيانات الطالب - ${studentName}\n\n` +
+      `إلى إدارة الأكاديمية،\n` +
+      `أتقدم إليكم بهذا الطلب لتأكيد وتحديث بياناتي في نظام الأكاديمية، وذلك لضمان استمرارية الخدمات التعليمية المقدمة لي بشكل صحيح.\n` +
+      `بيانات الطالب المطلوبة:\n` +
+      `الاسم الكامل: ${studentName}\n` +
+      `الصف/المستوى الدراسي: ${studentClass}\n` +
+      `رقم الهاتف للتواصل: ${studentPhone}\n` +
+      `الغرض من الطلب (تحديث/تأكيد): ${purpose}\n\n` +
+      `أقر بأن كافة البيانات المذكورة أعلاه صحيحة ومحدثة، وأتحمل مسؤولية أي خطأ فيها.\n` +
+      `شاكراً لكم جهودكم في تسريع معالجة هذا الطلب.\n\n` +
+      `مع التحية،\n` +
+      `${studentName}`
+    );
+    window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
+  };
+
+  const sendAccelerateReminder = (student) => {
+    const phone = student.phone || '';
+    if (!phone) {
+      toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
+      return;
+    }
+    const cleanedPhone = cleanPhoneNumber(phone);
+    if (!cleanedPhone) {
+      toast.error('رقم الهاتف غير صالح.');
+      return;
+    }
+    const studentName = student.name || 'الطالب';
+    const studentPhone = student.phone || 'غير مسجل';
+    const message = encodeURIComponent(
+      `الموضوع: طلب عاجل: استكمال تصحيح وتأكيد بيانات الطالب - ${studentName}\n\n` +
+      `إلى إدارة الأكاديمية الموقرة،\n` +
+      `تحية طيبة وبعد،،\n` +
+      `أرجو من حضراتكم التكرم بالموافقة على معالجة طلبي المتعلق بتصحيح وتأكيد بياناتي الأكاديمية في أقرب وقت ممكن.\n` +
+      `اسم الطالب: ${studentName}\n` +
+      `الرقم المسجل : ${studentPhone}\n` +
+      `نوع الطلب: تصحيح وتحديث بيانات\n` +
+      `إنني بحاجة ماسة لاستكمال هذا الإجراء لضمان دقة سجلاتي في النظام وتجنب أي تأخير في الخدمات الأكاديمية المقدمة لي.\n` +
+      `شاكراً لكم حسن تعاونكم وسرعة استجابتكم.\n\n` +
+      `مع خالص التحية،\n` +
+      `${studentName}`
+    );
+    window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
   };
 
   if (loading) return <div className="text-center text-gray-400 p-8">جاري التحميل...</div>;
@@ -3867,51 +4193,24 @@ const StudentPanel = ({ user, onLogout }) => {
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-blue-500/20">
           <div className="flex justify-between items-center">
             <h3 className="text-xl font-semibold text-blue-200">معلوماتي الشخصية</h3>
-            {!editing && <button onClick={startEditing} type="button" className="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1"><span>✏️</span> تعديل</button>}
+            <button onClick={openProfileModal} type="button" className="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1">
+              <span>✏️</span> تعديل
+            </button>
           </div>
-          {editing ? (
-            <div className="mt-4 space-y-3">
-              <div>
-                <label className="text-sm text-gray-300">الاسم الكامل <span className="text-red-400">*</span></label>
-                <input type="text" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={editData.name} onChange={e => setEditData({ ...editData, name: e.target.value })} />
+          <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+            <p><span className="text-gray-400">الاسم:</span> {profile?.name || 'غير مسجل'}</p>
+            <p><span className="text-gray-400">الجنس:</span> {profile?.gender || 'غير محدد'}</p>
+            <p><span className="text-gray-400">العمر:</span> {profile?.age || 'غير محدد'}</p>
+            <p><span className="text-gray-400">رقم الهاتف:</span> {profile?.phone || 'غير مسجل'}</p>
+            <p className="col-span-2"><span className="text-gray-400">الشعب:</span> {profile?.classes?.map(c => c.name).join(', ') || 'غير محددة'}</p>
+            <p className="col-span-2"><span className="text-gray-400">حالة التحقق:</span> {profile?.infoVerified ? '✅ تم التحقق' : '⏳ قيد المراجعة'}</p>
+            <p className="col-span-2"><span className="text-gray-400">الإنذارات:</span> {profile?.warnings?.length ? profile.warnings.map(w => `#${w.type}`).join(', ') : 'لا يوجد'}</p>
+            {profile?.isFrozen && profile?.freezeReason === 'تجاوز عدد الإنذارات (3 إنذارات)' && (
+              <div className="col-span-2 bg-red-900/30 p-2 rounded-xl border border-red-500/30 text-red-300 text-sm">
+                ⛔ تم تجميد حسابك بسبب تجاوز عدد الإنذارات. يرجى التواصل مع المعلم.
               </div>
-              <div>
-                <label className="text-sm text-gray-300">الجنس</label>
-                <select className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={editData.gender} onChange={e => setEditData({ ...editData, gender: e.target.value })}>
-                  <option value="">اختر</option>
-                  <option value="ذكر">ذكر</option>
-                  <option value="أنثى">أنثى</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-sm text-gray-300">العمر</label>
-                <input type="text" inputMode="numeric" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={editData.age} onChange={e => setEditData({ ...editData, age: arabicToEnglishNumber(e.target.value) })} />
-              </div>
-              <div>
-                <label className="text-sm text-gray-300">رقم الهاتف <span className="text-red-400">*</span></label>
-                <input type="text" inputMode="numeric" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={editData.phone} onChange={e => setEditData({ ...editData, phone: arabicToEnglishNumber(e.target.value) })} />
-              </div>
-              <div className="flex gap-3">
-                <button onClick={saveChanges} type="button" className="btn-primary bg-green-600 hover:bg-green-700 px-4 py-2 rounded-md text-white">حفظ</button>
-                <button onClick={() => setEditing(false)} type="button" className="btn-primary bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-md text-white">إلغاء</button>
-              </div>
-            </div>
-          ) : (
-            <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-              <p><span className="text-gray-400">الاسم:</span> {profile?.name || 'غير مسجل'}</p>
-              <p><span className="text-gray-400">الجنس:</span> {profile?.gender || 'غير محدد'}</p>
-              <p><span className="text-gray-400">العمر:</span> {profile?.age || 'غير محدد'}</p>
-              <p><span className="text-gray-400">رقم الهاتف:</span> {profile?.phone || 'غير مسجل'}</p>
-              <p className="col-span-2"><span className="text-gray-400">الشعب:</span> {profile?.classes?.map(c => c.name).join(', ') || 'غير محددة'}</p>
-              <p className="col-span-2"><span className="text-gray-400">حالة التحقق:</span> {profile?.infoVerified ? '✅ تم التحقق' : '⏳ قيد المراجعة'}</p>
-              <p className="col-span-2"><span className="text-gray-400">الإنذارات:</span> {profile?.warnings?.length ? profile.warnings.map(w => `#${w.type}`).join(', ') : 'لا يوجد'}</p>
-              {profile?.isFrozen && profile?.freezeReason === 'تجاوز عدد الإنذارات (3 إنذارات)' && (
-                <div className="col-span-2 bg-red-900/30 p-2 rounded-xl border border-red-500/30 text-red-300 text-sm">
-                  ⛔ تم تجميد حسابك بسبب تجاوز عدد الإنذارات. يرجى التواصل مع المعلم.
-                </div>
-              )}
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-blue-500/20">
@@ -3960,6 +4259,128 @@ const StudentPanel = ({ user, onLogout }) => {
           )}
         </div>
       </div>
+
+      {/* ===== مودال تعديل المعلومات الشخصية ===== */}
+      {showProfileModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowProfileModal(false)}>
+          <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-blue-500/30" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-semibold text-blue-300 mb-4">✏️ تعديل المعلومات الشخصية</h3>
+            <div className="space-y-4">
+              {/* الاسم */}
+              <div>
+                <div className="flex justify-between items-center">
+                  <label className="text-sm text-gray-300">الاسم الكامل <span className="text-red-400">*</span></label>
+                  <button onClick={() => toggleEditField('name')} className="text-xs text-blue-400 hover:text-blue-300">
+                    {editFields.name ? 'إلغاء التعديل' : '✏️ تعديل'}
+                  </button>
+                </div>
+                {editFields.name ? (
+                  <input
+                    type="text"
+                    className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white"
+                    value={editData.name}
+                    onChange={(e) => handleEditChange('name', e.target.value)}
+                  />
+                ) : (
+                  <p className="text-white p-2 bg-gray-800/50 rounded-md">{editData.name || 'غير مسجل'}</p>
+                )}
+              </div>
+              {/* الجنس */}
+              <div>
+                <div className="flex justify-between items-center">
+                  <label className="text-sm text-gray-300">الجنس</label>
+                  <button onClick={() => toggleEditField('gender')} className="text-xs text-blue-400 hover:text-blue-300">
+                    {editFields.gender ? 'إلغاء التعديل' : '✏️ تعديل'}
+                  </button>
+                </div>
+                {editFields.gender ? (
+                  <select
+                    className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white"
+                    value={editData.gender}
+                    onChange={(e) => handleEditChange('gender', e.target.value)}
+                  >
+                    <option value="">اختر</option>
+                    <option value="ذكر">ذكر</option>
+                    <option value="أنثى">أنثى</option>
+                  </select>
+                ) : (
+                  <p className="text-white p-2 bg-gray-800/50 rounded-md">{editData.gender || 'غير محدد'}</p>
+                )}
+              </div>
+              {/* العمر */}
+              <div>
+                <div className="flex justify-between items-center">
+                  <label className="text-sm text-gray-300">العمر</label>
+                  <button onClick={() => toggleEditField('age')} className="text-xs text-blue-400 hover:text-blue-300">
+                    {editFields.age ? 'إلغاء التعديل' : '✏️ تعديل'}
+                  </button>
+                </div>
+                {editFields.age ? (
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white"
+                    value={editData.age}
+                    onChange={(e) => handleEditChange('age', arabicToEnglishNumber(e.target.value))}
+                  />
+                ) : (
+                  <p className="text-white p-2 bg-gray-800/50 rounded-md">{editData.age || 'غير محدد'}</p>
+                )}
+              </div>
+              {/* رقم الهاتف */}
+              <div>
+                <div className="flex justify-between items-center">
+                  <label className="text-sm text-gray-300">رقم الهاتف <span className="text-red-400">*</span></label>
+                  <button onClick={() => toggleEditField('phone')} className="text-xs text-blue-400 hover:text-blue-300">
+                    {editFields.phone ? 'إلغاء التعديل' : '✏️ تعديل'}
+                  </button>
+                </div>
+                {editFields.phone ? (
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white"
+                    value={editData.phone}
+                    onChange={(e) => handleEditChange('phone', arabicToEnglishNumber(e.target.value))}
+                  />
+                ) : (
+                  <p className="text-white p-2 bg-gray-800/50 rounded-md">{editData.phone || 'غير مسجل'}</p>
+                )}
+              </div>
+              <div className="flex gap-3 mt-4">
+                <button onClick={handleSendChanges} className="btn-primary bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-md text-white">📤 إرسال التغييرات</button>
+                <button onClick={() => setShowProfileModal(false)} className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-md text-white">إلغاء</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== مودال التأكيد بعد الإرسال ===== */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowConfirmModal(false)}>
+          <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-green-500/30" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-semibold text-green-300 mb-4">✅ تم إرسال الطلب</h3>
+            <p className="text-gray-300 text-center mb-4">
+              تم ارسال طلب تعديل المعلومات سيتم مراجعة البيانات خلال 48 ساعة والتأكد من صحتها وتعديلها.
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={handleContactTeacher}
+                className="btn-primary bg-blue-600 hover:bg-blue-700 w-full py-3 rounded-md text-white"
+              >
+                💬 تواصل مع المعلم لتسريع معالجة طلبك
+              </button>
+              <button
+                onClick={() => setShowConfirmModal(false)}
+                className="btn-primary bg-red-600 hover:bg-red-700 w-full py-3 rounded-md text-white"
+              >
+                ⏳ انتظار
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ===== مودال الإشعارات ===== */}
       {showNotificationsModal && (
