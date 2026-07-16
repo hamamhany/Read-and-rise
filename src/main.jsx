@@ -1427,10 +1427,11 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
       // تحديث كلمة المرور (قد يرمي auth/requires-recent-login)
       await updatePassword(currentUser, newPassword);
 
-      // تحديث المستند في Firestore باستخدام setDoc مع merge لضمان وجوده
+      // تحديث المستند الأصلي (باستخدام user.id، وهو المعرف الأصلي)
       await setDoc(doc(db, 'profiles', user.id), {
         username: cleanUsername,
         email: email,
+        uid: user.uid,              // ربط uid بالمستند
         isProfileComplete: true,
         infoVerified: true,
         updatedAt: serverTimestamp()
@@ -1446,12 +1447,10 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
     } catch (err) {
       console.error('خطأ في التفعيل:', err);
       if (err.code === 'auth/requires-recent-login') {
-        // عرض رسالة للمستخدم وإعادة توجيهه لتسجيل الخروج
         setError('لأسباب أمنية، يجب تسجيل الخروج والدخول مرة أخرى لتحديث كلمة المرور. سيتم تسجيل خروجك الآن.');
-        // تسجيل الخروج تلقائياً بعد ثوانٍ
         setTimeout(async () => {
           await signOut(auth);
-          onCancel(); // يؤدي إلى العودة إلى شاشة الدخول
+          onCancel();
         }, 2000);
       } else {
         setError('فشل التفعيل: ' + (err.message || 'خطأ غير معروف'));
@@ -1563,6 +1562,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
 
       const profileDoc = querySnapshot.docs[0];
       const profileData = profileDoc.data();
+      const docId = profileDoc.id; // المعرف الأصلي
       const email = `${cleanUsername}@readandrise.com`;
       let firebaseUser = null;
 
@@ -1571,25 +1571,20 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         firebaseUser = userCredential.user;
       } catch (loginErr) {
-        // إذا كان الخطأ بسبب عدم وجود المستخدم أو بيانات غير صالحة
         if (loginErr.code === 'auth/user-not-found' || loginErr.code === 'auth/invalid-credential') {
-          // نحاول إنشاء حساب جديد بكلمة مرور مؤقتة
           try {
             const tempPassword = '123456';
             const userCredential = await createUserWithEmailAndPassword(auth, email, tempPassword);
             firebaseUser = userCredential.user;
-            // تسجيل الخروج وإعادة الدخول بكلمة المرور المؤقتة
             await signOut(auth);
             const finalCred = await signInWithEmailAndPassword(auth, email, tempPassword);
             firebaseUser = finalCred.user;
           } catch (createErr) {
-            // إذا فشل الإنشاء بسبب وجود البريد مسبقاً
             if (createErr.code === 'auth/email-already-in-use') {
               setError('كلمة المرور غير صحيحة. الحساب موجود مسبقاً، يرجى التواصل مع المعلم لإعادة تعيين كلمة المرور.');
               setLoading(false);
               return;
             } else {
-              // أي خطأ آخر أثناء الإنشاء
               console.error('فشل إنشاء الحساب:', createErr);
               setError('فشل إنشاء الحساب. يرجى التأكد من صحة البيانات أو التواصل مع المعلم.');
               setLoading(false);
@@ -1597,13 +1592,12 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
             }
           }
         } else {
-          // خطأ آخر غير متوقع
           throw loginErr;
         }
       }
 
-      // 3. جلب الملف الشخصي بعد التأكد من وجود المستخدم
-      const docSnap = await getDoc(doc(db, 'profiles', firebaseUser.uid));
+      // 3. جلب الملف الشخصي (نستخدم docId الأصلي)
+      const docSnap = await getDoc(doc(db, 'profiles', docId));
       if (!docSnap.exists()) {
         setError('بياناتك غير مكتملة في النظام. يرجى التواصل مع المعلم.');
         setLoading(false);
@@ -1614,7 +1608,8 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
       // 4. التحقق من التجميد
       if (profile.isFrozen) {
         onFrozen({
-          id: firebaseUser.uid,
+          id: docId,
+          uid: firebaseUser.uid,
           email: firebaseUser.email,
           username: profile.username,
           role: profile.role,
@@ -1629,7 +1624,8 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
       // 5. التحقق من اكتمال الملف الشخصي
       if (!profile.isProfileComplete) {
         onCompleteProfile({
-          id: firebaseUser.uid,
+          id: docId,                   // المعرف الأصلي
+          uid: firebaseUser.uid,       // uid المخزن
           email: firebaseUser.email,
           username: profile.username || cleanUsername,
           ...profile
@@ -1640,7 +1636,8 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
 
       // 6. تسجيل الدخول العادي
       onLogin({
-        id: firebaseUser.uid,
+        id: docId,
+        uid: firebaseUser.uid,
         email: firebaseUser.email,
         role: profile.role,
         username: profile.username,
@@ -4076,10 +4073,14 @@ const App = () => {
     }
 
     try {
-      const docSnap = await getDoc(doc(db, 'profiles', firebaseUser.uid));
-      if (!docSnap.exists()) {
+      // البحث عن المستند باستخدام uid المخزن
+      const q = query(collection(db, 'profiles'), where('uid', '==', firebaseUser.uid));
+      const querySnapshot = await getDocs(q);
+      if (querySnapshot.empty) {
+        // إذا لم يوجد مستند مرتبط، نتعامل كحالة غير مكتملة (قد يكون مستنداً جديداً)
         setPendingUserForComplete({
           id: firebaseUser.uid,
+          uid: firebaseUser.uid,
           email: firebaseUser.email,
           username: firebaseUser.displayName || ''
         });
@@ -4089,18 +4090,11 @@ const App = () => {
         return;
       }
 
-      let profile = docSnap.data();
+      const docSnap = querySnapshot.docs[0];
+      const profile = docSnap.data();
+      const docId = docSnap.id;
 
-      // التحقق من الإنذارات: إذا كان عدد الإنذارات 3 ولم يكن مجمداً، نقوم بتجميده
-      if (!profile.isFrozen && profile.warnings && profile.warnings.length >= 3) {
-        await updateDoc(doc(db, 'profiles', firebaseUser.uid), {
-          isFrozen: true,
-          frozenAt: serverTimestamp(),
-          freezeReason: 'تجاوز عدد الإنذارات (3 إنذارات)'
-        });
-        profile.isFrozen = true;
-      }
-
+      // التحقق من التجميد
       if (profile.isFrozen) {
         let classNames = [];
         if (profile.classIds) {
@@ -4108,7 +4102,8 @@ const App = () => {
           classNames = profile.classIds.map(id => classMap[id] || null).filter(Boolean);
         }
         setFrozenUser({
-          id: firebaseUser.uid,
+          id: docId,
+          uid: firebaseUser.uid,
           email: firebaseUser.email,
           username: profile.username,
           role: profile.role,
@@ -4122,9 +4117,11 @@ const App = () => {
         return;
       }
 
+      // التحقق من اكتمال الملف الشخصي
       if (!profile.isProfileComplete) {
         setPendingUserForComplete({
-          id: firebaseUser.uid,
+          id: docId,
+          uid: firebaseUser.uid,
           email: firebaseUser.email,
           username: profile.username || '',
           ...profile
@@ -4135,8 +4132,10 @@ const App = () => {
         return;
       }
 
+      // تسجيل الدخول العادي
       setUser({
-        id: firebaseUser.uid,
+        id: docId,
+        uid: firebaseUser.uid,
         email: firebaseUser.email,
         role: profile.role,
         username: profile.username,
