@@ -1,4 +1,4 @@
-// ===================== main.jsx (الكامل - عداد الطلاب + إشعارات فورية) =====================
+// ===================== main.jsx (الكامل - عداد الطلاب + إشعارات فورية + حضور وغياب) =====================
 
 import './index.css';
 import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
@@ -31,7 +31,8 @@ import {
   arrayUnion,
   arrayRemove,
   orderBy,
-  writeBatch
+  writeBatch,
+  addDoc
 } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 
@@ -1467,7 +1468,7 @@ const FrozenAccount = ({ user, onLogout }) => {
 };
 
 // ============================================================
-// CompleteProfile
+// CompleteProfile (معدل)
 // ============================================================
 const CompleteProfile = ({ user, onSuccess, onCancel }) => {
   const [newUsername, setNewUsername] = useState('');
@@ -1527,6 +1528,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
 
       await updatePassword(currentUser, newPassword);
 
+      // ✅ التعديل المطلوب: إضافة isProfileComplete: true و infoVerified: true
       await setDoc(doc(db, 'profiles', user.id), {
         username: cleanUsername,
         email: email,
@@ -1541,7 +1543,8 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
         ...user,
         username: cleanUsername,
         email: email,
-        isProfileComplete: true
+        isProfileComplete: true,
+        infoVerified: true
       });
     } catch (err) {
       console.error('خطأ في التفعيل:', err);
@@ -1808,7 +1811,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
 };
 
 // ============================================================
-// TeacherPanel (معدل - إضافة إشعارات فورية)
+// TeacherPanel (معدل - إضافة حضور وغياب)
 // ============================================================
 const TeacherPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -1870,6 +1873,14 @@ const TeacherPanel = ({ user, onLogout }) => {
 
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [selectedReviewStudent, setSelectedReviewStudent] = useState(null);
+
+  // ===== إضافة حالة الحضور والغياب =====
+  const [sessions, setSessions] = useState([]);
+  const [showAttendanceModal, setShowAttendanceModal] = useState(false);
+  const [selectedSessionForAttendance, setSelectedSessionForAttendance] = useState(null);
+  const [attendanceRecords, setAttendanceRecords] = useState({});
+  const [attendanceStatus, setAttendanceStatus] = useState({});
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
 
   // ===== إعداد الإشعارات الفورية للمعلم =====
   useEffect(() => {
@@ -2767,6 +2778,121 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
+  // ===== دوال الحضور والغياب =====
+
+  // جلب الحصص (من مجموعة sessions)
+  const fetchSessions = async () => {
+    try {
+      const q = query(collection(db, 'sessions'), where('teacherId', '==', user.id));
+      const snapshot = await getDocs(q);
+      const sessionsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // ترتيب حسب التاريخ
+      sessionsList.sort((a, b) => {
+        if (a.date && b.date) {
+          return new Date(a.date) - new Date(b.date);
+        }
+        return 0;
+      });
+      setSessions(sessionsList);
+    } catch (err) {
+      console.error('Error fetching sessions:', err);
+    }
+  };
+
+  // دالة لفتح مودال الحضور لحصة معينة
+  const openAttendanceModal = async (session) => {
+    // التحقق من صلاحية الرصد (خلال 7 ساعات من موعد الحصة)
+    const now = new Date();
+    const sessionDate = new Date(session.date);
+    // دمج التاريخ والوقت
+    const [hours, minutes] = session.time.split(':').map(Number);
+    sessionDate.setHours(hours, minutes, 0, 0);
+
+    const diffHours = (now.getTime() - sessionDate.getTime()) / (1000 * 60 * 60);
+    if (diffHours > 7 || diffHours < 0) {
+      toast.error('⛔ انتهى موعد رصد الحضور. يمكن رصد الحضور خلال 7 ساعات فقط من موعد الحصة.');
+      return;
+    }
+
+    setSelectedSessionForAttendance(session);
+    // جلب الطلاب المسجلين في الشعبة
+    const classId = session.classId;
+    const studentsInClass = students.filter(s => (s.classIds || []).includes(classId));
+
+    if (studentsInClass.length === 0) {
+      toast.error('لا يوجد طلاب مسجلون في هذه الشعبة.');
+      return;
+    }
+
+    // تحميل سجلات الحضور السابقة إن وجدت
+    const attendanceRef = doc(db, 'attendance', session.id);
+    const attendanceSnap = await getDoc(attendanceRef);
+    let records = {};
+    if (attendanceSnap.exists()) {
+      records = attendanceSnap.data().records || {};
+    } else {
+      // افتراضياً الكل حضور (true)
+      studentsInClass.forEach(s => {
+        records[s.id] = true;
+      });
+    }
+    setAttendanceRecords(records);
+    // تهيئة حالة التبديل لكل طالب بناءً على السجلات
+    const initialStatus = {};
+    studentsInClass.forEach(s => {
+      initialStatus[s.id] = records[s.id] !== undefined ? records[s.id] : true;
+    });
+    setAttendanceStatus(initialStatus);
+    setShowAttendanceModal(true);
+  };
+
+  // دالة لحفظ الحضور
+  const saveAttendance = async () => {
+    if (!selectedSessionForAttendance) return;
+    setAttendanceLoading(true);
+    try {
+      // تحديث السجلات في مجموعة attendance
+      const attendanceRef = doc(db, 'attendance', selectedSessionForAttendance.id);
+      await setDoc(attendanceRef, {
+        sessionId: selectedSessionForAttendance.id,
+        classId: selectedSessionForAttendance.classId,
+        teacherId: user.id,
+        date: selectedSessionForAttendance.date,
+        time: selectedSessionForAttendance.time,
+        records: attendanceStatus,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+
+      // إرسال إشعار للمعلم
+      await sendNotificationToTeacher(
+        user.id,
+        '📋 تم رصد الحضور',
+        `تم رصد الحضور لحصة ${selectedSessionForAttendance.title || ''}`,
+        'attendance_recorded',
+        selectedSessionForAttendance.id
+      );
+
+      toast.success('✅ تم حفظ الحضور بنجاح!');
+      setShowAttendanceModal(false);
+      setSelectedSessionForAttendance(null);
+      setAttendanceRecords({});
+      setAttendanceStatus({});
+    } catch (err) {
+      console.error('Error saving attendance:', err);
+      toast.error('فشل حفظ الحضور: ' + err.message);
+    } finally {
+      setAttendanceLoading(false);
+    }
+  };
+
+  // دالة لتبديل حالة حضور/غياب طالب
+  const toggleAttendance = (studentId) => {
+    setAttendanceStatus(prev => ({
+      ...prev,
+      [studentId]: !prev[studentId]
+    }));
+  };
+
   // ===== جلب البيانات =====
   const fetchTeacherData = async () => {
     try {
@@ -2849,6 +2975,9 @@ const TeacherPanel = ({ user, onLogout }) => {
       }));
       setPendingReviews(pendingList);
 
+      // جلب الحصص
+      await fetchSessions();
+
     } catch (err) {
       console.error('Error fetching teacher data:', err);
       setErrorMsg('فشل تحميل البيانات: ' + err.message);
@@ -2857,6 +2986,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
+  // استخدام onSnapshot للحصول على تحديثات فورية
   useEffect(() => {
     fetchTeacherData();
 
@@ -2917,6 +3047,19 @@ const TeacherPanel = ({ user, onLogout }) => {
       setPendingReviews(pendingList);
     });
 
+    // جلب الحصص بشكل فوري
+    const sessionsQuery = query(collection(db, 'sessions'), where('teacherId', '==', user.id));
+    const unsubscribeSessions = onSnapshot(sessionsQuery, (snapshot) => {
+      const sessionsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      sessionsList.sort((a, b) => {
+        if (a.date && b.date) {
+          return new Date(a.date) - new Date(b.date);
+        }
+        return 0;
+      });
+      setSessions(sessionsList);
+    });
+
     if (user) {
       const notifRef = collection(db, 'notifications', user.id, 'userNotifications');
       const qNotif = query(notifRef, orderBy('createdAt', 'desc'));
@@ -2931,6 +3074,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         unsubscribeClasses();
         unsubscribePending();
         unsubscribeNotif();
+        unsubscribeSessions();
       };
     }
 
@@ -2939,6 +3083,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       unsubscribeStudents();
       unsubscribeClasses();
       unsubscribePending();
+      unsubscribeSessions();
     };
   }, [user.id]);
 
@@ -3092,6 +3237,67 @@ const TeacherPanel = ({ user, onLogout }) => {
             </div>
           </div>
         )}
+
+        {/* ===== قسم الحصص والحضور ===== */}
+        <div className="bg-gray-800/60 p-6 rounded-2xl border border-blue-500/20">
+          <div className="flex justify-between items-center">
+            <h3 className="text-xl font-semibold text-blue-300">📚 الحصص المجدولة (إدارة الحضور)</h3>
+            <button
+              onClick={() => {
+                // فتح مودال إضافة حصة جديدة (يمكن استخدام AddLessonModal ولكن لتجنب التعقيد، سنضيف زر لإنشاء حصة)
+                // سنستخدم AddLessonModal ولكن سنضيف معالجة لحفظ الحصص في مجموعة sessions
+                toast.info('يمكنك إضافة حصة جديدة من خلال زر "جدولة مواعيد الحصص" أعلاه، ثم سيتم عرضها هنا.');
+              }}
+              className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md"
+            >
+              ➕ إضافة حصة
+            </button>
+          </div>
+          {sessions.length > 0 ? (
+            <div className="space-y-3 mt-4">
+              {sessions.map(session => {
+                const classObj = classes.find(c => c.id === session.classId);
+                const className = classObj ? classObj.name : 'غير معروف';
+                const sessionDate = new Date(session.date);
+                const [hours, minutes] = session.time.split(':').map(Number);
+                sessionDate.setHours(hours, minutes, 0, 0);
+                const now = new Date();
+                const diffHours = (now.getTime() - sessionDate.getTime()) / (1000 * 60 * 60);
+                const canRecord = diffHours >= 0 && diffHours <= 7;
+                return (
+                  <div key={session.id} className="bg-black/30 p-4 rounded-xl border border-gray-700 flex flex-wrap justify-between items-center">
+                    <div>
+                      <p className="text-white font-medium">{session.title || 'حصة'}</p>
+                      <p className="text-sm text-gray-300">الشعبة: {className}</p>
+                      <p className="text-xs text-gray-400">
+                        التاريخ: {new Date(session.date).toLocaleDateString('ar-EG', { timeZone: 'Asia/Amman' })} - الوقت: {session.time}
+                      </p>
+                      {!canRecord && diffHours > 7 && (
+                        <p className="text-xs text-red-400">⛔ انتهى موعد الرصد (أكثر من 7 ساعات)</p>
+                      )}
+                      {!canRecord && diffHours < 0 && (
+                        <p className="text-xs text-yellow-400">⏳ لم يحن وقت الحصة بعد</p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => openAttendanceModal(session)}
+                      disabled={!canRecord}
+                      className={`px-4 py-2 rounded-md text-sm font-medium ${
+                        canRecord 
+                          ? 'bg-green-600 hover:bg-green-700 text-white' 
+                          : 'bg-gray-600 text-gray-300 cursor-not-allowed'
+                      }`}
+                    >
+                      📋 رصد الحضور
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-gray-400 text-center py-4">لا توجد حصص مجدولة. قم بإنشاء حصة جديدة من خلال "جدولة مواعيد الحصص".</p>
+          )}
+        </div>
 
         {/* تنبيه الطلاب بدون شعب */}
         {studentsWithoutClass.length > 0 && (
@@ -3784,6 +3990,60 @@ const TeacherPanel = ({ user, onLogout }) => {
               <button onClick={() => acceptReview(selectedReviewStudent.id)} className="btn-primary bg-green-600 hover:bg-green-700 px-6 py-2 rounded-md text-white">✅ قبول</button>
               <button onClick={() => rejectReview(selectedReviewStudent.id)} className="btn-primary bg-red-600 hover:bg-red-700 px-6 py-2 rounded-md text-white">❌ رفض</button>
               <button onClick={() => { setShowReviewModal(false); setSelectedReviewStudent(null); }} className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-md text-white">إلغاء</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== مودال الحضور والغياب ===== */}
+      {showAttendanceModal && selectedSessionForAttendance && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowAttendanceModal(false)}>
+          <div className="bg-gray-900 p-6 rounded-3xl max-w-2xl w-full max-h-[80vh] overflow-y-auto border border-green-500/30" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold text-green-300">📋 رصد الحضور والغياب</h3>
+              <button onClick={() => setShowAttendanceModal(false)} className="text-gray-400 hover:text-white text-2xl">✕</button>
+            </div>
+            <div className="mb-4">
+              <p className="text-gray-300"><strong>الحصة:</strong> {selectedSessionForAttendance.title || 'حصة'}</p>
+              <p className="text-gray-300"><strong>الشعبة:</strong> {classes.find(c => c.id === selectedSessionForAttendance.classId)?.name || 'غير معروف'}</p>
+              <p className="text-gray-300"><strong>التاريخ والوقت:</strong> {new Date(selectedSessionForAttendance.date).toLocaleDateString('ar-EG', { timeZone: 'Asia/Amman' })} - {selectedSessionForAttendance.time}</p>
+              <p className="text-sm text-gray-400 mt-1">يمكنك رصد الحضور خلال 7 ساعات من موعد الحصة.</p>
+            </div>
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {students.filter(s => (s.classIds || []).includes(selectedSessionForAttendance.classId)).map(student => {
+                const isPresent = attendanceStatus[student.id] !== undefined ? attendanceStatus[student.id] : true;
+                return (
+                  <div key={student.id} className="flex items-center justify-between p-3 bg-black/30 rounded-xl border border-gray-700">
+                    <span className="text-white">{student.name || student.username}</span>
+                    <div className="flex items-center gap-3">
+                      <span className={`text-sm font-medium ${isPresent ? 'text-green-400' : 'text-red-400'}`}>
+                        {isPresent ? '✅ حضور' : '❌ غياب'}
+                      </span>
+                      <div
+                        onClick={() => toggleAttendance(student.id)}
+                        className={`w-14 h-8 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-300 ${isPresent ? 'bg-green-500' : 'bg-red-500'}`}
+                      >
+                        <div className={`bg-white w-6 h-6 rounded-full shadow-md transform transition-transform duration-300 ${isPresent ? 'translate-x-6' : 'translate-x-0'}`} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={saveAttendance}
+                disabled={attendanceLoading}
+                className="btn-primary bg-green-600 hover:bg-green-700 px-6 py-2 rounded-md text-white disabled:opacity-60"
+              >
+                {attendanceLoading ? 'جاري الحفظ...' : '💾 تأكيد الحضور'}
+              </button>
+              <button
+                onClick={() => setShowAttendanceModal(false)}
+                className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-md text-white"
+              >
+                إلغاء
+              </button>
             </div>
           </div>
         </div>
@@ -4595,7 +4855,7 @@ const StudentPanel = ({ user, onLogout }) => {
 };
 
 // ============================================================
-// App
+// App (معدل)
 // ============================================================
 const App = () => {
   const [user, setUser] = useState(null);
@@ -4632,15 +4892,17 @@ const App = () => {
     setPendingUserForComplete(null);
   };
 
-  const handleCompleteProfile = (userData) => {
-    setPendingUserForComplete(userData);
-  };
-
+  // ✅ التعديل المطلوب: التأكد من أن الدالة تضع setPendingUserForComplete(null)
   const handleCompleteProfileSuccess = (updatedUser) => {
     setUser(updatedUser);
     setPendingUserForComplete(null);
   };
 
+  const handleCompleteProfile = (userData) => {
+    setPendingUserForComplete(userData);
+  };
+
+  // ✅ التعديل المطلوب: إعادة جلب المستند بعد تحديث uid
   const checkSessionAndProfile = async (firebaseUser) => {
     if (!firebaseUser) {
       setUser(null);
@@ -4668,7 +4930,13 @@ const App = () => {
           docSnap = querySnapshot.docs[0];
           docId = docSnap.id;
           profile = docSnap.data();
+          // تحديث uid
           await updateDoc(doc(db, 'profiles', docId), { uid: firebaseUser.uid });
+          // ✅ إعادة جلب المستند للتأكد من القيم المحدثة
+          const updatedDocSnap = await getDoc(doc(db, 'profiles', docId));
+          if (updatedDocSnap.exists()) {
+            profile = updatedDocSnap.data();
+          }
         } else {
           setPendingUserForComplete({
             id: firebaseUser.uid,
