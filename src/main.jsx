@@ -14,7 +14,7 @@ import {
   updateEmail,
   signOut,
   fetchSignInMethodsForEmail,
-  onAuthStateChanged  // <--- تمت إضافتها
+  onAuthStateChanged
 } from 'firebase/auth';
 import {
   doc,
@@ -1364,7 +1364,7 @@ const FrozenAccount = ({ user, onLogout }) => {
 };
 
 // ============================================================
-// CompleteProfile (الجديد)
+// CompleteProfile (الجديد مع تعديل handleSubmit)
 // ============================================================
 const CompleteProfile = ({ user, onSuccess, onCancel }) => {
   const [newUsername, setNewUsername] = useState('');
@@ -1411,7 +1411,6 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
         setError('اسم المستخدم هذا مستخدم بالفعل، يرجى اختيار آخر');
         return;
       }
-      // لا نتحقق من Auth لأننا لن نغير البريد الإلكتروني في Auth
     } catch (err) {
       console.warn('خطأ في التحقق:', err);
       setError('حدث خطأ أثناء التحقق، حاول مرة أخرى.');
@@ -1425,17 +1424,17 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
         throw new Error('المستخدم غير مسجل الدخول');
       }
 
-      // تحديث كلمة المرور فقط (لا نغير البريد الإلكتروني)
+      // تحديث كلمة المرور (قد يرمي auth/requires-recent-login)
       await updatePassword(currentUser, newPassword);
 
-      // تحديث المستند في Firestore (نغير username ونحدث email ولكن لا نغير Auth)
-      await updateDoc(doc(db, 'profiles', user.id), {
+      // تحديث المستند في Firestore باستخدام setDoc مع merge لضمان وجوده
+      await setDoc(doc(db, 'profiles', user.id), {
         username: cleanUsername,
-        email: email, // نخزن البريد الجديد في Firestore للاستخدام المستقبلي
+        email: email,
         isProfileComplete: true,
         infoVerified: true,
         updatedAt: serverTimestamp()
-      });
+      }, { merge: true });
 
       toast.success('تم تفعيل حسابك بنجاح! يمكنك الآن استخدام اسم المستخدم الجديد وكلمة المرور.');
       onSuccess({
@@ -1447,7 +1446,13 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
     } catch (err) {
       console.error('خطأ في التفعيل:', err);
       if (err.code === 'auth/requires-recent-login') {
-        setError('لأسباب أمنية، يرجى تسجيل الخروج والدخول مرة أخرى ثم محاولة التفعيل.');
+        // عرض رسالة للمستخدم وإعادة توجيهه لتسجيل الخروج
+        setError('لأسباب أمنية، يجب تسجيل الخروج والدخول مرة أخرى لتحديث كلمة المرور. سيتم تسجيل خروجك الآن.');
+        // تسجيل الخروج تلقائياً بعد ثوانٍ
+        setTimeout(async () => {
+          await signOut(auth);
+          onCancel(); // يؤدي إلى العودة إلى شاشة الدخول
+        }, 2000);
       } else {
         setError('فشل التفعيل: ' + (err.message || 'خطأ غير معروف'));
       }
