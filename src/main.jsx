@@ -4250,7 +4250,7 @@ const StudentPanel = ({ user, onLogout }) => {
               )}
               {profile?.reviewExpiry && (
                 <span className="text-xs text-gray-400 mr-2">
-                  (ينتهي العرض بعد {Math.max(0, Math.ceil((new Date(profile.reviewExpiry) - new Date()) / (1000 * 60 * 60)))} ساعة)
+                  (ينتهي بعد {Math.max(0, Math.ceil((new Date(profile.reviewExpiry) - new Date()) / (1000 * 60 * 60)))} ساعة)
                 </span>
               )}
             </p>
