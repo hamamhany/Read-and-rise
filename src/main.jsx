@@ -283,7 +283,7 @@ const sendAccelerateMessage = (student, requestType) => {
     `الاسم الكامل: ${studentName}\n` +
     `الصف/المستوى الدراسي: ${studentClass}\n` +
     `رقم الهاتف للتواصل: ${studentPhone}\n` +
-    `الغرض من الطلب (تحديث/تأكيد): ${purpose}\n\n` +
+    `الغرض من الطلب: ${purpose}\n\n` +
     `أقر بأن كافة البيانات المذكورة أعلاه صحيحة ومحدثة، وأتحمل مسؤولية أي خطأ فيها.\n` +
     `شاكراً لكم جهودكم في تسريع معالجة هذا الطلب.\n\n` +
     `مع التحية،\n` +
@@ -292,7 +292,8 @@ const sendAccelerateMessage = (student, requestType) => {
   window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
 };
 
-const sendAccelerateReminderMessage = (student) => {
+// === دالة إرسال رسالة استعجال (طلب عاجل) ===
+const sendUrgentReminderMessage = (student) => {
   const phone = student.phone || '';
   if (!phone) {
     toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
@@ -3825,6 +3826,8 @@ const StudentPanel = ({ user, onLogout }) => {
 
   // مودال التأكيد بعد الإرسال
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  // مودال الطلب المعلق (عند محاولة التعديل مع وجود طلب قيد المراجعة)
+  const [showPendingRequestModal, setShowPendingRequestModal] = useState(false);
 
   // دالة تنظيف الإشعارات للطالب
   const cleanOldNotifications = async () => {
@@ -4020,8 +4023,8 @@ const StudentPanel = ({ user, onLogout }) => {
   // ===== دوال تعديل البيانات =====
   const openProfileModal = () => {
     if (hasPendingRequest) {
-      // إذا كان هناك طلب معلق، نعرض رسالة منبثقة بدلاً من فتح مودال التعديل
-      toast.error('طلبك السابق قيد المراجعة، يجب الموافقة عليه أولاً.');
+      // إذا كان هناك طلب معلق، نعرض مودال الطلب المعلق بدلاً من مودال التعديل
+      setShowPendingRequestModal(true);
       return;
     }
     setShowProfileModal(true);
@@ -4086,79 +4089,23 @@ const StudentPanel = ({ user, onLogout }) => {
   };
 
   const handleContactTeacher = () => {
-    // إرسال رسالة تسريع
+    // إرسال رسالة استعجال (طلب عاجل)
     const student = profile;
-    const requestType = 'update'; // تحديث (لأنه أتى من مودال التعديل)
-    sendAccelerateMessage(student, requestType);
-    // تحديث sentAccelerate في قاعدة البيانات (اختياري) لتتبع أن الرسالة أرسلت
+    if (!student) {
+      toast.error('لا توجد بيانات الطالب.');
+      return;
+    }
+    sendUrgentReminderMessage(student);
+    // تحديث sentAccelerate في قاعدة البيانات لتتبع إرسال الرسالة
     if (profile && profile.pendingChanges) {
       updateDoc(doc(db, 'profiles', user.id), {
         'pendingChanges.sentAccelerate': true
       }).catch(err => console.error(err));
     }
+    setSentAccelerate(true);
     setShowConfirmModal(false);
-  };
-
-  // ===== دوال إرسال رسائل واتساب خاصة بالطلاب =====
-  const sendAccelerateMessage = (student, requestType) => {
-    const phone = student.phone || '';
-    if (!phone) {
-      toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
-      return;
-    }
-    const cleanedPhone = cleanPhoneNumber(phone);
-    if (!cleanedPhone) {
-      toast.error('رقم الهاتف غير صالح.');
-      return;
-    }
-    const studentName = student.name || 'الطالب';
-    const studentClass = student.classes?.map(c => c.name).join(', ') || 'غير محدد';
-    const studentPhone = student.phone || 'غير مسجل';
-    const purpose = requestType === 'update' ? 'تحديث' : 'تأكيد';
-    const message = encodeURIComponent(
-      `الموضوع: طلب تأكيد بيانات الطالب - ${studentName}\n\n` +
-      `إلى إدارة الأكاديمية،\n` +
-      `أتقدم إليكم بهذا الطلب لتأكيد وتحديث بياناتي في نظام الأكاديمية، وذلك لضمان استمرارية الخدمات التعليمية المقدمة لي بشكل صحيح.\n` +
-      `بيانات الطالب المطلوبة:\n` +
-      `الاسم الكامل: ${studentName}\n` +
-      `الصف/المستوى الدراسي: ${studentClass}\n` +
-      `رقم الهاتف للتواصل: ${studentPhone}\n` +
-      `الغرض من الطلب (تحديث/تأكيد): ${purpose}\n\n` +
-      `أقر بأن كافة البيانات المذكورة أعلاه صحيحة ومحدثة، وأتحمل مسؤولية أي خطأ فيها.\n` +
-      `شاكراً لكم جهودكم في تسريع معالجة هذا الطلب.\n\n` +
-      `مع التحية،\n` +
-      `${studentName}`
-    );
-    window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
-  };
-
-  const sendAccelerateReminder = (student) => {
-    const phone = student.phone || '';
-    if (!phone) {
-      toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
-      return;
-    }
-    const cleanedPhone = cleanPhoneNumber(phone);
-    if (!cleanedPhone) {
-      toast.error('رقم الهاتف غير صالح.');
-      return;
-    }
-    const studentName = student.name || 'الطالب';
-    const studentPhone = student.phone || 'غير مسجل';
-    const message = encodeURIComponent(
-      `الموضوع: طلب عاجل: استكمال تصحيح وتأكيد بيانات الطالب - ${studentName}\n\n` +
-      `إلى إدارة الأكاديمية الموقرة،\n` +
-      `تحية طيبة وبعد،،\n` +
-      `أرجو من حضراتكم التكرم بالموافقة على معالجة طلبي المتعلق بتصحيح وتأكيد بياناتي الأكاديمية في أقرب وقت ممكن.\n` +
-      `اسم الطالب: ${studentName}\n` +
-      `الرقم المسجل : ${studentPhone}\n` +
-      `نوع الطلب: تصحيح وتحديث بيانات\n` +
-      `إنني بحاجة ماسة لاستكمال هذا الإجراء لضمان دقة سجلاتي في النظام وتجنب أي تأخير في الخدمات الأكاديمية المقدمة لي.\n` +
-      `شاكراً لكم حسن تعاونكم وسرعة استجابتكم.\n\n` +
-      `مع خالص التحية،\n` +
-      `${studentName}`
-    );
-    window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
+    setShowPendingRequestModal(false);
+    toast.success('تم إرسال رسالة الاستعجال للمعلم.');
   };
 
   if (loading) return <div className="text-center text-gray-400 p-8">جاري التحميل...</div>;
@@ -4351,6 +4298,43 @@ const StudentPanel = ({ user, onLogout }) => {
                 <button onClick={handleSendChanges} className="btn-primary bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-md text-white">📤 إرسال التغييرات</button>
                 <button onClick={() => setShowProfileModal(false)} className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-md text-white">إلغاء</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== مودال الطلب المعلق (بديل التعديل) ===== */}
+      {showPendingRequestModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowPendingRequestModal(false)}>
+          <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-yellow-500/30" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-semibold text-yellow-300 mb-4">⏳ طلب قيد المراجعة</h3>
+            <p className="text-gray-300 text-center mb-4">
+              لديك طلب تعديل بيانات قيد المراجعة حالياً. يرجى الانتظار حتى يتم الرد على طلبك.
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => {
+                  if (!sentAccelerate) {
+                    handleContactTeacher();
+                  } else {
+                    toast.info('تم إرسال رسالة الاستعجال مسبقاً.');
+                  }
+                }}
+                disabled={sentAccelerate}
+                className={`btn-primary w-full py-3 rounded-md text-white ${
+                  sentAccelerate 
+                    ? 'bg-gray-600 cursor-not-allowed opacity-60' 
+                    : 'bg-blue-600 hover:bg-blue-700'
+                }`}
+              >
+                {sentAccelerate ? '✅ تم إرسال الطلب للمعلم' : '📨 إرسال رسالة لتسريع الطلب'}
+              </button>
+              <button
+                onClick={() => setShowPendingRequestModal(false)}
+                className="btn-primary bg-gray-600 hover:bg-gray-700 w-full py-3 rounded-md text-white"
+              >
+                إغلاق
+              </button>
             </div>
           </div>
         </div>
