@@ -2636,7 +2636,10 @@ const TeacherPanel = ({ user, onLogout }) => {
       if (studentData && studentData.phone) {
         sendDeleteMessage(studentData);
       } else {
-        toast.info('لم يتم إرسال رسالة واتساب لأن رقم الهاتف غير مسجل.');
+        toast('لم يتم إرسال رسالة واتساب لأن رقم الهاتف غير مسجل.', {
+          duration: 4000,
+          style: { background: '#333', color: '#fff' }
+        });
       }
 
       toast.success('تم حذف الملف الشخصي للطالب وإرسال رسالة إشعار لولي الأمر. تذكر حذف حساب المصادقة يدوياً من Firebase Console.');
@@ -4077,7 +4080,7 @@ const TeacherPanel = ({ user, onLogout }) => {
 };
 
 // ============================================================
-// StudentPanel (معدل - إضافة عداد الطلاب + إشعارات فورية + معلومات في مودال)
+// StudentPanel (معدل - زر المعلومات جنب العنوان + إخفاء المعلومات من الواجهة)
 // ============================================================
 const StudentPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -4508,10 +4511,17 @@ const StudentPanel = ({ user, onLogout }) => {
   return (
     <div className="container-center min-h-screen p-4 relative" dir="rtl">
       <div className="bg-gray-900/80 p-8 max-w-4xl w-full space-y-6 z-10 border border-gray-700 rounded-3xl backdrop-blur-sm">
+        {/* ===== رأس الصفحة مع زر المعلومات ===== */}
         <div className="flex justify-between items-center flex-wrap gap-4 border-b border-gray-700 pb-4">
-          <div>
+          <div className="flex items-center gap-3">
             <h2 className="text-3xl font-bold text-blue-300">لوحة تحكم الطالب</h2>
-            <p className="text-gray-400 text-sm mt-1">أهلاً بك: {user.name || user.username || user.email}</p>
+            <button
+              onClick={openProfileModal}
+              type="button"
+              className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md flex items-center gap-1"
+            >
+              <span>👤</span> معلوماتي
+            </button>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -4532,52 +4542,6 @@ const StudentPanel = ({ user, onLogout }) => {
 
         {errorMsg && <p className="text-red-400 text-sm bg-red-500/10 p-3 rounded-xl border border-red-500/20">{errorMsg}</p>}
 
-        {/* ===== زر عرض المعلومات الشخصية ===== */}
-        <div className="bg-gray-800/60 p-6 rounded-2xl border border-blue-500/20">
-          <div className="flex justify-between items-center">
-            <h3 className="text-xl font-semibold text-blue-200">معلوماتي الشخصية</h3>
-            <button
-              onClick={openProfileModal}
-              type="button"
-              className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md flex items-center gap-2"
-            >
-              <span>👤</span> عرض وتعديل
-            </button>
-          </div>
-          <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-            <p><span className="text-gray-400">الاسم:</span> {profile?.name || 'غير مسجل'}</p>
-            <p><span className="text-gray-400">الجنس:</span> {profile?.gender || 'غير محدد'}</p>
-            <p><span className="text-gray-400">العمر:</span> {profile?.age || 'غير محدد'}</p>
-            <p><span className="text-gray-400">رقم الهاتف:</span> {profile?.phone || 'غير مسجل'}</p>
-            <p className="col-span-2"><span className="text-gray-400">الشعب:</span> {profile?.classes?.map(c => c.name).join(', ') || 'غير محددة'}</p>
-            <p className="col-span-2">
-              <span className="text-gray-400">حالة التحقق:</span>
-              {profile?.reviewResult === 'approved' ? (
-                <span className="text-green-400 mr-2">✅ تمت الموافقة على التغييرات</span>
-              ) : profile?.reviewResult === 'rejected' ? (
-                <span className="text-red-400 mr-2">❌ تم رفض التغييرات</span>
-              ) : profile?.pendingChanges ? (
-                <span className="text-yellow-400 mr-2">⏳ قيد المراجعة</span>
-              ) : profile?.infoVerified ? (
-                <span className="text-green-400 mr-2">✅ تم التحقق</span>
-              ) : (
-                <span className="text-gray-400 mr-2">لا توجد طلبات مقدمة</span>
-              )}
-              {profile?.reviewExpiry && (
-                <span className="text-xs text-gray-400 mr-2">
-                  (ينتهي بعد {Math.max(0, Math.ceil((new Date(profile.reviewExpiry) - new Date()) / (1000 * 60 * 60)))} ساعة)
-                </span>
-              )}
-            </p>
-            <p className="col-span-2"><span className="text-gray-400">الإنذارات:</span> {profile?.warnings?.length ? profile.warnings.map(w => `#${w.type}`).join(', ') : 'لا يوجد'}</p>
-            {profile?.isFrozen && profile?.freezeReason === 'تجاوز عدد الإنذارات (3 إنذارات)' && (
-              <div className="col-span-2 bg-red-900/30 p-2 rounded-xl border border-red-500/30 text-red-300 text-sm">
-                ⛔ تم تجميد حسابك بسبب تجاوز عدد الإنذارات. يرجى التواصل مع المعلم.
-              </div>
-            )}
-          </div>
-        </div>
-
         {/* ===== عداد الطلاب في شعبك ===== */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-green-500/20">
           <h3 className="text-xl font-semibold text-green-200 mb-2">👥 عدد الطلاب في شعبك</h3>
@@ -4596,6 +4560,7 @@ const StudentPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
+        {/* ===== الوقت المتبقي للحصة ===== */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-blue-500/20">
           <h3 className="text-xl font-semibold mb-4 text-blue-200">الوقت المتبقي لحصتك القادمة</h3>
           <CountdownTimer targetDate={nextLesson ? nextLesson.date : null} />
@@ -4616,6 +4581,7 @@ const StudentPanel = ({ user, onLogout }) => {
           )}
         </div>
 
+        {/* ===== الواجبات المدرسية ===== */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700 space-y-3">
           <h3 className="text-xl font-semibold text-pink-300">الواجبات المدرسية</h3>
           {availableHomeworks.length > 0 ? (
@@ -4749,7 +4715,10 @@ const StudentPanel = ({ user, onLogout }) => {
                   if (!sentAccelerate) {
                     handleContactTeacher();
                   } else {
-                    toast.info('تم إرسال رسالة الاستعجال مسبقاً.');
+                    toast('تم إرسال رسالة الاستعجال مسبقاً.', {
+                      duration: 3000,
+                      style: { background: '#333', color: '#fff' }
+                    });
                   }
                 }}
                 disabled={sentAccelerate}
@@ -4798,7 +4767,7 @@ const StudentPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال الوقت المتبقي لانتهاء صلاحية نتيجة المراجعة ===== */}
+      {/* ===== مودال نتيجة المراجعة ===== */}
       {showReviewResultModal && reviewExpiry && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowReviewResultModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-purple-500/30" onClick={(e) => e.stopPropagation()}>
