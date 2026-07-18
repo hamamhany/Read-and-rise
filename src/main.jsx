@@ -1,4 +1,4 @@
-// ===================== main.jsx (الكامل - بدون إدارة الحضور) =====================
+// ===================== main.jsx (معدل - استبدال الإيموجي بأيقونات) =====================
 
 import './index.css';
 import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
@@ -35,6 +35,36 @@ import {
   addDoc
 } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
+
+// ========== أيقونات FontAwesome ==========
+import {
+  FaPen,
+  FaCalendarAlt,
+  FaSave,
+  FaClock,
+  FaUpload,
+  FaClipboardList,
+  FaSchool,
+  FaUser,
+  FaBell,
+  FaSignOutAlt,
+  FaExclamationTriangle,
+  FaCheckCircle,
+  FaTimesCircle,
+  FaBullhorn,
+  FaTrashAlt,
+  FaEdit,
+  FaThumbtack,
+  FaComment,
+  FaEnvelope,
+  FaHourglassHalf,
+  FaPlus,
+  FaBan,
+  FaWhatsapp,
+  FaUsers,
+  FaTrash,
+  FaUnlockAlt,
+} from 'react-icons/fa';
 
 // ========== رقم المعلم الثابت ==========
 const TEACHER_PHONE = '962786117388';
@@ -338,7 +368,7 @@ const ChoiceModal = ({ isOpen, onClose, onSelect, title, options }) => {
             <button
               key={opt.value}
               onClick={() => onSelect(opt.value)}
-              className="w-full py-3 px-4 bg-gray-800 hover:bg-gray-700 rounded-xl text-white font-medium text-lg transition border border-gray-600"
+              className="w-full py-3 px-4 bg-gray-800 hover:bg-gray-700 rounded-xl text-white font-medium text-lg transition border border-gray-600 flex items-center justify-center"
             >
               {opt.label}
             </button>
@@ -355,7 +385,7 @@ const ChoiceModal = ({ isOpen, onClose, onSelect, title, options }) => {
   );
 };
 
-// ---- AddAssignmentModal (نفس الكود السابق، لم يتغير) ----
+// ---- AddAssignmentModal (معدل) ----
 const AddAssignmentModal = ({
   isOpen,
   onClose,
@@ -695,7 +725,11 @@ const AddAssignmentModal = ({
       <div className="bg-gray-900 p-6 rounded-3xl w-[90%] max-w-4xl max-h-[90vh] overflow-y-auto border border-gray-700 shadow-2xl">
         <div className="flex justify-between items-center p-2 border-b border-gray-700">
           <h2 className="text-2xl font-bold text-white">
-            {publishMode === 'draft' ? '💾 حفظ مسودة جديدة' : '📝 إضافة واجب جديد'}
+            {publishMode === 'draft' ? (
+              <><FaSave className="inline-block me-2" /> حفظ مسودة جديدة</>
+            ) : (
+              <><FaPen className="inline-block me-2" /> إضافة واجب جديد</>
+            )}
           </h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">×</button>
         </div>
@@ -738,7 +772,7 @@ const AddAssignmentModal = ({
                 onChange={() => setPublishMode('now')}
                 className="accent-blue-500"
               />
-              📤 نشر فوراً
+              <FaUpload className="inline-block me-1" /> نشر فوراً
             </label>
             <label className="flex items-center gap-2 text-gray-300">
               <input
@@ -748,7 +782,7 @@ const AddAssignmentModal = ({
                 onChange={() => setPublishMode('schedule')}
                 className="accent-blue-500"
               />
-              📅 جدولة
+              <FaCalendarAlt className="inline-block me-1" /> جدولة
             </label>
             <label className="flex items-center gap-2 text-gray-300">
               <input
@@ -758,7 +792,7 @@ const AddAssignmentModal = ({
                 onChange={() => setPublishMode('draft')}
                 className="accent-blue-500"
               />
-              💾 حفظ كمسودة
+              <FaSave className="inline-block me-1" /> حفظ كمسودة
             </label>
             <label className="flex items-center gap-2 text-gray-300">
               <input
@@ -768,7 +802,7 @@ const AddAssignmentModal = ({
                 onChange={() => setPublishMode('delay')}
                 className="accent-blue-500"
               />
-              ⏱️ نشر بعد وقت
+              <FaClock className="inline-block me-1" /> نشر بعد وقت
             </label>
           </div>
 
@@ -818,7 +852,11 @@ const AddAssignmentModal = ({
               type="submit"
               className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700"
             >
-              {publishMode === 'draft' ? '💾 حفظ المسودة' : '✅ إضافة الواجب'}
+              {publishMode === 'draft' ? (
+                <><FaSave className="inline-block me-2" /> حفظ المسودة</>
+              ) : (
+                <><FaPen className="inline-block me-2" /> إضافة الواجب</>
+              )}
             </button>
           </div>
         </form>
@@ -827,7 +865,7 @@ const AddAssignmentModal = ({
   );
 };
 
-// ---- AddLessonModal (نفس الكود السابق، لم يتغير) ----
+// ---- AddLessonModal (معدل) ----
 const AddLessonModal = ({
   isOpen,
   onClose,
@@ -1107,7 +1145,9 @@ const AddLessonModal = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
       <div className="bg-gray-900 p-6 rounded-3xl w-[95%] max-w-5xl max-h-[90vh] overflow-y-auto border border-gray-700 shadow-2xl">
         <div className="flex justify-between items-center p-2 border-b border-gray-700">
-          <h2 className="text-2xl font-bold text-white">🕒 جدولة مواعيد الحصص (حد أقصى 6)</h2>
+          <h2 className="text-2xl font-bold text-white">
+            <FaClock className="inline-block me-2" /> جدولة مواعيد الحصص (حد أقصى 6)
+          </h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">×</button>
         </div>
 
@@ -1212,7 +1252,9 @@ const AddLessonModal = ({
 
           <div className="px-4 py-3 border-t border-gray-700 flex justify-end gap-3">
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md hover:bg-gray-600">إلغاء</button>
-            <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700">حفظ المواعيد</button>
+            <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700">
+              <FaSave className="inline-block me-2" /> حفظ المواعيد
+            </button>
           </div>
         </form>
       </div>
@@ -1416,7 +1458,7 @@ export const ConfirmProvider = ({ children }) => {
 
 export const useConfirm = () => useContext(ConfirmContext);
 
-// ========== FrozenAccount ==========
+// ========== FrozenAccount (معدل) ==========
 const FrozenAccount = ({ user, onLogout }) => {
   const studentName = user?.name || user?.username || 'الطالب';
   const studentClass = user?.class_name || 'غير محدد';
@@ -1441,8 +1483,10 @@ const FrozenAccount = ({ user, onLogout }) => {
       <div className="absolute inset-0 bg-black/60 backdrop-blur-md" />
       <div className="relative z-10 w-full max-w-md px-4">
         <div className="bg-gray-900 p-8 rounded-3xl shadow-2xl border border-gray-700 text-center space-y-6">
-          <div className="text-6xl mb-2">🚫</div>
-          <h2 className="text-2xl font-bold text-red-400">الحساب مجمد</h2>
+          <div className="text-6xl mb-2"><FaBan className="inline-block" /></div>
+          <h2 className="text-2xl font-bold text-red-400">
+            <FaBan className="inline-block me-2" /> الحساب مجمد
+          </h2>
           <p className="text-gray-300 leading-relaxed">
             يرجى التواصل مع <strong className="text-purple-300">رئيس قسم التكنولوجيا وإدارة المعلومات: همام هاني محمد</strong> عبر واتساب.
           </p>
@@ -1452,7 +1496,7 @@ const FrozenAccount = ({ user, onLogout }) => {
             rel="noopener noreferrer"
             className="btn-primary w-full py-4 text-lg bg-green-600 hover:bg-green-700 shadow-lg flex items-center justify-center gap-2"
           >
-            <span>💬</span> اضغط هنا للتواصل مع المشرف
+            <FaWhatsapp className="inline-block me-2" /> اضغط هنا للتواصل مع المشرف
           </a>
           <button
             onClick={onLogout}
@@ -3026,14 +3070,16 @@ const TeacherPanel = ({ user, onLogout }) => {
               className="relative bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-full text-2xl transition shadow-lg"
               title="الإشعارات"
             >
-              🔔
+              <FaBell />
               {unreadCount > 0 && (
                 <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
                   {unreadCount}
                 </span>
               )}
             </button>
-            <button onClick={onLogout} className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-full text-2xl transition shadow-lg" title="تسجيل الخروج">🚪</button>
+            <button onClick={onLogout} className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-full text-2xl transition shadow-lg" title="تسجيل الخروج">
+              <FaSignOutAlt />
+            </button>
           </div>
         </div>
 
@@ -3042,7 +3088,9 @@ const TeacherPanel = ({ user, onLogout }) => {
         {/* عدد الطلاب والعد التنازلي */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-gray-800/60 p-6 rounded-2xl border border-purple-500/20 flex flex-col justify-center">
-            <h3 className="text-lg font-semibold text-purple-200">عدد الطلاب</h3>
+            <h3 className="text-lg font-semibold text-purple-200">
+              <FaUsers className="inline-block me-2" /> عدد الطلاب
+            </h3>
             <p className="text-4xl font-extrabold text-white mt-2 bg-purple-950/40 px-4 py-2 rounded-xl border border-purple-500/30 inline-block self-start">
               {students.length}
             </p>
@@ -3075,7 +3123,9 @@ const TeacherPanel = ({ user, onLogout }) => {
         {lessonTimes && lessonTimes.length > 0 && (
           <div className="bg-gray-800/40 p-4 rounded-2xl border border-gray-600">
             <div className="flex justify-between items-center mb-3">
-              <h4 className="text-md font-semibold text-purple-200">📋 جدول المواعيد المحددة</h4>
+              <h4 className="text-md font-semibold text-purple-200">
+                <FaClock className="inline-block me-2" /> جدول المواعيد المحددة
+              </h4>
               <span className="text-xs text-gray-400">(يمكنك حذف أي موعد)</span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -3089,7 +3139,7 @@ const TeacherPanel = ({ user, onLogout }) => {
                         onClick={() => deleteLessonTime(lt.id)}
                         className="text-red-400 hover:text-red-300 text-xs bg-red-950/40 px-2 py-1 rounded border border-red-500/30"
                       >
-                        🗑️ حذف
+                        <FaTrashAlt className="inline-block me-1" /> حذف
                       </button>
                     </div>
                     <div className="flex justify-between">
@@ -3123,7 +3173,9 @@ const TeacherPanel = ({ user, onLogout }) => {
         {/* تنبيه الطلاب بدون شعب */}
         {studentsWithoutClass.length > 0 && (
           <div className="bg-red-900/20 border border-red-500/30 p-4 rounded-2xl">
-            <h4 className="text-red-300 font-semibold">⚠️ طلاب بدون شعبة</h4>
+            <h4 className="text-red-300 font-semibold">
+              <FaExclamationTriangle className="inline-block me-2" /> طلاب بدون شعبة
+            </h4>
             <ul className="list-disc list-inside text-sm text-gray-300">
               {studentsWithoutClass.map(s => (
                 <li key={s.id}>{s.name || s.username}</li>
@@ -3136,7 +3188,9 @@ const TeacherPanel = ({ user, onLogout }) => {
         {/* مراجعات الملفات الشخصية */}
         {pendingReviews.length > 0 && (
           <div className="bg-gray-800/60 p-6 rounded-2xl border border-yellow-500/30 bg-yellow-500/5">
-            <h3 className="text-xl font-semibold text-yellow-300 mb-3">📋 مراجعات الملفات الشخصية</h3>
+            <h3 className="text-xl font-semibold text-yellow-300 mb-3">
+              <FaClipboardList className="inline-block me-2" /> مراجعات الملفات الشخصية
+            </h3>
             <div className="space-y-3 max-h-60 overflow-y-auto">
               {pendingReviews.map(student => {
                 const changes = [];
@@ -3183,8 +3237,12 @@ const TeacherPanel = ({ user, onLogout }) => {
         {/* إدارة الواجبات */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700 space-y-4">
           <div className="flex justify-between items-center">
-            <h3 className="text-xl font-semibold text-pink-300">إدارة الواجبات</h3>
-            <button onClick={() => setShowAssignmentChoice(true)} type="button" className="btn-primary bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 py-2 px-4 text-sm rounded-md text-white">📝 إضافة واجب جديد</button>
+            <h3 className="text-xl font-semibold text-pink-300">
+              <FaPen className="inline-block me-2" /> إدارة الواجبات
+            </h3>
+            <button onClick={() => setShowAssignmentChoice(true)} type="button" className="btn-primary bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 py-2 px-4 text-sm rounded-md text-white">
+              <FaPen className="inline-block me-2" /> إضافة واجب جديد
+            </button>
           </div>
           {homeworks.length > 0 ? (
             <div className="space-y-3 max-h-60 overflow-y-auto">
@@ -3212,7 +3270,9 @@ const TeacherPanel = ({ user, onLogout }) => {
                       </div>
                       {!hw.is_draft && !isRevealed && <HomeworkTextCountdown targetDate={hw.reveal_time} />}
                     </div>
-                    <button onClick={() => deleteHomework(hw.id)} type="button" className="p-1.5 bg-red-600/30 text-red-300 rounded-lg border border-red-500/30 hover:bg-red-600/50 text-xs">حذف</button>
+                    <button onClick={() => deleteHomework(hw.id)} type="button" className="p-1.5 bg-red-600/30 text-red-300 rounded-lg border border-red-500/30 hover:bg-red-600/50 text-xs">
+                      <FaTrashAlt className="inline-block me-1" /> حذف
+                    </button>
                   </div>
                 );
               })}
@@ -3225,24 +3285,35 @@ const TeacherPanel = ({ user, onLogout }) => {
         {/* إدارة الطلاب */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700">
           <div className="flex flex-wrap justify-between items-center gap-3">
-            <h3 className="text-xl font-semibold text-blue-300">إدارة الطلاب</h3>
+            <h3 className="text-xl font-semibold text-blue-300">
+              <FaUser className="inline-block me-2" /> إدارة الطلاب
+            </h3>
             <div className="flex flex-wrap gap-2">
-              <button onClick={() => setShowAddStudentModal(true)} type="button" className="btn-primary bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 py-2 px-4 text-sm rounded-md text-white">+ إضافة طالب</button>
-              <button onClick={() => setShowStudentsModal(true)} type="button" className="btn-primary bg-purple-600 hover:bg-purple-700 py-2 px-4 text-sm rounded-md text-white">📋 عرض قوائم الطلبة</button>
-              <button onClick={() => setShowManageClassesModal(true)} type="button" className="btn-primary bg-green-600 hover:bg-green-700 py-2 px-4 text-sm rounded-md text-white">🏫 إدارة الشعب</button>
+              <button onClick={() => setShowAddStudentModal(true)} type="button" className="btn-primary bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 py-2 px-4 text-sm rounded-md text-white">
+                <FaPlus className="inline-block me-2" /> إضافة طالب
+              </button>
+              <button onClick={() => setShowStudentsModal(true)} type="button" className="btn-primary bg-purple-600 hover:bg-purple-700 py-2 px-4 text-sm rounded-md text-white">
+                <FaClipboardList className="inline-block me-2" /> عرض قوائم الطلبة
+              </button>
+              <button onClick={() => setShowManageClassesModal(true)} type="button" className="btn-primary bg-green-600 hover:bg-green-700 py-2 px-4 text-sm rounded-md text-white">
+                <FaSchool className="inline-block me-2" /> إدارة الشعب
+              </button>
             </div>
           </div>
         </div>
 
         {/* جدولة مواعيد الحصص */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700 space-y-4">
-          <h3 className="text-xl font-semibold text-purple-200">جدولة مواعيد الحصص</h3>
-          <button onClick={() => setShowLessonChoice(true)} type="button" className="btn-primary bg-gradient-to-r from-indigo-500 to-blue-600 hover:from-indigo-600 hover:to-blue-700 py-3 px-6 w-full sm:w-auto rounded-md text-white">🕒 إدارة المواعيد (حتى 6)</button>
+          <h3 className="text-xl font-semibold text-purple-200">
+            <FaClock className="inline-block me-2" /> جدولة مواعيد الحصص
+          </h3>
+          <button onClick={() => setShowLessonChoice(true)} type="button" className="btn-primary bg-gradient-to-r from-indigo-500 to-blue-600 hover:from-indigo-600 hover:to-blue-700 py-3 px-6 w-full sm:w-auto rounded-md text-white">
+            <FaClock className="inline-block me-2" /> إدارة المواعيد (حتى 6)
+          </button>
         </div>
       </div>
 
-      {/* ===== مودالات ===== (نفسها، لم تتغير) */}
-
+      {/* ===== مودالات ===== */}
       <ChoiceModal
         isOpen={showAssignmentChoice}
         onClose={() => {
@@ -3256,10 +3327,10 @@ const TeacherPanel = ({ user, onLogout }) => {
         }}
         title="اختر نوع الواجب"
         options={[
-          { value: 'now', label: '📤 نشر فوراً' },
-          { value: 'schedule', label: '📅 جدولة (تاريخ ووقت)' },
-          { value: 'draft', label: '💾 حفظ كمسودة (نشر لاحقاً)' },
-          { value: 'delay', label: '⏱️ نشر بعد وقت (ساعات/دقائق)' }
+          { value: 'now', label: <><FaUpload className="inline-block me-2" /> نشر فوراً</> },
+          { value: 'schedule', label: <><FaCalendarAlt className="inline-block me-2" /> جدولة (تاريخ ووقت)</> },
+          { value: 'draft', label: <><FaSave className="inline-block me-2" /> حفظ كمسودة (نشر لاحقاً)</> },
+          { value: 'delay', label: <><FaClock className="inline-block me-2" /> نشر بعد وقت (ساعات/دقائق)</> }
         ]}
       />
 
@@ -3276,14 +3347,16 @@ const TeacherPanel = ({ user, onLogout }) => {
         }}
         title="إدارة مواعيد الحصص"
         options={[
-          { value: 'manage', label: '📅 إضافة / تعديل المواعيد (حتى 6)' }
+          { value: 'manage', label: <><FaClock className="inline-block me-2" /> إضافة / تعديل المواعيد (حتى 6)</> }
         ]}
       />
 
       {showManageClassesModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowManageClassesModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-semibold text-green-300 mb-4">🏫 إدارة الشعب</h3>
+            <h3 className="text-xl font-semibold text-green-300 mb-4">
+              <FaSchool className="inline-block me-2" /> إدارة الشعب
+            </h3>
             <div className="space-y-4">
               <div className="flex gap-2">
                 <input
@@ -3313,8 +3386,12 @@ const TeacherPanel = ({ user, onLogout }) => {
                       <>
                         <span className="text-white">{cls.name}</span>
                         <div className="flex gap-2">
-                          <button onClick={() => { setEditingClassId(cls.id); setEditingClassName(cls.name); }} className="text-blue-400 hover:text-blue-300 text-sm">✏️</button>
-                          <button onClick={() => handleDeleteClass(cls.id)} className="text-red-400 hover:text-red-300 text-sm">🗑️</button>
+                          <button onClick={() => { setEditingClassId(cls.id); setEditingClassName(cls.name); }} className="text-blue-400 hover:text-blue-300 text-sm">
+                            <FaEdit className="inline-block" />
+                          </button>
+                          <button onClick={() => handleDeleteClass(cls.id)} className="text-red-400 hover:text-red-300 text-sm">
+                            <FaTrashAlt className="inline-block" />
+                          </button>
                         </div>
                       </>
                     )}
@@ -3331,7 +3408,9 @@ const TeacherPanel = ({ user, onLogout }) => {
       {showStudentsWithoutClassModal && studentsWithoutClass.length > 0 && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowStudentsWithoutClassModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-2xl w-full max-h-[80vh] overflow-y-auto border border-yellow-500/30" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-semibold text-yellow-300 mb-4">⚠️ طلاب بدون شعبة</h3>
+            <h3 className="text-xl font-semibold text-yellow-300 mb-4">
+              <FaExclamationTriangle className="inline-block me-2" /> طلاب بدون شعبة
+            </h3>
             <p className="text-gray-300 text-sm mb-4">يرجى تحديد شعبة لكل طالب من خلال زر "تحديد الشعبة" بجانب كل طالب.</p>
             <div className="space-y-4">
               {studentsWithoutClass.map(s => (
@@ -3344,7 +3423,7 @@ const TeacherPanel = ({ user, onLogout }) => {
                     }}
                     className="btn-primary bg-blue-600 hover:bg-blue-700 py-1 px-3 text-sm rounded-md text-white"
                   >
-                    تحديد الشعبة
+                    <FaThumbtack className="inline-block me-2" /> تحديد الشعبة
                   </button>
                 </div>
               ))}
@@ -3357,7 +3436,9 @@ const TeacherPanel = ({ user, onLogout }) => {
       {showClassSelectionModal && selectedStudentForClass && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowClassSelectionModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-semibold text-blue-300 mb-4">تحديد شعبة الطالب</h3>
+            <h3 className="text-xl font-semibold text-blue-300 mb-4">
+              <FaThumbtack className="inline-block me-2" /> تحديد شعبة الطالب
+            </h3>
             <p className="text-gray-300 text-sm mb-2">الطالب: <strong>{selectedStudentForClass.name || selectedStudentForClass.username}</strong></p>
             <div className="space-y-2">
               {classes.map(cls => (
@@ -3390,7 +3471,9 @@ const TeacherPanel = ({ user, onLogout }) => {
       {showAddNotificationModal && newlyAddedStudent && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-green-500/30">
-            <h3 className="text-xl font-semibold text-green-300 mb-2 text-center">✅ تم تسجيل الطالب</h3>
+            <h3 className="text-xl font-semibold text-green-300 mb-2 text-center">
+              <FaCheckCircle className="inline-block me-2" /> تم تسجيل الطالب
+            </h3>
             <p className="text-gray-300 text-center mb-4">
               تم إضافة الطالب <span className="text-white font-bold">{newlyAddedStudent.name}</span> بنجاح.
               <br />
@@ -3405,7 +3488,7 @@ const TeacherPanel = ({ user, onLogout }) => {
                 }}
                 className="btn-primary bg-green-600 hover:bg-green-700 w-full py-3 flex items-center justify-center gap-2 text-lg rounded-md text-white"
               >
-                <span>💬</span> إخبار ولي الأمر
+                <FaComment className="inline-block me-2" /> إخبار ولي الأمر
               </button>
             </div>
           </div>
@@ -3415,7 +3498,9 @@ const TeacherPanel = ({ user, onLogout }) => {
       {showFreezeNotificationModal && frozenStudent && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-orange-500/30">
-            <h3 className="text-xl font-semibold text-orange-300 mb-2 text-center">🚫 تم تجميد الحساب</h3>
+            <h3 className="text-xl font-semibold text-orange-300 mb-2 text-center">
+              <FaBan className="inline-block me-2" /> تم تجميد الحساب
+            </h3>
             <p className="text-gray-300 text-center mb-4">
               تم تجميد حساب الطالب <span className="text-white font-bold">{frozenStudent.name}</span>.
               <br />
@@ -3430,7 +3515,7 @@ const TeacherPanel = ({ user, onLogout }) => {
                 }}
                 className="btn-primary bg-orange-600 hover:bg-orange-700 w-full py-3 flex items-center justify-center gap-2 text-lg rounded-md text-white"
               >
-                <span>💬</span> إخبار ولي الأمر
+                <FaComment className="inline-block me-2" /> إخبار ولي الأمر
               </button>
             </div>
           </div>
@@ -3441,7 +3526,9 @@ const TeacherPanel = ({ user, onLogout }) => {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-40 p-4" onClick={() => setShowStudentsModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-4xl w-full max-h-[80vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-semibold text-blue-300">قائمة الطلاب المسجلين ({students.length})</h3>
+              <h3 className="text-xl font-semibold text-blue-300">
+                <FaClipboardList className="inline-block me-2" /> قائمة الطلاب المسجلين ({students.length})
+              </h3>
               <button onClick={() => setShowStudentsModal(false)} type="button" className="text-gray-400 hover:text-white text-2xl">✕</button>
             </div>
             <div className="space-y-3">
@@ -3474,7 +3561,7 @@ const TeacherPanel = ({ user, onLogout }) => {
                       )}
                       {!hasAccount && <span className="text-xs text-yellow-400 bg-yellow-950/40 px-2 py-0.5 rounded border border-yellow-500/30">⚠️ لم يتم التفعيل بعد</span>}
                       <span className="text-xs text-yellow-300 bg-yellow-950/40 px-2 py-0.5 rounded border border-yellow-500/30">
-                        ⚠️ الإنذارات: {warningCount}/3
+                        <FaExclamationTriangle className="inline-block me-1" /> الإنذارات: {warningCount}/3
                       </span>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
@@ -3483,11 +3570,11 @@ const TeacherPanel = ({ user, onLogout }) => {
                           onClick={() => openWarningModal(s)}
                           className="text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-2 py-1 rounded-lg hover:bg-yellow-500/30"
                         >
-                          ⚠️ إنذار ({warningCount}/3)
+                          <FaExclamationTriangle className="inline-block me-1" /> إنذار ({warningCount}/3)
                         </button>
                       ) : (
                         <span className="text-xs text-red-400 bg-red-950/40 px-2 py-1 rounded border border-red-500/30">
-                          ⛔ إنذارات مكتملة
+                          <FaBan className="inline-block me-1" /> إنذارات مكتملة
                         </span>
                       )}
                       {warningCount >= 3 && (
@@ -3495,14 +3582,14 @@ const TeacherPanel = ({ user, onLogout }) => {
                           onClick={() => handleDeleteStudentPermanently(s.id)}
                           className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg hover:bg-red-500/30 animate-pulse"
                         >
-                          🗑️ حذف الحساب (إجباري)
+                          <FaTrash className="inline-block me-1" /> حذف الحساب (إجباري)
                         </button>
                       )}
                       <button
                         onClick={() => openClassSelection(s)}
                         className="text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-1 rounded-lg hover:bg-blue-500/30"
                       >
-                        📌 تحديد الشعبة
+                        <FaThumbtack className="inline-block me-1" /> تحديد الشعبة
                       </button>
                       <button
                         onClick={() => {
@@ -3514,13 +3601,19 @@ const TeacherPanel = ({ user, onLogout }) => {
                         type="button"
                         className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-lg hover:bg-green-500/30"
                       >
-                        ✉️ رسالة
+                        <FaComment className="inline-block me-1" /> رسالة
                       </button>
                       {s.isFrozen && (
-                        <button onClick={() => sendFreezeMessage(s)} type="button" className="text-xs bg-orange-500/20 text-orange-300 border border-orange-500/30 px-2 py-1 rounded-lg hover:bg-orange-500/30">🚫 تجميد</button>
+                        <button onClick={() => sendFreezeMessage(s)} type="button" className="text-xs bg-orange-500/20 text-orange-300 border border-orange-500/30 px-2 py-1 rounded-lg hover:bg-orange-500/30">
+                          <FaBan className="inline-block me-1" /> تجميد
+                        </button>
                       )}
-                      <button onClick={() => handleResetStudent(s.id)} type="button" className="text-xs bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-1 rounded-lg hover:bg-indigo-500/30">🔄 إعادة تعيين</button>
-                      <button onClick={() => handleDeleteStudentPermanently(s.id)} type="button" className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg hover:bg-red-500/30">❌ حذف</button>
+                      <button onClick={() => handleResetStudent(s.id)} type="button" className="text-xs bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-1 rounded-lg hover:bg-indigo-500/30">
+                        <FaEdit className="inline-block me-1" /> إعادة تعيين
+                      </button>
+                      <button onClick={() => handleDeleteStudentPermanently(s.id)} type="button" className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg hover:bg-red-500/30">
+                        <FaTrashAlt className="inline-block me-1" /> حذف
+                      </button>
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-gray-400">{s.isFrozen ? 'مجمد' : 'مفعل'}</span>
                         <div onClick={() => toggleFreezeStudent(s)} className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-300 ${s.isFrozen ? 'bg-gray-600' : 'bg-green-500'}`}>
@@ -3540,7 +3633,9 @@ const TeacherPanel = ({ user, onLogout }) => {
       {showAddStudentModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-40 p-4" onClick={() => setShowAddStudentModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-semibold text-blue-300 mb-4">إضافة طالب جديد</h3>
+            <h3 className="text-xl font-semibold text-blue-300 mb-4">
+              <FaPlus className="inline-block me-2" /> إضافة طالب جديد
+            </h3>
             <form onSubmit={handleAddStudent} className="space-y-4">
               <div>
                 <label className="text-xs text-gray-400 block">الاسم الكامل <span className="text-red-400">*</span></label>
@@ -3599,7 +3694,9 @@ const TeacherPanel = ({ user, onLogout }) => {
       {showGeneralMessageModal && selectedStudentForMessage && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowGeneralMessageModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-semibold text-green-300 mb-4">✉️ إرسال رسالة إلى {selectedStudentForMessage.name}</h3>
+            <h3 className="text-xl font-semibold text-green-300 mb-4">
+              <FaComment className="inline-block me-2" /> إرسال رسالة إلى {selectedStudentForMessage.name}
+            </h3>
             <div className="space-y-4">
               <div>
                 <label className="text-sm text-gray-300 block">الشعبة</label>
@@ -3657,7 +3754,9 @@ const TeacherPanel = ({ user, onLogout }) => {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowNotificationsModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full max-h-[70vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-semibold text-purple-300">📢 الإشعارات</h3>
+              <h3 className="text-xl font-semibold text-purple-300">
+                <FaBell className="inline-block me-2" /> الإشعارات
+              </h3>
               <button onClick={() => setShowNotificationsModal(false)} className="text-gray-400 hover:text-white text-2xl">✕</button>
             </div>
             {notifications.length === 0 ? (
@@ -3734,7 +3833,9 @@ const TeacherPanel = ({ user, onLogout }) => {
       {showWarningModal && selectedStudentForWarning && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowWarningModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-yellow-500/30" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-semibold text-yellow-300 mb-4">⚠️ إصدار إنذار للطالب</h3>
+            <h3 className="text-xl font-semibold text-yellow-300 mb-4">
+              <FaExclamationTriangle className="inline-block me-2" /> إصدار إنذار للطالب
+            </h3>
             <p className="text-gray-300 text-sm mb-2">
               الطالب: <strong>{selectedStudentForWarning.name}</strong>
               <br />
@@ -3772,7 +3873,9 @@ const TeacherPanel = ({ user, onLogout }) => {
       {showReviewModal && selectedReviewStudent && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => { setShowReviewModal(false); setSelectedReviewStudent(null); }}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-blue-500/30" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-semibold text-blue-300 mb-4">📋 مراجعة طلب تعديل البيانات</h3>
+            <h3 className="text-xl font-semibold text-blue-300 mb-4">
+              <FaClipboardList className="inline-block me-2" /> مراجعة طلب تعديل البيانات
+            </h3>
             <p className="text-gray-300 text-sm mb-2">
               الطالب: <strong>{selectedReviewStudent.name}</strong> (اسم المستخدم: {selectedReviewStudent.username})
             </p>
@@ -3796,8 +3899,12 @@ const TeacherPanel = ({ user, onLogout }) => {
               )}
             </div>
             <div className="flex gap-3 mt-4">
-              <button onClick={() => acceptReview(selectedReviewStudent.id)} className="btn-primary bg-green-600 hover:bg-green-700 px-6 py-2 rounded-md text-white">✅ قبول</button>
-              <button onClick={() => rejectReview(selectedReviewStudent.id)} className="btn-primary bg-red-600 hover:bg-red-700 px-6 py-2 rounded-md text-white">❌ رفض</button>
+              <button onClick={() => acceptReview(selectedReviewStudent.id)} className="btn-primary bg-green-600 hover:bg-green-700 px-6 py-2 rounded-md text-white">
+                <FaCheckCircle className="inline-block me-2" /> قبول
+              </button>
+              <button onClick={() => rejectReview(selectedReviewStudent.id)} className="btn-primary bg-red-600 hover:bg-red-700 px-6 py-2 rounded-md text-white">
+                <FaTimesCircle className="inline-block me-2" /> رفض
+              </button>
               <button onClick={() => { setShowReviewModal(false); setSelectedReviewStudent(null); }} className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-md text-white">إلغاء</button>
             </div>
           </div>
@@ -3808,7 +3915,7 @@ const TeacherPanel = ({ user, onLogout }) => {
 };
 
 // ============================================================
-// StudentPanel (نفس الكود السابق، لم يتغير)
+// StudentPanel (معدل)
 // ============================================================
 const StudentPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -4240,7 +4347,7 @@ const StudentPanel = ({ user, onLogout }) => {
               type="button"
               className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md flex items-center gap-1"
             >
-              <span>👤</span> معلوماتي
+              <FaUser className="inline-block me-1" /> معلوماتي
             </button>
           </div>
           <div className="flex items-center gap-2">
@@ -4249,21 +4356,25 @@ const StudentPanel = ({ user, onLogout }) => {
               className="relative bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-full text-2xl transition shadow-lg"
               title="الإشعارات"
             >
-              🔔
+              <FaBell />
               {unreadCount > 0 && (
                 <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
                   {unreadCount}
                 </span>
               )}
             </button>
-            <button onClick={onLogout} className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-full text-2xl transition shadow-lg" title="تسجيل الخروج">🚪</button>
+            <button onClick={onLogout} className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-full text-2xl transition shadow-lg" title="تسجيل الخروج">
+              <FaSignOutAlt />
+            </button>
           </div>
         </div>
 
         {errorMsg && <p className="text-red-400 text-sm bg-red-500/10 p-3 rounded-xl border border-red-500/20">{errorMsg}</p>}
 
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-green-500/20">
-          <h3 className="text-xl font-semibold text-green-200 mb-2">👥 عدد الطلاب في شعبك</h3>
+          <h3 className="text-xl font-semibold text-green-200 mb-2">
+            <FaUsers className="inline-block me-2" /> عدد الطلاب في شعبك
+          </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {profile?.classes?.map(cls => (
               <div key={cls.id} className="bg-black/30 p-3 rounded-xl flex justify-between items-center border border-green-500/10">
@@ -4300,7 +4411,9 @@ const StudentPanel = ({ user, onLogout }) => {
         </div>
 
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700 space-y-3">
-          <h3 className="text-xl font-semibold text-pink-300">الواجبات المدرسية</h3>
+          <h3 className="text-xl font-semibold text-pink-300">
+            <FaPen className="inline-block me-2" /> الواجبات المدرسية
+          </h3>
           {availableHomeworks.length > 0 ? (
             <div className="space-y-3">
               {availableHomeworks.map(hw => (
@@ -4329,13 +4442,15 @@ const StudentPanel = ({ user, onLogout }) => {
       {showProfileModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowProfileModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-blue-500/30" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-semibold text-blue-300 mb-4">👤 معلوماتي الشخصية</h3>
+            <h3 className="text-xl font-semibold text-blue-300 mb-4">
+              <FaUser className="inline-block me-2" /> معلوماتي الشخصية
+            </h3>
             <div className="space-y-4">
               <div>
                 <div className="flex justify-between items-center">
                   <label className="text-sm text-gray-300">الاسم الكامل <span className="text-red-400">*</span></label>
                   <button onClick={() => toggleEditField('name')} className="text-xs text-blue-400 hover:text-blue-300">
-                    {editFields.name ? 'إلغاء التعديل' : '✏️ تعديل'}
+                    {editFields.name ? 'إلغاء التعديل' : <><FaEdit className="inline-block me-1" /> تعديل</>}
                   </button>
                 </div>
                 {editFields.name ? (
@@ -4353,7 +4468,7 @@ const StudentPanel = ({ user, onLogout }) => {
                 <div className="flex justify-between items-center">
                   <label className="text-sm text-gray-300">الجنس</label>
                   <button onClick={() => toggleEditField('gender')} className="text-xs text-blue-400 hover:text-blue-300">
-                    {editFields.gender ? 'إلغاء التعديل' : '✏️ تعديل'}
+                    {editFields.gender ? 'إلغاء التعديل' : <><FaEdit className="inline-block me-1" /> تعديل</>}
                   </button>
                 </div>
                 {editFields.gender ? (
@@ -4374,7 +4489,7 @@ const StudentPanel = ({ user, onLogout }) => {
                 <div className="flex justify-between items-center">
                   <label className="text-sm text-gray-300">العمر</label>
                   <button onClick={() => toggleEditField('age')} className="text-xs text-blue-400 hover:text-blue-300">
-                    {editFields.age ? 'إلغاء التعديل' : '✏️ تعديل'}
+                    {editFields.age ? 'إلغاء التعديل' : <><FaEdit className="inline-block me-1" /> تعديل</>}
                   </button>
                 </div>
                 {editFields.age ? (
@@ -4393,7 +4508,7 @@ const StudentPanel = ({ user, onLogout }) => {
                 <div className="flex justify-between items-center">
                   <label className="text-sm text-gray-300">رقم الهاتف <span className="text-red-400">*</span></label>
                   <button onClick={() => toggleEditField('phone')} className="text-xs text-blue-400 hover:text-blue-300">
-                    {editFields.phone ? 'إلغاء التعديل' : '✏️ تعديل'}
+                    {editFields.phone ? 'إلغاء التعديل' : <><FaEdit className="inline-block me-1" /> تعديل</>}
                   </button>
                 </div>
                 {editFields.phone ? (
@@ -4409,7 +4524,9 @@ const StudentPanel = ({ user, onLogout }) => {
                 )}
               </div>
               <div className="flex gap-3 mt-4">
-                <button onClick={handleSendChanges} className="btn-primary bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-md text-white">📤 إرسال التغييرات</button>
+                <button onClick={handleSendChanges} className="btn-primary bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-md text-white">
+                  <FaUpload className="inline-block me-2" /> إرسال التغييرات
+                </button>
                 <button onClick={() => setShowProfileModal(false)} className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-md text-white">إلغاء</button>
               </div>
             </div>
@@ -4420,7 +4537,9 @@ const StudentPanel = ({ user, onLogout }) => {
       {showPendingRequestModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowPendingRequestModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-yellow-500/30" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-semibold text-yellow-300 mb-4">⏳ طلب قيد المراجعة</h3>
+            <h3 className="text-xl font-semibold text-yellow-300 mb-4">
+              <FaClock className="inline-block me-2" /> طلب قيد المراجعة
+            </h3>
             <p className="text-gray-300 text-center mb-4">
               لديك طلب تعديل بيانات قيد المراجعة حالياً. يرجى الانتظار حتى يتم الرد على طلبك.
             </p>
@@ -4443,7 +4562,7 @@ const StudentPanel = ({ user, onLogout }) => {
                     : 'bg-blue-600 hover:bg-blue-700'
                 }`}
               >
-                {sentAccelerate ? '✅ تم إرسال الطلب للمعلم' : '📨 إرسال رسالة لتسريع الطلب'}
+                {sentAccelerate ? '✅ تم إرسال الطلب للمعلم' : <><FaEnvelope className="inline-block me-2" /> إرسال رسالة لتسريع الطلب</>}
               </button>
               <button
                 onClick={() => setShowPendingRequestModal(false)}
@@ -4459,7 +4578,9 @@ const StudentPanel = ({ user, onLogout }) => {
       {showConfirmModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowConfirmModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-green-500/30" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-semibold text-green-300 mb-4">✅ تم إرسال الطلب</h3>
+            <h3 className="text-xl font-semibold text-green-300 mb-4">
+              <FaCheckCircle className="inline-block me-2" /> تم إرسال الطلب
+            </h3>
             <p className="text-gray-300 text-center mb-4">
               تم ارسال طلب تعديل المعلومات سيتم مراجعة البيانات خلال 48 ساعة والتأكد من صحتها وتعديلها.
             </p>
@@ -4468,13 +4589,13 @@ const StudentPanel = ({ user, onLogout }) => {
                 onClick={() => sendContactTeacherMessage(profile, 'update')}
                 className="btn-primary bg-blue-600 hover:bg-blue-700 w-full py-3 rounded-md text-white"
               >
-                💬 تواصل مع المعلم لتسريع معالجة طلبك
+                <FaComment className="inline-block me-2" /> تواصل مع المعلم لتسريع معالجة طلبك
               </button>
               <button
                 onClick={() => setShowConfirmModal(false)}
                 className="btn-primary bg-red-600 hover:bg-red-700 w-full py-3 rounded-md text-white"
               >
-                ⏳ انتظار
+                <FaClock className="inline-block me-2" /> انتظار
               </button>
             </div>
           </div>
@@ -4485,7 +4606,11 @@ const StudentPanel = ({ user, onLogout }) => {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowReviewResultModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-purple-500/30" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-xl font-semibold text-purple-300 mb-2 text-center">
-              {reviewResult === 'approved' ? '✅ تمت الموافقة على التغييرات' : '❌ تم رفض التغييرات'}
+              {reviewResult === 'approved' ? (
+                <><FaCheckCircle className="inline-block me-2" /> تمت الموافقة على التغييرات</>
+              ) : (
+                <><FaTimesCircle className="inline-block me-2" /> تم رفض التغييرات</>
+              )}
             </h3>
             <p className="text-gray-300 text-center mb-4">
               {reviewResult === 'approved' 
@@ -4526,7 +4651,9 @@ const StudentPanel = ({ user, onLogout }) => {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowNotificationsModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full max-h-[70vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-semibold text-purple-300">📢 الإشعارات</h3>
+              <h3 className="text-xl font-semibold text-purple-300">
+                <FaBell className="inline-block me-2" /> الإشعارات
+              </h3>
               <button onClick={() => setShowNotificationsModal(false)} className="text-gray-400 hover:text-white text-2xl">✕</button>
             </div>
             {notifications.length === 0 ? (
