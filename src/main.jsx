@@ -1,4 +1,4 @@
-// ===================== main.jsx (معدل - استبدال الإيموجي بأيقونات) =====================
+// ===================== main.jsx (معدل - تحسين واجهة الدخول وإضافة استعادة كلمة المرور) =====================
 
 import './index.css';
 import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
@@ -1679,7 +1679,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
 };
 
 // ============================================================
-// Login
+// Login (معدل - تحسين الشكل وإضافة استعادة كلمة المرور)
 // ============================================================
 const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [username, setUsername] = useState('');
@@ -1687,6 +1687,15 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // حالات مودال استعادة كلمة المرور
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetName, setResetName] = useState('');
+  const [resetGender, setResetGender] = useState('');
+  const [resetAge, setResetAge] = useState('');
+  const [resetPhone, setResetPhone] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetError, setResetError] = useState('');
 
   const handleAuth = async (e) => {
     e.preventDefault();
@@ -1811,6 +1820,51 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     }
   };
 
+  // دالة معالجة طلب إعادة التعيين
+  const handleResetRequest = () => {
+    setResetError('');
+    const name = sanitizeInput(resetName.trim());
+    const gender = sanitizeInput(resetGender.trim());
+    const age = sanitizeInput(arabicToEnglishNumber(resetAge.trim()));
+    const phone = sanitizeInput(arabicToEnglishNumber(resetPhone.trim()));
+
+    if (!name || !gender || !age || !phone) {
+      setResetError('جميع الحقول مطلوبة.');
+      return;
+    }
+
+    const ageNum = parseInt(age);
+    if (isNaN(ageNum) || ageNum < 1 || ageNum > 99) {
+      setResetError('العمر يجب أن يكون رقماً بين 1 و 99.');
+      return;
+    }
+
+    // بناء الرسالة
+    const message = 
+      `الموضوع: طلب إعادة تعيين بيانات تسجيل الدخول - ${name}\n\n` +
+      `إلى إدارة الأكاديمية الموقرة،\n` +
+      `تحية طيبة وبعد،،\n` +
+      `أود إبلاغكم بأنني أواجه مشكلة في الوصول إلى حسابي الشخصي في نظام الأكاديمية نتيجة [نسيان كلمة المرور / نسيان اسم المستخدم].\n` +
+      `أرجو منكم التكرم بمساعدتي في استعادة الوصول إلى الحساب، وفيما يلي بياناتي للتحقق:\n` +
+      `الاسم الكامل: ${name}\n` +
+      `رقم الهاتف : ${phone}\n` +
+      `الجنس : ${gender}\n` +
+      `العمر : ${age}\n` +
+      `أقر بأنني صاحب هذا الحساب، وأنتظر تزويدي بالتعليمات اللازمة لإعادة التعيين. شاكراً لكم تعاونكم.\n\n` +
+      `مع التحية،\n` +
+      `${name}`;
+
+    // إرسال الرسالة للمعلم
+    sendWhatsAppToTeacher(message);
+    toast.success('تم إرسال طلب إعادة التعيين إلى المعلم.');
+    // إغلاق المودال وتفريغ الحقول
+    setShowResetModal(false);
+    setResetName('');
+    setResetGender('');
+    setResetAge('');
+    setResetPhone('');
+  };
+
   return (
     <div className="container-center relative min-h-screen overflow-hidden" dir="rtl">
       <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
@@ -1830,23 +1884,71 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
                 </span>
               </div>
             </div>
-            <form onSubmit={handleAuth} className="space-y-3.5 w-full">
-              <div className="relative flex items-center">
-                <span className="absolute right-4 text-gray-400 pointer-events-none text-sm font-medium">اسم المستخدم</span>
-                <input type="text" className="bg-gray-800 w-full text-right pr-24 pl-4 text-base border border-gray-600 rounded-md text-white" value={username} onChange={(e) => setUsername(e.target.value)} required />
+
+            <form onSubmit={handleAuth} className="space-y-4 w-full">
+              {/* حقل اسم المستخدم - محسّن */}
+              <div className="relative group">
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium transition-colors group-focus-within:text-purple-400 pointer-events-none">
+                  اسم المستخدم
+                </span>
+                <input
+                  type="text"
+                  className="w-full bg-gray-800/80 text-right pr-24 pl-4 py-3 text-base border-2 border-gray-600 rounded-xl text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition-all duration-200 outline-none"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  required
+                />
               </div>
-              <div className="relative flex items-center">
-                <span className="absolute right-4 text-gray-400 pointer-events-none text-sm font-medium">كلمة المرور</span>
-                <input type={showPassword ? "text" : "password"} className="bg-gray-800 w-full text-right pr-24 pl-12 text-base border border-gray-600 rounded-md text-white" value={password} onChange={(e) => setPassword(e.target.value)} required />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute left-4 text-xs font-semibold text-purple-400 hover:text-purple-300 transition-colors focus:outline-none bg-white/5 px-2 py-1 rounded border border-gray-600">
+
+              {/* حقل كلمة المرور - محسّن */}
+              <div className="relative group">
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium transition-colors group-focus-within:text-purple-400 pointer-events-none">
+                  كلمة المرور
+                </span>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  className="w-full bg-gray-800/80 text-right pr-24 pl-12 py-3 text-base border-2 border-gray-600 rounded-xl text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition-all duration-200 outline-none"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-medium text-purple-400 hover:text-purple-300 transition-colors bg-white/5 px-3 py-1.5 rounded-lg border border-gray-600 hover:border-purple-400/50"
+                >
                   {showPassword ? "إخفاء" : "إظهار"}
                 </button>
               </div>
-              {error && <p className="text-red-400 text-sm text-center whitespace-pre-wrap">{error}</p>}
-              <button type="submit" className="btn-primary w-full py-2.5 text-lg font-semibold tracking-wide shadow-lg bg-blue-600 hover:bg-blue-700 text-white rounded-md" disabled={loading}>
-                {loading ? 'جاري التحميل...' : 'تسجيل الدخول'}
+
+              {error && (
+                <div className="text-red-400 text-sm text-center bg-red-500/10 py-2 px-3 rounded-lg border border-red-500/20">
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="w-full py-3 text-lg font-semibold tracking-wide shadow-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl transition-all duration-300 transform hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2"
+                disabled={loading}
+              >
+                {loading ? (
+                  <span className="animate-pulse">جاري التحميل...</span>
+                ) : (
+                  <>
+                    <FaUnlockAlt className="inline-block" /> تسجيل الدخول
+                  </>
+                )}
               </button>
             </form>
+
+            {/* رابط استعادة كلمة المرور */}
+            <button
+              onClick={() => setShowResetModal(true)}
+              className="text-sm text-gray-400 hover:text-purple-300 transition-colors mt-1 underline decoration-dotted underline-offset-2"
+            >
+              نسيت كلمة المرور أو اسم المستخدم؟
+            </button>
 
             <div className="pt-2 border-t border-gray-700 text-center text-xs text-gray-400 w-full">
               <p>جميع الحقوق محفوظة © 2026 لصالح المبرمج همام هاني محمد علي</p>
@@ -1854,6 +1956,89 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
           </div>
         </div>
       </div>
+
+      {/* مودال طلب إعادة التعيين */}
+      {showResetModal && (
+        <div
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => setShowResetModal(false)}
+        >
+          <div
+            className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-purple-500/30 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-2xl font-bold text-center text-purple-300 mb-2">
+              <FaUnlockAlt className="inline-block me-2" /> استعادة كلمة المرور
+            </h3>
+            <p className="text-gray-300 text-sm text-center mb-4">
+              يرجى إدخال بياناتك للتحقق من هويتك، وسيتم إرسال طلب إعادة التعيين إلى المعلم.
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-gray-300 mb-1">الاسم الكامل <span className="text-red-400">*</span></label>
+                <input
+                  type="text"
+                  className="w-full bg-gray-800 text-right p-2 border border-gray-600 rounded-md text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition"
+                  value={resetName}
+                  onChange={(e) => setResetName(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-300 mb-1">الجنس <span className="text-red-400">*</span></label>
+                <select
+                  className="w-full bg-gray-800 text-right p-2 border border-gray-600 rounded-md text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition"
+                  value={resetGender}
+                  onChange={(e) => setResetGender(e.target.value)}
+                  required
+                >
+                  <option value="">اختر</option>
+                  <option value="ذكر">ذكر</option>
+                  <option value="أنثى">أنثى</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-300 mb-1">العمر <span className="text-red-400">*</span></label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  className="w-full bg-gray-800 text-right p-2 border border-gray-600 rounded-md text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition"
+                  value={resetAge}
+                  onChange={(e) => setResetAge(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-300 mb-1">رقم الهاتف <span className="text-red-400">*</span></label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  className="w-full bg-gray-800 text-right p-2 border border-gray-600 rounded-md text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition"
+                  value={resetPhone}
+                  onChange={(e) => setResetPhone(e.target.value)}
+                  required
+                />
+              </div>
+              {resetError && <p className="text-red-400 text-sm text-center">{resetError}</p>}
+              <div className="flex gap-3 mt-2">
+                <button
+                  onClick={handleResetRequest}
+                  className="flex-1 bg-purple-600 hover:bg-purple-700 text-white py-2.5 rounded-md font-medium transition"
+                >
+                  <FaWhatsapp className="inline-block me-2" /> طلب إعادة التعيين
+                </button>
+                <button
+                  onClick={() => setShowResetModal(false)}
+                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-2.5 rounded-md font-medium transition"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
