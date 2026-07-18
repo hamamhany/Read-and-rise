@@ -1926,7 +1926,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   const requestNotificationPermission = async () => {
     if (Notification.permission === 'granted') {
       try {
-        const token = await getToken(messaging, { vapidKey: 'YOUR_VAPID_KEY' });
+        const token = await getToken(messaging, { vapidKey: 'BHjV-5eAodH6m5A800OiAJdWp2a7rGe-eGbx16ag2q0LdTKbWP1ddF2pYFA_pyt1ZSCPGkiNeCW1YA0MJ21eF9k' });
         if (token) {
           await updateDoc(doc(db, 'profiles', user.id), {
             fcmTokens: arrayUnion(token)
@@ -1942,7 +1942,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     const permission = await Notification.requestPermission();
     if (permission === 'granted') {
       try {
-        const token = await getToken(messaging, { vapidKey: 'YOUR_VAPID_KEY' });
+        const token = await getToken(messaging, { vapidKey: 'BHjV-5eAodH6m5A800OiAJdWp2a7rGe-eGbx16ag2q0LdTKbWP1ddF2pYFA_pyt1ZSCPGkiNeCW1YA0MJ21eF9k' });
         if (token) {
           await updateDoc(doc(db, 'profiles', user.id), {
             fcmTokens: arrayUnion(token)
@@ -3948,7 +3948,7 @@ const StudentPanel = ({ user, onLogout }) => {
   const requestNotificationPermission = async () => {
     if (Notification.permission === 'granted') {
       try {
-        const token = await getToken(messaging, { vapidKey: 'YOUR_VAPID_KEY' });
+        const token = await getToken(messaging, { vapidKey: 'BHjV-5eAodH6m5A800OiAJdWp2a7rGe-eGbx16ag2q0LdTKbWP1ddF2pYFA_pyt1ZSCPGkiNeCW1YA0MJ21eF9k' });
         if (token) {
           await updateDoc(doc(db, 'profiles', user.id), {
             fcmTokens: arrayUnion(token)
@@ -3964,7 +3964,7 @@ const StudentPanel = ({ user, onLogout }) => {
     const permission = await Notification.requestPermission();
     if (permission === 'granted') {
       try {
-        const token = await getToken(messaging, { vapidKey: 'YOUR_VAPID_KEY' });
+        const token = await getToken(messaging, { vapidKey: 'BHjV-5eAodH6m5A800OiAJdWp2a7rGe-eGbx16ag2q0LdTKbWP1ddF2pYFA_pyt1ZSCPGkiNeCW1YA0MJ21eF9k' });
         if (token) {
           await updateDoc(doc(db, 'profiles', user.id), {
             fcmTokens: arrayUnion(token)
