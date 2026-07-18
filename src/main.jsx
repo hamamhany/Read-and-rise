@@ -1538,13 +1538,19 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
         updatedAt: serverTimestamp()
       }, { merge: true });
 
+      // إعادة جلب البيانات للتأكد
+      const updatedDocSnap = await getDoc(doc(db, 'profiles', user.id));
+      let updatedProfile = {};
+      if (updatedDocSnap.exists()) updatedProfile = updatedDocSnap.data();
+
       toast.success('تم تفعيل حسابك بنجاح! يمكنك الآن استخدام اسم المستخدم الجديد وكلمة المرور.');
       onSuccess({
         ...user,
         username: cleanUsername,
         email: email,
         isProfileComplete: true,
-        infoVerified: true
+        infoVerified: true,
+        ...updatedProfile
       });
     } catch (err) {
       console.error('خطأ في التفعيل:', err);
@@ -1723,7 +1729,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
         return;
       }
 
-      if (!profile.isProfileComplete) {
+      if (!profile.isProfileComplete || !profile.infoVerified) {
         onCompleteProfile({
           id: docId,
           uid: firebaseUser.uid,
@@ -1811,7 +1817,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
 };
 
 // ============================================================
-// TeacherPanel (معدل - إضافة حضور وغياب)
+// TeacherPanel (معدل - إضافة حضور وغياب + نقل إذن الإشعارات للجرس)
 // ============================================================
 const TeacherPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -1882,26 +1888,41 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [attendanceStatus, setAttendanceStatus] = useState({});
   const [attendanceLoading, setAttendanceLoading] = useState(false);
 
-  // ===== إعداد الإشعارات الفورية للمعلم =====
-  useEffect(() => {
-    const setupPush = async () => {
+  // ===== دالة طلب إذن الإشعارات =====
+  const requestNotificationPermission = async () => {
+    if (Notification.permission === 'granted') {
       try {
-        const permission = await Notification.requestPermission();
-        if (permission === 'granted') {
-          const token = await getToken(messaging, { vapidKey: 'YOUR_VAPID_KEY' });
-          if (token) {
-            await updateDoc(doc(db, 'profiles', user.id), {
-              fcmTokens: arrayUnion(token)
-            });
-            console.log('Teacher FCM token saved');
-          }
+        const token = await getToken(messaging, { vapidKey: 'YOUR_VAPID_KEY' });
+        if (token) {
+          await updateDoc(doc(db, 'profiles', user.id), {
+            fcmTokens: arrayUnion(token)
+          });
+        }
+      } catch (err) { console.error(err); }
+      return;
+    }
+    if (Notification.permission === 'denied') {
+      toast.error('تم رفض الإذن، يرجى تفعيله من إعدادات المتصفح');
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      try {
+        const token = await getToken(messaging, { vapidKey: 'YOUR_VAPID_KEY' });
+        if (token) {
+          await updateDoc(doc(db, 'profiles', user.id), {
+            fcmTokens: arrayUnion(token)
+          });
+          toast.success('تم تفعيل الإشعارات بنجاح');
         }
       } catch (err) {
-        console.error('FCM setup error:', err);
+        toast.error('فشل تفعيل الإشعارات');
       }
-    };
-    setupPush();
+    }
+  };
 
+  // ===== إعداد الإشعارات الفورية للمعلم (بدون طلب إذن تلقائي) =====
+  useEffect(() => {
     const unsubscribe = onMessage(messaging, (payload) => {
       toast.custom((t) => (
         <div className="bg-gray-800 text-white p-4 rounded-xl border border-purple-500 shadow-xl max-w-sm mx-auto">
@@ -1911,7 +1932,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       ), { duration: 5000 });
     });
     return () => unsubscribe();
-  }, [user.id]);
+  }, []);
 
   // ===== دوال المعلم (جميع الدوال كاملة) =====
   const cleanPhoneNumber = (phone) => {
@@ -1942,7 +1963,8 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  const handleOpenNotifications = () => {
+  const handleOpenNotifications = async () => {
+    await requestNotificationPermission();  // طلب الإذن عند الضغط على الجرس
     cleanOldNotifications();
     setShowNotificationsModal(true);
   };
@@ -3244,9 +3266,11 @@ const TeacherPanel = ({ user, onLogout }) => {
             <h3 className="text-xl font-semibold text-blue-300">📚 الحصص المجدولة (إدارة الحضور)</h3>
             <button
               onClick={() => {
-                // فتح مودال إضافة حصة جديدة (يمكن استخدام AddLessonModal ولكن لتجنب التعقيد، سنضيف زر لإنشاء حصة)
-                // سنستخدم AddLessonModal ولكن سنضيف معالجة لحفظ الحصص في مجموعة sessions
-                toast.info('يمكنك إضافة حصة جديدة من خلال زر "جدولة مواعيد الحصص" أعلاه، ثم سيتم عرضها هنا.');
+                // استبدال toast.info بـ toast عادية
+                toast('يمكنك إضافة حصة جديدة من خلال زر "جدولة مواعيد الحصص" أعلاه، ثم سيتم عرضها هنا.', {
+                  duration: 4000,
+                  style: { background: '#333', color: '#fff' }
+                });
               }}
               className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md"
             >
@@ -4053,7 +4077,7 @@ const TeacherPanel = ({ user, onLogout }) => {
 };
 
 // ============================================================
-// StudentPanel (معدل - إضافة عداد الطلاب + إشعارات فورية)
+// StudentPanel (معدل - إضافة عداد الطلاب + إشعارات فورية + معلومات في مودال)
 // ============================================================
 const StudentPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -4066,6 +4090,7 @@ const StudentPanel = ({ user, onLogout }) => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
 
+  // مودال المعلومات الشخصية والتعديل
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [editData, setEditData] = useState({});
   const [editFields, setEditFields] = useState({});
@@ -4084,26 +4109,41 @@ const StudentPanel = ({ user, onLogout }) => {
   // ===== عداد الطلاب =====
   const [classStudentCount, setClassStudentCount] = useState({});
 
-  // ===== إعداد الإشعارات الفورية =====
-  useEffect(() => {
-    const setupPush = async () => {
+  // ===== دالة طلب إذن الإشعارات للطالب =====
+  const requestNotificationPermission = async () => {
+    if (Notification.permission === 'granted') {
       try {
-        const permission = await Notification.requestPermission();
-        if (permission === 'granted') {
-          const token = await getToken(messaging, { vapidKey: 'YOUR_VAPID_KEY' });
-          if (token) {
-            await updateDoc(doc(db, 'profiles', user.id), {
-              fcmTokens: arrayUnion(token)
-            });
-            console.log('Student FCM token saved');
-          }
+        const token = await getToken(messaging, { vapidKey: 'YOUR_VAPID_KEY' });
+        if (token) {
+          await updateDoc(doc(db, 'profiles', user.id), {
+            fcmTokens: arrayUnion(token)
+          });
+        }
+      } catch (err) { console.error(err); }
+      return;
+    }
+    if (Notification.permission === 'denied') {
+      toast.error('تم رفض الإذن، يرجى تفعيله من إعدادات المتصفح');
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      try {
+        const token = await getToken(messaging, { vapidKey: 'YOUR_VAPID_KEY' });
+        if (token) {
+          await updateDoc(doc(db, 'profiles', user.id), {
+            fcmTokens: arrayUnion(token)
+          });
+          toast.success('تم تفعيل الإشعارات بنجاح');
         }
       } catch (err) {
-        console.error('FCM setup error:', err);
+        toast.error('فشل تفعيل الإشعارات');
       }
-    };
-    setupPush();
+    }
+  };
 
+  // ===== إعداد الإشعارات الفورية (بدون طلب إذن تلقائي) =====
+  useEffect(() => {
     const unsubscribe = onMessage(messaging, (payload) => {
       toast.custom((t) => (
         <div className="bg-gray-800 text-white p-4 rounded-xl border border-purple-500 shadow-xl max-w-sm mx-auto">
@@ -4113,7 +4153,7 @@ const StudentPanel = ({ user, onLogout }) => {
       ), { duration: 5000 });
     });
     return () => unsubscribe();
-  }, [user.id]);
+  }, []);
 
   // ===== جلب عدد الطلاب في كل شعبة =====
   useEffect(() => {
@@ -4155,7 +4195,8 @@ const StudentPanel = ({ user, onLogout }) => {
     }
   };
 
-  const handleOpenNotifications = () => {
+  const handleOpenNotifications = async () => {
+    await requestNotificationPermission();  // طلب الإذن عند الضغط على الجرس
     cleanOldNotifications();
     setShowNotificationsModal(true);
   };
@@ -4383,6 +4424,7 @@ const StudentPanel = ({ user, onLogout }) => {
 
   const nextLesson = getNextLessonTime();
 
+  // ===== دالة فتح مودال المعلومات الشخصية =====
   const openProfileModal = () => {
     if (hasPendingRequest) {
       setShowPendingRequestModal(true);
@@ -4490,12 +4532,16 @@ const StudentPanel = ({ user, onLogout }) => {
 
         {errorMsg && <p className="text-red-400 text-sm bg-red-500/10 p-3 rounded-xl border border-red-500/20">{errorMsg}</p>}
 
-        {/* معلوماتي الشخصية */}
+        {/* ===== زر عرض المعلومات الشخصية ===== */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-blue-500/20">
           <div className="flex justify-between items-center">
             <h3 className="text-xl font-semibold text-blue-200">معلوماتي الشخصية</h3>
-            <button onClick={openProfileModal} type="button" className="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1">
-              <span>✏️</span> تعديل
+            <button
+              onClick={openProfileModal}
+              type="button"
+              className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md flex items-center gap-2"
+            >
+              <span>👤</span> عرض وتعديل
             </button>
           </div>
           <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
@@ -4597,11 +4643,11 @@ const StudentPanel = ({ user, onLogout }) => {
         </div>
       </div>
 
-      {/* ===== مودال تعديل المعلومات الشخصية ===== */}
+      {/* ===== مودال المعلومات الشخصية (عرض وتعديل) ===== */}
       {showProfileModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowProfileModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-blue-500/30" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-semibold text-blue-300 mb-4">✏️ تعديل المعلومات الشخصية</h3>
+            <h3 className="text-xl font-semibold text-blue-300 mb-4">👤 معلوماتي الشخصية</h3>
             <div className="space-y-4">
               <div>
                 <div className="flex justify-between items-center">
@@ -4892,17 +4938,15 @@ const App = () => {
     setPendingUserForComplete(null);
   };
 
-  // ✅ التعديل المطلوب: التأكد من أن الدالة تضع setPendingUserForComplete(null)
   const handleCompleteProfileSuccess = (updatedUser) => {
     setUser(updatedUser);
-    setPendingUserForComplete(null);
+    setPendingUserForComplete(null);  // ✅ تأكد من وجود هذا السطر
   };
 
   const handleCompleteProfile = (userData) => {
     setPendingUserForComplete(userData);
   };
 
-  // ✅ التعديل المطلوب: إعادة جلب المستند بعد تحديث uid
   const checkSessionAndProfile = async (firebaseUser) => {
     if (!firebaseUser) {
       setUser(null);
@@ -4973,7 +5017,8 @@ const App = () => {
         return;
       }
 
-      if (!profile.isProfileComplete) {
+      // ✅ تعديل الشرط ليشمل infoVerified
+      if (!profile.isProfileComplete || !profile.infoVerified) {
         setPendingUserForComplete({
           id: docId,
           uid: firebaseUser.uid,
