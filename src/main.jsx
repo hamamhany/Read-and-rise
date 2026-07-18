@@ -1,4 +1,4 @@
-// ===================== main.jsx (الكامل - عداد الطلاب + إشعارات فورية + حضور وغياب) =====================
+// ===================== main.jsx (الكامل - بدون إدارة الحضور) =====================
 
 import './index.css';
 import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
@@ -355,7 +355,7 @@ const ChoiceModal = ({ isOpen, onClose, onSelect, title, options }) => {
   );
 };
 
-// ---- AddAssignmentModal ----
+// ---- AddAssignmentModal (نفس الكود السابق، لم يتغير) ----
 const AddAssignmentModal = ({
   isOpen,
   onClose,
@@ -827,7 +827,7 @@ const AddAssignmentModal = ({
   );
 };
 
-// ---- AddLessonModal ----
+// ---- AddLessonModal (نفس الكود السابق، لم يتغير) ----
 const AddLessonModal = ({
   isOpen,
   onClose,
@@ -1528,7 +1528,6 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
 
       await updatePassword(currentUser, newPassword);
 
-      // ✅ التعديل المطلوب: إضافة isProfileComplete: true و infoVerified: true
       await setDoc(doc(db, 'profiles', user.id), {
         username: cleanUsername,
         email: email,
@@ -1538,7 +1537,6 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
         updatedAt: serverTimestamp()
       }, { merge: true });
 
-      // إعادة جلب البيانات للتأكد
       const updatedDocSnap = await getDoc(doc(db, 'profiles', user.id));
       let updatedProfile = {};
       if (updatedDocSnap.exists()) updatedProfile = updatedDocSnap.data();
@@ -1817,7 +1815,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
 };
 
 // ============================================================
-// TeacherPanel (معدل - إضافة حضور وغياب + نقل إذن الإشعارات للجرس)
+// TeacherPanel (معدل - بدون إدارة الحضور)
 // ============================================================
 const TeacherPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -1880,14 +1878,6 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [selectedReviewStudent, setSelectedReviewStudent] = useState(null);
 
-  // ===== إضافة حالة الحضور والغياب =====
-  const [sessions, setSessions] = useState([]);
-  const [showAttendanceModal, setShowAttendanceModal] = useState(false);
-  const [selectedSessionForAttendance, setSelectedSessionForAttendance] = useState(null);
-  const [attendanceRecords, setAttendanceRecords] = useState({});
-  const [attendanceStatus, setAttendanceStatus] = useState({});
-  const [attendanceLoading, setAttendanceLoading] = useState(false);
-
   // ===== دالة طلب إذن الإشعارات =====
   const requestNotificationPermission = async () => {
     if (Notification.permission === 'granted') {
@@ -1921,7 +1911,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ===== إعداد الإشعارات الفورية للمعلم (بدون طلب إذن تلقائي) =====
+  // ===== إعداد الإشعارات الفورية (بدون طلب إذن تلقائي) =====
   useEffect(() => {
     const unsubscribe = onMessage(messaging, (payload) => {
       toast.custom((t) => (
@@ -1964,7 +1954,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   };
 
   const handleOpenNotifications = async () => {
-    await requestNotificationPermission();  // طلب الإذن عند الضغط على الجرس
+    await requestNotificationPermission();
     cleanOldNotifications();
     setShowNotificationsModal(true);
   };
@@ -2803,122 +2793,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ===== دوال الحضور والغياب =====
-
-  // جلب الحصص (من مجموعة sessions)
-  const fetchSessions = async () => {
-    try {
-      const q = query(collection(db, 'sessions'), where('teacherId', '==', user.id));
-      const snapshot = await getDocs(q);
-      const sessionsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      // ترتيب حسب التاريخ
-      sessionsList.sort((a, b) => {
-        if (a.date && b.date) {
-          return new Date(a.date) - new Date(b.date);
-        }
-        return 0;
-      });
-      setSessions(sessionsList);
-    } catch (err) {
-      console.error('Error fetching sessions:', err);
-    }
-  };
-
-  // دالة لفتح مودال الحضور لحصة معينة
-  const openAttendanceModal = async (session) => {
-    // التحقق من صلاحية الرصد (خلال 7 ساعات من موعد الحصة)
-    const now = new Date();
-    const sessionDate = new Date(session.date);
-    // دمج التاريخ والوقت
-    const [hours, minutes] = session.time.split(':').map(Number);
-    sessionDate.setHours(hours, minutes, 0, 0);
-
-    const diffHours = (now.getTime() - sessionDate.getTime()) / (1000 * 60 * 60);
-    if (diffHours > 7 || diffHours < 0) {
-      toast.error('⛔ انتهى موعد رصد الحضور. يمكن رصد الحضور خلال 7 ساعات فقط من موعد الحصة.');
-      return;
-    }
-
-    setSelectedSessionForAttendance(session);
-    // جلب الطلاب المسجلين في الشعبة
-    const classId = session.classId;
-    const studentsInClass = students.filter(s => (s.classIds || []).includes(classId));
-
-    if (studentsInClass.length === 0) {
-      toast.error('لا يوجد طلاب مسجلون في هذه الشعبة.');
-      return;
-    }
-
-    // تحميل سجلات الحضور السابقة إن وجدت
-    const attendanceRef = doc(db, 'attendance', session.id);
-    const attendanceSnap = await getDoc(attendanceRef);
-    let records = {};
-    if (attendanceSnap.exists()) {
-      records = attendanceSnap.data().records || {};
-    } else {
-      // افتراضياً الكل حضور (true)
-      studentsInClass.forEach(s => {
-        records[s.id] = true;
-      });
-    }
-    setAttendanceRecords(records);
-    // تهيئة حالة التبديل لكل طالب بناءً على السجلات
-    const initialStatus = {};
-    studentsInClass.forEach(s => {
-      initialStatus[s.id] = records[s.id] !== undefined ? records[s.id] : true;
-    });
-    setAttendanceStatus(initialStatus);
-    setShowAttendanceModal(true);
-  };
-
-  // دالة لحفظ الحضور
-  const saveAttendance = async () => {
-    if (!selectedSessionForAttendance) return;
-    setAttendanceLoading(true);
-    try {
-      // تحديث السجلات في مجموعة attendance
-      const attendanceRef = doc(db, 'attendance', selectedSessionForAttendance.id);
-      await setDoc(attendanceRef, {
-        sessionId: selectedSessionForAttendance.id,
-        classId: selectedSessionForAttendance.classId,
-        teacherId: user.id,
-        date: selectedSessionForAttendance.date,
-        time: selectedSessionForAttendance.time,
-        records: attendanceStatus,
-        updatedAt: serverTimestamp()
-      }, { merge: true });
-
-      // إرسال إشعار للمعلم
-      await sendNotificationToTeacher(
-        user.id,
-        '📋 تم رصد الحضور',
-        `تم رصد الحضور لحصة ${selectedSessionForAttendance.title || ''}`,
-        'attendance_recorded',
-        selectedSessionForAttendance.id
-      );
-
-      toast.success('✅ تم حفظ الحضور بنجاح!');
-      setShowAttendanceModal(false);
-      setSelectedSessionForAttendance(null);
-      setAttendanceRecords({});
-      setAttendanceStatus({});
-    } catch (err) {
-      console.error('Error saving attendance:', err);
-      toast.error('فشل حفظ الحضور: ' + err.message);
-    } finally {
-      setAttendanceLoading(false);
-    }
-  };
-
-  // دالة لتبديل حالة حضور/غياب طالب
-  const toggleAttendance = (studentId) => {
-    setAttendanceStatus(prev => ({
-      ...prev,
-      [studentId]: !prev[studentId]
-    }));
-  };
-
-  // ===== جلب البيانات =====
+  // ===== جلب البيانات (بدون الحضور) =====
   const fetchTeacherData = async () => {
     try {
       const teacherId = user.id;
@@ -3000,9 +2875,6 @@ const TeacherPanel = ({ user, onLogout }) => {
       }));
       setPendingReviews(pendingList);
 
-      // جلب الحصص
-      await fetchSessions();
-
     } catch (err) {
       console.error('Error fetching teacher data:', err);
       setErrorMsg('فشل تحميل البيانات: ' + err.message);
@@ -3011,7 +2883,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // استخدام onSnapshot للحصول على تحديثات فورية
+  // استخدام onSnapshot للحصول على تحديثات فورية (بدون الاستماع للحضور)
   useEffect(() => {
     fetchTeacherData();
 
@@ -3072,19 +2944,6 @@ const TeacherPanel = ({ user, onLogout }) => {
       setPendingReviews(pendingList);
     });
 
-    // جلب الحصص بشكل فوري
-    const sessionsQuery = query(collection(db, 'sessions'), where('teacherId', '==', user.id));
-    const unsubscribeSessions = onSnapshot(sessionsQuery, (snapshot) => {
-      const sessionsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      sessionsList.sort((a, b) => {
-        if (a.date && b.date) {
-          return new Date(a.date) - new Date(b.date);
-        }
-        return 0;
-      });
-      setSessions(sessionsList);
-    });
-
     if (user) {
       const notifRef = collection(db, 'notifications', user.id, 'userNotifications');
       const qNotif = query(notifRef, orderBy('createdAt', 'desc'));
@@ -3099,7 +2958,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         unsubscribeClasses();
         unsubscribePending();
         unsubscribeNotif();
-        unsubscribeSessions();
       };
     }
 
@@ -3108,7 +2966,6 @@ const TeacherPanel = ({ user, onLogout }) => {
       unsubscribeStudents();
       unsubscribeClasses();
       unsubscribePending();
-      unsubscribeSessions();
     };
   }, [user.id]);
 
@@ -3263,69 +3120,6 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
         )}
 
-        {/* ===== قسم الحصص والحضور ===== */}
-        <div className="bg-gray-800/60 p-6 rounded-2xl border border-blue-500/20">
-          <div className="flex justify-between items-center">
-            <h3 className="text-xl font-semibold text-blue-300">📚 الحصص المجدولة (إدارة الحضور)</h3>
-            <button
-              onClick={() => {
-                // استبدال toast.info بـ toast عادية
-                toast('يمكنك إضافة حصة جديدة من خلال زر "جدولة مواعيد الحصص" أعلاه، ثم سيتم عرضها هنا.', {
-                  duration: 4000,
-                  style: { background: '#333', color: '#fff' }
-                });
-              }}
-              className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md"
-            >
-              ➕ إضافة حصة
-            </button>
-          </div>
-          {sessions.length > 0 ? (
-            <div className="space-y-3 mt-4">
-              {sessions.map(session => {
-                const classObj = classes.find(c => c.id === session.classId);
-                const className = classObj ? classObj.name : 'غير معروف';
-                const sessionDate = new Date(session.date);
-                const [hours, minutes] = session.time.split(':').map(Number);
-                sessionDate.setHours(hours, minutes, 0, 0);
-                const now = new Date();
-                const diffHours = (now.getTime() - sessionDate.getTime()) / (1000 * 60 * 60);
-                const canRecord = diffHours >= 0 && diffHours <= 7;
-                return (
-                  <div key={session.id} className="bg-black/30 p-4 rounded-xl border border-gray-700 flex flex-wrap justify-between items-center">
-                    <div>
-                      <p className="text-white font-medium">{session.title || 'حصة'}</p>
-                      <p className="text-sm text-gray-300">الشعبة: {className}</p>
-                      <p className="text-xs text-gray-400">
-                        التاريخ: {new Date(session.date).toLocaleDateString('ar-EG', { timeZone: 'Asia/Amman' })} - الوقت: {session.time}
-                      </p>
-                      {!canRecord && diffHours > 7 && (
-                        <p className="text-xs text-red-400">⛔ انتهى موعد الرصد (أكثر من 7 ساعات)</p>
-                      )}
-                      {!canRecord && diffHours < 0 && (
-                        <p className="text-xs text-yellow-400">⏳ لم يحن وقت الحصة بعد</p>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => openAttendanceModal(session)}
-                      disabled={!canRecord}
-                      className={`px-4 py-2 rounded-md text-sm font-medium ${
-                        canRecord 
-                          ? 'bg-green-600 hover:bg-green-700 text-white' 
-                          : 'bg-gray-600 text-gray-300 cursor-not-allowed'
-                      }`}
-                    >
-                      📋 رصد الحضور
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="text-gray-400 text-center py-4">لا توجد حصص مجدولة. قم بإنشاء حصة جديدة من خلال "جدولة مواعيد الحصص".</p>
-          )}
-        </div>
-
         {/* تنبيه الطلاب بدون شعب */}
         {studentsWithoutClass.length > 0 && (
           <div className="bg-red-900/20 border border-red-500/30 p-4 rounded-2xl">
@@ -3447,7 +3241,8 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       </div>
 
-      {/* ===== مودال اختيار نوع الواجب ===== */}
+      {/* ===== مودالات ===== (نفسها، لم تتغير) */}
+
       <ChoiceModal
         isOpen={showAssignmentChoice}
         onClose={() => {
@@ -3468,7 +3263,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         ]}
       />
 
-      {/* ===== مودال اختيار نوع الحصة ===== */}
       <ChoiceModal
         isOpen={showLessonChoice}
         onClose={() => {
@@ -3486,7 +3280,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         ]}
       />
 
-      {/* ===== مودال إدارة الشعب ===== */}
       {showManageClassesModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowManageClassesModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
@@ -3535,7 +3328,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال الطلاب بدون شعب ===== */}
       {showStudentsWithoutClassModal && studentsWithoutClass.length > 0 && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowStudentsWithoutClassModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-2xl w-full max-h-[80vh] overflow-y-auto border border-yellow-500/30" onClick={(e) => e.stopPropagation()}>
@@ -3562,7 +3354,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال تحديد الشعبة ===== */}
       {showClassSelectionModal && selectedStudentForClass && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowClassSelectionModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
@@ -3596,7 +3387,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودالات إجبارية ===== */}
       {showAddNotificationModal && newlyAddedStudent && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-green-500/30">
@@ -3647,7 +3437,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال عرض قوائم الطلبة ===== */}
       {showStudentsModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-40 p-4" onClick={() => setShowStudentsModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-4xl w-full max-h-[80vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
@@ -3748,7 +3537,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال إضافة طالب ===== */}
       {showAddStudentModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-40 p-4" onClick={() => setShowAddStudentModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
@@ -3808,7 +3596,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال الرسالة العامة ===== */}
       {showGeneralMessageModal && selectedStudentForMessage && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowGeneralMessageModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
@@ -3866,7 +3653,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال الإشعارات ===== */}
       {showNotificationsModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowNotificationsModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full max-h-[70vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
@@ -3923,7 +3709,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال إضافة الواجب ===== */}
       <AddAssignmentModal
         isOpen={showAssignmentModal}
         onClose={() => {
@@ -3935,7 +3720,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         initialMode={selectedAssignmentType || 'now'}
       />
 
-      {/* ===== مودال جدولة الحصة ===== */}
       <AddLessonModal
         isOpen={showLessonModal}
         onClose={() => {
@@ -3947,7 +3731,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         classesList={classes}
       />
 
-      {/* ===== مودال الإنذارات ===== */}
       {showWarningModal && selectedStudentForWarning && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowWarningModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-yellow-500/30" onClick={(e) => e.stopPropagation()}>
@@ -3986,7 +3769,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال مراجعة الطلب ===== */}
       {showReviewModal && selectedReviewStudent && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => { setShowReviewModal(false); setSelectedReviewStudent(null); }}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-blue-500/30" onClick={(e) => e.stopPropagation()}>
@@ -4021,66 +3803,12 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
         </div>
       )}
-
-      {/* ===== مودال الحضور والغياب ===== */}
-      {showAttendanceModal && selectedSessionForAttendance && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowAttendanceModal(false)}>
-          <div className="bg-gray-900 p-6 rounded-3xl max-w-2xl w-full max-h-[80vh] overflow-y-auto border border-green-500/30" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-semibold text-green-300">📋 رصد الحضور والغياب</h3>
-              <button onClick={() => setShowAttendanceModal(false)} className="text-gray-400 hover:text-white text-2xl">✕</button>
-            </div>
-            <div className="mb-4">
-              <p className="text-gray-300"><strong>الحصة:</strong> {selectedSessionForAttendance.title || 'حصة'}</p>
-              <p className="text-gray-300"><strong>الشعبة:</strong> {classes.find(c => c.id === selectedSessionForAttendance.classId)?.name || 'غير معروف'}</p>
-              <p className="text-gray-300"><strong>التاريخ والوقت:</strong> {new Date(selectedSessionForAttendance.date).toLocaleDateString('ar-EG', { timeZone: 'Asia/Amman' })} - {selectedSessionForAttendance.time}</p>
-              <p className="text-sm text-gray-400 mt-1">يمكنك رصد الحضور خلال 7 ساعات من موعد الحصة.</p>
-            </div>
-            <div className="space-y-2 max-h-60 overflow-y-auto">
-              {students.filter(s => (s.classIds || []).includes(selectedSessionForAttendance.classId)).map(student => {
-                const isPresent = attendanceStatus[student.id] !== undefined ? attendanceStatus[student.id] : true;
-                return (
-                  <div key={student.id} className="flex items-center justify-between p-3 bg-black/30 rounded-xl border border-gray-700">
-                    <span className="text-white">{student.name || student.username}</span>
-                    <div className="flex items-center gap-3">
-                      <span className={`text-sm font-medium ${isPresent ? 'text-green-400' : 'text-red-400'}`}>
-                        {isPresent ? '✅ حضور' : '❌ غياب'}
-                      </span>
-                      <div
-                        onClick={() => toggleAttendance(student.id)}
-                        className={`w-14 h-8 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-300 ${isPresent ? 'bg-green-500' : 'bg-red-500'}`}
-                      >
-                        <div className={`bg-white w-6 h-6 rounded-full shadow-md transform transition-transform duration-300 ${isPresent ? 'translate-x-6' : 'translate-x-0'}`} />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={saveAttendance}
-                disabled={attendanceLoading}
-                className="btn-primary bg-green-600 hover:bg-green-700 px-6 py-2 rounded-md text-white disabled:opacity-60"
-              >
-                {attendanceLoading ? 'جاري الحفظ...' : '💾 تأكيد الحضور'}
-              </button>
-              <button
-                onClick={() => setShowAttendanceModal(false)}
-                className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-md text-white"
-              >
-                إلغاء
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
 
 // ============================================================
-// StudentPanel (معدل - زر المعلومات جنب العنوان + إخفاء المعلومات من الواجهة)
+// StudentPanel (نفس الكود السابق، لم يتغير)
 // ============================================================
 const StudentPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -4093,7 +3821,6 @@ const StudentPanel = ({ user, onLogout }) => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
 
-  // مودال المعلومات الشخصية والتعديل
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [editData, setEditData] = useState({});
   const [editFields, setEditFields] = useState({});
@@ -4109,10 +3836,8 @@ const StudentPanel = ({ user, onLogout }) => {
   const [reviewResult, setReviewResult] = useState(null);
   const [timeRemaining, setTimeRemaining] = useState({ hours: 0, minutes: 0, seconds: 0 });
 
-  // ===== عداد الطلاب =====
   const [classStudentCount, setClassStudentCount] = useState({});
 
-  // ===== دالة طلب إذن الإشعارات للطالب =====
   const requestNotificationPermission = async () => {
     if (Notification.permission === 'granted') {
       try {
@@ -4145,7 +3870,6 @@ const StudentPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ===== إعداد الإشعارات الفورية (بدون طلب إذن تلقائي) =====
   useEffect(() => {
     const unsubscribe = onMessage(messaging, (payload) => {
       toast.custom((t) => (
@@ -4158,7 +3882,6 @@ const StudentPanel = ({ user, onLogout }) => {
     return () => unsubscribe();
   }, []);
 
-  // ===== جلب عدد الطلاب في كل شعبة =====
   useEffect(() => {
     const studentsQuery = query(collection(db, 'profiles'), where('role', '==', 'student'));
     const unsubscribe = onSnapshot(studentsQuery, (snapshot) => {
@@ -4174,7 +3897,6 @@ const StudentPanel = ({ user, onLogout }) => {
     return () => unsubscribe();
   }, []);
 
-  // ===== دوال الطالب =====
   const cleanOldNotifications = async () => {
     if (!user) return;
     const now = new Date();
@@ -4199,7 +3921,7 @@ const StudentPanel = ({ user, onLogout }) => {
   };
 
   const handleOpenNotifications = async () => {
-    await requestNotificationPermission();  // طلب الإذن عند الضغط على الجرس
+    await requestNotificationPermission();
     cleanOldNotifications();
     setShowNotificationsModal(true);
   };
@@ -4427,7 +4149,6 @@ const StudentPanel = ({ user, onLogout }) => {
 
   const nextLesson = getNextLessonTime();
 
-  // ===== دالة فتح مودال المعلومات الشخصية =====
   const openProfileModal = () => {
     if (hasPendingRequest) {
       setShowPendingRequestModal(true);
@@ -4511,7 +4232,6 @@ const StudentPanel = ({ user, onLogout }) => {
   return (
     <div className="container-center min-h-screen p-4 relative" dir="rtl">
       <div className="bg-gray-900/80 p-8 max-w-4xl w-full space-y-6 z-10 border border-gray-700 rounded-3xl backdrop-blur-sm">
-        {/* ===== رأس الصفحة مع زر المعلومات ===== */}
         <div className="flex justify-between items-center flex-wrap gap-4 border-b border-gray-700 pb-4">
           <div className="flex items-center gap-3">
             <h2 className="text-3xl font-bold text-blue-300">لوحة تحكم الطالب</h2>
@@ -4542,7 +4262,6 @@ const StudentPanel = ({ user, onLogout }) => {
 
         {errorMsg && <p className="text-red-400 text-sm bg-red-500/10 p-3 rounded-xl border border-red-500/20">{errorMsg}</p>}
 
-        {/* ===== عداد الطلاب في شعبك ===== */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-green-500/20">
           <h3 className="text-xl font-semibold text-green-200 mb-2">👥 عدد الطلاب في شعبك</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -4560,7 +4279,6 @@ const StudentPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* ===== الوقت المتبقي للحصة ===== */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-blue-500/20">
           <h3 className="text-xl font-semibold mb-4 text-blue-200">الوقت المتبقي لحصتك القادمة</h3>
           <CountdownTimer targetDate={nextLesson ? nextLesson.date : null} />
@@ -4581,7 +4299,6 @@ const StudentPanel = ({ user, onLogout }) => {
           )}
         </div>
 
-        {/* ===== الواجبات المدرسية ===== */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700 space-y-3">
           <h3 className="text-xl font-semibold text-pink-300">الواجبات المدرسية</h3>
           {availableHomeworks.length > 0 ? (
@@ -4609,7 +4326,6 @@ const StudentPanel = ({ user, onLogout }) => {
         </div>
       </div>
 
-      {/* ===== مودال المعلومات الشخصية (عرض وتعديل) ===== */}
       {showProfileModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowProfileModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-blue-500/30" onClick={(e) => e.stopPropagation()}>
@@ -4701,7 +4417,6 @@ const StudentPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال الطلب المعلق ===== */}
       {showPendingRequestModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowPendingRequestModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-yellow-500/30" onClick={(e) => e.stopPropagation()}>
@@ -4741,7 +4456,6 @@ const StudentPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال التأكيد بعد الإرسال ===== */}
       {showConfirmModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowConfirmModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-green-500/30" onClick={(e) => e.stopPropagation()}>
@@ -4767,7 +4481,6 @@ const StudentPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال نتيجة المراجعة ===== */}
       {showReviewResultModal && reviewExpiry && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowReviewResultModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-purple-500/30" onClick={(e) => e.stopPropagation()}>
@@ -4809,7 +4522,6 @@ const StudentPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال الإشعارات ===== */}
       {showNotificationsModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowNotificationsModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full max-h-[70vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
@@ -4909,7 +4621,7 @@ const App = () => {
 
   const handleCompleteProfileSuccess = (updatedUser) => {
     setUser(updatedUser);
-    setPendingUserForComplete(null);  // ✅ تأكد من وجود هذا السطر
+    setPendingUserForComplete(null);
   };
 
   const handleCompleteProfile = (userData) => {
@@ -4943,9 +4655,7 @@ const App = () => {
           docSnap = querySnapshot.docs[0];
           docId = docSnap.id;
           profile = docSnap.data();
-          // تحديث uid
           await updateDoc(doc(db, 'profiles', docId), { uid: firebaseUser.uid });
-          // ✅ إعادة جلب المستند للتأكد من القيم المحدثة
           const updatedDocSnap = await getDoc(doc(db, 'profiles', docId));
           if (updatedDocSnap.exists()) {
             profile = updatedDocSnap.data();
@@ -4986,7 +4696,6 @@ const App = () => {
         return;
       }
 
-      // ✅ تعديل الشرط ليشمل infoVerified
       if (!profile.isProfileComplete || !profile.infoVerified) {
         setPendingUserForComplete({
           id: docId,
