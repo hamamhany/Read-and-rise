@@ -1,4 +1,4 @@
-// ===================== main.jsx (معدل بالكامل - إضافة الإشعارات العامة ودور المشرف) =====================
+// ===================== main.jsx (الكامل مع جميع الإصلاحات) =====================
 
 import './index.css';
 import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
@@ -127,7 +127,7 @@ const fetchClassNames = async (classIds) => {
   return names;
 };
 
-// ========== دوال الإشعارات القديمة (تبقى للاستخدام الداخلي) ==========
+// ========== دوال الإشعارات القديمة ==========
 const sendNotificationToStudents = async (classIds, title, body, type, relatedId = null) => {
   if (!classIds || classIds.length === 0) return;
   try {
@@ -196,8 +196,7 @@ const sendNotificationToTeacher = async (teacherId, title, body, type, relatedId
   }
 };
 
-// ========== دوال الإنذارات وإرسال رسائل واتساب (جميع الدوال السابقة) ==========
-// (تم تضمينها كاملة في الكود الأصلي، هنا نضعها مختصرة للاختصار، لكنها موجودة في الكود النهائي)
+// ========== دوال واتساب والإنذارات ==========
 const cleanPhoneNumber = (phone) => {
   if (!phone) return '';
   return phone.replace(/^0+/, '').replace(/[^0-9]/g, '');
@@ -262,6 +261,133 @@ const sendWarningMessage = (student, warningNumber, description) => {
   );
 
   window.open(`https://wa.me/${cleanedPhone}?text=${fullMessage}`, '_blank');
+};
+
+const sendActivationMessage = (student, tempUsername, tempPassword) => {
+  const phone = student.phone || '';
+  if (!phone) {
+    toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
+    return;
+  }
+  const cleanedPhone = cleanPhoneNumber(phone);
+  if (!cleanedPhone) {
+    toast.error('رقم الهاتف غير صالح.');
+    return;
+  }
+  const studentName = student.name || '';
+  const studentClass = student.classes?.map(c => c.name).join(', ') || 'غير محدد';
+  const studentAge = student.age || 'غير محدد';
+  const studentGender = student.gender || 'غير محدد';
+  const message = encodeURIComponent(
+    `الموضوع: تأكيد تفعيل حسابك في الفرسان التقنيين - اقرأ وارتق\n\n` +
+    `عزيزي الطالب ${studentName}،\n` +
+    `يسعدنا انضمامك إلينا في بيئة التعلم الرقمية الخاصة بـ "الفرسان التقنيين". نود إبلاغك بأنه تم إنشاء حسابك بنجاح، ونرفق لكم أدناه البيانات المسجلة في نظامنا:\n` +
+    `الاسم الكامل: ${studentName}\n` +
+    `الصف الدراسي: ${studentClass}\n` +
+    `رقم الهاتف: ${student.phone || 'غير مسجل'}\n` +
+    `العمر: ${studentAge}\n` +
+    `الجنس: ${studentGender}\n` +
+    `اسم المستخدم المؤقت: ${tempUsername}\n` +
+    `كلمة المرور المؤقتة: ${tempPassword}\n\n` +
+    `خطوة أخيرة لتفعيل الحساب:\n` +
+    `لإتمام عملية التسجيل، يرجى الانتقال إلى الرابط أدناه وتسجيل الدخول لأول مرة لملء البيانات اللازمة وتأكيد حسابك:\n` +
+    `https://read-and-rise-two.vercel.app/\n\n` +
+    `نرجو منكم الاحتفاظ بهذه البيانات، والالتزام بالقوانين التعليمية المتبعة. نتمنى لكم رحلة تعليمية مثمرة ومليئة بالإنجازات.\n\n` +
+    `مع التقدير،\n` +
+    `همام هاني محمد علي\n` +
+    `رئيس قسم التكنولوجيا وأمن المعلومات | معلم تطوير البرمجيات`
+  );
+  window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
+};
+
+const sendFreezeMessage = (student) => {
+  const phone = student.phone || '';
+  if (!phone) {
+    toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
+    return;
+  }
+  const cleanedPhone = cleanPhoneNumber(phone);
+  if (!cleanedPhone) {
+    toast.error('رقم الهاتف غير صالح.');
+    return;
+  }
+  const studentName = student.name || '';
+  const studentClass = student.classes?.map(c => c.name).join(', ') || 'غير محدد';
+  const message = encodeURIComponent(
+    `الموضوع: إشعار بشأن حساب الطالب في منصة "اقرأ وارتق"\n\n` +
+    `عزيزي ولي أمر الطالب/ة ${studentName} المحترم،\n` +
+    `تحية طيبة وبعد،،\n` +
+    `نود إحاطتكم علماً بأنه قد تم إجراء "تجميد مؤقت" لحساب الطالب في منصة الفرسان التقنيين - اقرأ وارتق التعليمية. يأتي هذا الإجراء وفقاً للسياسات التنظيمية المتبعة في المنصة لضمان سير العملية التعليمية بفعالية.\n\n` +
+    `بيانات الطالب:\n` +
+    `اسم الطالب: ${studentName}\n` +
+    `الصف الدراسي: ${studentClass}\n` +
+    `سبب الإجراء: عدم الالتزام بالحصص والانقطاع لفترة طويلة\n\n` +
+    `نرجو منكم التواصل معنا لمناقشة الإجراءات اللازمة لفك التجميد وإعادة تفعيل الحساب لضمان استمرارية الطالب في مسيرته التعليمية دون انقطاع.\n` +
+    `نحن نقدر حرصكم الدائم على متابعة مستوى الطالب ونتطلع لتعاونكم معنا.\n\n` +
+    `مع التقدير،\n` +
+    `همام هاني محمد علي\n` +
+    `رئيس قسم التكنولوجيا وأمن المعلومات | معلم تطوير البرمجيات`
+  );
+  window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
+};
+
+const sendDeleteMessage = (student) => {
+  const phone = student.phone || '';
+  if (!phone) {
+    toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
+    return;
+  }
+  const cleanedPhone = cleanPhoneNumber(phone);
+  if (!cleanedPhone) {
+    toast.error('رقم الهاتف غير صالح.');
+    return;
+  }
+  const studentName = student.name || '';
+  const message = encodeURIComponent(
+    `الموضوع: إشعار بخصوص إلغاء حساب الطالب ${studentName} في نظامنا الأكاديمي\n\n` +
+    `عزيزي ولي أمر الطالب ${studentName} المحترم،\n` +
+    `تحية طيبة وبعد،،\n` +
+    `نود إعلامكم بأنه قد تم إغلاق وحذف حساب الطالب ${studentName} من نظامنا الأكاديمي، وذلك بناءً على [ تعدد الإنذارات / ارتكاب خطأ أدى لحذف حسابه بناءً على تعليمات الأكاديمية ].\n` +
+    `يُرجى العلم أن هذا الإجراء يتضمن ما يلي:\n` +
+    `- إيقاف صلاحية الدخول والوصول الكامل للحساب عبر المنصة الأكاديمية.\n` +
+    `- حذف كافة البيانات، السجلات، والتقارير المرتبطة بالحساب نهائياً من قاعدة بياناتنا.\n\n` +
+    `نود أن نشكركم على ثقتكم بنا خلال فترة انضمام الطالب للأكاديمية، ونتمنى له دوام التوفيق والنجاح في مسيرته التعليمية القادمة.\n\n` +
+    `مع خالص التحية والتقدير،\n` +
+    `إدارة الأكاديمية`
+  );
+  window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
+};
+
+const sendResetPasswordMessage = (student) => {
+  const phone = student.phone || '';
+  if (!phone) {
+    toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
+    return;
+  }
+  const cleanedPhone = cleanPhoneNumber(phone);
+  if (!cleanedPhone) {
+    toast.error('رقم الهاتف غير صالح.');
+    return;
+  }
+  const studentName = student.name || '';
+  const message = encodeURIComponent(
+    `الموضوع: تم إعادة تعيين بيانات دخولك - بانتظار تحديث حسابك في "اقرأ وارتق"\n\n` +
+    `عزيزي الطالب ${studentName}،\n` +
+    `نود إعلامك بأنه قد تمت إعادة تعيين البيانات الدخول الخاصة بحسابك في منصة الفرسان التقنيين - اقرأ وارتق لتصحيح بياناتك.\n\n` +
+    `ما الخطوة التالية؟\n` +
+    `بما أن الحساب الآن يحتاج لبيانات جديدة، يرجى التوجه إلى رابط تسجيل الدخول لأول مرة وتعبئة اسم المستخدم وكلمة المرور الخاصة بك من جديد:\n` +
+    `https://read-and-rise-two.vercel.app/\n\n` +
+    `ملاحظة هامة:\n` +
+    `بمجرد دخولك وتعبئة البيانات المطلوبة، سيتم ربط حسابك ببياناتك الدراسية الموجودة مسبقاً في النظام.\n\n` +
+    `للاستفسار والدعم الفني:\n` +
+    `لأي استفسار حول طريقة إكمال المعلومات، أو في حال وجود معلومات ناقصة، لا تتردد بالتواصل معي مباشرة عبر الرقم التالي:\n` +
+    `+962 7 8611 7388\n\n` +
+    `نحن هنا لضمان تجربة تعليمية آمنة ومستقرة لكم.\n\n` +
+    `مع التقدير،\n` +
+    `همام هاني محمد علي\n` +
+    `رئيس قسم التكنولوجيا وأمن المعلومات | معلم تطوير البرمجيات`
+  );
+  window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
 };
 
 const sendDataUpdateApprovalMessage = (student, newData) => {
@@ -363,7 +489,7 @@ const sendContactTeacherMessage = (student, requestType = 'تحديث') => {
   sendWhatsAppToTeacher(message);
 };
 
-// ========== دوال الإشعارات العامة الجديدة ==========
+// ========== دوال الإشعارات العامة ==========
 const createGeneralAnnouncement = async (title, body, scheduledFor = null) => {
   try {
     const announcement = {
@@ -406,14 +532,12 @@ const deleteAnnouncement = async (id) => {
 // ========== دوال إدارة المشرفين ==========
 const createSupervisorAccount = async (name, gender, age, phone, teacherId) => {
   try {
-    // التحقق من عدد المشرفين
     const q = query(collection(db, 'profiles'), where('role', '==', 'supervisor'));
     const snapshot = await getDocs(q);
     if (snapshot.size >= MAX_SUPERVISORS) {
       throw new Error(`لا يمكن إضافة أكثر من ${MAX_SUPERVISORS} مشرف.`);
     }
 
-    // إنشاء اسم مستخدم فريد
     let baseUsername = 'supervisor';
     let username = baseUsername;
     let counter = 1;
@@ -451,10 +575,9 @@ const createSupervisorAccount = async (name, gender, age, phone, teacherId) => {
       isProfileComplete: true,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
-      uid: null // سيتم تعبئته عند أول تسجيل دخول
+      uid: null
     });
 
-    // إشعار للمعلم
     await sendNotificationToTeacher(
       teacherId,
       '👁️ إضافة مشرف جديد',
@@ -501,7 +624,7 @@ const ChoiceModal = ({ isOpen, onClose, onSelect, title, options }) => {
   );
 };
 
-// ---- AddAssignmentModal (معدل) ----
+// ---- AddAssignmentModal ----
 const AddAssignmentModal = ({
   isOpen,
   onClose,
@@ -981,7 +1104,7 @@ const AddAssignmentModal = ({
   );
 };
 
-// ---- AddLessonModal (معدل) ----
+// ---- AddLessonModal ----
 const AddLessonModal = ({
   isOpen,
   onClose,
@@ -1379,9 +1502,8 @@ const AddLessonModal = ({
 };
 
 // ============================================================
-// CountdownTimer, HomeworkTextCountdown, ConfirmContext, FrozenAccount, CompleteProfile, Login
+// CountdownTimer, HomeworkTextCountdown, ConfirmContext, FrozenAccount, CompleteProfile
 // ============================================================
-
 const useDynamicBackground = () => {
   useEffect(() => {
     const style = document.createElement('style');
@@ -1513,7 +1635,6 @@ const HomeworkTextCountdown = ({ targetDate }) => {
   );
 };
 
-// ========== Confirm Context ==========
 const ConfirmContext = createContext();
 
 export const ConfirmProvider = ({ children }) => {
@@ -1574,7 +1695,6 @@ export const ConfirmProvider = ({ children }) => {
 
 export const useConfirm = () => useContext(ConfirmContext);
 
-// ========== FrozenAccount (معدل) ==========
 const FrozenAccount = ({ user, onLogout }) => {
   const studentName = user?.name || user?.username || 'الطالب';
   const studentClass = user?.class_name || 'غير محدد';
@@ -1627,9 +1747,6 @@ const FrozenAccount = ({ user, onLogout }) => {
   );
 };
 
-// ============================================================
-// CompleteProfile (معدل)
-// ============================================================
 const CompleteProfile = ({ user, onSuccess, onCancel }) => {
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -1795,7 +1912,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
 };
 
 // ============================================================
-// Login (معدل - تحسين الشكل وإضافة استعادة كلمة المرور ودعم المشرف)
+// Login (معدل)
 // ============================================================
 const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [username, setUsername] = useState('');
@@ -1895,7 +2012,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
         return;
       }
 
-      // إذا كان دور مشرف (supervisor)، لا يحتاج لإكمال الملف الشخصي
       if (profile.role === 'supervisor') {
         onLogin({
           id: docId,
@@ -2171,7 +2287,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
 };
 
 // ============================================================
-// SupervisorPanel (جديد) - عرض الإشعارات العامة فقط
+// SupervisorPanel
 // ============================================================
 const SupervisorPanel = ({ user, onLogout }) => {
   const [announcements, setAnnouncements] = useState([]);
@@ -2184,7 +2300,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
-  // طلب إذن الإشعارات
   const requestNotificationPermission = async () => {
     if (Notification.permission === 'granted') {
       try {
@@ -2229,12 +2344,10 @@ const SupervisorPanel = ({ user, onLogout }) => {
     return () => unsubscribe();
   }, []);
 
-  // جلب الإشعارات العامة (Announcements) مع مزامنة فورية
   useEffect(() => {
     const q = query(collection(db, 'announcements'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      // فلترة النشطة والتي لم يحن وقتها بعد
       const now = new Date();
       const filtered = list.filter(item => {
         if (item.status === 'scheduled') {
@@ -2250,7 +2363,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
     return () => unsubscribe();
   }, []);
 
-  // جلب الإشعارات الشخصية (للتنبيهات الداخلية)
   useEffect(() => {
     if (!user) return;
     const notifRef = collection(db, 'notifications', user.id, 'userNotifications');
@@ -2265,7 +2377,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
 
   const handleLoadMore = () => {
     setIsLoadingMore(true);
-    // محاكاة تحميل
     setTimeout(() => {
       setDisplayCount(prev => prev + ANNOUNCEMENTS_LIMIT);
       setIsLoadingMore(false);
@@ -2357,7 +2468,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
         </div>
       </div>
 
-      {/* مودال تفاصيل الإشعار */}
       {showDetailsModal && selectedAnnouncement && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowDetailsModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-purple-500/30" onClick={(e) => e.stopPropagation()}>
@@ -2378,7 +2488,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* مودال الإشعارات الشخصية */}
       {showNotificationsModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowNotificationsModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full max-h-[70vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
@@ -2441,7 +2550,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
 };
 
 // ============================================================
-// TeacherPanel (معدل - إضافة إدارة الإشعارات العامة والمشرفين)
+// TeacherPanel (الكامل مع جميع الدوال)
 // ============================================================
 const TeacherPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -2460,7 +2569,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [announcementTitle, setAnnouncementTitle] = useState('');
   const [announcementBody, setAnnouncementBody] = useState('');
   const [charCount, setCharCount] = useState(0);
-  const [publishType, setPublishType] = useState('now'); // 'now' or 'schedule'
+  const [publishType, setPublishType] = useState('now');
   const [delayHours, setDelayHours] = useState('');
   const [delayMinutes, setDelayMinutes] = useState('');
   const [delayError, setDelayError] = useState('');
@@ -2481,7 +2590,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
 
-  // باقي المودالات القديمة
+  // باقي المودالات
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
   const [showStudentsModal, setShowStudentsModal] = useState(false);
   const [showAssignmentModal, setShowAssignmentModal] = useState(false);
@@ -2519,7 +2628,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [selectedReviewStudent, setSelectedReviewStudent] = useState(null);
 
-  // ===== طلب إذن الإشعارات =====
+  // ===== دوال الإشعارات =====
   const requestNotificationPermission = async () => {
     if (Notification.permission === 'granted') {
       try {
@@ -2552,7 +2661,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ===== إعداد الإشعارات الفورية =====
   useEffect(() => {
     const unsubscribe = onMessage(messaging, (payload) => {
       toast.custom((t) => (
@@ -2602,7 +2710,6 @@ const TeacherPanel = ({ user, onLogout }) => {
 
     try {
       if (editingAnnouncementId) {
-        // تعديل
         const updates = {
           title,
           body,
@@ -2613,13 +2720,10 @@ const TeacherPanel = ({ user, onLogout }) => {
         await updateAnnouncement(editingAnnouncementId, updates);
         toast.success('تم تحديث الإشعار بنجاح.');
       } else {
-        // إنشاء جديد
         const id = await createGeneralAnnouncement(title, body, scheduledFor);
-        // إرسال إشعار فوري لكل المستخدمين
         if (!scheduledFor) {
           await sendNotificationToAllStudents(title, body, 'general_announcement', id);
           await sendNotificationToTeacher(user.id, title, body, 'general_announcement', id);
-          // إشعار للمشرفين
           const supervisorQuery = query(collection(db, 'profiles'), where('role', '==', 'supervisor'));
           const supervisorSnap = await getDocs(supervisorQuery);
           for (const docSnap of supervisorSnap.docs) {
@@ -2638,7 +2742,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         }
         toast.success('تم نشر الإشعار بنجاح.');
       }
-      // إعادة تعيين الحقول
       setAnnouncementTitle('');
       setAnnouncementBody('');
       setCharCount(0);
@@ -2727,11 +2830,714 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ===== دوال المعلم الأخرى (جميع الدوال السابقة) =====
-  // (تم اختصارها هنا لأنها موجودة في الكود الأصلي، لكننا نضمنها في الكود النهائي)
-  // للاختصار، سنفترض أن جميع دوال المعلم السابقة موجودة (إضافة طالب، حذف، واجبات، حصص، إنذارات، إلخ)
+  // ===== دوال إدارة الشعب =====
+  const handleAddClass = async () => {
+    const name = sanitizeInput(newClassName);
+    if (!name) {
+      toast.error('يرجى إدخال اسم الشعبة');
+      return;
+    }
+    if (classes.some(c => c.name === name)) {
+      toast.error('هذه الشعبة موجودة بالفعل');
+      return;
+    }
+    try {
+      const ref = doc(collection(db, 'classes'));
+      await setDoc(ref, {
+        name: name,
+        teacherId: user.id,
+        createdAt: serverTimestamp()
+      });
+      setNewClassName('');
+      toast.success('تم إضافة الشعبة بنجاح');
+    } catch (err) {
+      toast.error('فشل إضافة الشعبة: ' + err.message);
+    }
+  };
 
-  // ===== دوال جلب البيانات (مع إضافة الإشعارات العامة والمشرفين) =====
+  const handleDeleteClass = async (classId) => {
+    const ok = await confirm('حذف الشعبة', 'هل أنت متأكد من حذف هذه الشعبة؟ سيتم إزالتها من جميع الطلاب.');
+    if (!ok) return;
+    try {
+      const studentsWithClass = students.filter(s => (s.classIds || []).includes(classId));
+      for (const student of studentsWithClass) {
+        const newClassIds = (student.classIds || []).filter(id => id !== classId);
+        await updateDoc(doc(db, 'profiles', student.id), {
+          classIds: newClassIds,
+          updatedAt: serverTimestamp()
+        });
+      }
+      await deleteDoc(doc(db, 'classes', classId));
+      toast.success('تم حذف الشعبة وإزالتها من جميع الطلاب');
+    } catch (err) {
+      toast.error('فشل حذف الشعبة: ' + err.message);
+    }
+  };
+
+  const handleEditClass = async () => {
+    if (!editingClassId || !editingClassName.trim()) return;
+    const name = sanitizeInput(editingClassName);
+    try {
+      await updateDoc(doc(db, 'classes', editingClassId), {
+        name: name,
+        updatedAt: serverTimestamp()
+      });
+      setEditingClassId(null);
+      setEditingClassName('');
+      toast.success('تم تحديث اسم الشعبة');
+    } catch (err) {
+      toast.error('فشل تحديث الشعبة: ' + err.message);
+    }
+  };
+
+  // ===== دوال إدارة الطلاب =====
+  const handleAddStudent = async (e) => {
+    e.preventDefault();
+    if (newStudentClassIds.length === 0) {
+      toast.error('يرجى اختيار شعبة واحدة على الأقل للطالب.');
+      return;
+    }
+    const sanitizedName = sanitizeInput(newStudentName);
+    const sanitizedGender = sanitizeInput(newStudentGender);
+    const sanitizedAge = sanitizeInput(arabicToEnglishNumber(newStudentAge));
+    const sanitizedPhone = sanitizeInput(arabicToEnglishNumber(newStudentPhone));
+
+    if (!sanitizedName || !sanitizedGender || !sanitizedAge || !sanitizedPhone) {
+      toast.error('جميع الحقول مطلوبة.');
+      return;
+    }
+
+    setStudentLoading(true);
+    try {
+      for (const classId of newStudentClassIds) {
+        const classRef = doc(db, 'classes', classId);
+        const classSnap = await getDoc(classRef);
+        if (!classSnap.exists()) {
+          toast.error('إحدى الشعب المختارة غير صالحة. يرجى تحديث الصفحة والمحاولة مرة أخرى.');
+          setStudentLoading(false);
+          return;
+        }
+      }
+
+      let maxNum = 0;
+      const q = query(collection(db, 'profiles'), where('username', '>=', 'knight'), where('username', '<', 'knight\uF7FF'));
+      const querySnapshot = await getDocs(q);
+      querySnapshot.forEach(doc => {
+        const uname = doc.data().username;
+        if (uname && uname.startsWith('knight')) {
+          const numPart = uname.substring(6);
+          const num = parseInt(numPart, 10);
+          if (!isNaN(num) && num > maxNum) maxNum = num;
+        }
+      });
+      const newUsername = `knight${maxNum + 1}`;
+      const tempPassword = '123456';
+      const email = `${newUsername}@readandrise.com`;
+
+      const newId = generateId();
+      const cleanPhone = sanitizedPhone.replace(/[^0-9]/g, '');
+      const ageNum = parseInt(sanitizedAge);
+      if (isNaN(ageNum) || ageNum < 1 || ageNum > 99) {
+        toast.error('العمر يجب أن يكون رقماً بين 1 و 99.');
+        setStudentLoading(false);
+        return;
+      }
+
+      await setDoc(doc(db, 'profiles', newId), {
+        email: email,
+        username: newUsername,
+        name: sanitizedName,
+        gender: sanitizedGender,
+        age: ageNum,
+        phone: cleanPhone,
+        classIds: newStudentClassIds,
+        role: 'student',
+        isFrozen: false,
+        infoVerified: false,
+        isProfileComplete: false,
+        pendingChanges: null,
+        reviewResult: null,
+        reviewExpiry: null,
+        warnings: [],
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+
+      await sendNotificationToTeacher(
+        user.id,
+        '➕ إضافة طالب جديد',
+        `تم إضافة الطالب ${sanitizedName} (اسم المستخدم: ${newUsername})`,
+        'add_student',
+        newId
+      );
+
+      if (newStudentClassIds.length > 0) {
+        await sendNotificationToStudents(
+          newStudentClassIds,
+          '📢 إشعار',
+          'تم إضافة طالب جديد إلى شعبتك',
+          'add_student_notification',
+          newId
+        );
+      }
+
+      const classMap = await fetchClassNames(newStudentClassIds);
+      const classNames = newStudentClassIds.map(id => classMap[id] || null).filter(Boolean);
+      const addedStudent = {
+        name: sanitizedName,
+        gender: sanitizedGender,
+        age: ageNum,
+        phone: cleanPhone,
+        classIds: newStudentClassIds,
+        classes: classNames.map(name => ({ name })),
+        username: newUsername,
+        password: tempPassword
+      };
+
+      setNewlyAddedStudent(addedStudent);
+      setShowAddNotificationModal(true);
+
+      setNewStudentName('');
+      setNewStudentGender('');
+      setNewStudentAge('');
+      setNewStudentPhone('');
+      setNewStudentClassIds([]);
+      setShowAddStudentModal(false);
+    } catch (err) {
+      console.error('Error adding student:', err);
+      toast.error('فشل إضافة الطالب: ' + (err.message || 'خطأ غير معروف'));
+    } finally {
+      setStudentLoading(false);
+    }
+  };
+
+  const handleDeleteStudentPermanently = async (studentId) => {
+    let studentData = null;
+    try {
+      const docSnap = await getDoc(doc(db, 'profiles', studentId));
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        let classNames = [];
+        if (data.classIds) {
+          const classMap = await fetchClassNames(data.classIds);
+          classNames = data.classIds.map(id => classMap[id] || null).filter(Boolean);
+        }
+        studentData = {
+          ...data,
+          classes: classNames.map(name => ({ name }))
+        };
+      }
+    } catch (err) {
+      console.warn('فشل جلب بيانات الطالب قبل الحذف', err);
+    }
+
+    const ok = await confirm('حذف دائم', 'إجراء خطير: سيتم حذف الملف الشخصي للطالب نهائياً. ملاحظة: يجب حذف حساب المصادقة (Authentication) يدوياً من Firebase Console لتحرير اسم المستخدم.');
+    if (!ok) return;
+
+    try {
+      await deleteDoc(doc(db, 'profiles', studentId));
+
+      await sendNotificationToTeacher(
+        user.id,
+        '🗑️ حذف طالب',
+        `تم حذف الملف الشخصي للطالب (${studentId})`,
+        'delete_student',
+        studentId
+      );
+
+      if (studentData && studentData.classIds && studentData.classIds.length > 0) {
+        await sendNotificationToStudents(
+          studentData.classIds,
+          '📢 إشعار',
+          'تم طرد طالب من شعبتك',
+          'delete_student_notification',
+          studentId
+        );
+      }
+
+      if (studentData && studentData.phone) {
+        sendDeleteMessage(studentData);
+      } else {
+        toast('لم يتم إرسال رسالة واتساب لأن رقم الهاتف غير مسجل.', {
+          duration: 4000,
+          style: { background: '#333', color: '#fff' }
+        });
+      }
+
+      toast.success('تم حذف الملف الشخصي للطالب وإرسال رسالة إشعار لولي الأمر. تذكر حذف حساب المصادقة يدوياً من Firebase Console.');
+    } catch (err) {
+      toast.error('فشل حذف الطالب: ' + err.message);
+    }
+  };
+
+  const toggleFreezeStudent = async (student) => {
+    const nextStatus = !student.isFrozen;
+    if (nextStatus) {
+      const ok = await confirm(
+        'تجميد الحساب',
+        'تنبيه هام:\nإذا قمت بتجميد هذا الحساب، سيبقى مجمداً حتى تقوم بفك التجميد يدوياً.\nهل تريد المتابعة؟'
+      );
+      if (!ok) return;
+    }
+    try {
+      await updateDoc(doc(db, 'profiles', student.id), {
+        isFrozen: nextStatus,
+        frozenAt: nextStatus ? serverTimestamp() : null,
+        updatedAt: serverTimestamp()
+      });
+
+      await sendNotificationToTeacher(
+        user.id,
+        nextStatus ? '🚫 تجميد حساب' : '✅ فك تجميد حساب',
+        `تم ${nextStatus ? 'تجميد' : 'فك تجميد'} حساب الطالب ${student.name || ''}`,
+        nextStatus ? 'freeze_student' : 'unfreeze_student',
+        student.id
+      );
+
+      if (nextStatus) {
+        setFrozenStudent(student);
+        setShowFreezeNotificationModal(true);
+      } else {
+        toast.success('تم فك التجميد.');
+      }
+    } catch (err) {
+      console.error('Error toggling freeze:', err);
+      toast.error('فشل تحديث حالة التجميد: ' + (err.message || 'خطأ غير معروف'));
+    }
+  };
+
+  const updateStudentClasses = async (studentId, newClassIds) => {
+    try {
+      await updateDoc(doc(db, 'profiles', studentId), {
+        classIds: newClassIds,
+        updatedAt: serverTimestamp()
+      });
+
+      await sendNotificationToTeacher(
+        user.id,
+        '📌 تحديث الشعبة',
+        `تم تحديث شعبة الطالب (${studentId})`,
+        'update_class',
+        studentId
+      );
+
+      toast.success('تم تحديث شعبة الطالب بنجاح');
+    } catch (err) {
+      toast.error('فشل تحديث الشعبة: ' + err.message);
+    }
+  };
+
+  const openClassSelection = (student) => {
+    setSelectedStudentForClass(student);
+    setTempClassIds(student.classIds || []);
+    setShowClassSelectionModal(true);
+  };
+
+  const saveClassSelection = async () => {
+    if (!selectedStudentForClass) return;
+    await updateStudentClasses(selectedStudentForClass.id, tempClassIds);
+    setShowClassSelectionModal(false);
+    setSelectedStudentForClass(null);
+    setTempClassIds([]);
+  };
+
+  // ===== دوال الإنذار =====
+  const openWarningModal = (student) => {
+    setSelectedStudentForWarning(student);
+    setWarningDescription('');
+    setShowWarningModal(true);
+  };
+
+  const confirmWarning = async () => {
+    if (!selectedStudentForWarning) return;
+    const desc = sanitizeInput(warningDescription);
+    if (!desc.trim()) {
+      toast.error('يرجى كتابة وصف المخالفة.');
+      return;
+    }
+
+    const student = selectedStudentForWarning;
+    const currentWarnings = student.warnings || [];
+    const newWarningNumber = currentWarnings.length + 1;
+
+    if (newWarningNumber > 3) {
+      toast.error('تم تجاوز عدد الإنذارات المسموح به.');
+      return;
+    }
+
+    sendWarningMessage(student, newWarningNumber, desc.trim());
+
+    const warningObj = {
+      id: generateId(),
+      issuedAt: new Date().toISOString(),
+      type: newWarningNumber,
+      description: desc.trim()
+    };
+
+    try {
+      const studentRef = doc(db, 'profiles', student.id);
+      await updateDoc(studentRef, {
+        warnings: arrayUnion(warningObj),
+        updatedAt: serverTimestamp()
+      });
+
+      if (newWarningNumber === 3) {
+        await updateDoc(studentRef, {
+          isFrozen: true,
+          frozenAt: serverTimestamp(),
+          freezeReason: 'تجاوز عدد الإنذارات (3 إنذارات)'
+        });
+
+        await sendNotificationToTeacher(
+          user.id,
+          '🚫 تجميد تلقائي للحساب',
+          `تم تجميد حساب الطالب ${student.name} بسبب تجاوز عدد الإنذارات.`,
+          'auto_freeze',
+          student.id
+        );
+
+        if (student.classIds && student.classIds.length > 0) {
+          await sendNotificationToStudents(
+            student.classIds,
+            '🚫 حساب مجمد',
+            `تم تجميد حساب الطالب ${student.name} بسبب تجاوز عدد الإنذارات.`,
+            'auto_freeze_notification',
+            student.id
+          );
+        }
+
+        toast.error('⚠️ تم تجميد الحساب تلقائياً لأن عدد الإنذارات بلغ 3. يجب على المعلم حذف الحساب نهائياً.');
+      } else {
+        toast.success(`✅ تم إرسال الإنذار رقم ${newWarningNumber} بنجاح.`);
+      }
+
+      setShowWarningModal(false);
+      setSelectedStudentForWarning(null);
+      setWarningDescription('');
+    } catch (err) {
+      console.error('Error issuing warning:', err);
+      toast.error('فشل إصدار الإنذار: ' + err.message);
+    }
+  };
+
+  // ===== دوال إعادة تعيين الطالب =====
+  const handleResetStudent = async (studentId) => {
+    const ok = await confirm(
+      'إعادة تعيين الحساب',
+      'سيتم إعادة تعيين هذا الحساب ليصبح كأنه جديد، وسيُطلب من الطالب تغيير كلمة المرور عند تسجيل الدخول. كما سيتم إرسال رسالة إشعار لولي الأمر. هل تريد المتابعة؟'
+    );
+    if (!ok) return;
+
+    try {
+      await updateDoc(doc(db, 'profiles', studentId), {
+        infoVerified: false,
+        isFrozen: false,
+        isProfileComplete: false,
+        pendingChanges: null,
+        reviewResult: null,
+        reviewExpiry: null,
+        updatedAt: serverTimestamp()
+      });
+
+      await sendNotificationToTeacher(
+        user.id,
+        '🔄 إعادة تعيين حساب',
+        `تم إعادة تعيين حساب الطالب (${studentId})`,
+        'reset_student',
+        studentId
+      );
+
+      const student = students.find(s => s.id === studentId);
+      if (student) {
+        sendResetPasswordMessage(student);
+      } else {
+        const docSnap = await getDoc(doc(db, 'profiles', studentId));
+        if (docSnap.exists()) {
+          const studentData = docSnap.data();
+          let classNames = [];
+          if (studentData.classIds) {
+            const classMap = await fetchClassNames(studentData.classIds);
+            classNames = studentData.classIds.map(id => classMap[id] || null).filter(Boolean);
+          }
+          const studentObj = {
+            ...studentData,
+            classes: classNames.map(name => ({ name }))
+          };
+          sendResetPasswordMessage(studentObj);
+        }
+      }
+
+      toast.success('تم إعادة تعيين الحساب وإرسال رسالة إشعار.');
+    } catch (err) {
+      toast.error('فشل إعادة التعيين: ' + (err.message || 'خطأ غير معروف'));
+    }
+  };
+
+  // ===== دوال المراجعة =====
+  const openReviewModal = (student) => {
+    setSelectedReviewStudent(student);
+    setShowReviewModal(true);
+  };
+
+  const acceptReview = async (studentId) => {
+    try {
+      const docRef = doc(db, 'profiles', studentId);
+      const docSnap = await getDoc(docRef);
+      if (!docSnap.exists()) {
+        toast.error('الطالب غير موجود.');
+        return;
+      }
+      const student = docSnap.data();
+      if (!student.pendingChanges) {
+        toast.error('لا توجد تغييرات معلقة لهذا الطالب.');
+        return;
+      }
+
+      const newData = {
+        name: student.pendingChanges.name ?? student.name,
+        gender: student.pendingChanges.gender ?? student.gender,
+        age: student.pendingChanges.age != null ? Number(student.pendingChanges.age) : student.age,
+        phone: student.pendingChanges.phone ?? student.phone,
+        infoVerified: true,
+        pendingChanges: null,
+        reviewResult: 'approved',
+        reviewExpiry: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+        updatedAt: serverTimestamp()
+      };
+
+      await updateDoc(docRef, newData);
+
+      const updatedStudent = { ...student, ...newData };
+      sendDataUpdateApprovalMessage(updatedStudent, newData);
+
+      await sendNotificationToTeacher(
+        user.id,
+        '✅ قبول مراجعة',
+        `تم قبول تغييرات الطالب ${student.name || ''}`,
+        'review_accepted',
+        studentId
+      );
+
+      toast.success('تم قبول التغييرات وتحديث بيانات الطالب بنجاح.');
+      setShowReviewModal(false);
+      setSelectedReviewStudent(null);
+    } catch (err) {
+      console.error('Error accepting review:', err);
+      toast.error('فشل قبول المراجعة: ' + (err.message || 'خطأ غير معروف'));
+    }
+  };
+
+  const rejectReview = async (studentId) => {
+    const ok = await confirm('رفض التغييرات', 'هل أنت متأكد من رفض هذه التغييرات؟');
+    if (!ok) return;
+    try {
+      const docRef = doc(db, 'profiles', studentId);
+      const docSnap = await getDoc(docRef);
+      if (!docSnap.exists()) {
+        toast.error('الطالب غير موجود.');
+        return;
+      }
+      const student = docSnap.data();
+      if (!student.pendingChanges) {
+        toast.error('لا توجد تغييرات معلقة لهذا الطالب.');
+        return;
+      }
+
+      await updateDoc(docRef, {
+        pendingChanges: null,
+        reviewResult: 'rejected',
+        reviewExpiry: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+        updatedAt: serverTimestamp()
+      });
+
+      sendDataUpdateRejectionMessage(student, 'عدم مطابقة الوثائق الرسمية / الحاجة لتقديم إثبات رسمي آخر / عدم استيفاء الشروط المطلوبة');
+
+      await sendNotificationToTeacher(
+        user.id,
+        '❌ رفض مراجعة',
+        `تم رفض تغييرات الطالب (${studentId})`,
+        'review_rejected',
+        studentId
+      );
+
+      toast.success('تم رفض التغييرات.');
+      setShowReviewModal(false);
+      setSelectedReviewStudent(null);
+    } catch (err) {
+      console.error('Error rejecting review:', err);
+      toast.error('فشل رفض المراجعة: ' + (err.message || 'خطأ غير معروف'));
+    }
+  };
+
+  // ===== دوال الواجبات والحصص =====
+  const saveHomeworkFromModal = async (data) => {
+    const { date, time, section, text, is_draft } = data;
+
+    let revealTime = null;
+    if (!is_draft) {
+      const combinedDate = new Date(date);
+      combinedDate.setHours(time.hours, time.minutes, 0, 0);
+      revealTime = combinedDate.toISOString();
+    }
+
+    const newHwItem = {
+      id: generateId(),
+      text: text,
+      section: section,
+      reveal_time: revealTime,
+      is_scheduled: !is_draft,
+      is_draft: is_draft || false,
+      created_at: new Date().toISOString()
+    };
+
+    try {
+      const teacherRef = doc(db, 'teachers', user.id);
+      await updateDoc(teacherRef, {
+        homeworks: arrayUnion(newHwItem),
+        updatedAt: serverTimestamp()
+      });
+      toast.success(is_draft ? '💾 تم حفظ المسودة بنجاح!' : '✅ تم نشر الواجب بنجاح!');
+
+      if (!is_draft) {
+        await sendNotificationToTeacher(
+          user.id,
+          '📝 واجب جديد',
+          `تم نشر واجب: "${text}"`,
+          'homework_added',
+          newHwItem.id
+        );
+      }
+
+      if (!is_draft) {
+        await sendNotificationToStudents(
+          [section],
+          '📝 واجب جديد',
+          `تم نشر واجب: "${text}"`,
+          'homework',
+          newHwItem.id
+        );
+      }
+
+      setShowAssignmentModal(false);
+      setSelectedAssignmentType(null);
+    } catch (err) {
+      toast.error('فشل حفظ الواجب: ' + err.message);
+    }
+  };
+
+  const saveLessonTimesFromModal = async (times) => {
+    try {
+      const timesWithId = times.map(t => ({ ...t, id: generateId() }));
+      await updateDoc(doc(db, 'teachers', user.id), {
+        lessonTimes: timesWithId,
+        updatedAt: serverTimestamp()
+      });
+      toast.success('✅ تم تحديث مواعيد الحصص بنجاح!');
+
+      await sendNotificationToTeacher(
+        user.id,
+        '🕒 تحديث مواعيد الحصص',
+        `تم تحديث جدول الحصص، عدد المواعيد: ${times.length}`,
+        'lesson_schedule_updated'
+      );
+
+      await sendNotificationToAllStudents(
+        '🕒 تحديث مواعيد الحصص',
+        `تم تحديث جدول الحصص، عدد المواعيد: ${times.length}`,
+        'lesson_schedule'
+      );
+
+      setShowLessonModal(false);
+      setSelectedLessonType(null);
+    } catch (err) {
+      toast.error('فشل تحديث المواعيد: ' + err.message);
+    }
+  };
+
+  const deleteHomework = async (hwId) => {
+    const ok = await confirm('حذف الواجب', 'هل تريد حذف هذا الواجب نهائياً؟');
+    if (!ok) return;
+    try {
+      const teacherRef = doc(db, 'teachers', user.id);
+      const docSnap = await getDoc(teacherRef);
+      if (docSnap.exists()) {
+        const currentHomeworks = docSnap.data().homeworks || [];
+        const filtered = currentHomeworks.filter(h => h.id !== hwId);
+        await updateDoc(teacherRef, {
+          homeworks: filtered,
+          updatedAt: serverTimestamp()
+        });
+        toast.success('تم حذف الواجب.');
+      }
+    } catch (err) {
+      toast.error('فشل حذف الواجب: ' + err.message);
+    }
+  };
+
+  const deleteLessonTime = async (id) => {
+    const ok = await confirm('حذف موعد', 'هل أنت متأكد من حذف هذا الموعد؟');
+    if (!ok) return;
+    try {
+      const teacherRef = doc(db, 'teachers', user.id);
+      const docSnap = await getDoc(teacherRef);
+      if (docSnap.exists()) {
+        const currentTimes = docSnap.data().lessonTimes || [];
+        const filtered = currentTimes.filter(t => t.id !== id);
+        await updateDoc(teacherRef, {
+          lessonTimes: filtered,
+          updatedAt: serverTimestamp()
+        });
+        toast.success('تم حذف الموعد بنجاح');
+      }
+    } catch (err) {
+      toast.error('فشل حذف الموعد: ' + err.message);
+    }
+  };
+
+  // ===== دوال إرسال الرسائل العامة =====
+  const sendGeneralMessage = (student) => {
+    if (!student) {
+      toast.error('يرجى اختيار طالب.');
+      return;
+    }
+    const phone = student.phone || '';
+    if (!phone) {
+      toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
+      return;
+    }
+    const cleanedPhone = cleanPhoneNumber(phone);
+    if (!cleanedPhone) {
+      toast.error('رقم الهاتف غير صالح.');
+      return;
+    }
+    const studentName = student.name || '';
+    const classNames = student.classes?.map(c => c.name).filter(Boolean) || [];
+    const material = classNames.length > 0 ? classNames.join(', ') : 'لا توجد شعبة';
+    const subject = sanitizeInput(generalMessageSubject) || 'إشعار رسمي';
+    const body = sanitizeInput(generalMessageText) || '(نص الرسالة)';
+    const dateNow = new Date().toLocaleDateString('ar-EG', { timeZone: 'Asia/Amman' });
+    const fullMessage = encodeURIComponent(
+      `السلام عليكم ورحمة الله وبركاته\n` +
+      `الموضوع : [ ${subject} ]\n` +
+      `المعلم: همام هاني محمد علي\n` +
+      `المادة: ${material}\n` +
+      `التاريخ: ${dateNow}\n\n` +
+      `عزيزي الطالب/ة ${studentName}،\n` +
+      `${body}\n\n` +
+      `للتواصل والدعم: +962 7 8611 7388\n\n` +
+      `مع التقدير،\n` +
+      `اسم المعلم : همام هاني محمد علي\n` +
+      `رئيس قسم التكنولوجيا وأمن المعلومات : همام هاني محمد علي\n` +
+      `للبلاغ : +962 7 8611 7388`
+    );
+    window.open(`https://wa.me/${cleanedPhone}?text=${fullMessage}`, '_blank');
+    setShowGeneralMessageModal(false);
+    setGeneralMessageSubject('');
+    setGeneralMessageText('');
+    setSelectedStudentForMessage(null);
+  };
+
+  // ===== دوال جلب البيانات =====
   const fetchTeacherData = async () => {
     try {
       const teacherId = user.id;
@@ -2813,7 +3619,6 @@ const TeacherPanel = ({ user, onLogout }) => {
       }));
       setPendingReviews(pendingList);
 
-      // جلب المشرفين
       const supervisorQuery = query(collection(db, 'profiles'), where('role', '==', 'supervisor'));
       const supervisorSnapshot = await getDocs(supervisorQuery);
       const supervisorsList = supervisorSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -2827,7 +3632,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // استخدام onSnapshot للحصول على تحديثات فورية
   useEffect(() => {
     fetchTeacherData();
 
@@ -2888,21 +3692,18 @@ const TeacherPanel = ({ user, onLogout }) => {
       setPendingReviews(pendingList);
     });
 
-    // الإشعارات العامة (Announcements)
     const announcementsQuery = query(collection(db, 'announcements'), orderBy('createdAt', 'desc'));
     const unsubscribeAnnouncements = onSnapshot(announcementsQuery, (snapshot) => {
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setAnnouncements(list);
     });
 
-    // المشرفين
     const supervisorQuery = query(collection(db, 'profiles'), where('role', '==', 'supervisor'));
     const unsubscribeSupervisors = onSnapshot(supervisorQuery, (snapshot) => {
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setSupervisors(list);
     });
 
-    // الإشعارات الشخصية للمعلم
     if (user) {
       const notifRef = collection(db, 'notifications', user.id, 'userNotifications');
       const qNotif = query(notifRef, orderBy('createdAt', 'desc'));
@@ -2932,7 +3733,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     };
   }, [user.id]);
 
-  // ===== دوال مساعدة =====
   const getNextLessonTime = (classId) => {
     if (!lessonTimes || lessonTimes.length === 0) return null;
     const now = new Date();
@@ -2966,40 +3766,12 @@ const TeacherPanel = ({ user, onLogout }) => {
 
   const nextLesson = getNextLessonTime(selectedClassForLesson);
 
-  // ===== دوال المعلم الأخرى (مختصرة هنا، لكنها موجودة في الكود النهائي) =====
-  // (سيتم تضمين جميع الدوال: إدارة الشعب، إضافة طالب، حذف طالب، تجميد، إنذارات، إلخ)
-  // للاختصار، سنضع دوال أساسية فقط، لكن الكود النهائي يحتوي على كل شيء.
-
-  // مثال على دالة حذف واجب (موجودة في الكود الأصلي)
-  const deleteHomework = async (hwId) => {
-    const ok = await confirm('حذف الواجب', 'هل تريد حذف هذا الواجب نهائياً؟');
-    if (!ok) return;
-    try {
-      const teacherRef = doc(db, 'teachers', user.id);
-      const docSnap = await getDoc(teacherRef);
-      if (docSnap.exists()) {
-        const currentHomeworks = docSnap.data().homeworks || [];
-        const filtered = currentHomeworks.filter(h => h.id !== hwId);
-        await updateDoc(teacherRef, {
-          homeworks: filtered,
-          updatedAt: serverTimestamp()
-        });
-        toast.success('تم حذف الواجب.');
-      }
-    } catch (err) {
-      toast.error('فشل حذف الواجب: ' + err.message);
-    }
-  };
-
-  // دوال إضافة طالب، حذف، تحديث، إلخ... (موجودة في الكود الأصلي)
-  // سنفترض أنها كلها موجودة.
-
   if (loading) return <div className="text-center text-gray-400 p-8">جاري التحميل...</div>;
 
+  // ===== التصيير =====
   return (
     <div className="container-center min-h-screen p-4 relative" dir="rtl">
       <div className="bg-gray-900/80 p-8 max-w-4xl w-full space-y-6 z-10 border border-gray-700 rounded-3xl backdrop-blur-sm">
-        {/* رأس الصفحة */}
         <div className="flex justify-between items-center flex-wrap gap-4 border-b border-gray-700 pb-4">
           <div>
             <h2 className="text-3xl font-bold text-purple-300">لوحة تحكم المعلم</h2>
@@ -3126,7 +3898,7 @@ const TeacherPanel = ({ user, onLogout }) => {
           )}
         </div>
 
-        {/* باقي محتوى المعلم (الواجبات، الطلاب، الحصص) - يبقى كما هو */}
+        {/* عدد الطلاب والحصة القادمة */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-gray-800/60 p-6 rounded-2xl border border-purple-500/20 flex flex-col justify-center">
             <h3 className="text-lg font-semibold text-purple-200">
@@ -3229,7 +4001,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       </div>
 
-      {/* ===== مودال إنشاء/تعديل الإشعار العام ===== */}
+      {/* ===== المودالات ===== */}
       {showAnnouncementModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowAnnouncementModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-2xl w-full border border-yellow-500/30" onClick={(e) => e.stopPropagation()}>
@@ -3346,7 +4118,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال إضافة مشرف ===== */}
       {showSupervisorModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowSupervisorModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-indigo-500/30" onClick={(e) => e.stopPropagation()}>
@@ -3383,7 +4154,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== مودال الإشعارات الشخصية ===== */}
       {showNotificationsModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowNotificationsModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full max-h-[70vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
@@ -3442,9 +4212,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ===== باقي المودالات (الطلاب، الواجبات، الحصص، إلخ) ===== */}
-      {/* (سيتم تضمينها كلها في الكود النهائي، لكننا نضعها هنا مختصرة للاختصار) */}
-      {/* ChoiceModal للواجبات والحصص */}
       <ChoiceModal
         isOpen={showAssignmentChoice}
         onClose={() => {
@@ -3482,7 +4249,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         ]}
       />
 
-      {/* مودال إدارة الشعب */}
       {showManageClassesModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowManageClassesModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
@@ -3537,10 +4303,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* باقي المودالات (الطلاب، الإشعارات، الإنذارات، إلخ) سيتم تضمينها في الكود النهائي */}
-      {/* نظراً للطول، سنفترض وجودها، ولكن الكود النهائي يحتوي عليها كلها. */}
-
-      {/* مودال عرض الطلاب - مختصر */}
       {showStudentsModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-40 p-4" onClick={() => setShowStudentsModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-4xl w-full max-h-[80vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
@@ -3551,42 +4313,104 @@ const TeacherPanel = ({ user, onLogout }) => {
               <button onClick={() => setShowStudentsModal(false)} type="button" className="text-gray-400 hover:text-white text-2xl">✕</button>
             </div>
             <div className="space-y-3">
-              {students.map(s => (
-                <div key={s.id} className="p-3 bg-black/30 rounded-xl border border-gray-700 flex flex-wrap justify-between items-center gap-3">
-                  <div className="flex items-center gap-3 flex-wrap flex-1">
-                    <span className="text-white text-sm font-medium">{s.name || s.username}</span>
-                    <span className="text-xs text-gray-400">({s.username})</span>
-                    <span className="text-xs text-blue-300 bg-blue-950/40 px-2 py-0.5 rounded border border-blue-500/20">
-                      الشعب: {s.classes?.map(c => c.name).join(', ') || 'لا توجد شعبة'}
-                    </span>
-                    {s.isFrozen && <span className="text-xs text-orange-400 bg-orange-950/40 px-2 py-0.5 rounded border border-orange-500/20">⏳ مجمد</span>}
-                    <span className="text-xs text-yellow-300 bg-yellow-950/40 px-2 py-0.5 rounded border border-yellow-500/30">
-                      <FaExclamationTriangle className="inline-block me-1" /> الإنذارات: {(s.warnings || []).length}/3
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <button onClick={() => openWarningModal(s)} className="text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-2 py-1 rounded-lg hover:bg-yellow-500/30">
-                      <FaExclamationTriangle className="inline-block me-1" /> إنذار
-                    </button>
-                    <button onClick={() => handleDeleteStudentPermanently(s.id)} className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg hover:bg-red-500/30">
-                      <FaTrashAlt className="inline-block me-1" /> حذف
-                    </button>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-400">{s.isFrozen ? 'مجمد' : 'مفعل'}</span>
-                      <div onClick={() => toggleFreezeStudent(s)} className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-300 ${s.isFrozen ? 'bg-gray-600' : 'bg-green-500'}`}>
-                        <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-300 ${s.isFrozen ? 'translate-x-0' : '-translate-x-6'}`} />
+              {students.map(s => {
+                const hasAccount = s.email && !s.email.endsWith('@temp.com');
+                const inactiveDays = s.last_seen ? Math.floor((new Date() - new Date(s.last_seen)) / (1000 * 60 * 60 * 24)) : 0;
+                const frozenDays = s.isFrozen && s.frozenAt ? Math.floor((new Date() - new Date(s.frozenAt.seconds * 1000)) / (1000 * 60 * 60 * 24)) : 0;
+                const classNames = s.classes?.map(c => c.name).filter(Boolean).join(', ') || 'لا توجد شعبة';
+                const warningCount = (s.warnings || []).length;
+                return (
+                  <div key={s.id} className={`p-3 rounded-xl border flex flex-wrap justify-between items-center gap-3 ${s.isFrozen ? 'bg-gray-800/60 border-gray-700 opacity-80' : 'bg-gray-800/30 border-gray-700'}`}>
+                    <div className="flex items-center gap-3 flex-wrap flex-1">
+                      <span className="text-white text-sm font-medium">{s.name || s.username}</span>
+                      <span className="text-xs text-gray-400">({s.username})</span>
+                      <span className="text-xs text-blue-300 bg-blue-950/40 px-2 py-0.5 rounded border border-blue-500/20">
+                        الشعب: {classNames}
+                      </span>
+                      {s.phone && <span className="text-xs text-gray-400">📱 {s.phone}</span>}
+                      {s.gender && <span className="text-xs text-gray-400">{s.gender}</span>}
+                      {s.age && <span className="text-xs text-gray-400">عمر {s.age}</span>}
+                      {s.isFrozen && (
+                        <span className="text-xs text-orange-400 bg-orange-950/40 px-2 py-0.5 rounded border border-orange-500/20">
+                          ⏳ مجمد {frozenDays > 0 && `منذ ${frozenDays} يوم`}
+                        </span>
+                      )}
+                      {inactiveDays >= 30 && !s.isFrozen && (
+                        <span className="text-xs text-red-400 bg-red-950/40 px-2 py-0.5 rounded border border-red-500/30 animate-pulse">
+                          🚨 لم يفتح منذ {inactiveDays} يوم!
+                        </span>
+                      )}
+                      {!hasAccount && <span className="text-xs text-yellow-400 bg-yellow-950/40 px-2 py-0.5 rounded border border-yellow-500/30">⚠️ لم يتم التفعيل بعد</span>}
+                      <span className="text-xs text-yellow-300 bg-yellow-950/40 px-2 py-0.5 rounded border border-yellow-500/30">
+                        <FaExclamationTriangle className="inline-block me-1" /> الإنذارات: {warningCount}/3
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {warningCount < 3 ? (
+                        <button
+                          onClick={() => openWarningModal(s)}
+                          className="text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-2 py-1 rounded-lg hover:bg-yellow-500/30"
+                        >
+                          <FaExclamationTriangle className="inline-block me-1" /> إنذار ({warningCount}/3)
+                        </button>
+                      ) : (
+                        <span className="text-xs text-red-400 bg-red-950/40 px-2 py-1 rounded border border-red-500/30">
+                          <FaBan className="inline-block me-1" /> إنذارات مكتملة
+                        </span>
+                      )}
+                      {warningCount >= 3 && (
+                        <button
+                          onClick={() => handleDeleteStudentPermanently(s.id)}
+                          className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg hover:bg-red-500/30 animate-pulse"
+                        >
+                          <FaTrash className="inline-block me-1" /> حذف الحساب (إجباري)
+                        </button>
+                      )}
+                      <button
+                        onClick={() => openClassSelection(s)}
+                        className="text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-1 rounded-lg hover:bg-blue-500/30"
+                      >
+                        <FaThumbtack className="inline-block me-1" /> تحديد الشعبة
+                      </button>
+                      <button
+                        onClick={() => {
+                          setSelectedStudentForMessage(s);
+                          setGeneralMessageSubject('');
+                          setGeneralMessageText('');
+                          setShowGeneralMessageModal(true);
+                        }}
+                        type="button"
+                        className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-lg hover:bg-green-500/30"
+                      >
+                        <FaComment className="inline-block me-1" /> رسالة
+                      </button>
+                      {s.isFrozen && (
+                        <button onClick={() => sendFreezeMessage(s)} type="button" className="text-xs bg-orange-500/20 text-orange-300 border border-orange-500/30 px-2 py-1 rounded-lg hover:bg-orange-500/30">
+                          <FaBan className="inline-block me-1" /> تجميد
+                        </button>
+                      )}
+                      <button onClick={() => handleResetStudent(s.id)} type="button" className="text-xs bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-1 rounded-lg hover:bg-indigo-500/30">
+                        <FaEdit className="inline-block me-1" /> إعادة تعيين
+                      </button>
+                      <button onClick={() => handleDeleteStudentPermanently(s.id)} type="button" className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg hover:bg-red-500/30">
+                        <FaTrashAlt className="inline-block me-1" /> حذف
+                      </button>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-400">{s.isFrozen ? 'مجمد' : 'مفعل'}</span>
+                        <div onClick={() => toggleFreezeStudent(s)} className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-300 ${s.isFrozen ? 'bg-gray-600' : 'bg-green-500'}`}>
+                          <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-300 ${s.isFrozen ? 'translate-x-0' : '-translate-x-6'}`} />
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {students.length === 0 && <p className="text-gray-400 text-center py-2">لا يوجد طلاب مسجلين.</p>}
             </div>
           </div>
         </div>
       )}
 
-      {/* مودال إضافة طالب */}
       {showAddStudentModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-40 p-4" onClick={() => setShowAddStudentModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
@@ -3637,6 +4461,7 @@ const TeacherPanel = ({ user, onLogout }) => {
                   ))}
                 </select>
                 <p className="text-xs text-gray-400 mt-1">اضغط Ctrl (أو ⌘) لاختيار عدة شعب</p>
+                <p className="text-xs text-red-400 mt-1">* يجب اختيار شعبة واحدة على الأقل</p>
               </div>
               <button type="submit" disabled={studentLoading} className="btn-primary w-full py-3 bg-blue-600 hover:bg-blue-700 rounded-md text-white">
                 {studentLoading ? 'جاري الإضافة...' : 'إضافة الطالب'}
@@ -3647,7 +4472,154 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* مودال إضافة الواجب */}
+      {showGeneralMessageModal && selectedStudentForMessage && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowGeneralMessageModal(false)}>
+          <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-semibold text-green-300 mb-4">
+              <FaComment className="inline-block me-2" /> إرسال رسالة إلى {selectedStudentForMessage.name}
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm text-gray-300 block">الشعبة</label>
+                <input
+                  type="text"
+                  className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white cursor-not-allowed"
+                  value={selectedStudentForMessage?.classes?.length > 0 ? selectedStudentForMessage.classes.map(c => c.name).join(', ') : 'لا توجد شعبة'}
+                  disabled
+                />
+              </div>
+              <div>
+                <label className="text-sm text-gray-300 block">الموضوع</label>
+                <input
+                  type="text"
+                  className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white"
+                  placeholder="اكتب موضوع الرسالة"
+                  value={generalMessageSubject}
+                  onChange={(e) => setGeneralMessageSubject(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-sm text-gray-300 block">نص الرسالة</label>
+                <textarea
+                  className="bg-gray-800 w-full h-32 text-right p-2 border border-gray-600 rounded-md text-white resize-none"
+                  placeholder="اكتب نص الرسالة هنا..."
+                  value={generalMessageText}
+                  onChange={(e) => setGeneralMessageText(e.target.value)}
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => sendGeneralMessage(selectedStudentForMessage)}
+                  className="btn-primary bg-green-600 hover:bg-green-700 px-6 py-2 rounded-md text-white"
+                >
+                  إرسال
+                </button>
+                <button
+                  onClick={() => {
+                    setShowGeneralMessageModal(false);
+                    setSelectedStudentForMessage(null);
+                    setGeneralMessageSubject('');
+                    setGeneralMessageText('');
+                  }}
+                  className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-md text-white"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAddNotificationModal && newlyAddedStudent && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-green-500/30">
+            <h3 className="text-xl font-semibold text-green-300 mb-2 text-center">
+              <FaCheckCircle className="inline-block me-2" /> تم تسجيل الطالب
+            </h3>
+            <p className="text-gray-300 text-center mb-4">
+              تم إضافة الطالب <span className="text-white font-bold">{newlyAddedStudent.name}</span> بنجاح.
+              <br />
+              <span className="text-sm text-gray-400">يجب إرسال رسالة التفعيل لولي الأمر الآن.</span>
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => {
+                  sendActivationMessage(newlyAddedStudent, newlyAddedStudent.username, newlyAddedStudent.password);
+                  setShowAddNotificationModal(false);
+                  setNewlyAddedStudent(null);
+                }}
+                className="btn-primary bg-green-600 hover:bg-green-700 w-full py-3 flex items-center justify-center gap-2 text-lg rounded-md text-white"
+              >
+                <FaComment className="inline-block me-2" /> إخبار ولي الأمر
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showFreezeNotificationModal && frozenStudent && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-orange-500/30">
+            <h3 className="text-xl font-semibold text-orange-300 mb-2 text-center">
+              <FaBan className="inline-block me-2" /> تم تجميد الحساب
+            </h3>
+            <p className="text-gray-300 text-center mb-4">
+              تم تجميد حساب الطالب <span className="text-white font-bold">{frozenStudent.name}</span>.
+              <br />
+              <span className="text-sm text-gray-400">يجب إرسال رسالة إشعار لولي الأمر الآن.</span>
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => {
+                  sendFreezeMessage(frozenStudent);
+                  setShowFreezeNotificationModal(false);
+                  setFrozenStudent(null);
+                }}
+                className="btn-primary bg-orange-600 hover:bg-orange-700 w-full py-3 flex items-center justify-center gap-2 text-lg rounded-md text-white"
+              >
+                <FaComment className="inline-block me-2" /> إخبار ولي الأمر
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showClassSelectionModal && selectedStudentForClass && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowClassSelectionModal(false)}>
+          <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-semibold text-blue-300 mb-4">
+              <FaThumbtack className="inline-block me-2" /> تحديد شعبة الطالب
+            </h3>
+            <p className="text-gray-300 text-sm mb-2">الطالب: <strong>{selectedStudentForClass.name || selectedStudentForClass.username}</strong></p>
+            <div className="space-y-2">
+              {classes.map(cls => (
+                <label key={cls.id} className="flex items-center gap-2 text-gray-200">
+                  <input
+                    type="checkbox"
+                    checked={tempClassIds.includes(cls.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setTempClassIds([...tempClassIds, cls.id]);
+                      } else {
+                        setTempClassIds(tempClassIds.filter(id => id !== cls.id));
+                      }
+                    }}
+                    className="accent-blue-500"
+                  />
+                  {cls.name}
+                </label>
+              ))}
+              {classes.length === 0 && <p className="text-gray-400">لا توجد شعب مسجلة. أضف شعبة أولاً.</p>}
+            </div>
+            <div className="flex gap-3 mt-4">
+              <button onClick={saveClassSelection} className="btn-primary bg-green-600 hover:bg-green-700 px-4 py-2 rounded-md text-white">حفظ</button>
+              <button onClick={() => setShowClassSelectionModal(false)} className="btn-primary bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-md text-white">إلغاء</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <AddAssignmentModal
         isOpen={showAssignmentModal}
         onClose={() => {
@@ -3659,7 +4631,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         initialMode={selectedAssignmentType || 'now'}
       />
 
-      {/* مودال إدارة الحصص */}
       <AddLessonModal
         isOpen={showLessonModal}
         onClose={() => {
@@ -3671,7 +4642,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         classesList={classes}
       />
 
-      {/* مودال الإنذار */}
       {showWarningModal && selectedStudentForWarning && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowWarningModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-yellow-500/30" onClick={(e) => e.stopPropagation()}>
@@ -3694,14 +4664,64 @@ const TeacherPanel = ({ user, onLogout }) => {
                 />
               </div>
               <div className="flex gap-3">
-                <button onClick={confirmWarning} className="btn-primary bg-yellow-600 hover:bg-yellow-700 px-6 py-2 rounded-md text-white">إرسال الإنذار</button>
-                <button onClick={() => setShowWarningModal(false)} className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-md text-white">إلغاء</button>
+                <button
+                  onClick={confirmWarning}
+                  className="btn-primary bg-yellow-600 hover:bg-yellow-700 px-6 py-2 rounded-md text-white"
+                >
+                  إرسال الإنذار
+                </button>
+                <button
+                  onClick={() => setShowWarningModal(false)}
+                  className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-md text-white"
+                >
+                  إلغاء
+                </button>
               </div>
             </div>
           </div>
         </div>
       )}
 
+      {showReviewModal && selectedReviewStudent && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => { setShowReviewModal(false); setSelectedReviewStudent(null); }}>
+          <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-blue-500/30" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-semibold text-blue-300 mb-4">
+              <FaClipboardList className="inline-block me-2" /> مراجعة طلب تعديل البيانات
+            </h3>
+            <p className="text-gray-300 text-sm mb-2">
+              الطالب: <strong>{selectedReviewStudent.name}</strong> (اسم المستخدم: {selectedReviewStudent.username})
+            </p>
+            <div className="space-y-2 bg-black/20 p-4 rounded-xl border border-gray-700">
+              <p className="text-yellow-200 text-sm font-semibold">التغييرات المطلوبة:</p>
+              {selectedReviewStudent.pendingChanges && (
+                <>
+                  {selectedReviewStudent.pendingChanges.name && selectedReviewStudent.pendingChanges.name !== selectedReviewStudent.name && (
+                    <div className="flex justify-between text-sm"><span className="text-gray-400">الاسم:</span> <span><span className="text-red-400 line-through">{selectedReviewStudent.name}</span> → <span className="text-green-300">{selectedReviewStudent.pendingChanges.name}</span></span></div>
+                  )}
+                  {selectedReviewStudent.pendingChanges.gender && selectedReviewStudent.pendingChanges.gender !== selectedReviewStudent.gender && (
+                    <div className="flex justify-between text-sm"><span className="text-gray-400">الجنس:</span> <span><span className="text-red-400 line-through">{selectedReviewStudent.gender}</span> → <span className="text-green-300">{selectedReviewStudent.pendingChanges.gender}</span></span></div>
+                  )}
+                  {selectedReviewStudent.pendingChanges.age && selectedReviewStudent.pendingChanges.age != selectedReviewStudent.age && (
+                    <div className="flex justify-between text-sm"><span className="text-gray-400">العمر:</span> <span><span className="text-red-400 line-through">{selectedReviewStudent.age}</span> → <span className="text-green-300">{selectedReviewStudent.pendingChanges.age}</span></span></div>
+                  )}
+                  {selectedReviewStudent.pendingChanges.phone && selectedReviewStudent.pendingChanges.phone !== selectedReviewStudent.phone && (
+                    <div className="flex justify-between text-sm"><span className="text-gray-400">رقم الهاتف:</span> <span><span className="text-red-400 line-through">{selectedReviewStudent.phone}</span> → <span className="text-green-300">{selectedReviewStudent.pendingChanges.phone}</span></span></div>
+                  )}
+                </>
+              )}
+            </div>
+            <div className="flex gap-3 mt-4">
+              <button onClick={() => acceptReview(selectedReviewStudent.id)} className="btn-primary bg-green-600 hover:bg-green-700 px-6 py-2 rounded-md text-white">
+                <FaCheckCircle className="inline-block me-2" /> قبول
+              </button>
+              <button onClick={() => rejectReview(selectedReviewStudent.id)} className="btn-primary bg-red-600 hover:bg-red-700 px-6 py-2 rounded-md text-white">
+                <FaTimesCircle className="inline-block me-2" /> رفض
+              </button>
+              <button onClick={() => { setShowReviewModal(false); setSelectedReviewStudent(null); }} className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-md text-white">إلغاء</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -4251,7 +5271,6 @@ const StudentPanel = ({ user, onLogout }) => {
         </div>
       </div>
 
-      {/* مودال معلوماتي الشخصية */}
       {showProfileModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowProfileModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-blue-500/30" onClick={(e) => e.stopPropagation()}>
@@ -4460,7 +5479,6 @@ const StudentPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* مودال الإشعارات (شخصية + عامة) */}
       {showNotificationsModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowNotificationsModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full max-h-[70vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
@@ -4471,7 +5489,6 @@ const StudentPanel = ({ user, onLogout }) => {
               <button onClick={() => setShowNotificationsModal(false)} className="text-gray-400 hover:text-white text-2xl">✕</button>
             </div>
             <div className="space-y-3">
-              {/* الإشعارات العامة */}
               {announcements.length > 0 && (
                 <>
                   <p className="text-xs text-gray-400 border-b border-gray-700 pb-1">📢 إشعارات عامة</p>
@@ -4488,7 +5505,6 @@ const StudentPanel = ({ user, onLogout }) => {
                   ))}
                 </>
               )}
-              {/* الإشعارات الشخصية */}
               {notifications.length > 0 && (
                 <>
                   <p className="text-xs text-gray-400 border-b border-gray-700 pb-1 mt-2">🔔 إشعارات خاصة</p>
@@ -4545,7 +5561,7 @@ const StudentPanel = ({ user, onLogout }) => {
 };
 
 // ============================================================
-// App (معدل - إضافة دور المشرف)
+// App (معدل)
 // ============================================================
 const App = () => {
   const [user, setUser] = useState(null);
@@ -4659,7 +5675,6 @@ const App = () => {
         return;
       }
 
-      // إذا كان دور مشرف (supervisor)، لا يحتاج لإكمال الملف
       if (profile.role === 'supervisor') {
         setUser({
           id: docId,
