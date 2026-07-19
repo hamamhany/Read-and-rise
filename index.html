@@ -12,7 +12,9 @@
     <!-- ربط ملف المانيفست -->
     <link rel="manifest" href="/manifest.json" />
 
-    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <!-- إصلاح تحذير PWA: استبدال apple-mobile-web-app-capable بـ mobile-web-app-capable -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <!-- تم إزالة السطر deprecated: <meta name="apple-mobile-web-app-capable" content="yes" /> -->
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
     <style>
