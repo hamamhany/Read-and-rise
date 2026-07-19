@@ -6,13 +6,13 @@ import { getFirestore } from "firebase/firestore";
 import { getMessaging } from "firebase/messaging";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAe3-qMRUVjYeBOW-OBZUApNn9IpTecGGk",
-  authDomain: "readandrise-e1420.firebaseapp.com",
-  projectId: "readandrise-e1420",
-  storageBucket: "readandrise-e1420.firebasestorage.app",
-  messagingSenderId: "685156970755",
-  appId: "1:685156970755:web:04d9c685084b2df835f936",
-  measurementId: "G-4LKJCL8PV2"
+  apiKey: process.env.REACT_APP_API_KEY,
+  authDomain: process.env.REACT_APP_AUTH_DOMAIN,
+  projectId: process.env.REACT_APP_PROJECT_ID,
+  storageBucket: process.env.REACT_APP_STORAGE_BUCKET,
+  messagingSenderId: process.env.REACT_APP_MESSAGING_SENDER_ID,
+  appId: process.env.REACT_APP_APP_ID,
+  measurementId: process.env.REACT_APP_MEASUREMENT_ID
 };
 
 const app = initializeApp(firebaseConfig);
