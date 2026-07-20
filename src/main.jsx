@@ -1912,7 +1912,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
 };
 
 // ============================================================
-// Login (معدل)
+// Login (معدل - حل مشكلة البطء وإعادة طلب كلمة المرور)
 // ============================================================
 const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [username, setUsername] = useState('');
@@ -1929,90 +1929,93 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [resetLoading, setResetLoading] = useState(false);
   const [resetError, setResetError] = useState('');
 
+  // ========== دالة تسجيل الدخول المُعدلة (تم إزالة المنطق المعقد) ==========
   const handleAuth = async (e) => {
-  e.preventDefault();
-  setLoading(true);
-  setError('');
+    e.preventDefault();
+    setLoading(true);
+    setError('');
 
-  try {
-    const cleanUsername = username.trim().toLowerCase();
-    if (!cleanUsername) {
-      setError('يرجى إدخال اسم المستخدم');
-      setLoading(false);
-      return;
-    }
-
-    const email = `${cleanUsername}@readandrise.com`;
-    let firebaseUser = null;
-    let docId = null;
-    let profile = null;
-
-    // 1. محاولة تسجيل الدخول عبر Firebase Auth أولاً
     try {
+      const cleanUsername = username.trim().toLowerCase();
+      if (!cleanUsername) {
+        setError('يرجى إدخال اسم المستخدم');
+        setLoading(false);
+        return;
+      }
+
+      const email = `${cleanUsername}@readandrise.com`;
+      let firebaseUser = null;
+      let docId = null;
+      let profile = null;
+
+      // 1. محاولة تسجيل الدخول عبر Firebase Auth
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       firebaseUser = userCredential.user;
-    } catch (loginErr) {
-      // إذا كان الحساب غير موجود في Auth، نبحث عنه في Firestore
-      if (loginErr.code === 'auth/user-not-found' || loginErr.code === 'auth/invalid-credential') {
-        const q = query(collection(db, 'profiles'), where('username', '==', cleanUsername));
-        const querySnapshot = await getDocs(q);
-        if (querySnapshot.empty) {
-          setError('اسم المستخدم غير موجود. تأكد من أن المعلم قام بإضافتك.');
-          setLoading(false);
-          return;
-        }
-        
-        const profileDoc = querySnapshot.docs[0];
-        docId = profileDoc.id;
-        profile = profileDoc.data();
 
-        // إنشاء حساب Auth مؤقت بكلمة مرور افتراضية
-        const tempPassword = '123456';
-        const userCredential = await createUserWithEmailAndPassword(auth, email, tempPassword);
-        firebaseUser = userCredential.user;
-        await signOut(auth);
-        const finalCred = await signInWithEmailAndPassword(auth, email, tempPassword);
-        firebaseUser = finalCred.user;
-      } else {
-        throw loginErr;
-      }
-    }
-
-    // 2. جلب بيانات المستند بعد نجاح المصادقة
-    if (!docId) {
+      // 2. جلب بيانات المستند من Firestore
       const q = query(collection(db, 'profiles'), where('username', '==', cleanUsername));
       const querySnapshot = await getDocs(q);
       if (querySnapshot.empty) {
-        setError('بيانات الحساب غير موجودة في قاعدة البيانات.');
+        // إذا لم يتم العثور على المستند، فالمستخدم غير مسجل في Firestore
+        setError('بيانات الحساب غير موجودة في قاعدة البيانات. يرجى التواصل مع المعلم.');
         setLoading(false);
         return;
       }
       docId = querySnapshot.docs[0].id;
       profile = querySnapshot.docs[0].data();
-    }
 
-    // 3. تحديث uid في المستند إذا لزم الأمر
-    if (!profile.uid || profile.uid !== firebaseUser.uid) {
-      await updateDoc(doc(db, 'profiles', docId), { uid: firebaseUser.uid });
-    }
+      // 3. تحديث uid في المستند إذا لزم الأمر
+      if (!profile.uid || profile.uid !== firebaseUser.uid) {
+        await updateDoc(doc(db, 'profiles', docId), { uid: firebaseUser.uid });
+      }
 
-    // 4. التحقق من حالة الحساب
-    if (profile.isFrozen) {
-      onFrozen({
-        id: docId,
-        uid: firebaseUser.uid,
-        email: firebaseUser.email,
-        username: profile.username,
-        role: profile.role,
-        name: profile.name,
-        phone: profile.phone,
-        classIds: profile.classIds || []
-      });
-      setLoading(false);
-      return;
-    }
+      // 4. التحقق من حالة الحساب
+      if (profile.isFrozen) {
+        onFrozen({
+          id: docId,
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          username: profile.username,
+          role: profile.role,
+          name: profile.name,
+          phone: profile.phone,
+          classIds: profile.classIds || []
+        });
+        setLoading(false);
+        return;
+      }
 
-    if (profile.role === 'supervisor') {
+      if (profile.role === 'supervisor') {
+        onLogin({
+          id: docId,
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          role: profile.role,
+          username: profile.username,
+          name: profile.name,
+          gender: profile.gender,
+          age: profile.age,
+          phone: profile.phone,
+          classIds: [],
+          needsPasswordChange: false,
+          isProfileComplete: true
+        });
+        setLoading(false);
+        return;
+      }
+
+      if (!profile.isProfileComplete || !profile.infoVerified) {
+        onCompleteProfile({
+          id: docId,
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          username: profile.username || cleanUsername,
+          ...profile
+        });
+        setLoading(false);
+        return;
+      }
+
       onLogin({
         id: docId,
         uid: firebaseUser.uid,
@@ -2023,54 +2026,26 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
         gender: profile.gender,
         age: profile.age,
         phone: profile.phone,
-        classIds: [],
-        needsPasswordChange: false,
+        classIds: profile.classIds || [],
+        needsPasswordChange: profile.infoVerified === false,
         isProfileComplete: true
       });
+
+    } catch (err) {
+      console.error(err);
+      if (err.code === 'auth/wrong-password') {
+        setError('كلمة المرور غير صحيحة');
+      } else if (err.code === 'auth/user-not-found') {
+        setError('الحساب غير موجود. يرجى التواصل مع المعلم لتفعيل الحساب.');
+      } else if (err.code === 'auth/too-many-requests') {
+        setError('تم حظر الحساب مؤقتاً بسبب كثرة المحاولات، حاول لاحقاً');
+      } else {
+        setError(err.message || 'حدث خطأ غير متوقع.');
+      }
+    } finally {
       setLoading(false);
-      return;
     }
-
-    if (!profile.isProfileComplete || !profile.infoVerified) {
-      onCompleteProfile({
-        id: docId,
-        uid: firebaseUser.uid,
-        email: firebaseUser.email,
-        username: profile.username || cleanUsername,
-        ...profile
-      });
-      setLoading(false);
-      return;
-    }
-
-    onLogin({
-      id: docId,
-      uid: firebaseUser.uid,
-      email: firebaseUser.email,
-      role: profile.role,
-      username: profile.username,
-      name: profile.name,
-      gender: profile.gender,
-      age: profile.age,
-      phone: profile.phone,
-      classIds: profile.classIds || [],
-      needsPasswordChange: profile.infoVerified === false,
-      isProfileComplete: true
-    });
-
-  } catch (err) {
-    console.error(err);
-    if (err.code === 'auth/wrong-password') {
-      setError('كلمة المرور غير صحيحة');
-    } else if (err.code === 'auth/too-many-requests') {
-      setError('تم حظر الحساب مؤقتاً بسبب كثرة المحاولات، حاول لاحقاً');
-    } else {
-      setError(err.message || 'حدث خطأ غير متوقع.');
-    }
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   const handleResetRequest = () => {
     setResetError('');
