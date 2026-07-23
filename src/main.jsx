@@ -555,6 +555,19 @@ const createSupervisorAccount = async (name, gender, age, phone, teacherId) => {
     const email = `${username}@readandrise.com`;
     const tempPassword = '123456';
 
+    // 1. إنشاء حساب في نظام المصادقة (Auth)
+    let userCredential;
+    try {
+      userCredential = await createUserWithEmailAndPassword(auth, email, tempPassword);
+    } catch (authError) {
+      console.error('Auth creation error:', authError);
+      if (authError.code === 'auth/email-already-in-use') {
+        throw new Error('البريد الإلكتروني مستخدم بالفعل. حاول مرة أخرى.');
+      }
+      throw new Error('فشل إنشاء حساب المصادقة: ' + authError.message);
+    }
+    const firebaseUser = userCredential.user;
+
     const newId = generateId();
     const cleanPhone = phone.replace(/[^0-9]/g, '');
     const ageNum = parseInt(age);
@@ -562,6 +575,7 @@ const createSupervisorAccount = async (name, gender, age, phone, teacherId) => {
       throw new Error('العمر يجب أن يكون رقماً بين 1 و 99.');
     }
 
+    // 2. حفظ البيانات في Firestore باستخدام uid من Auth
     await setDoc(doc(db, 'profiles', newId), {
       email,
       username,
@@ -575,7 +589,7 @@ const createSupervisorAccount = async (name, gender, age, phone, teacherId) => {
       isProfileComplete: true,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
-      uid: null
+      uid: firebaseUser.uid  // ربط مع uid من Auth
     });
 
     await sendNotificationToTeacher(
@@ -2919,6 +2933,23 @@ const TeacherPanel = ({ user, onLogout }) => {
         return;
       }
 
+      // 1. إنشاء حساب في نظام المصادقة (Auth)
+      let userCredential;
+      try {
+        userCredential = await createUserWithEmailAndPassword(auth, email, tempPassword);
+      } catch (authError) {
+        console.error('Auth creation error for student:', authError);
+        if (authError.code === 'auth/email-already-in-use') {
+          toast.error('البريد الإلكتروني مستخدم بالفعل. حاول مرة أخرى.');
+        } else {
+          toast.error('فشل إنشاء حساب المصادقة: ' + authError.message);
+        }
+        setStudentLoading(false);
+        return;
+      }
+      const firebaseUser = userCredential.user;
+
+      // 2. حفظ البيانات في Firestore مع uid من Auth
       await setDoc(doc(db, 'profiles', newId), {
         email: email,
         username: newUsername,
@@ -2936,7 +2967,8 @@ const TeacherPanel = ({ user, onLogout }) => {
         reviewExpiry: null,
         warnings: [],
         createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
+        updatedAt: serverTimestamp(),
+        uid: firebaseUser.uid  // ربط مع uid من Auth
       });
 
       await sendNotificationToTeacher(
