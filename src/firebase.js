@@ -20,6 +20,4 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const messaging = getMessaging(app);
-
-// تهيئة الـ Analytics بشكل آمن بدون أخطاء إذا لم تكن مدعومة
 export const analytics = isSupported().then((yes) => (yes ? getAnalytics(app) : null));
