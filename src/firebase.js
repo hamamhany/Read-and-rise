@@ -1,6 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import { getMessaging, isSupported } from "firebase/messaging";
 import { getAnalytics } from "firebase/analytics";
 
 const firebaseConfig = {
@@ -13,12 +14,26 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
-// Initialize Firebase
+// Initialize Firebase App
 const app = initializeApp(firebaseConfig);
+
+// Export Auth & Firestore
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
-// Initialize Analytics safely (supports browser environment)
+// Initialize Messaging safely (checks if browser supports push notifications)
+export let messaging = null;
+if (typeof window !== "undefined") {
+  isSupported().then((supported) => {
+    if (supported) {
+      messaging = getMessaging(app);
+    }
+  }).catch((err) => {
+    console.warn("Firebase Messaging not supported:", err);
+  });
+}
+
+// Initialize Analytics safely
 let analytics = null;
 if (typeof window !== "undefined") {
   try {
@@ -28,3 +43,5 @@ if (typeof window !== "undefined") {
   }
 }
 export { analytics };
+
+export default app;
