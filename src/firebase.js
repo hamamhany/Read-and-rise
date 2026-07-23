@@ -1,5 +1,6 @@
+// firebase.js
 import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
+import { getAnalytics, isSupported } from "firebase/analytics";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getMessaging } from "firebase/messaging";
@@ -15,7 +16,10 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-export const analytics = getAnalytics(app);
+
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const messaging = getMessaging(app);
+
+// تهيئة الـ Analytics بشكل آمن بدون أخطاء إذا لم تكن مدعومة
+export const analytics = isSupported().then((yes) => (yes ? getAnalytics(app) : null));
