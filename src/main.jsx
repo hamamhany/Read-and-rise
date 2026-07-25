@@ -2312,7 +2312,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
     }
     if (Notification.permission === 'granted') {
       try {
-        const token = await getToken(messaging, { vapidKey: 'BHjV-5eAodH6m5A800OiAJdWp2a7rGe-eGbx16ag2q0LdTKbWP1ddF2pYFA_pyt1ZSCPGkiNeCW1YA0MJ21eF9k' });
+        const token = await getToken(messaging, { vapidKey: 'BMuOctGyoxHcX03mppaXioqagujweclql9d9dpeLRTsZAIQpcgdcBveP-DGzaVctK7nIF1liaeo6vvfxg-uIAbI' });
         if (token) {
           await updateDoc(doc(db, 'profiles', user.id), {
             fcmTokens: arrayUnion(token)
@@ -2332,7 +2332,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
     const permission = await Notification.requestPermission();
     if (permission === 'granted') {
       try {
-        const token = await getToken(messaging, { vapidKey: 'BHjV-5eAodH6m5A800OiAJdWp2a7rGe-eGbx16ag2q0LdTKbWP1ddF2pYFA_pyt1ZSCPGkiNeCW1YA0MJ21eF9k' });
+        const token = await getToken(messaging, { vapidKey: 'BMuOctGyoxHcX03mppaXioqagujweclql9d9dpeLRTsZAIQpcgdcBveP-DGzaVctK7nIF1liaeo6vvfxg-uIAbI' });
         if (token) {
           await updateDoc(doc(db, 'profiles', user.id), {
             fcmTokens: arrayUnion(token)
@@ -2649,7 +2649,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
     if (Notification.permission === 'granted') {
       try {
-        const token = await getToken(messaging, { vapidKey: 'BHjV-5eAodH6m5A800OiAJdWp2a7rGe-eGbx16ag2q0LdTKbWP1ddF2pYFA_pyt1ZSCPGkiNeCW1YA0MJ21eF9k' });
+        const token = await getToken(messaging, { vapidKey: 'BMuOctGyoxHcX03mppaXioqagujweclql9d9dpeLRTsZAIQpcgdcBveP-DGzaVctK7nIF1liaeo6vvfxg-uIAbI' });
         if (token) {
           await updateDoc(doc(db, 'profiles', user.id), {
             fcmTokens: arrayUnion(token)
@@ -2668,7 +2668,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     const permission = await Notification.requestPermission();
     if (permission === 'granted') {
       try {
-        const token = await getToken(messaging, { vapidKey: 'BHjV-5eAodH6m5A800OiAJdWp2a7rGe-eGbx16ag2q0LdTKbWP1ddF2pYFA_pyt1ZSCPGkiNeCW1YA0MJ21eF9k' });
+        const token = await getToken(messaging, { vapidKey: 'BMuOctGyoxHcX03mppaXioqagujweclql9d9dpeLRTsZAIQpcgdcBveP-DGzaVctK7nIF1liaeo6vvfxg-uIAbI' });
         if (token) {
           await updateDoc(doc(db, 'profiles', user.id), {
             fcmTokens: arrayUnion(token)
@@ -4804,7 +4804,7 @@ const StudentPanel = ({ user, onLogout }) => {
     }
     if (Notification.permission === 'granted') {
       try {
-        const token = await getToken(messaging, { vapidKey: 'BHjV-5eAodH6m5A800OiAJdWp2a7rGe-eGbx16ag2q0LdTKbWP1ddF2pYFA_pyt1ZSCPGkiNeCW1YA0MJ21eF9k' });
+        const token = await getToken(messaging, { vapidKey: 'BMuOctGyoxHcX03mppaXioqagujweclql9d9dpeLRTsZAIQpcgdcBveP-DGzaVctK7nIF1liaeo6vvfxg-uIAbI' });
         if (token) {
           await updateDoc(doc(db, 'profiles', user.id), {
             fcmTokens: arrayUnion(token)
@@ -4823,7 +4823,7 @@ const StudentPanel = ({ user, onLogout }) => {
     const permission = await Notification.requestPermission();
     if (permission === 'granted') {
       try {
-        const token = await getToken(messaging, { vapidKey: 'BHjV-5eAodH6m5A800OiAJdWp2a7rGe-eGbx16ag2q0LdTKbWP1ddF2pYFA_pyt1ZSCPGkiNeCW1YA0MJ21eF9k' });
+        const token = await getToken(messaging, { vapidKey: 'BMuOctGyoxHcX03mppaXioqagujweclql9d9dpeLRTsZAIQpcgdcBveP-DGzaVctK7nIF1liaeo6vvfxg-uIAbI' });
         if (token) {
           await updateDoc(doc(db, 'profiles', user.id), {
             fcmTokens: arrayUnion(token)
