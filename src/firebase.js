@@ -21,6 +21,9 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
+// Export the main app instance to be used for creating secondary apps
+export const firebaseApp = app;
+
 // Initialize Messaging safely (checks if browser supports push notifications)
 export let messaging = null;
 if (typeof window !== "undefined") {

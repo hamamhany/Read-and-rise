@@ -6,7 +6,7 @@ import ReactDOM from 'react-dom/client';
 import toast, { Toaster } from 'react-hot-toast';
 
 // Firebase imports
-import { auth, db, messaging } from './firebase.js';
+import { auth, db, messaging, firebaseApp } from './firebase.js'; // أضفنا firebaseApp
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -38,6 +38,12 @@ import {
   getCountFromServer
 } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
+import { initializeApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth'; // نعيد استيرادها لاستخدامها مع التطبيق الثانوي
+
+// إنشاء تطبيق Firebase ثانوي لمنع تأثير عمليات الإنشاء على جلسة المستخدم الحالية
+const secondaryApp = initializeApp(firebaseApp.options, 'secondary');
+const secondaryAuth = getAuth(secondaryApp);
 
 // ========== أيقونات FontAwesome ==========
 import {
@@ -538,35 +544,44 @@ const createSupervisorAccount = async (name, gender, age, phone, teacherId) => {
       throw new Error(`لا يمكن إضافة أكثر من ${MAX_SUPERVISORS} مشرف.`);
     }
 
-    let baseUsername = 'supervisor';
-    let username = baseUsername;
-    let counter = 1;
+    // توليد اسم مستخدم عشوائي (supervisor + 6 أرقام)
+    let username = '';
     let exists = true;
-    while (exists) {
+    let attempts = 0;
+    while (exists && attempts < 20) {
+      const randomNum = Math.floor(Math.random() * 1000000).toString().padStart(6, '0');
+      username = `supervisor${randomNum}`;
       const q2 = query(collection(db, 'profiles'), where('username', '==', username));
       const snap = await getDocs(q2);
       if (snap.empty) {
         exists = false;
-      } else {
-        username = `${baseUsername}${counter}`;
-        counter++;
       }
+      attempts++;
     }
-    const email = `${username}@readandrise.com`;
-    const tempPassword = '123456';
+    if (exists) {
+      throw new Error('تعذر إنشاء اسم مستخدم فريد، حاول مرة أخرى.');
+    }
 
-    // 1. إنشاء حساب في نظام المصادقة (Auth)
+    // توليد كلمة مرور عشوائية (9 أرقام)
+    const tempPassword = Math.floor(Math.random() * 1000000000).toString().padStart(9, '0');
+
+    const email = `${username}@readandrise.com`;
+
+    // استخدام التطبيق الثانوي لإنشاء الحساب دون التأثير على الجلسة الحالية
     let userCredential;
     try {
-      userCredential = await createUserWithEmailAndPassword(auth, email, tempPassword);
+      userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, tempPassword);
     } catch (authError) {
-      console.error('Auth creation error:', authError);
+      console.error('Auth creation error (secondary):', authError);
       if (authError.code === 'auth/email-already-in-use') {
         throw new Error('البريد الإلكتروني مستخدم بالفعل. حاول مرة أخرى.');
       }
       throw new Error('فشل إنشاء حساب المصادقة: ' + authError.message);
     }
     const firebaseUser = userCredential.user;
+
+    // تسجيل الخروج من التطبيق الثانوي لإلغاء أي تأثير على الجلسة الرئيسية
+    await signOut(secondaryAuth);
 
     const newId = generateId();
     const cleanPhone = phone.replace(/[^0-9]/g, '');
@@ -575,7 +590,6 @@ const createSupervisorAccount = async (name, gender, age, phone, teacherId) => {
       throw new Error('العمر يجب أن يكون رقماً بين 1 و 99.');
     }
 
-    // 2. حفظ البيانات في Firestore باستخدام uid من Auth
     await setDoc(doc(db, 'profiles', newId), {
       email,
       username,
@@ -589,7 +603,7 @@ const createSupervisorAccount = async (name, gender, age, phone, teacherId) => {
       isProfileComplete: true,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
-      uid: firebaseUser.uid  // ربط مع uid من Auth
+      uid: firebaseUser.uid
     });
 
     await sendNotificationToTeacher(
@@ -2291,6 +2305,11 @@ const SupervisorPanel = ({ user, onLogout }) => {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   const requestNotificationPermission = async () => {
+    // التأكد من أن المستخدم مسجل دخول قبل محاولة جلب التوكن
+    if (!auth.currentUser) {
+      toast.error('يرجى تسجيل الدخول أولاً.');
+      return;
+    }
     if (Notification.permission === 'granted') {
       try {
         const token = await getToken(messaging, { vapidKey: 'BHjV-5eAodH6m5A800OiAJdWp2a7rGe-eGbx16ag2q0LdTKbWP1ddF2pYFA_pyt1ZSCPGkiNeCW1YA0MJ21eF9k' });
@@ -2298,8 +2317,12 @@ const SupervisorPanel = ({ user, onLogout }) => {
           await updateDoc(doc(db, 'profiles', user.id), {
             fcmTokens: arrayUnion(token)
           });
+          toast.success('تم تفعيل الإشعارات');
         }
-      } catch (err) { console.error(err); }
+      } catch (err) {
+        console.error('FCM token error:', err);
+        toast.error('فشل جلب توكن الإشعارات: ' + err.message);
+      }
       return;
     }
     if (Notification.permission === 'denied') {
@@ -2317,7 +2340,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
           toast.success('تم تفعيل الإشعارات بنجاح');
         }
       } catch (err) {
-        toast.error('فشل تفعيل الإشعارات');
+        toast.error('فشل تفعيل الإشعارات: ' + err.message);
       }
     }
   };
@@ -2620,6 +2643,10 @@ const TeacherPanel = ({ user, onLogout }) => {
 
   // ===== دوال الإشعارات =====
   const requestNotificationPermission = async () => {
+    if (!auth.currentUser) {
+      toast.error('يرجى تسجيل الدخول أولاً.');
+      return;
+    }
     if (Notification.permission === 'granted') {
       try {
         const token = await getToken(messaging, { vapidKey: 'BHjV-5eAodH6m5A800OiAJdWp2a7rGe-eGbx16ag2q0LdTKbWP1ddF2pYFA_pyt1ZSCPGkiNeCW1YA0MJ21eF9k' });
@@ -2628,7 +2655,10 @@ const TeacherPanel = ({ user, onLogout }) => {
             fcmTokens: arrayUnion(token)
           });
         }
-      } catch (err) { console.error(err); }
+      } catch (err) {
+        console.error('FCM token error:', err);
+        toast.error('فشل جلب توكن الإشعارات: ' + err.message);
+      }
       return;
     }
     if (Notification.permission === 'denied') {
@@ -2646,7 +2676,7 @@ const TeacherPanel = ({ user, onLogout }) => {
           toast.success('تم تفعيل الإشعارات بنجاح');
         }
       } catch (err) {
-        toast.error('فشل تفعيل الإشعارات');
+        toast.error('فشل تفعيل الإشعارات: ' + err.message);
       }
     }
   };
@@ -2921,7 +2951,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         }
       });
       const newUsername = `knight${maxNum + 1}`;
-      const tempPassword = '123456';
+      const tempPassword = Math.floor(Math.random() * 1000000000).toString().padStart(9, '0');
       const email = `${newUsername}@readandrise.com`;
 
       const newId = generateId();
@@ -2933,12 +2963,12 @@ const TeacherPanel = ({ user, onLogout }) => {
         return;
       }
 
-      // 1. إنشاء حساب في نظام المصادقة (Auth)
+      // استخدام التطبيق الثانوي لإنشاء الحساب
       let userCredential;
       try {
-        userCredential = await createUserWithEmailAndPassword(auth, email, tempPassword);
+        userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, tempPassword);
       } catch (authError) {
-        console.error('Auth creation error for student:', authError);
+        console.error('Auth creation error for student (secondary):', authError);
         if (authError.code === 'auth/email-already-in-use') {
           toast.error('البريد الإلكتروني مستخدم بالفعل. حاول مرة أخرى.');
         } else {
@@ -2948,8 +2978,9 @@ const TeacherPanel = ({ user, onLogout }) => {
         return;
       }
       const firebaseUser = userCredential.user;
+      // تسجيل الخروج من التطبيق الثانوي
+      await signOut(secondaryAuth);
 
-      // 2. حفظ البيانات في Firestore مع uid من Auth
       await setDoc(doc(db, 'profiles', newId), {
         email: email,
         username: newUsername,
@@ -2968,7 +2999,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         warnings: [],
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-        uid: firebaseUser.uid  // ربط مع uid من Auth
+        uid: firebaseUser.uid
       });
 
       await sendNotificationToTeacher(
@@ -4767,6 +4798,10 @@ const StudentPanel = ({ user, onLogout }) => {
   const [classStudentCount, setClassStudentCount] = useState({});
 
   const requestNotificationPermission = async () => {
+    if (!auth.currentUser) {
+      toast.error('يرجى تسجيل الدخول أولاً.');
+      return;
+    }
     if (Notification.permission === 'granted') {
       try {
         const token = await getToken(messaging, { vapidKey: 'BHjV-5eAodH6m5A800OiAJdWp2a7rGe-eGbx16ag2q0LdTKbWP1ddF2pYFA_pyt1ZSCPGkiNeCW1YA0MJ21eF9k' });
@@ -4775,7 +4810,10 @@ const StudentPanel = ({ user, onLogout }) => {
             fcmTokens: arrayUnion(token)
           });
         }
-      } catch (err) { console.error(err); }
+      } catch (err) {
+        console.error('FCM token error:', err);
+        toast.error('فشل جلب توكن الإشعارات: ' + err.message);
+      }
       return;
     }
     if (Notification.permission === 'denied') {
@@ -4793,7 +4831,7 @@ const StudentPanel = ({ user, onLogout }) => {
           toast.success('تم تفعيل الإشعارات بنجاح');
         }
       } catch (err) {
-        toast.error('فشل تفعيل الإشعارات');
+        toast.error('فشل تفعيل الإشعارات: ' + err.message);
       }
     }
   };
