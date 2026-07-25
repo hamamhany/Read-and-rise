@@ -1,7 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
-import { getMessaging, isSupported } from "firebase/messaging";
+import { getMessaging } from "firebase/messaging";
 import { getAnalytics } from "firebase/analytics";
 
 const firebaseConfig = {
@@ -24,17 +24,8 @@ export const db = getFirestore(app);
 // Export the main app instance to be used for creating secondary apps
 export const firebaseApp = app;
 
-// Initialize Messaging safely (checks if browser supports push notifications)
-export let messaging = null;
-if (typeof window !== "undefined") {
-  isSupported().then((supported) => {
-    if (supported) {
-      messaging = getMessaging(app);
-    }
-  }).catch((err) => {
-    console.warn("Firebase Messaging not supported:", err);
-  });
-}
+// Initialize Messaging synchronously (safe for build)
+export const messaging = getMessaging(app);
 
 // Initialize Analytics safely
 let analytics = null;
