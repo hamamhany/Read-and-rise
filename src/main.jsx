@@ -355,17 +355,17 @@ const sendActivationMessage = (student, tempUsername, tempPassword) => {
   window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
 };
 
-// دالة إرسال رسالة تفعيل للمشرف (بالنص المطلوب)
+// ===== دالة إرسال رسالة تفعيل للمشرف (محسنة مع رسائل تأكيد) =====
 const sendSupervisorActivationMessage = (supervisor, tempUsername, tempPassword) => {
   const phone = supervisor.phone || '';
   if (!phone) {
     toast.error('رقم الهاتف غير مسجل لهذا المشرف.');
-    return;
+    return false;
   }
   const cleanedPhone = cleanPhoneNumber(phone);
   if (!cleanedPhone) {
     toast.error('رقم الهاتف غير صالح.');
-    return;
+    return false;
   }
   const supervisorName = supervisor.name || 'المشرف';
   const message = encodeURIComponent(
@@ -382,6 +382,8 @@ const sendSupervisorActivationMessage = (supervisor, tempUsername, tempPassword)
     `رئيس قسم قسم التكنولوجيا وتطوير المعلومات والأمن السيبراني : همام هاني محمد`
   );
   window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
+  toast.success('✅ تم إرسال رسالة التفعيل للمشرف عبر واتساب.');
+  return true;
 };
 
 const sendFreezeMessage = (student) => {
@@ -613,7 +615,7 @@ const deleteAnnouncement = async (id) => {
   }
 };
 
-// ========== دوال إدارة المشرفين ==========
+// ========== دوال إدارة المشرفين (مع تحسين إرسال رسالة التفعيل) ==========
 const createSupervisorAccount = async (name, gender, age, phone, teacherId) => {
   try {
     const q = query(collection(db, 'profiles'), where('role', '==', 'supervisor'));
@@ -668,7 +670,7 @@ const createSupervisorAccount = async (name, gender, age, phone, teacherId) => {
       throw new Error('العمر يجب أن يكون رقماً بين 1 و 99.');
     }
 
-    // [تعديل] جعل الحساب غير مكتمل حتى يقوم المشرف بتغيير اسم المستخدم وكلمة المرور
+    // جعل الحساب غير مكتمل حتى يقوم المشرف بتغيير اسم المستخدم وكلمة المرور
     await setDoc(doc(db, 'profiles', newId), {
       email,
       username,
@@ -678,12 +680,12 @@ const createSupervisorAccount = async (name, gender, age, phone, teacherId) => {
       phone: cleanPhone,
       role: 'supervisor',
       isFrozen: false,
-      infoVerified: false,        // تم التعديل
-      isProfileComplete: false,   // تم التعديل
+      infoVerified: false,
+      isProfileComplete: false,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       uid: firebaseUser.uid,
-      warnings: []                // إضافة مصفوفة الإنذارات
+      warnings: []
     });
 
     // إرسال إشعار للمعلم
@@ -695,9 +697,12 @@ const createSupervisorAccount = async (name, gender, age, phone, teacherId) => {
       newId
     );
 
-    // إرسال رسالة واتساب للمشرف ببيانات الدخول المؤقتة
+    // إرسال رسالة واتساب للمشرف ببيانات الدخول المؤقتة (مع التحسين)
     const supervisorObj = { name, phone: cleanPhone };
-    sendSupervisorActivationMessage(supervisorObj, username, tempPassword);
+    const sent = sendSupervisorActivationMessage(supervisorObj, username, tempPassword);
+    if (!sent) {
+      toast.warn('لم يتم إرسال رسالة واتساب للمشرف بسبب خطأ في رقم الهاتف، ولكن تم إنشاء الحساب بنجاح.');
+    }
 
     return { id: newId, username, password: tempPassword, name };
   } catch (err) {
@@ -2821,6 +2826,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
+  // ===== دالة تبديل حالة التجميد للمشرف (محسنة مع تحديث محلي فوري) =====
   const toggleFreezeSupervisor = async (supervisor) => {
     const nextStatus = !supervisor.isFrozen;
     if (nextStatus) {
@@ -2836,9 +2842,14 @@ const TeacherPanel = ({ user, onLogout }) => {
         frozenAt: nextStatus ? serverTimestamp() : null,
         updatedAt: serverTimestamp()
       });
+
+      // تحديث الحالة محلياً فوراً
+      setSupervisors(prev =>
+        prev.map(s => s.id === supervisor.id ? { ...s, isFrozen: nextStatus } : s)
+      );
+
       if (nextStatus) {
         toast.success('تم تجميد حساب المشرف.');
-        // يمكن إرسال رسالة واتساب للمشرف بإشعار التجميد (اختياري)
       } else {
         toast.success('تم فك تجميد حساب المشرف.');
       }
@@ -2910,12 +2921,27 @@ const TeacherPanel = ({ user, onLogout }) => {
         updatedAt: serverTimestamp()
       });
 
+      // تحديث محلي
+      setSupervisors(prev =>
+        prev.map(s => {
+          if (s.id === supervisor.id) {
+            const updatedWarnings = [...(s.warnings || []), warningObj];
+            return { ...s, warnings: updatedWarnings };
+          }
+          return s;
+        })
+      );
+
       if (newWarningNumber === 3) {
         await updateDoc(supervisorRef, {
           isFrozen: true,
           frozenAt: serverTimestamp(),
           freezeReason: 'تجاوز عدد الإنذارات (3 إنذارات)'
         });
+        // تحديث محلي للتجميد
+        setSupervisors(prev =>
+          prev.map(s => s.id === supervisor.id ? { ...s, isFrozen: true } : s)
+        );
         toast.error('⚠️ تم تجميد حساب المشرف تلقائياً لأن عدد الإنذارات بلغ 3.');
       } else {
         toast.success(`✅ تم إرسال الإنذار رقم ${newWarningNumber} بنجاح.`);
