@@ -4311,34 +4311,57 @@ const TeacherPanel = ({ user, onLogout }) => {
             )}
 
             {/* زر إنشاء غرفة صفية - يظهر دائماً */}  {/* <<< التعديل هنا: إزالة الشرط ووضع الزر مباشرة */}
-            <div className="mt-4 flex flex-col items-center gap-2">
+            <div className="mt-4 flex flex-col items-center gap-3">
+              {nextLesson ? (
+                <button
+                  onClick={async () => {
+                    try {
+                      const meetingData = {
+                        class_id: selectedClassForLesson,
+                        teacher_id: user.id,
+                        meeting_number: '123456789',
+                        password: '',
+                        join_url: `https://zoom.us/j/123456789`,
+                        start_time: nextLesson.date || new Date().toISOString()
+                      };
+                      await saveZoomMeeting(meetingData);
+                      toast.success('✅ تم إنشاء الغرفة للحصة القادمة!');
+                    } catch (err) {
+                      toast.error('❌ فشل إنشاء الغرفة: ' + err.message);
+                    }
+                  }}
+                  className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl text-lg font-bold shadow-lg w-full"
+                >
+                  <FaVideo className="inline-block me-2" /> إنشاء غرفة للحصة القادمة
+                </button>
+              ) : (
+                <div className="text-yellow-400 text-sm bg-yellow-900/20 p-3 rounded-xl border border-yellow-500/30 w-full text-center">
+                  ⚠️ لا توجد حصة قادمة حالياً
+                </div>
+              )}
+
               <button
                 onClick={async () => {
                   try {
-                    if (!nextLesson) {
-                      toast.error('لا توجد حصة قادمة لإنشاء غرفة صفية.');
-                      return;
-                    }
                     const meetingData = {
-                      class_id: selectedClassForLesson,
+                      class_id: selectedClassForLesson || '',
                       teacher_id: user.id,
                       meeting_number: '123456789',
                       password: '',
                       join_url: `https://zoom.us/j/123456789`,
-                      start_time: nextLesson.date || new Date().toISOString()
+                      start_time: new Date().toISOString()
                     };
                     await saveZoomMeeting(meetingData);
-                    toast.success('✅ تم إنشاء غرفة الصفية بنجاح!');
+                    toast.success('✅ تم إنشاء غرفة صفية فورية!');
                   } catch (err) {
                     toast.error('❌ فشل إنشاء الغرفة: ' + err.message);
                   }
                 }}
-                className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl text-lg font-bold shadow-lg transition-all duration-300 transform hover:scale-105"
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl text-lg font-bold shadow-lg w-full"
               >
-                <FaVideo className="inline-block me-2" />
-                🚀 إنشاء غرفة صفية
+                <FaVideo className="inline-block me-2" /> إنشاء غرفة صفية فورية
               </button>
-              <p className="text-xs text-gray-400">سيتم إنشاء غرفة صفية لهذه الحصة</p>
+              <p className="text-xs text-gray-400">يمكنك إنشاء غرفة في أي وقت</p>
             </div>
           </div>
         </div>
