@@ -8,23 +8,27 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      // إضافة manifest بخصائص أساسية لمنع أي خطأ في البناء
       manifest: {
         name: 'Read and Rise',
         short_name: 'ReadRise',
         theme_color: '#ffffff',
+        background_color: '#ffffff',
+        display: 'standalone',
         icons: [
           {
-            src: 'android-chrome-192x192.png',
+            src: 'icon-192.svg',
             sizes: '192x192',
-            type: 'image/png'
+            type: 'image/svg+xml'
+          },
+          {
+            src: 'icon-512.svg',
+            sizes: '512x512',
+            type: 'image/svg+xml'
           }
         ]
       },
       workbox: {
-        // هذا السطر هو الحل لمشكلة Build Failed التي واجهتها
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        // تجاهل الملفات الكبيرة التي لا تحتاج لـ caching
         navigateFallbackDenylist: [/^\/api/],
         cleanupOutdatedCaches: true
       },
@@ -35,13 +39,11 @@ export default defineConfig({
   ],
   server: { 
     port: 3000,
-    // تحسين الأداء أثناء التطوير
     watch: {
       usePolling: true
     }
   },
   build: {
-    // تحسين حجم الملفات النهائية (للنمو وسرعة التحميل)
     chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
