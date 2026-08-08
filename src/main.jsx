@@ -41,6 +41,9 @@ import { getToken, onMessage } from 'firebase/messaging';
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 
+// استيراد Supabase
+import { supabase } from './supabaseClient';
+
 // إنشاء تطبيق Firebase ثانوي لمنع تأثير عمليات الإنشاء على جلسة المستخدم الحالية
 const secondaryApp = initializeApp(firebaseApp.options, 'secondary');
 const secondaryAuth = getAuth(secondaryApp);
@@ -75,7 +78,8 @@ import {
   FaUnlockAlt,
   FaEye,
   FaEyeSlash,
-  FaSpinner
+  FaSpinner,
+  FaVideo
 } from 'react-icons/fa';
 
 // ========== رقم المعلم الثابت ==========
@@ -708,6 +712,71 @@ const createSupervisorAccount = async (name, gender, age, phone, teacherId) => {
   } catch (err) {
     console.error('Error creating supervisor:', err);
     throw err;
+  }
+};
+
+// ========== دوال Zoom + Supabase ==========
+const saveZoomMeeting = async (meetingData) => {
+  try {
+    const { data, error } = await supabase
+      .from('zoom_meetings')
+      .insert([{
+        class_id: meetingData.class_id,
+        teacher_id: meetingData.teacher_id,
+        meeting_number: meetingData.meeting_number,
+        password: meetingData.password || '',
+        join_url: meetingData.join_url,
+        signature: meetingData.signature || '',
+        start_time: meetingData.start_time || new Date().toISOString()
+      }]);
+
+    if (error) {
+      console.error('خطأ في حفظ الاجتماع في Supabase:', error);
+      throw error;
+    }
+    return data;
+  } catch (err) {
+    console.error('فشل حفظ الاجتماع:', err);
+    throw err;
+  }
+};
+
+const getZoomMeetings = async (classId, teacherId) => {
+  try {
+    let query = supabase.from('zoom_meetings').select('*');
+    
+    if (classId) {
+      query = query.eq('class_id', classId);
+    }
+    if (teacherId) {
+      query = query.eq('teacher_id', teacherId);
+    }
+    
+    const { data, error } = await query.order('created_at', { ascending: false });
+    
+    if (error) {
+      console.error('خطأ في جلب الاجتماعات من Supabase:', error);
+      throw error;
+    }
+    return data;
+  } catch (err) {
+    console.error('فشل جلب الاجتماعات:', err);
+    return [];
+  }
+};
+
+const deleteZoomMeeting = async (meetingId) => {
+  try {
+    const { error } = await supabase
+      .from('zoom_meetings')
+      .delete()
+      .eq('id', meetingId);
+    
+    if (error) throw error;
+    return true;
+  } catch (err) {
+    console.error('فشل حذف الاجتماع:', err);
+    return false;
   }
 };
 
@@ -2952,7 +3021,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
 };
 
 // ============================================================
-// TeacherPanel (الكامل مع جميع التعديلات: إزالة الإشعارات العامة، نقل المشرفين للأسفل، إضافة إجراءات للمشرفين)
+// TeacherPanel (الكامل مع جميع التعديلات: إزالة الإشعارات العامة، نقل المشرفين للأسفل، إضافة إجراءات للمشرفين + زر إنشاء غرفة صفية)
 // ============================================================
 const TeacherPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -4240,6 +4309,37 @@ const TeacherPanel = ({ user, onLogout }) => {
                 الموعد القادم للشعبة المختارة: {nextLesson.type === 'once' ? 'مرة واحدة' : 'متكرر'}
               </div>
             )}
+
+            {/* زر إنشاء غرفة صفية - يظهر فقط عند وجود حصة قادمة */}
+            {nextLesson && (
+              <div className="mt-4 flex flex-col items-center gap-2">
+                <button
+                  onClick={async () => {
+                    try {
+                      // يمكن استخدام رقم اجتماع ثابت أو استدعاء Zoom API
+                      const meetingData = {
+                        class_id: selectedClassForLesson,
+                        teacher_id: user.id,
+                        meeting_number: '123456789', // يمكن استبداله برقم حقيقي
+                        password: '',
+                        join_url: `https://zoom.us/j/123456789`,
+                        start_time: nextLesson.date || new Date().toISOString()
+                      };
+                      
+                      await saveZoomMeeting(meetingData);
+                      toast.success('✅ تم إنشاء غرفة الصفية بنجاح!');
+                    } catch (err) {
+                      toast.error('❌ فشل إنشاء الغرفة: ' + err.message);
+                    }
+                  }}
+                  className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl text-lg font-bold shadow-lg transition-all duration-300 transform hover:scale-105"
+                >
+                  <FaVideo className="inline-block me-2" />
+                  🚀 إنشاء غرفة صفية
+                </button>
+                <p className="text-xs text-gray-400">سيتم إنشاء غرفة صفية لهذه الحصة</p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -5029,7 +5129,7 @@ const TeacherPanel = ({ user, onLogout }) => {
 };
 
 // ============================================================
-// StudentPanel (معدل - إضافة الإشعارات العامة)
+// StudentPanel (معدل - إضافة الإشعارات العامة وزر انضمام)
 // ============================================================
 const StudentPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -5059,6 +5159,9 @@ const StudentPanel = ({ user, onLogout }) => {
   const [timeRemaining, setTimeRemaining] = useState({ hours: 0, minutes: 0, seconds: 0 });
 
   const [classStudentCount, setClassStudentCount] = useState({});
+
+  // حالات Zoom
+  const [zoomMeetings, setZoomMeetings] = useState([]);
 
   const requestNotificationPermission = async () => {
     if (!auth.currentUser) {
@@ -5144,6 +5247,22 @@ const StudentPanel = ({ user, onLogout }) => {
     });
     return () => unsubscribe();
   }, []);
+
+  // جلب اجتماعات Zoom من Supabase
+  useEffect(() => {
+    const fetchZoomMeetings = async () => {
+      if (!user?.classIds || user.classIds.length === 0) return;
+      
+      const allMeetings = [];
+      for (const classId of user.classIds) {
+        const meetings = await getZoomMeetings(classId, null);
+        allMeetings.push(...meetings);
+      }
+      setZoomMeetings(allMeetings);
+    };
+    
+    fetchZoomMeetings();
+  }, [user?.classIds]);
 
   const cleanOldNotifications = async () => {
     if (!user) return;
@@ -5547,6 +5666,34 @@ const StudentPanel = ({ user, onLogout }) => {
                   </li>
                 ))}
               </ul>
+            </div>
+          )}
+
+          {/* عرض أزرار الانضمام للاجتماعات النشطة */}
+          {zoomMeetings.length > 0 && (
+            <div className="mt-4 flex flex-col items-center gap-2 w-full">
+              {zoomMeetings.map((meeting) => {
+                const meetingTime = new Date(meeting.start_time);
+                const now = new Date();
+                const diffMinutes = (meetingTime - now) / (1000 * 60);
+                
+                // عرض الزر فقط إذا كان الاجتماع في الوقت الحالي أو خلال 10 دقائق القادمة
+                if (diffMinutes > -15 && diffMinutes < 60) {
+                  return (
+                    <a
+                      key={meeting.id}
+                      href={meeting.join_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl text-lg font-bold shadow-lg transition-all duration-300 transform hover:scale-105 w-full text-center block"
+                    >
+                      <FaVideo className="inline-block me-2" />
+                      🎯 انضم إلى غرفة الصف
+                    </a>
+                  );
+                }
+                return null;
+              })}
             </div>
           )}
         </div>
