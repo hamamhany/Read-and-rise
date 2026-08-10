@@ -780,6 +780,53 @@ const deleteZoomMeeting = async (meetingId) => {
   }
 };
 
+// ===== دالة إنشاء اجتماع Zoom حقيقي عبر خادم وسيط =====
+const createRealZoomMeeting = async (topic, startTime, duration = 60, classId, teacherId) => {
+  try {
+    // استخدم نقطة النهاية الخاصة بك (يفترض أنها موجودة على Railway أو أي خادم)
+    const endpoint = import.meta.env.VITE_ZOOM_AUTH_ENDPOINT || 'https://meetingsdk-auth-endpoint-sample-production-8a01.up.railway.app';
+    
+    // إرسال طلب إلى الخادم لإنشاء الاجتماع
+    const response = await fetch(`${endpoint}/create-meeting`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        topic,
+        startTime,
+        duration,
+        classId,
+        teacherId
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || 'فشل إنشاء الاجتماع');
+    }
+
+    const data = await response.json();
+    // نتوقع أن يعيد الخادم البيانات التالية:
+    // { meeting_number, join_url, password, signature, start_time }
+
+    // حفظ البيانات في Supabase باستخدام الدالة الموجودة
+    const meetingData = {
+      class_id: classId,
+      teacher_id: teacherId,
+      meeting_number: data.meeting_number,
+      password: data.password || '',
+      join_url: data.join_url,
+      signature: data.signature || '',
+      start_time: data.start_time || startTime
+    };
+
+    await saveZoomMeeting(meetingData);
+    return data;
+  } catch (err) {
+    console.error('فشل إنشاء الاجتماع الحقيقي:', err);
+    throw err;
+  }
+};
+
 // ============================================================
 // مكونات المودالات (ChoiceModal, AddAssignmentModal, AddLessonModal)
 // ============================================================
@@ -4310,59 +4357,61 @@ const TeacherPanel = ({ user, onLogout }) => {
               </div>
             )}
 
-            {/* زر إنشاء غرفة صفية - يظهر دائماً */}  {/* <<< التعديل هنا: إزالة الشرط ووضع الزر مباشرة */}
-            <div className="mt-4 flex flex-col items-center gap-3">
-              {nextLesson ? (
-                <button
-                  onClick={async () => {
-                    try {
-                      const meetingData = {
-                        class_id: selectedClassForLesson,
-                        teacher_id: user.id,
-                        meeting_number: '123456789',
-                        password: '',
-                        join_url: `https://zoom.us/j/123456789`,
-                        start_time: nextLesson.date || new Date().toISOString()
-                      };
-                      await saveZoomMeeting(meetingData);
-                      toast.success('✅ تم إنشاء الغرفة للحصة القادمة!');
-                    } catch (err) {
-                      toast.error('❌ فشل إنشاء الغرفة: ' + err.message);
-                    }
-                  }}
-                  className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl text-lg font-bold shadow-lg w-full"
-                >
-                  <FaVideo className="inline-block me-2" /> إنشاء غرفة للحصة القادمة
-                </button>
-              ) : (
-                <div className="text-yellow-400 text-sm bg-yellow-900/20 p-3 rounded-xl border border-yellow-500/30 w-full text-center">
-                  ⚠️ لا توجد حصة قادمة حالياً
-                </div>
-              )}
-
+            {/* زر إنشاء غرفة للحصة القادمة (باستخدام API حقيقي) */}
+            {nextLesson ? (
               <button
                 onClick={async () => {
                   try {
-                    const meetingData = {
-                      class_id: selectedClassForLesson || '',
-                      teacher_id: user.id,
-                      meeting_number: '123456789',
-                      password: '',
-                      join_url: `https://zoom.us/j/123456789`,
-                      start_time: new Date().toISOString()
-                    };
-                    await saveZoomMeeting(meetingData);
-                    toast.success('✅ تم إنشاء غرفة صفية فورية!');
+                    const startTime = nextLesson.date || new Date().toISOString();
+                    await createRealZoomMeeting(
+                      `حصة شعبة ${classes.find(c => c.id === selectedClassForLesson)?.name || selectedClassForLesson}`,
+                      startTime,
+                      60,
+                      selectedClassForLesson,
+                      user.id
+                    );
+                    toast.success('✅ تم إنشاء غرفة Zoom حقيقية!');
                   } catch (err) {
                     toast.error('❌ فشل إنشاء الغرفة: ' + err.message);
                   }
                 }}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl text-lg font-bold shadow-lg w-full"
+                className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl text-lg font-bold shadow-lg w-full"
               >
-                <FaVideo className="inline-block me-2" /> إنشاء غرفة صفية فورية
+                <FaVideo className="inline-block me-2" /> إنشاء غرفة للحصة القادمة (حقيقية)
               </button>
-              <p className="text-xs text-gray-400">يمكنك إنشاء غرفة في أي وقت</p>
-            </div>
+            ) : (
+              <div className="text-yellow-400 text-sm bg-yellow-900/20 p-3 rounded-xl border border-yellow-500/30 w-full text-center">
+                ⚠️ لا توجد حصة قادمة حالياً
+              </div>
+            )}
+
+            {/* زر إنشاء غرفة صفية فورية */}
+            <button
+              onClick={async () => {
+                try {
+                  const now = new Date().toISOString();
+                  const classId = selectedClassForLesson || classes[0]?.id || '';
+                  if (!classId) {
+                    toast.error('يرجى اختيار شعبة أولاً');
+                    return;
+                  }
+                  const className = classes.find(c => c.id === classId)?.name || 'غير محدد';
+                  await createRealZoomMeeting(
+                    `غرفة فورية - شعبة ${className}`,
+                    now,
+                    60,
+                    classId,
+                    user.id
+                  );
+                  toast.success('✅ تم إنشاء غرفة Zoom فورية!');
+                } catch (err) {
+                  toast.error('❌ فشل إنشاء الغرفة: ' + err.message);
+                }
+              }}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl text-lg font-bold shadow-lg w-full"
+            >
+              <FaVideo className="inline-block me-2" /> إنشاء غرفة صفية فورية (حقيقية)
+            </button>
           </div>
         </div>
 
