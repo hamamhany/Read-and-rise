@@ -787,7 +787,7 @@ const createRealZoomMeeting = async (topic, startTime, duration = 60, classId, t
     const endpoint = import.meta.env.VITE_ZOOM_AUTH_ENDPOINT || 'https://meetingsdk-auth-endpoint-sample-production-8a01.up.railway.app';
     
     // إرسال طلب إلى الخادم لإنشاء الاجتماع
-    const response = await fetch(`${endpoint}/create-meeting`, {
+    const response = await fetch(`${endpoint}/api/create-meeting`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
