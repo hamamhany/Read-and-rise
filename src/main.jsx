@@ -780,35 +780,20 @@ const deleteZoomMeeting = async (meetingId) => {
   }
 };
 
-// ===== دالة إنشاء اجتماع Zoom حقيقي عبر خادم وسيط =====
+/// ===== دالة إنشاء اجتماع Zoom حقيقي عبر خادم وسيط =====
 const createRealZoomMeeting = async (topic, startTime, duration = 60, classId, teacherId) => {
   try {
-    // استخدم نقطة النهاية الخاصة بك (يفترض أنها موجودة على Railway أو أي خادم)
     const endpoint = import.meta.env.VITE_ZOOM_AUTH_ENDPOINT || 'https://meetingsdk-auth-endpoint-sample-production-8a01.up.railway.app';
-    
-    // إرسال طلب إلى الخادم لإنشاء الاجتماع
     const response = await fetch(`${endpoint}/api/create-meeting`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        topic,
-        startTime,
-        duration,
-        classId,
-        teacherId
-      })
+      body: JSON.stringify({ topic, startTime, duration, classId, teacherId })
     });
-
     if (!response.ok) {
       const errorData = await response.json();
       throw new Error(errorData.message || 'فشل إنشاء الاجتماع');
     }
-
     const data = await response.json();
-    // نتوقع أن يعيد الخادم البيانات التالية:
-    // { meeting_number, join_url, password, signature, start_time }
-
-    // حفظ البيانات في Supabase باستخدام الدالة الموجودة
     const meetingData = {
       class_id: classId,
       teacher_id: teacherId,
@@ -818,7 +803,6 @@ const createRealZoomMeeting = async (topic, startTime, duration = 60, classId, t
       signature: data.signature || '',
       start_time: data.start_time || startTime
     };
-
     await saveZoomMeeting(meetingData);
     return data;
   } catch (err) {
