@@ -783,7 +783,7 @@ const deleteZoomMeeting = async (meetingId) => {
 /// ===== دالة إنشاء اجتماع Zoom حقيقي عبر خادم وسيط =====
 const createRealZoomMeeting = async (topic, startTime, duration = 60, classId, teacherId) => {
   try {
-    const endpoint = import.meta.env.VITE_ZOOM_AUTH_ENDPOINT || 'https://read-and-rise-two.vercel.app';
+    const endpoint = import.meta.env.VITE_ZOOM_AUTH_ENDPOINT || 'https://zoom-backend-xcew.onrender.com';
     const response = await fetch(`${endpoint}/api/create-meeting`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
