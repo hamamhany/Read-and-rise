@@ -1,4 +1,4 @@
-// ===================== main.jsx (النسخة الكاملة المصححة 100%) =====================
+// ===================== main.jsx (النسخة الكاملة المصححة 100% مع زر انضمام الطالب وفتح الرابط للمعلم) =====================
 
 import './index.css';
 import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
@@ -4349,13 +4349,17 @@ const TeacherPanel = ({ user, onLogout }) => {
                 onClick={async () => {
                   try {
                     const startTime = nextLesson.date || new Date().toISOString();
-                    await createRealZoomMeeting(
+                    const result = await createRealZoomMeeting(
                       `حصة شعبة ${classes.find(c => c.id === selectedClassForLesson)?.name || selectedClassForLesson}`,
                       startTime,
                       60,
                       selectedClassForLesson,
                       user.id
                     );
+                    // فتح الرابط بعد الإنشاء
+                    if (result && result.join_url) {
+                      window.open(result.join_url, '_blank');
+                    }
                     toast.success('✅ تم إنشاء غرفة Zoom حقيقية!');
                   } catch (err) {
                     toast.error('❌ فشل إنشاء الغرفة: ' + err.message);
@@ -4382,13 +4386,17 @@ const TeacherPanel = ({ user, onLogout }) => {
                     return;
                   }
                   const className = classes.find(c => c.id === classId)?.name || 'غير محدد';
-                  await createRealZoomMeeting(
+                  const result = await createRealZoomMeeting(
                     `غرفة فورية - شعبة ${className}`,
                     now,
                     60,
                     classId,
                     user.id
                   );
+                  // فتح الرابط بعد الإنشاء
+                  if (result && result.join_url) {
+                    window.open(result.join_url, '_blank');
+                  }
                   toast.success('✅ تم إنشاء غرفة Zoom فورية!');
                 } catch (err) {
                   toast.error('❌ فشل إنشاء الغرفة: ' + err.message);
@@ -5727,33 +5735,41 @@ const StudentPanel = ({ user, onLogout }) => {
             </div>
           )}
 
-          {/* عرض أزرار الانضمام للاجتماعات النشطة */}
-          {zoomMeetings.length > 0 && (
-            <div className="mt-4 flex flex-col items-center gap-2 w-full">
-              {zoomMeetings.map((meeting) => {
-                const meetingTime = new Date(meeting.start_time);
-                const now = new Date();
-                const diffMinutes = (meetingTime - now) / (1000 * 60);
-                
-                // عرض الزر فقط إذا كان الاجتماع في الوقت الحالي أو خلال 10 دقائق القادمة
-                if (diffMinutes > -15 && diffMinutes < 60) {
-                  return (
-                    <a
-                      key={meeting.id}
-                      href={meeting.join_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl text-lg font-bold shadow-lg transition-all duration-300 transform hover:scale-105 w-full text-center block"
-                    >
-                      <FaVideo className="inline-block me-2" />
-                      🎯 انضم إلى غرفة الصف
-                    </a>
-                  );
-                }
-                return null;
-              })}
-            </div>
-          )}
+          {/* عرض زر الانضمام للغرفة الصفية */}
+          {zoomMeetings.length > 0 && (() => {
+            // البحث عن أقرب اجتماع نشط (خلال الفترة المناسبة)
+            const now = new Date();
+            let nearestMeeting = null;
+            let nearestDiff = Infinity;
+            for (const meeting of zoomMeetings) {
+              const meetingTime = new Date(meeting.start_time);
+              const diffMinutes = (meetingTime - now) / (1000 * 60);
+              // نطاق مناسب: من -5 دقائق إلى +10 دقائق
+              if (diffMinutes >= -5 && diffMinutes <= 10 && diffMinutes < nearestDiff) {
+                nearestDiff = diffMinutes;
+                nearestMeeting = meeting;
+              }
+            }
+            if (nearestMeeting) {
+              return (
+                <div className="mt-4 flex flex-col items-center gap-2 w-full">
+                  <a
+                    href={nearestMeeting.join_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl text-lg font-bold shadow-lg transition-all duration-300 transform hover:scale-105 w-full text-center block animate-pulse"
+                  >
+                    <FaVideo className="inline-block me-2" />
+                    🎯 انضم إلى غرفة الصف الآن
+                  </a>
+                  <span className="text-xs text-gray-400">
+                    الاجتماع يبدأ {nearestDiff >= 0 ? `خلال ${Math.round(nearestDiff)} دقيقة` : `منذ ${Math.round(-nearestDiff)} دقيقة`}
+                  </span>
+                </div>
+              );
+            }
+            return null;
+          })()}
         </div>
 
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700 space-y-3">
