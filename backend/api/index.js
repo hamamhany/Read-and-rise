@@ -9,7 +9,6 @@ app.use(cors());
 app.use(express.json());
 
 // ===== المتغيرات البيئية =====
-const ZOOM_ACCOUNT_ID = process.env.ZOOM_ACCOUNT_ID;
 const ZOOM_CLIENT_ID = process.env.ZOOM_CLIENT_ID;
 const ZOOM_CLIENT_SECRET = process.env.ZOOM_CLIENT_SECRET;
 const ZOOM_SDK_KEY = process.env.ZOOM_SDK_KEY;
@@ -67,7 +66,7 @@ function generateSignature(meetingNumber, role = 1) {
 // ===== نقطة النهاية: إنشاء اجتماع =====
 app.post('/api/create-meeting', async (req, res) => {
     try {
-        const { topic, startTime, duration = 60, classId, teacherId } = req.body;
+        const { topic, startTime, duration = 60 } = req.body;
 
         if (!topic || !startTime) {
             return res.status(400).json({ error: 'topic و startTime مطلوبان' });
@@ -140,5 +139,5 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// ===== تصدير التطبيق لـ Vercel (بدلاً من app.listen) =====
+// ===== تصدير التطبيق ليعمل في بيئة Vercel Serverless =====
 module.exports = app;
