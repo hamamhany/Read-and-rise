@@ -1,4 +1,7 @@
-// ===================== main.jsx (النسخة الكاملة المصححة 100% مع زر انضمام الطالب وفتح الرابط للمعلم) =====================
+// ===================== main.jsx (النسخة المصححة بالكامل) =====================
+// الإصلاحات:
+// 1. إصلاح مشكلة إعادة طلب تأكيد المعلومات من الطالب في كل مرة يسجل فيها الدخول
+// 2. إضافة قسم طلبات المراجعة في لوحة المعلم لإظهار طلبات تعديل البيانات
 
 import './index.css';
 import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
@@ -537,7 +540,7 @@ const sendUrgentReminderMessage = (student) => {
   const studentName = student.name || 'الطالب';
   const studentPhone = student.phone || 'غير مسجل';
   const studentClass = student.classes?.map(c => c.name).join(', ') || 'غير محدد';
-  const message = 
+  const message =
     `الموضوع: طلب عاجل: استكمال تصحيح وتأكيد بيانات الطالب - ${studentName}\n\n` +
     `إلى إدارة الأكاديمية الموقرة،\n` +
     `تحية طيبة وبعد،،\n` +
@@ -549,7 +552,7 @@ const sendUrgentReminderMessage = (student) => {
     `شاكراً لكم حسن تعاونكم وسرعة استجابتكم.\n\n` +
     `مع خالص التحية،\n` +
     `${studentName}`;
-  
+
   sendWhatsAppToTeacher(message);
 };
 
@@ -744,16 +747,16 @@ const saveZoomMeeting = async (meetingData) => {
 const getZoomMeetings = async (classId, teacherId) => {
   try {
     let query = supabase.from('zoom_meetings').select('*');
-    
+
     if (classId) {
       query = query.eq('class_id', classId);
     }
     if (teacherId) {
       query = query.eq('teacher_id', teacherId);
     }
-    
+
     const { data, error } = await query.order('created_at', { ascending: false });
-    
+
     if (error) {
       console.error('خطأ في جلب الاجتماعات من Supabase:', error);
       throw error;
@@ -771,7 +774,7 @@ const deleteZoomMeeting = async (meetingId) => {
       .from('zoom_meetings')
       .delete()
       .eq('id', meetingId);
-    
+
     if (error) throw error;
     return true;
   } catch (err) {
@@ -2130,7 +2133,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
 };
 
 // ============================================================
-// Login (معدل - حل مشكلة البطء وإعادة طلب كلمة المرور)
+// Login (معدل)
 // ============================================================
 const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [username, setUsername] = useState('');
@@ -2147,7 +2150,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [resetLoading, setResetLoading] = useState(false);
   const [resetError, setResetError] = useState('');
 
-  // ========== دالة تسجيل الدخول المُعدلة (تم إزالة المنطق المعقد) ==========
   const handleAuth = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -2166,15 +2168,12 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
       let docId = null;
       let profile = null;
 
-      // 1. محاولة تسجيل الدخول عبر Firebase Auth
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       firebaseUser = userCredential.user;
 
-      // 2. جلب بيانات المستند من Firestore
       const q = query(collection(db, 'profiles'), where('username', '==', cleanUsername));
       const querySnapshot = await getDocs(q);
       if (querySnapshot.empty) {
-        // إذا لم يتم العثور على المستند، فالمستخدم غير مسجل في Firestore
         setError('بيانات الحساب غير موجودة في قاعدة البيانات. يرجى التواصل مع المعلم.');
         setLoading(false);
         return;
@@ -2182,12 +2181,10 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
       docId = querySnapshot.docs[0].id;
       profile = querySnapshot.docs[0].data();
 
-      // 3. تحديث uid في المستند إذا لزم الأمر
       if (!profile.uid || profile.uid !== firebaseUser.uid) {
         await updateDoc(doc(db, 'profiles', docId), { uid: firebaseUser.uid });
       }
 
-      // 4. التحقق من حالة الحساب
       if (profile.isFrozen) {
         onFrozen({
           id: docId,
@@ -2204,7 +2201,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
       }
 
       if (profile.role === 'supervisor') {
-        // المشرف: إذا كان الحساب غير مكتمل (isProfileComplete === false) يتم توجيهه لصفحة إكمال البيانات
         if (!profile.isProfileComplete) {
           onCompleteProfile({
             id: docId,
@@ -2227,14 +2223,14 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
           age: profile.age,
           phone: profile.phone,
           classIds: [],
-          needsPasswordChange: false,
           isProfileComplete: true
         });
         setLoading(false);
         return;
       }
 
-      if (!profile.isProfileComplete || !profile.infoVerified) {
+      // الطالب: التحقق من اكتمال الملف الشخصي فقط
+      if (!profile.isProfileComplete) {
         onCompleteProfile({
           id: docId,
           uid: firebaseUser.uid,
@@ -2257,7 +2253,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
         age: profile.age,
         phone: profile.phone,
         classIds: profile.classIds || [],
-        needsPasswordChange: profile.infoVerified === false,
         isProfileComplete: true
       });
 
@@ -2493,7 +2488,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
 };
 
 // ============================================================
-// SupervisorPanel (معدل - تم إصلاح الأقواس واكتمال الـ return)
+// SupervisorPanel (معدل)
 // ============================================================
 const SupervisorPanel = ({ user, onLogout }) => {
   const [announcements, setAnnouncements] = useState([]);
@@ -2506,7 +2501,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
-  // حالات الإشعارات العامة (المضافة)
   const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
   const [announcementTitle, setAnnouncementTitle] = useState('');
   const [announcementBody, setAnnouncementBody] = useState('');
@@ -2517,7 +2511,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
   const [delayError, setDelayError] = useState('');
   const [editingAnnouncementId, setEditingAnnouncementId] = useState(null);
 
-  // دالة طلب إذن الإشعارات (مكتملة)
   const requestNotificationPermission = async () => {
     if (!auth.currentUser) {
       toast.error('يرجى تسجيل الدخول أولاً.');
@@ -2570,7 +2563,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
     return () => unsubscribe();
   }, []);
 
-  // جلب الإشعارات العامة
   useEffect(() => {
     const q = query(collection(db, 'announcements'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -2590,7 +2582,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
     return () => unsubscribe();
   }, []);
 
-  // جلب الإشعارات الشخصية
   useEffect(() => {
     if (!user) return;
     const notifRef = collection(db, 'notifications', user.id, 'userNotifications');
@@ -2603,7 +2594,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
     return () => unsubscribeNotif();
   }, [user]);
 
-  // ===== دوال الإشعارات العامة (المضافة) =====
   const handleCreateAnnouncement = async () => {
     const title = sanitizeInput(announcementTitle);
     const body = sanitizeInput(announcementBody);
@@ -2652,15 +2642,12 @@ const SupervisorPanel = ({ user, onLogout }) => {
       } else {
         const id = await createGeneralAnnouncement(title, body, scheduledFor);
         if (!scheduledFor) {
-          // إرسال إشعار لجميع الطلاب والمعلم والمشرفين (لكن المشرف هو من أرسله)
           await sendNotificationToAllStudents(title, body, 'general_announcement', id);
           await sendNotificationToTeacher(user.id, title, body, 'general_announcement', id);
-          // إرسال للمشرفين الآخرين (اختياري)
           const supervisorQuery = query(collection(db, 'profiles'), where('role', '==', 'supervisor'));
           const supervisorSnap = await getDocs(supervisorQuery);
           for (const docSnap of supervisorSnap.docs) {
             const supervisorId = docSnap.id;
-            // لا نرسل لنفسه لأنه أرسل
             if (supervisorId === user.id) continue;
             const notification = {
               title,
@@ -2745,7 +2732,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
   const visibleAnnouncements = announcements.slice(0, displayCount);
   const hasMore = displayCount < announcements.length;
 
-  // ===== الـ return الكامل للوحة المشرف =====
   return (
     <div className="container-center min-h-screen p-4 relative" dir="rtl">
       <div className="bg-gray-900/80 p-8 max-w-4xl w-full space-y-6 z-10 border border-gray-700 rounded-3xl backdrop-blur-sm">
@@ -2853,7 +2839,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
         </div>
       </div>
 
-      {/* مودال عرض التفاصيل */}
       {showDetailsModal && selectedAnnouncement && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowDetailsModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-purple-500/30" onClick={(e) => e.stopPropagation()}>
@@ -2874,7 +2859,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* مودال إنشاء/تعديل الإشعار العام */}
       {showAnnouncementModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowAnnouncementModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-2xl w-full border border-yellow-500/30" onClick={(e) => e.stopPropagation()}>
@@ -2991,7 +2975,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* مودال الإشعارات الشخصية */}
       {showNotificationsModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowNotificationsModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full max-h-[70vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
@@ -3054,7 +3037,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
 };
 
 // ============================================================
-// TeacherPanel (الكامل مع جميع التعديلات - تم تضمينه كاملاً)
+// TeacherPanel (الكامل مع جميع التعديلات + قسم طلبات المراجعة)
 // ============================================================
 const TeacherPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -3176,7 +3159,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     return () => unsubscribe();
   }, []);
 
-  // ===== دوال إدارة المشرفين (مع الإجراءات الجديدة) =====
+  // ===== دوال إدارة المشرفين =====
   const handleAddSupervisor = async (e) => {
     e.preventDefault();
     const name = sanitizeInput(newSupervisorName);
@@ -3334,7 +3317,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ===== دوال إدارة الشعب والطلاب (كما هي) =====
+  // ===== دوال إدارة الشعب والطلاب =====
   const handleAddClass = async () => {
     const name = sanitizeInput(newClassName);
     if (!name) {
@@ -3864,6 +3847,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         pendingChanges: null,
         reviewResult: 'rejected',
         reviewExpiry: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+        infoVerified: true, // إرجاع حالة التحقق إلى true لأن البيانات الحالية لا تزال صحيحة
         updatedAt: serverTimestamp()
       });
 
@@ -3882,7 +3866,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       setSelectedReviewStudent(null);
     } catch (err) {
       console.error('Error rejecting review:', err);
-      toast.error('فشل رفض المراجعة: ' + (err.message || 'خطأ غير معروف'));
+      toast.error('فشل رفض المراجعة: ' + err.message);
     }
   };
 
@@ -4311,6 +4295,74 @@ const TeacherPanel = ({ user, onLogout }) => {
 
         {errorMsg && <p className="text-red-400 text-sm bg-red-500/10 p-3 rounded-xl border border-red-500/20">{errorMsg}</p>}
 
+        {/* ====== قسم طلبات المراجعة (المضافة) ====== */}
+        {pendingReviews.length > 0 && (
+          <div className="bg-yellow-900/30 p-6 rounded-2xl border border-yellow-500/40 shadow-lg">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-xl font-semibold text-yellow-300 flex items-center gap-2">
+                <FaClipboardList className="inline-block" />
+                طلبات تعديل البيانات ({pendingReviews.length})
+              </h3>
+              <span className="text-xs text-yellow-400 bg-yellow-950/40 px-3 py-1 rounded-full border border-yellow-500/30">
+                في انتظار المراجعة
+              </span>
+            </div>
+            <div className="space-y-3 max-h-80 overflow-y-auto">
+              {pendingReviews.map(student => {
+                const changes = student.pendingChanges || {};
+                const changeFields = Object.keys(changes).filter(k => k !== 'updated_at' && k !== 'sentAccelerate');
+                return (
+                  <div key={student.id} className="bg-black/30 p-4 rounded-xl border border-yellow-500/20 hover:border-yellow-500/50 transition flex flex-wrap justify-between items-center gap-3">
+                    <div className="flex-1 min-w-[200px]">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <span className="text-white font-medium">{student.name || student.username}</span>
+                        <span className="text-xs text-gray-400">({student.username})</span>
+                        <span className="text-xs text-blue-300 bg-blue-950/40 px-2 py-0.5 rounded border border-blue-500/20">
+                          {student.classes?.map(c => c.name).join(', ') || 'لا توجد شعبة'}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-300 mt-1 space-y-0.5">
+                        <span className="text-yellow-400">التغييرات المطلوبة:</span>
+                        {changeFields.map(field => {
+                          const oldVal = student[field] ?? '(فارغ)';
+                          const newVal = changes[field] ?? '(فارغ)';
+                          const labels = {
+                            name: 'الاسم',
+                            gender: 'الجنس',
+                            age: 'العمر',
+                            phone: 'رقم الهاتف'
+                          };
+                          return (
+                            <div key={field} className="mr-2 text-xs">
+                              <span className="text-gray-400">{labels[field] || field}:</span>
+                              <span className="text-red-400 line-through mx-1">{oldVal}</span>
+                              <span className="text-gray-400">→</span>
+                              <span className="text-green-300 mx-1">{newVal}</span>
+                            </div>
+                          );
+                        })}
+                        {changes.updated_at && (
+                          <div className="text-[10px] text-gray-500 mt-0.5">
+                            طُلب في: {new Date(changes.updated_at).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        onClick={() => openReviewModal(student)}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-lg transition"
+                      >
+                        <FaEye className="inline-block me-1" /> مراجعة
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* عدد الطلاب والحصة القادمة */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-gray-800/60 p-6 rounded-2xl border border-purple-500/20 flex flex-col justify-center">
@@ -4356,7 +4408,6 @@ const TeacherPanel = ({ user, onLogout }) => {
                       selectedClassForLesson,
                       user.id
                     );
-                    // فتح الرابط بعد الإنشاء
                     if (result && result.join_url) {
                       window.open(result.join_url, '_blank');
                     }
@@ -4393,7 +4444,6 @@ const TeacherPanel = ({ user, onLogout }) => {
                     classId,
                     user.id
                   );
-                  // فتح الرابط بعد الإنشاء
                   if (result && result.join_url) {
                     window.open(result.join_url, '_blank');
                   }
@@ -4477,7 +4527,7 @@ const TeacherPanel = ({ user, onLogout }) => {
           </button>
         </div>
 
-        {/* ===== قسم المشرفين (تم نقله للأسفل) ===== */}
+        {/* ===== قسم المشرفين ===== */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-indigo-500/30 mt-6">
           <div className="flex justify-between items-center flex-wrap gap-3">
             <h3 className="text-xl font-semibold text-indigo-300">
@@ -4621,7 +4671,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* باقي المودالات (نفس ما كانت عليه) */}
       {showNotificationsModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowNotificationsModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full max-h-[70vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
@@ -5195,7 +5244,7 @@ const TeacherPanel = ({ user, onLogout }) => {
 };
 
 // ============================================================
-// StudentPanel (معدل - إضافة الإشعارات العامة وزر انضمام)
+// StudentPanel (معدل)
 // ============================================================
 const StudentPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -5318,7 +5367,7 @@ const StudentPanel = ({ user, onLogout }) => {
   useEffect(() => {
     const fetchZoomMeetings = async () => {
       if (!user?.classIds || user.classIds.length === 0) return;
-      
+
       const allMeetings = [];
       for (const classId of user.classIds) {
         const meetings = await getZoomMeetings(classId, null);
@@ -5326,7 +5375,7 @@ const StudentPanel = ({ user, onLogout }) => {
       }
       setZoomMeetings(allMeetings);
     };
-    
+
     fetchZoomMeetings();
   }, [user?.classIds]);
 
@@ -5631,7 +5680,7 @@ const StudentPanel = ({ user, onLogout }) => {
 
     try {
       const updates = {
-        infoVerified: false,
+        // لا نغير infoVerified هنا حتى لا يضطر الطالب لإعادة تفعيل حسابه
         pendingChanges: {
           updated_at: new Date().toISOString(),
           ...changes
@@ -5725,7 +5774,7 @@ const StudentPanel = ({ user, onLogout }) => {
               <ul className="text-sm list-disc list-inside">
                 {teacherData.lessonTimes.map((lt, idx) => (
                   <li key={idx}>
-                    {lt.type === 'once' ? 
+                    {lt.type === 'once' ?
                       `مرة واحدة: ${new Date(lt.date).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })}` :
                       `متكرر: كل ${lt.day} الساعة ${lt.time.hours}:${String(lt.time.minutes).padStart(2, '0')}`
                     }
@@ -5737,14 +5786,12 @@ const StudentPanel = ({ user, onLogout }) => {
 
           {/* عرض زر الانضمام للغرفة الصفية */}
           {zoomMeetings.length > 0 && (() => {
-            // البحث عن أقرب اجتماع نشط (خلال الفترة المناسبة)
             const now = new Date();
             let nearestMeeting = null;
             let nearestDiff = Infinity;
             for (const meeting of zoomMeetings) {
               const meetingTime = new Date(meeting.start_time);
               const diffMinutes = (meetingTime - now) / (1000 * 60);
-              // نطاق مناسب: من -5 دقائق إلى +10 دقائق
               if (diffMinutes >= -5 && diffMinutes <= 10 && diffMinutes < nearestDiff) {
                 nearestDiff = diffMinutes;
                 nearestMeeting = meeting;
@@ -5919,8 +5966,8 @@ const StudentPanel = ({ user, onLogout }) => {
                 }}
                 disabled={sentAccelerate}
                 className={`btn-primary w-full py-3 rounded-md text-white ${
-                  sentAccelerate 
-                    ? 'bg-gray-600 cursor-not-allowed opacity-60' 
+                  sentAccelerate
+                    ? 'bg-gray-600 cursor-not-allowed opacity-60'
                     : 'bg-blue-600 hover:bg-blue-700'
                 }`}
               >
@@ -5975,7 +6022,7 @@ const StudentPanel = ({ user, onLogout }) => {
               )}
             </h3>
             <p className="text-gray-300 text-center mb-4">
-              {reviewResult === 'approved' 
+              {reviewResult === 'approved'
                 ? 'تم تحديث بياناتك بنجاح. يمكنك تعديل بياناتك مرة أخرى بعد انتهاء المدة المحددة.'
                 : 'تم رفض طلب تعديل البيانات. يمكنك تقديم طلب جديد بعد انتهاء المدة المحددة.'
               }
@@ -6091,7 +6138,7 @@ const StudentPanel = ({ user, onLogout }) => {
 };
 
 // ============================================================
-// App (معدل)
+// App (معدل - إصلاح مشكلة إعادة طلب تأكيد المعلومات)
 // ============================================================
 const App = () => {
   const [user, setUser] = useState(null);
@@ -6230,7 +6277,6 @@ const App = () => {
           age: profile.age,
           phone: profile.phone,
           classIds: [],
-          needsPasswordChange: false,
           isProfileComplete: true
         });
         setFrozenUser(null);
@@ -6239,7 +6285,9 @@ const App = () => {
         return;
       }
 
-      if (!profile.isProfileComplete || !profile.infoVerified) {
+      // الطالب: نتحقق فقط من اكتمال الملف الشخصي، وليس من infoVerified
+      // حتى لا يضطر الطالب لإعادة تفعيل حسابه في كل مرة يطلب فيها تغيير بياناته
+      if (!profile.isProfileComplete) {
         setPendingUserForComplete({
           id: docId,
           uid: firebaseUser.uid,
@@ -6264,7 +6312,6 @@ const App = () => {
         age: profile.age,
         phone: profile.phone,
         classIds: profile.classIds || [],
-        needsPasswordChange: profile.infoVerified === false,
         isProfileComplete: true
       });
       setFrozenUser(null);
