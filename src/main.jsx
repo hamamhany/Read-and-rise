@@ -4,6 +4,7 @@
 // 2. إضافة زر "إنهاء الحصة" داخل المودال (للمعلم) لحذف الحصة من قاعدة البيانات فور انتهائها.
 // 3. إضافة قسم "الحصص النشطة" في لوحة المعلم لعرض جميع الغرف المفتوحة مع إمكانية إنهائها يدوياً.
 // 4. تحسين دالة createRealZoomMeeting لإرجاع معرف الاجتماع من Supabase.
+// 5. تعديل واجهة الطالب لاستخدام Zoom Web SDK مع القيود المطلوبة (إجبار البقاء داخل المنصة، تمرير الاسم تلقائياً، إخفاء الدعوة، إعادة التوجيه).
 
 import './index.css';
 import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
@@ -5410,7 +5411,7 @@ const TeacherPanel = ({ user, onLogout }) => {
 };
 
 // ============================================================
-// StudentPanel (معدل + Zoom داخل الموقع)
+// StudentPanel (معدل + Zoom Web SDK مع القيود)
 // ============================================================
 const StudentPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -5443,9 +5444,13 @@ const StudentPanel = ({ user, onLogout }) => {
 
   // حالات Zoom
   const [zoomMeetings, setZoomMeetings] = useState([]);
-  const [showZoomModal, setShowZoomModal] = useState(false);
-  const [zoomUrl, setZoomUrl] = useState('');
+  const [isJoining, setIsJoining] = useState(false);
+  const [zoomSdkReady, setZoomSdkReady] = useState(false);
 
+  // مفتاح SDK من متغيرات البيئة
+  const SDK_KEY = import.meta.env.VITE_ZOOM_SDK_KEY;
+
+  // طلب إذن الإشعارات (كما هو)
   const requestNotificationPermission = async () => {
     if (!auth.currentUser) {
       toast.error('يرجى تسجيل الدخول أولاً.');
@@ -5497,6 +5502,7 @@ const StudentPanel = ({ user, onLogout }) => {
     return () => unsubscribe();
   }, []);
 
+  // جلب عدد الطلاب في الشعب (كما هو)
   useEffect(() => {
     const studentsQuery = query(collection(db, 'profiles'), where('role', '==', 'student'));
     const unsubscribe = onSnapshot(studentsQuery, (snapshot) => {
@@ -5512,7 +5518,7 @@ const StudentPanel = ({ user, onLogout }) => {
     return () => unsubscribe();
   }, []);
 
-  // جلب الإشعارات العامة
+  // جلب الإشعارات العامة (كما هو)
   useEffect(() => {
     const q = query(collection(db, 'announcements'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -5546,6 +5552,19 @@ const StudentPanel = ({ user, onLogout }) => {
 
     fetchZoomMeetings();
   }, [user?.classIds]);
+
+  // التحقق من تحميل Zoom SDK
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.ZoomMtg) {
+      setZoomSdkReady(true);
+    } else {
+      // في حال لم يكن محملاً، يمكن محاولة تحميله ديناميكياً
+      const script = document.createElement('script');
+      script.src = 'https://source.zoom.us/2.0.0/zoom-meeting-2.0.0.min.js';
+      script.onload = () => setZoomSdkReady(true);
+      document.head.appendChild(script);
+    }
+  }, []);
 
   const cleanOldNotifications = async () => {
     if (!user) return;
@@ -5799,6 +5818,52 @@ const StudentPanel = ({ user, onLogout }) => {
 
   const nextLesson = getNextLessonTime();
 
+  // دالة الانضمام إلى اجتماع عبر Zoom Web SDK
+  const joinZoomMeeting = (meeting) => {
+    if (!zoomSdkReady) {
+      toast.error('جاري تحميل مكون Zoom، يرجى الانتظار...');
+      return;
+    }
+    if (!SDK_KEY) {
+      toast.error('مفتاح Zoom غير مضبوط، يرجى التواصل مع الدعم الفني.');
+      return;
+    }
+    if (!meeting.signature) {
+      toast.error('لا يوجد توقيع صالح لهذا الاجتماع.');
+      return;
+    }
+    if (isJoining) return;
+
+    setIsJoining(true);
+    const ZoomMtg = window.ZoomMtg;
+
+    ZoomMtg.init({
+      leaveUrl: window.location.origin + '/student', // العودة إلى لوحة الطالب
+      disableInvite: true, // إخفاء زر الدعوة ومشاركة الرابط
+      isSupportAV: true,
+      success: () => {
+        ZoomMtg.join({
+          signature: meeting.signature,
+          sdkKey: SDK_KEY,
+          meetingNumber: meeting.meeting_number,
+          userName: user.name || 'طالب',
+          passWord: meeting.password || '',
+          error: (err) => {
+            console.error('خطأ في الانضمام:', err);
+            toast.error('فشل الانضمام إلى الاجتماع: ' + (err.message || err));
+            setIsJoining(false);
+          }
+        });
+        // لا نضبط isJoining إلى false هنا لأن الجلسة قد تستمر
+      },
+      error: (err) => {
+        console.error('خطأ في تهيئة Zoom:', err);
+        toast.error('فشل تهيئة Zoom: ' + (err.message || err));
+        setIsJoining(false);
+      }
+    });
+  };
+
   const openProfileModal = () => {
     if (hasPendingRequest) {
       setShowPendingRequestModal(true);
@@ -5951,7 +6016,7 @@ const StudentPanel = ({ user, onLogout }) => {
             </div>
           )}
 
-          {/* عرض زر الانضمام للغرفة الصفية (داخل الموقع) */}
+          {/* زر الانضمام إلى الغرفة – باستخدام Zoom Web SDK */}
           {zoomMeetings.length > 0 && (() => {
             const now = new Date();
             let nearestMeeting = null;
@@ -5968,20 +6033,17 @@ const StudentPanel = ({ user, onLogout }) => {
               return (
                 <div className="mt-4 flex flex-col items-center gap-2 w-full">
                   <button
-                    onClick={() => {
-                      const nameParam = encodeURIComponent(user.name || user.username || 'طالب');
-                      const urlWithName = nearestMeeting.join_url + (nearestMeeting.join_url.includes('?') ? '&' : '?') + `name=${nameParam}`;
-                      setZoomUrl(urlWithName);
-                      setShowZoomModal(true);
-                    }}
-                    className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl text-lg font-bold shadow-lg transition-all duration-300 transform hover:scale-105 w-full text-center block animate-pulse"
+                    onClick={() => joinZoomMeeting(nearestMeeting)}
+                    disabled={isJoining}
+                    className={`bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl text-lg font-bold shadow-lg transition-all duration-300 transform hover:scale-105 w-full text-center block ${isJoining ? 'opacity-50 cursor-not-allowed' : 'animate-pulse'}`}
                   >
                     <FaVideo className="inline-block me-2" />
-                    🎯 انضم إلى غرفة الصف الآن (داخل الموقع)
+                    {isJoining ? 'جاري الانضمام...' : '🎯 انضم إلى غرفة الصف الآن (داخل المنصة)'}
                   </button>
                   <span className="text-xs text-gray-400">
                     الاجتماع يبدأ {nearestDiff >= 0 ? `خلال ${Math.round(nearestDiff)} دقيقة` : `منذ ${Math.round(-nearestDiff)} دقيقة`}
                   </span>
+                  {/* لا نعرض join_url أو meeting_number */}
                 </div>
               );
             }
@@ -6018,26 +6080,7 @@ const StudentPanel = ({ user, onLogout }) => {
         </div>
       </div>
 
-      {/* مودال Zoom لعرض الغرفة داخل الموقع */}
-      {showZoomModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
-          <div className="bg-gray-900 rounded-3xl w-full max-w-5xl h-[90vh] border border-blue-500/30 relative">
-            <button
-              onClick={() => setShowZoomModal(false)}
-              className="absolute top-4 left-4 z-10 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-full shadow-lg text-sm"
-            >
-              ✕ إغلاق
-            </button>
-            <iframe
-              src={zoomUrl}
-              className="w-full h-full rounded-3xl"
-              allow="camera; microphone; fullscreen; autoplay; display-capture"
-              allowFullScreen
-            />
-          </div>
-        </div>
-      )}
-
+      {/* باقي المودالات (نفس السابق) */}
       {showProfileModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowProfileModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-blue-500/30" onClick={(e) => e.stopPropagation()}>
