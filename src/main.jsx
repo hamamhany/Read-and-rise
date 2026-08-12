@@ -1,15 +1,17 @@
-// ===================== main.jsx (النسخة المصححة بالكامل + Zoom داخل الموقع + خيارات للمعلم) =====================
-// الإصلاحات الجديدة:
-// 1. عند إنشاء حصة، يظهر للمعلم خياران: فتح داخل المنصة (iframe) أو فتح في تطبيق زوم.
-// 2. إضافة زر "إنهاء الحصة" داخل المودال (للمعلم) لحذف الحصة من قاعدة البيانات فور انتهائها.
-// 3. إضافة قسم "الحصص النشطة" في لوحة المعلم لعرض جميع الغرف المفتوحة مع إمكانية إنهائها يدوياً.
-// 4. تحسين دالة createRealZoomMeeting لإرجاع معرف الاجتماع من Supabase.
-// 5. تعديل واجهة الطالب لاستخدام Zoom Web SDK مع القيود المطلوبة (إجبار البقاء داخل المنصة، تمرير الاسم تلقائياً، إخفاء الدعوة، إعادة التوجيه).
+// ===================== main.jsx (النسخة النهائية المصححة بالكامل) =====================
+// الإصلاحات:
+// 1. استخدام Zoom Web SDK عبر الحزمة @zoomus/websdk.
+// 2. تمرير اسم المعلم تلقائياً إلى رابط الاجتماع.
+// 3. تحسين إنشاء الاجتماع للتأكد من وجود توقيع صحيح.
+// 4. إصلاح إعادة تعيين الحساب: توليد كلمة مرور جديدة وإرسالها للطالب.
+// 5. إضافة تنبيهات لحذف حساب المصادقة يدوياً.
+// 6. تحسين إضافة طالب جديد مع رسائل خطأ واضحة.
 
 import './index.css';
 import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 import toast, { Toaster } from 'react-hot-toast';
+import ZoomMtg from '@zoomus/websdk'; // استيراد Zoom SDK
 
 // Firebase imports
 import { auth, db, messaging, firebaseApp } from './firebase.js';
@@ -50,7 +52,7 @@ import { getAuth } from 'firebase/auth';
 // استيراد Supabase
 import { supabase } from './supabaseClient';
 
-// إنشاء تطبيق Firebase ثانوي لمنع تأثير عمليات الإنشاء على جلسة المستخدم الحالية
+// إنشاء تطبيق Firebase ثانوي لمنع تأثير عمليات الإنشاء على الجلسة الحالية
 const secondaryApp = initializeApp(firebaseApp.options, 'secondary');
 const secondaryAuth = getAuth(secondaryApp);
 
@@ -456,7 +458,7 @@ const sendDeleteMessage = (student) => {
   window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
 };
 
-const sendResetPasswordMessage = (student) => {
+const sendResetPasswordMessage = (student, tempPassword) => {
   const phone = student.phone || '';
   if (!phone) {
     toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
@@ -472,6 +474,9 @@ const sendResetPasswordMessage = (student) => {
     `الموضوع: تم إعادة تعيين بيانات دخولك - بانتظار تحديث حسابك في "اقرأ وارتق"\n\n` +
     `عزيزي الطالب ${studentName}،\n` +
     `نود إعلامك بأنه قد تمت إعادة تعيين البيانات الدخول الخاصة بحسابك في منصة الفرسان التقنيين - اقرأ وارتق لتصحيح بياناتك.\n\n` +
+    `بيانات الدخول الجديدة:\n` +
+    `اسم المستخدم: ${student.username}\n` +
+    `كلمة المرور المؤقتة: ${tempPassword}\n\n` +
     `ما الخطوة التالية؟\n` +
     `بما أن الحساب الآن يحتاج لبيانات جديدة، يرجى التوجه إلى رابط تسجيل الدخول لأول مرة وتعبئة اسم المستخدم وكلمة المرور الخاصة بك من جديد:\n` +
     `https://read-and-rise-two.vercel.app/\n\n` +
@@ -737,13 +742,13 @@ const saveZoomMeeting = async (meetingData) => {
         signature: meetingData.signature || '',
         start_time: meetingData.start_time || new Date().toISOString()
       }])
-      .select(); // إضافة .select() لإرجاع البيانات المدخلة بما فيها id
+      .select();
 
     if (error) {
       console.error('خطأ في حفظ الاجتماع في Supabase:', error);
       throw error;
     }
-    return data; // البيانات المرجعة تحتوي على id
+    return data;
   } catch (err) {
     console.error('فشل حفظ الاجتماع:', err);
     throw err;
@@ -789,7 +794,7 @@ const deleteZoomMeeting = async (meetingId) => {
   }
 };
 
-/// ===== دالة إنشاء اجتماع Zoom حقيقي عبر خادم وسيط =====
+// ===== دالة إنشاء اجتماع Zoom حقيقي عبر خادم وسيط (معدلة) =====
 const createRealZoomMeeting = async (topic, startTime, duration = 60, classId, teacherId) => {
   try {
     const endpoint = import.meta.env.VITE_ZOOM_AUTH_ENDPOINT || 'https://zoom-backend-xcew.onrender.com';
@@ -803,17 +808,19 @@ const createRealZoomMeeting = async (topic, startTime, duration = 60, classId, t
       throw new Error(errorData.message || 'فشل إنشاء الاجتماع');
     }
     const data = await response.json();
+    if (!data.signature) {
+      throw new Error('لم يتم استلام توقيع صالح من الخادم');
+    }
     const meetingData = {
       class_id: classId,
       teacher_id: teacherId,
       meeting_number: data.meeting_number,
       password: data.password || '',
       join_url: data.join_url,
-      signature: data.signature || '',
+      signature: data.signature,
       start_time: data.start_time || startTime
     };
     const saved = await saveZoomMeeting(meetingData);
-    // saved هو مصفوفة تحتوي على السجل المُدرج، نأخذ id
     const savedId = saved && saved.length > 0 ? saved[0].id : null;
     return { ...data, id: savedId };
   } catch (err) {
@@ -3118,11 +3125,11 @@ const TeacherPanel = ({ user, onLogout }) => {
   // ===== حالات Zoom الجديدة =====
   const [showZoomModal, setShowZoomModal] = useState(false);
   const [zoomUrl, setZoomUrl] = useState('');
-  const [currentMeetingId, setCurrentMeetingId] = useState(null); // معرف الاجتماع في Supabase
+  const [currentMeetingId, setCurrentMeetingId] = useState(null);
 
   // حالات اختيار طريقة فتح الحصة
   const [showOpenMeetingChoice, setShowOpenMeetingChoice] = useState(false);
-  const [pendingMeeting, setPendingMeeting] = useState(null); // { id, join_url, topic, ... }
+  const [pendingMeeting, setPendingMeeting] = useState(null);
 
   // قائمة الحصص النشطة للمعلم
   const [teacherZoomMeetings, setTeacherZoomMeetings] = useState([]);
@@ -3337,7 +3344,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ===== دوال إدارة الشعب والطلاب (نفس السابق) =====
+  // ===== دوال إدارة الشعب والطلاب =====
   const handleAddClass = async () => {
     const name = sanitizeInput(newClassName);
     if (!name) {
@@ -3397,6 +3404,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
+  // ===== دالة إضافة طالب محسنة =====
   const handleAddStudent = async (e) => {
     e.preventDefault();
     if (newStudentClassIds.length === 0) {
@@ -3534,6 +3542,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
+  // ===== دالة حذف الطالب (مع تنبيه) =====
   const handleDeleteStudentPermanently = async (studentId) => {
     let studentData = null;
     try {
@@ -3554,7 +3563,13 @@ const TeacherPanel = ({ user, onLogout }) => {
       console.warn('فشل جلب بيانات الطالب قبل الحذف', err);
     }
 
-    const ok = await confirm('حذف دائم', 'إجراء خطير: سيتم حذف الملف الشخصي للطالب نهائياً. ملاحظة: يجب حذف حساب المصادقة (Authentication) يدوياً من Firebase Console لتحرير اسم المستخدم.');
+    const ok = await confirm(
+      'حذف دائم',
+      '⚠️ إجراء خطير: سيتم حذف الملف الشخصي للطالب نهائياً.\n\n' +
+      'تنبيه هام: حساب المصادقة (Authentication) لن يُحذف تلقائياً.\n' +
+      'يجب عليك حذفه يدوياً من Firebase Console لتحرير اسم المستخدم.\n\n' +
+      'هل أنت متأكد من المتابعة؟'
+    );
     if (!ok) return;
 
     try {
@@ -3587,7 +3602,8 @@ const TeacherPanel = ({ user, onLogout }) => {
         });
       }
 
-      toast.success('تم حذف الملف الشخصي للطالب وإرسال رسالة إشعار لولي الأمر. تذكر حذف حساب المصادقة يدوياً من Firebase Console.');
+      toast.success('✅ تم حذف الملف الشخصي للطالب وإرسال رسالة إشعار لولي الأمر.');
+      toast.warn('🔴 تذكر حذف حساب المصادقة من Firebase Console يدوياً.');
     } catch (err) {
       toast.error('فشل حذف الطالب: ' + err.message);
     }
@@ -3742,14 +3758,27 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
+  // ===== دالة إعادة تعيين الحساب (محسنة مع توليد كلمة مرور جديدة) =====
   const handleResetStudent = async (studentId) => {
     const ok = await confirm(
       'إعادة تعيين الحساب',
-      'سيتم إعادة تعيين هذا الحساب ليصبح كأنه جديد، وسيُطلب من الطالب تغيير كلمة المرور عند تسجيل الدخول. كما سيتم إرسال رسالة إشعار لولي الأمر. هل تريد المتابعة؟'
+      'سيتم إعادة تعيين هذا الحساب ليصبح كأنه جديد.\n' +
+      'سيتم توليد كلمة مرور جديدة وإرسالها للطالب عبر واتساب.\n' +
+      'ملاحظة: يجب على المعلم تحديث كلمة المرور في Firebase Console يدوياً إلى نفس القيمة.\n' +
+      'هل تريد المتابعة؟'
     );
     if (!ok) return;
 
     try {
+      const docSnap = await getDoc(doc(db, 'profiles', studentId));
+      if (!docSnap.exists()) {
+        toast.error('الطالب غير موجود.');
+        return;
+      }
+      const student = docSnap.data();
+
+      const newPassword = Math.floor(Math.random() * 1000000000).toString().padStart(9, '0');
+
       await updateDoc(doc(db, 'profiles', studentId), {
         infoVerified: false,
         isFrozen: false,
@@ -3757,39 +3786,31 @@ const TeacherPanel = ({ user, onLogout }) => {
         pendingChanges: null,
         reviewResult: null,
         reviewExpiry: null,
+        tempPassword: newPassword,
         updatedAt: serverTimestamp()
       });
+
+      const studentObj = {
+        ...student,
+        username: student.username,
+        name: student.name,
+        phone: student.phone,
+        classes: student.classIds ? await fetchClassNames(student.classIds) : {}
+      };
+      sendResetPasswordMessage(studentObj, newPassword);
 
       await sendNotificationToTeacher(
         user.id,
         '🔄 إعادة تعيين حساب',
-        `تم إعادة تعيين حساب الطالب (${studentId})`,
+        `تم إعادة تعيين حساب الطالب ${student.name || ''} (${studentId})`,
         'reset_student',
         studentId
       );
 
-      const student = students.find(s => s.id === studentId);
-      if (student) {
-        sendResetPasswordMessage(student);
-      } else {
-        const docSnap = await getDoc(doc(db, 'profiles', studentId));
-        if (docSnap.exists()) {
-          const studentData = docSnap.data();
-          let classNames = [];
-          if (studentData.classIds) {
-            const classMap = await fetchClassNames(studentData.classIds);
-            classNames = studentData.classIds.map(id => classMap[id] || null).filter(Boolean);
-          }
-          const studentObj = {
-            ...studentData,
-            classes: classNames.map(name => ({ name }))
-          };
-          sendResetPasswordMessage(studentObj);
-        }
-      }
-
-      toast.success('تم إعادة تعيين الحساب وإرسال رسالة إشعار.');
+      toast.success('✅ تم إعادة تعيين الحساب وإرسال كلمة المرور الجديدة للطالب.');
+      toast.warn('🔴 تذكر تحديث كلمة المرور في Firebase Console إلى: ' + newPassword);
     } catch (err) {
+      console.error('Error resetting student:', err);
       toast.error('فشل إعادة التعيين: ' + (err.message || 'خطأ غير معروف'));
     }
   };
@@ -4057,16 +4078,14 @@ const TeacherPanel = ({ user, onLogout }) => {
   };
 
   // ===== دوال Zoom الجديدة =====
-  // جلب الحصص النشطة للمعلم
   const fetchTeacherMeetings = async () => {
     try {
       const meetings = await getZoomMeetings(null, user.id);
-      // يمكن تصفية الحصص القادمة أو النشطة (مثلاً خلال آخر ساعة)
       const now = new Date();
       const activeMeetings = meetings.filter(m => {
         const start = new Date(m.start_time);
         const diffMinutes = (now - start) / (1000 * 60);
-        return diffMinutes < 60 && diffMinutes > -10; // خلال الساعة الماضية وقبل 10 دقائق
+        return diffMinutes < 60 && diffMinutes > -10;
       });
       setTeacherZoomMeetings(activeMeetings);
     } catch (err) {
@@ -4080,12 +4099,10 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }, [user.id]);
 
-  // دالة إنشاء اجتماع وعرض خيارات الفتح
   const handleCreateMeeting = async (topic, startTime, classId) => {
     try {
       const result = await createRealZoomMeeting(topic, startTime, 60, classId, user.id);
       if (result && result.join_url) {
-        // تخزين بيانات الاجتماع المعلقة
         setPendingMeeting({
           id: result.id,
           join_url: result.join_url,
@@ -4093,9 +4110,7 @@ const TeacherPanel = ({ user, onLogout }) => {
           meeting_number: result.meeting_number,
           password: result.password
         });
-        // عرض خيارات الفتح
         setShowOpenMeetingChoice(true);
-        // تحديث قائمة الحصص بعد الإنشاء
         await fetchTeacherMeetings();
       }
     } catch (err) {
@@ -4103,28 +4118,26 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // معالجة اختيار طريقة فتح الحصة
+  // معالجة اختيار طريقة فتح الحصة (مع تمرير الاسم تلقائياً)
   const handleOpenMeetingChoice = (choice) => {
     if (!pendingMeeting) return;
-    const nameParam = encodeURIComponent(user.name || user.username || 'معلم');
-    const urlWithName = pendingMeeting.join_url + (pendingMeeting.join_url.includes('?') ? '&' : '?') + `name=${nameParam}`;
+    const teacherName = encodeURIComponent(user.name || user.username || 'معلم');
+    const urlWithName = pendingMeeting.join_url +
+      (pendingMeeting.join_url.includes('?') ? '&' : '?') +
+      `name=${teacherName}`;
 
     if (choice === 'iframe') {
-      // فتح داخل المنصة (iframe)
       setZoomUrl(urlWithName);
       setCurrentMeetingId(pendingMeeting.id);
       setShowZoomModal(true);
     } else if (choice === 'zoomapp') {
-      // فتح في تطبيق زوم (فتح الرابط في نافذة جديدة)
       window.open(pendingMeeting.join_url, '_blank');
-      toast.info('تم فتح الحصة في تطبيق زوم. يمكنك إنهاء الحصة من قسم "الحصص النشطة" في لوحة التحكم.');
+      toast.info('تم فتح الحصة في تطبيق زوم.');
     }
-    // إخفاء خيارات الفتح
     setShowOpenMeetingChoice(false);
     setPendingMeeting(null);
   };
 
-  // إنهاء الحصة (حذف من Supabase)
   const handleEndMeeting = async (meetingId) => {
     if (!meetingId) return;
     const ok = await confirm('إنهاء الحصة', 'هل أنت متأكد من إنهاء هذه الحصة؟ سيتم حذفها من النظام ولن يتمكن الطلاب من الانضمام إليها.');
@@ -4135,7 +4148,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         toast.success('✅ تم إنهاء الحصة وحذفها بنجاح.');
         setShowZoomModal(false);
         setCurrentMeetingId(null);
-        // تحديث قائمة الحصص
         await fetchTeacherMeetings();
       } else {
         toast.error('فشل حذف الحصة.');
@@ -4145,7 +4157,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ===== دوال جلب البيانات (نفس السابق مع إضافة مراقبة المشرفين) =====
+  // ===== دوال جلب البيانات (مع onSnapshot) =====
   const fetchTeacherData = async () => {
     try {
       const teacherId = user.id;
@@ -4505,7 +4517,7 @@ const TeacherPanel = ({ user, onLogout }) => {
               </div>
             )}
 
-            {/* زر إنشاء غرفة للحصة القادمة - يستخدم الدالة الجديدة مع خيارات */}
+            {/* زر إنشاء غرفة للحصة القادمة */}
             {nextLesson ? (
               <button
                 onClick={() => {
@@ -4761,7 +4773,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         ]}
       />
 
-      {/* ===== المودالات الأخرى (نفس السابق) ===== */}
+      {/* ===== المودالات الأخرى ===== */}
       {showSupervisorModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowSupervisorModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-indigo-500/30" onClick={(e) => e.stopPropagation()}>
@@ -5445,12 +5457,9 @@ const StudentPanel = ({ user, onLogout }) => {
   // حالات Zoom
   const [zoomMeetings, setZoomMeetings] = useState([]);
   const [isJoining, setIsJoining] = useState(false);
-  const [zoomSdkReady, setZoomSdkReady] = useState(false);
-
-  // مفتاح SDK من متغيرات البيئة
   const SDK_KEY = import.meta.env.VITE_ZOOM_SDK_KEY;
 
-  // طلب إذن الإشعارات (كما هو)
+  // طلب إذن الإشعارات
   const requestNotificationPermission = async () => {
     if (!auth.currentUser) {
       toast.error('يرجى تسجيل الدخول أولاً.');
@@ -5502,7 +5511,7 @@ const StudentPanel = ({ user, onLogout }) => {
     return () => unsubscribe();
   }, []);
 
-  // جلب عدد الطلاب في الشعب (كما هو)
+  // جلب عدد الطلاب في الشعب
   useEffect(() => {
     const studentsQuery = query(collection(db, 'profiles'), where('role', '==', 'student'));
     const unsubscribe = onSnapshot(studentsQuery, (snapshot) => {
@@ -5518,7 +5527,7 @@ const StudentPanel = ({ user, onLogout }) => {
     return () => unsubscribe();
   }, []);
 
-  // جلب الإشعارات العامة (كما هو)
+  // جلب الإشعارات العامة
   useEffect(() => {
     const q = query(collection(db, 'announcements'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -5541,7 +5550,6 @@ const StudentPanel = ({ user, onLogout }) => {
   useEffect(() => {
     const fetchZoomMeetings = async () => {
       if (!user?.classIds || user.classIds.length === 0) return;
-
       const allMeetings = [];
       for (const classId of user.classIds) {
         const meetings = await getZoomMeetings(classId, null);
@@ -5549,22 +5557,8 @@ const StudentPanel = ({ user, onLogout }) => {
       }
       setZoomMeetings(allMeetings);
     };
-
     fetchZoomMeetings();
   }, [user?.classIds]);
-
-  // التحقق من تحميل Zoom SDK
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.ZoomMtg) {
-      setZoomSdkReady(true);
-    } else {
-      // في حال لم يكن محملاً، يمكن محاولة تحميله ديناميكياً
-      const script = document.createElement('script');
-      script.src = 'https://source.zoom.us/2.0.0/zoom-meeting-2.0.0.min.js';
-      script.onload = () => setZoomSdkReady(true);
-      document.head.appendChild(script);
-    }
-  }, []);
 
   const cleanOldNotifications = async () => {
     if (!user) return;
@@ -5818,12 +5812,8 @@ const StudentPanel = ({ user, onLogout }) => {
 
   const nextLesson = getNextLessonTime();
 
-  // دالة الانضمام إلى اجتماع عبر Zoom Web SDK
+  // ===== دالة الانضمام إلى الاجتماع عبر Zoom Web SDK =====
   const joinZoomMeeting = (meeting) => {
-    if (!zoomSdkReady) {
-      toast.error('جاري تحميل مكون Zoom، يرجى الانتظار...');
-      return;
-    }
     if (!SDK_KEY) {
       toast.error('مفتاح Zoom غير مضبوط، يرجى التواصل مع الدعم الفني.');
       return;
@@ -5833,9 +5823,7 @@ const StudentPanel = ({ user, onLogout }) => {
       return;
     }
     if (isJoining) return;
-
     setIsJoining(true);
-    const ZoomMtg = window.ZoomMtg;
 
     ZoomMtg.init({
       leaveUrl: window.location.origin + '/student', // العودة إلى لوحة الطالب
@@ -6016,7 +6004,7 @@ const StudentPanel = ({ user, onLogout }) => {
             </div>
           )}
 
-          {/* زر الانضمام إلى الغرفة – باستخدام Zoom Web SDK */}
+          {/* زر الانضمام إلى الغرفة باستخدام Zoom Web SDK */}
           {zoomMeetings.length > 0 && (() => {
             const now = new Date();
             let nearestMeeting = null;
