@@ -11,8 +11,7 @@ import './index.css';
 import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 import toast, { Toaster } from 'react-hot-toast';
-import ZoomMtg from '@zoomus/websdk'; // استيراد Zoom SDK
-
+import ZoomMtg from '@zoom/meetingsdk';
 // Firebase imports
 import { auth, db, messaging, firebaseApp } from './firebase.js';
 import {

@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
-  base: './', 
+  base: './',
   plugins: [
     react(),
     VitePWA({
@@ -30,14 +30,16 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         navigateFallbackDenylist: [/^\/api/],
-        cleanupOutdatedCaches: true
+        cleanupOutdatedCaches: true,
+        // ✅ زيادة الحد الأقصى لحجم الملفات التي يتم تخزينها مؤقتاً إلى 15 ميجابايت
+        maximumFileSizeToCacheInBytes: 15 * 1024 * 1024
       },
       devOptions: {
         enabled: true
       }
     })
   ],
-  server: { 
+  server: {
     port: 3000,
     watch: {
       usePolling: true
@@ -47,8 +49,20 @@ export default defineConfig({
     chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
+        // تحسين تقسيم الكود لتقليل حجم vendor
         manualChunks(id) {
           if (id.includes('node_modules')) {
+            // تقسيم الحزم الكبيرة إلى ملفات منفصلة
+            if (id.includes('firebase')) {
+              return 'firebase';
+            }
+            if (id.includes('@zoom')) {
+              return 'zoom-sdk';
+            }
+            if (id.includes('react') || id.includes('react-dom')) {
+              return 'react';
+            }
+            // باقي الحزم
             return 'vendor';
           }
         }
