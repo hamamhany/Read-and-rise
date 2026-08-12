@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.2",
+    "@zoom/meetingsdk": "^6.2.0",
     "@zoomus/websdk": "^2.18.3",
     "firebase": "^12.16.0",
     "react": "^18.2.0",
