@@ -831,7 +831,7 @@ const createRealZoomMeeting = async (topic, startTime, duration = 60, classId, t
 };
 
 // ============================================================
-// مكون النافذة المنبثقة لـ Zoom (ZoomMeetingModal)
+// مكون النافذة المنبثقة لـ Zoom (ZoomMeetingModal) - المعدل
 // ============================================================
 const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, userEmail }) => {
   const [isMaximized, setIsMaximized] = useState(false);
@@ -839,36 +839,40 @@ const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, userEmail
   const clientRef = useRef(null);
 
   useEffect(() => {
+    let client = null;
+
     if (isOpen && meetingDetails && zoomContainerRef.current) {
-      const client = ZoomMtgEmbedded.createClient();
+      // 1. إنشاء الـ Client الخاص بـ Embedded SDK
+      client = ZoomMtgEmbedded.createClient();
       clientRef.current = client;
 
-      client.init({
-        zoomAppRoot: zoomContainerRef.current,
-        language: 'ar-AR',
-        patchJsMedia: true
-      }).then(() => {
-        client.join({
-          sdkKey: import.meta.env.VITE_ZOOM_SDK_KEY || "PBgN3JSjQKFXka6N4_Zng",
-          signature: meetingDetails.signature,
-          meetingNumber: meetingDetails.meeting_number,
-          password: meetingDetails.password || "",
-          userName: userName || "مستخدم",
-          userEmail: userEmail || `${userName || 'user'}@readandrise.com`,
-          tk: "",
-          userZak: "",
-          success: (res) => {
-            console.log("تم الانضمام للاجتماع بنجاح داخل النافذة المنبثقة", res);
-          },
-          error: (err) => {
-            console.error("خطأ أثناء الانضمام للاجتماع:", err);
-            toast.error("فشل الانضمام للاجتماع: " + (err.message || err));
-          }
+      // 2. تهيئة الـ Embedded Client (تأخذ zoomAppRoot فقط)
+      client
+        .init({
+          zoomAppRoot: zoomContainerRef.current,
+          language: 'ar-AR',
+          patchJsMedia: true
+        })
+        .then(() => {
+          // 3. الانضمام للاجتماع بعد نجاح الـ init
+          return client.join({
+            sdkKey: import.meta.env.VITE_ZOOM_SDK_KEY || "PBgN3JSjQKFXka6N4_Zng",
+            signature: meetingDetails.signature,
+            meetingNumber: String(meetingDetails.meeting_number),
+            password: meetingDetails.password || "",
+            userName: userName || "مستخدم",
+            userEmail: userEmail || `${userName || 'user'}@readandrise.com`,
+            tk: "",
+            userZak: ""
+          });
+        })
+        .then(() => {
+          console.log("تم الانضمام للاجتماع بنجاح داخل النافذة المنبثقة");
+        })
+        .catch((err) => {
+          console.error("خطأ أثناء التهيئة أو الانضمام للاجتماع:", err);
+          toast.error("فشل الانضمام للاجتماع: " + (err.reason || err.message || JSON.stringify(err)));
         });
-      }).catch((err) => {
-        console.error("خطأ في تهيئة Zoom SDK:", err);
-        toast.error("فشل تهيئة Zoom: " + (err.message || err));
-      });
     }
 
     return () => {
@@ -891,7 +895,6 @@ const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, userEmail
           isMaximized ? "w-full h-full rounded-none" : "w-[90%] max-w-4xl h-[80vh]"
         }`}
       >
-        {/* شريط التحكم الأعلى للنافذة المنبثقة */}
         <div className="bg-gray-800 px-4 py-3 border-b border-gray-700 flex justify-between items-center text-white">
           <div className="flex items-center gap-2 font-bold">
             <FaVideo className="text-blue-400" />
@@ -899,17 +902,14 @@ const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, userEmail
           </div>
           
           <div className="flex items-center gap-2">
-            {/* زر التكبير/التصغير */}
             <button
               onClick={() => setIsMaximized(!isMaximized)}
               className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm transition flex items-center gap-1"
-              title={isMaximized ? "تصغير" : "تكبير"}
             >
               <FaWindowRestore />
               <span>{isMaximized ? "استعادة" : "تكبير"}</span>
             </button>
 
-            {/* زر الإغلاق */}
             <button
               onClick={onClose}
               className="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-sm transition font-bold"
@@ -919,7 +919,6 @@ const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, userEmail
           </div>
         </div>
 
-        {/* الحاوي الخاص بجروم اجتماعات Zoom */}
         <div className="flex-1 w-full h-full bg-black relative">
           <div ref={zoomContainerRef} className="w-full h-full" id="zoomEmbedContainer"></div>
         </div>
@@ -927,7 +926,6 @@ const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, userEmail
     </div>
   );
 };
-
 // ============================================================
 // مكونات المودالات (ChoiceModal, AddAssignmentModal, AddLessonModal)
 // ============================================================
