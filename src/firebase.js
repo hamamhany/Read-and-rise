@@ -1,5 +1,5 @@
-import { initializeApp } from "firebase/app";
-import { initializeAuth, browserLocalPersistence } from "firebase/auth";
+import { initializeApp, getApps, getApp } from "firebase/app";
+import { initializeAuth, browserLocalPersistence, getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getMessaging, isSupported } from "firebase/messaging";
 import { getAnalytics } from "firebase/analytics";
@@ -14,29 +14,41 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
-// التطبيق الأساسي
-const app = initializeApp(firebaseConfig);
+// 1. تهيئة التطبيق الأساسي مع التحقق من وجوده لمنع الأخطاء أثناء التحديث المباشر
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
-// ✅ المصادقة الأساسية مع persistence محلي (يمنع تحميل iframe إضافي)
-export const auth = initializeAuth(app, {
-  persistence: browserLocalPersistence
-});
+// 2. تهيئة المصادقة الأساسية وحفظ الجلسة محلياً لمنع مشاكل الـ iframe
+let authInstance;
+try {
+  authInstance = initializeAuth(app, {
+    persistence: browserLocalPersistence
+  });
+} catch (e) {
+  authInstance = getAuth(app);
+}
+export const auth = authInstance;
 
-// التطبيق الثانوي (يُستخدم لإنشاء حسابات جديدة دون التأثير على الجلسة الحالية)
-const secondaryApp = initializeApp(firebaseConfig, 'secondary');
+// 3. التطبيق الثانوي (المُستخدم لإنشاء حسابات بدون تسجبل الخروج من الحساب الحالي)
+const secondaryAppNames = getApps().map(a => a.name);
+const secondaryApp = secondaryAppNames.includes('secondary')
+  ? getApp('secondary')
+  : initializeApp(firebaseConfig, 'secondary');
 
-// ✅ المصادقة الثانوية مع persistence محلي
-export const secondaryAuth = initializeAuth(secondaryApp, {
-  persistence: browserLocalPersistence
-});
+let secondaryAuthInstance;
+try {
+  secondaryAuthInstance = initializeAuth(secondaryApp, {
+    persistence: browserLocalPersistence
+  });
+} catch (e) {
+  secondaryAuthInstance = getAuth(secondaryApp);
+}
+export const secondaryAuth = secondaryAuthInstance;
 
-// تصدير التطبيق الأساسي لاستخدامه في حال الحاجة
+// 4. تصدير التطبيق وقاعدة البيانات Firestore
 export const firebaseApp = app;
-
-// Firestore
 export const db = getFirestore(app);
 
-// Firebase Messaging (دعم الإشعارات)
+// 5. تهيئة Firebase Messaging (دعم الإشعارات)
 export let messaging = null;
 if (typeof window !== "undefined") {
   isSupported()
@@ -50,7 +62,7 @@ if (typeof window !== "undefined") {
     });
 }
 
-// Google Analytics (آمن)
+// 6. تهيئة Google Analytics
 let analytics = null;
 if (typeof window !== "undefined") {
   try {
