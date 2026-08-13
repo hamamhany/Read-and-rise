@@ -7,16 +7,21 @@
 // 5. إضافة تنبيهات لحذف حساب المصادقة يدوياً.
 // 6. تحسين إضافة طالب جديد مع رسائل خطأ واضحة.
 // 7. دمج Zoom داخل مودال منبثق بدلاً من فتح نافذة جديدة.
+// 8. تحديث Zoom SDK لأحدث إصدار.
+// 9. إصلاح أخطاء iframe الخاصة بـ Firebase Auth (Cross-Origin) باستخدام initializeAuth.
 
 import './index.css';
 import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 import toast, { Toaster } from 'react-hot-toast';
-// استيراد Zoom Embedded SDK بدلاً من SDK العادي
+// استيراد Zoom Embedded SDK (أحدث إصدار)
 import ZoomMtgEmbedded from '@zoomus/websdk/embedded';
 // Firebase imports
 import { auth, db, messaging, firebaseApp } from './firebase.js';
+// استيراد initializeAuth و browserLocalPersistence لاستخدامهما بدلاً من getAuth الافتراضي
 import {
+  initializeAuth,
+  browserLocalPersistence,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   updatePassword,
@@ -48,14 +53,36 @@ import {
 } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
 
 // استيراد Supabase
 import { supabase } from './supabaseClient';
 
+// ================================================================
+// ✅ إصلاح مشكلة iframe لـ Firebase Auth
+// بدلاً من استخدام getAuth() الذي يستخدم iframe داخلياً،
+// نستخدم initializeAuth مع persistence صريح لمنع تحميل iframe إضافي.
+// ================================================================
+
 // إنشاء تطبيق Firebase ثانوي لمنع تأثير عمليات الإنشاء على الجلسة الحالية
 const secondaryApp = initializeApp(firebaseApp.options, 'secondary');
-const secondaryAuth = getAuth(secondaryApp);
+
+// تهيئة المصادقة للتطبيق الأساسي مع persistence محلي
+const authMain = initializeAuth(firebaseApp, {
+  persistence: browserLocalPersistence
+});
+
+// تهيئة المصادقة للتطبيق الثانوي مع persistence محلي
+const secondaryAuth = initializeAuth(secondaryApp, {
+  persistence: browserLocalPersistence
+});
+
+// تصدير auth لاستخدامه في بقية الكود بدلاً من auth المستورد من firebase.js
+// (نعيد تعريفه لضمان استخدام النسخة المعدلة)
+export const authInstance = authMain;
+
+// نعيد ربط المتغير auth لاستخدامه في جميع دوال المصادقة
+// (هذا يحافظ على التوافق مع الكود الموجود)
+export const auth = authMain;
 
 // ========== أيقونات FontAwesome ==========
 import {
@@ -873,7 +900,6 @@ const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, userEmail
     }
 
     return () => {
-      // إصلاح دالة الخروج من Zoom Embedded
       if (clientRef.current) {
         try {
           if (typeof clientRef.current.leaveMeeting === 'function') {

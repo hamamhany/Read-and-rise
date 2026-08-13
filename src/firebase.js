@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { initializeAuth, browserLocalPersistence } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getMessaging, isSupported } from "firebase/messaging";
 import { getAnalytics } from "firebase/analytics";
@@ -14,29 +14,43 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
-// Initialize Firebase App
+// التطبيق الأساسي
 const app = initializeApp(firebaseConfig);
 
-// Export Auth & Firestore
-export const auth = getAuth(app);
-export const db = getFirestore(app);
+// ✅ المصادقة الأساسية مع persistence محلي (يمنع تحميل iframe إضافي)
+export const auth = initializeAuth(app, {
+  persistence: browserLocalPersistence
+});
 
-// Export the main app instance to be used for creating secondary apps
+// التطبيق الثانوي (يُستخدم لإنشاء حسابات جديدة دون التأثير على الجلسة الحالية)
+const secondaryApp = initializeApp(firebaseConfig, 'secondary');
+
+// ✅ المصادقة الثانوية مع persistence محلي
+export const secondaryAuth = initializeAuth(secondaryApp, {
+  persistence: browserLocalPersistence
+});
+
+// تصدير التطبيق الأساسي لاستخدامه في حال الحاجة
 export const firebaseApp = app;
 
-// Initialize Messaging safely (checks if browser supports push notifications)
+// Firestore
+export const db = getFirestore(app);
+
+// Firebase Messaging (دعم الإشعارات)
 export let messaging = null;
 if (typeof window !== "undefined") {
-  isSupported().then((supported) => {
-    if (supported) {
-      messaging = getMessaging(app);
-    }
-  }).catch((err) => {
-    console.warn("Firebase Messaging not supported:", err);
-  });
+  isSupported()
+    .then((supported) => {
+      if (supported) {
+        messaging = getMessaging(app);
+      }
+    })
+    .catch((err) => {
+      console.warn("Firebase Messaging not supported:", err);
+    });
 }
 
-// Initialize Analytics safely
+// Google Analytics (آمن)
 let analytics = null;
 if (typeof window !== "undefined") {
   try {
