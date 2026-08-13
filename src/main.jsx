@@ -17,7 +17,7 @@ import toast, { Toaster } from 'react-hot-toast';
 // استيراد Zoom Embedded SDK (أحدث إصدار)
 import ZoomMtgEmbedded from '@zoomus/websdk/embedded';
 // Firebase imports
-import { auth, db, messaging, firebaseApp } from './firebase.js';
+import { db, messaging, firebaseApp } from './firebase.js';
 // استيراد initializeAuth و browserLocalPersistence لاستخدامهما بدلاً من getAuth الافتراضي
 import {
   initializeAuth,
