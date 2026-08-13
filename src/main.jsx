@@ -19,6 +19,8 @@ import toast, { Toaster } from 'react-hot-toast';
 import ZoomMtgEmbedded from "@zoom/meetingsdk/embedded";
 // Firebase imports
 import { db, messaging, firebaseApp } from './firebase.js';
+import React, { useState, useEffect } from 'react';
+import { toast } from 'react-toastify';
 // استيراد initializeAuth و browserLocalPersistence لاستخدامهما بدلاً من getAuth الافتراضي
 import {
   initializeAuth,
@@ -3192,8 +3194,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
 // ============================================================
 // TeacherPanel (الكامل مع جميع التعديلات + Zoom Modal)
 // ============================================================
-import React, { useState, useEffect } from 'react';
-import { toast } from 'react-toastify';
+
 // استيراد المكونات والخدمات الخاصة بك (تأكد من وجود المسارات الصحيحة لديك)
 // import { useConfirm } from './useConfirm'; 
 // import { deleteZoomMeeting, fetchTeacherMeetingsApi } from '../services/zoomService';
@@ -5682,7 +5683,7 @@ export default TeacherPanel;
       )}
     </div>
   );
-};
+;
 
 // ============================================================
 // StudentPanel (معدل + Zoom Modal)
