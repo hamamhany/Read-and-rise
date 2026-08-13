@@ -19,8 +19,7 @@ import toast, { Toaster } from 'react-hot-toast';
 import ZoomMtgEmbedded from "@zoom/meetingsdk/embedded";
 // Firebase imports
 import { db, messaging, firebaseApp } from './firebase.js';
-import React, { useState, useEffect } from 'react';
-import { toast } from 'react-toastify';
+
 // استيراد initializeAuth و browserLocalPersistence لاستخدامهما بدلاً من getAuth الافتراضي
 import {
   initializeAuth,
