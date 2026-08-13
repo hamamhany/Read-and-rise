@@ -831,7 +831,7 @@ const createRealZoomMeeting = async (topic, startTime, duration = 60, classId, t
 };
 
 // ============================================================
-// مكون النافذة المنبثقة لـ Zoom (ZoomMeetingModal) - المعدل
+// مكون النافذة المنبثقة لـ Zoom (ZoomMeetingModal) - المصحح بالكامل
 // ============================================================
 const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, userEmail }) => {
   const [isMaximized, setIsMaximized] = useState(false);
@@ -842,11 +842,9 @@ const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, userEmail
     let client = null;
 
     if (isOpen && meetingDetails && zoomContainerRef.current) {
-      // 1. إنشاء الـ Client الخاص بـ Embedded SDK
       client = ZoomMtgEmbedded.createClient();
       clientRef.current = client;
 
-      // 2. تهيئة الـ Embedded Client (تأخذ zoomAppRoot فقط)
       client
         .init({
           zoomAppRoot: zoomContainerRef.current,
@@ -854,7 +852,6 @@ const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, userEmail
           patchJsMedia: true
         })
         .then(() => {
-          // 3. الانضمام للاجتماع بعد نجاح الـ init
           return client.join({
             sdkKey: import.meta.env.VITE_ZOOM_SDK_KEY || "PBgN3JSjQKFXka6N4_Zng",
             signature: meetingDetails.signature,
@@ -876,9 +873,14 @@ const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, userEmail
     }
 
     return () => {
+      // إصلاح دالة الخروج من Zoom Embedded
       if (clientRef.current) {
         try {
-          clientRef.current.leave();
+          if (typeof clientRef.current.leaveMeeting === 'function') {
+            clientRef.current.leaveMeeting();
+          } else if (typeof clientRef.current.leave === 'function') {
+            clientRef.current.leave();
+          }
         } catch (e) {
           console.warn("إغلاق الجلسة:", e);
         }
