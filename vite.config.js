@@ -28,10 +28,10 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // تم إزالة woff2 للتخلص من تحذير التجميع
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         navigateFallbackDenylist: [/^\/api/],
         cleanupOutdatedCaches: true,
-        // ✅ زيادة الحد الأقصى لحجم الملفات التي يتم تخزينها مؤقتاً إلى 15 ميجابايت
         maximumFileSizeToCacheInBytes: 15 * 1024 * 1024
       },
       devOptions: {
@@ -49,10 +49,8 @@ export default defineConfig({
     chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
-        // تحسين تقسيم الكود لتقليل حجم vendor
         manualChunks(id) {
           if (id.includes('node_modules')) {
-            // تقسيم الحزم الكبيرة إلى ملفات منفصلة
             if (id.includes('firebase')) {
               return 'firebase';
             }
@@ -62,7 +60,6 @@ export default defineConfig({
             if (id.includes('react') || id.includes('react-dom')) {
               return 'react';
             }
-            // باقي الحزم
             return 'vendor';
           }
         }
