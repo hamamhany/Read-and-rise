@@ -2281,6 +2281,31 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
 // ============================================================
 // Login (مكتمل)
 // ============================================================
+import React, { useState } from 'react';
+import { FaUnlockAlt } from 'react-icons/fa';
+import toast from 'react-hot-toast';
+import {
+  signInWithEmailAndPassword
+} from 'firebase/auth';
+import {
+  doc,
+  updateDoc,
+  collection,
+  query,
+  where,
+  getDocs
+} from 'firebase/firestore';
+import { auth, db } from './firebase'; // تأكد من ضبط مسار استيراد Firebase المتبع لديك
+
+// دوال مساعدة لضمان عمل المعالجة بدون أخطاء مرجعية
+const sanitizeInput = (str) => str ? str.replace(/[<>]/g, '') : '';
+const arabicToEnglishNumber = (str) => str ? str.replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)) : '';
+const sendWhatsAppToTeacher = (message) => {
+  const teacherPhone = '962700000000'; // ضع رقم المعلم المعتمد هنا
+  const url = `https://wa.me/${teacherPhone}?text=${encodeURIComponent(message)}`;
+  window.open(url, '_blank');
+};
+
 const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
