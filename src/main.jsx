@@ -2279,17 +2279,8 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
 };
 
 // ============================================================
-// Login (مكتمل)
+// Login (مكتمل) - تم حذف التعريفات المكررة
 // ============================================================
-
-// دوال مساعدة لضمان عمل المعالجة بدون أخطاء مرجعية
-const sanitizeInput = (str) => str ? str.replace(/[<>]/g, '') : '';
-const arabicToEnglishNumber = (str) => str ? str.replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)) : '';
-const sendWhatsAppToTeacher = (message) => {
-  const teacherPhone = '962700000000'; // ضع رقم المعلم المعتمد هنا
-  const url = `https://wa.me/${teacherPhone}?text=${encodeURIComponent(message)}`;
-  window.open(url, '_blank');
-};
 
 const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [username, setUsername] = useState('');
@@ -2650,7 +2641,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   );
 };
 
-export default Login;
 // ============================================================
 // SupervisorPanel (معدل)
 // ============================================================
@@ -3201,13 +3191,8 @@ const SupervisorPanel = ({ user, onLogout }) => {
 };
 
 // ============================================================
-// TeacherPanel (الكامل مع جميع التعديلات + Zoom Modal)
+// TeacherPanel (الكامل مع جميع التعديلات + Zoom Modal) - بدون export default
 // ============================================================
-
-// استيراد المكونات والخدمات الخاصة بك (تأكد من وجود المسارات الصحيحة لديك)
-// import { useConfirm } from './useConfirm'; 
-// import { deleteZoomMeeting, fetchTeacherMeetingsApi } from '../services/zoomService';
-// import ZoomMeetingModal from './ZoomMeetingModal';
 
 const TeacherPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -3361,104 +3346,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     setPendingMeeting(meeting);
     setShowOpenMeetingChoice(true);
   };
-
-  return (
-    <div className="teacher-panel-container p-6 bg-gray-50 min-h-screen dir-rtl">
-      {/* شريط معلومات المعلم والخروج */}
-      <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">لوحة تحكم المعلم</h1>
-          <p className="text-sm text-gray-500">أهلاً بك، {user?.displayName || user?.name || 'المعلم'}</p>
-        </div>
-        <button
-          onClick={onLogout}
-          className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm font-medium"
-        >
-          تسجيل الخروج
-        </button>
-      </div>
-
-      {/* قائمة الحصص النشطة */}
-      <div className="bg-white p-5 rounded-xl shadow-sm mb-6">
-        <h2 className="text-lg font-bold text-gray-800 mb-4">🎥 الحصص المباشرة النشطة</h2>
-        {teacherZoomMeetings.length === 0 ? (
-          <p className="text-gray-500 text-sm">لا توجد حصص نشطة حالياً.</p>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {teacherZoomMeetings.map((meeting) => (
-              <div key={meeting.id || meeting.meeting_number} className="border border-gray-200 rounded-lg p-4 flex flex-col justify-between bg-gray-50">
-                <div>
-                  <h3 className="font-semibold text-gray-800">{meeting.topic || 'حصة تفاعلية'}</h3>
-                  <p className="text-xs text-gray-500 mt-1">رقم الاجتماع: {meeting.meeting_number}</p>
-                </div>
-                <div className="flex gap-2 mt-4">
-                  <button
-                    onClick={() => triggerMeetingOpen(meeting)}
-                    className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-medium transition-colors"
-                  >
-                    دخول الحصة
-                  </button>
-                  <button
-                    onClick={() => handleEndMeeting(meeting.id || meeting._id)}
-                    className="px-3 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-md text-xs font-medium transition-colors"
-                  >
-                    إنهاء
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* مودال الاختيار بين التطبيق أو الـ Embedded Modal */}
-      {showOpenMeetingChoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-          <div className="bg-white rounded-xl max-w-sm w-full p-6 text-center shadow-xl">
-            <h3 className="text-lg font-bold text-gray-800 mb-2">طريقة فتح الحصة</h3>
-            <p className="text-sm text-gray-600 mb-6">اختر كيف تريد الانضمام إلى الحصة المباشرة:</p>
-            <div className="flex flex-col gap-3">
-              <button
-                onClick={() => handleOpenMeetingChoice('iframe')}
-                className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
-              >
-                فتح داخل الموقع (Direct Embedded)
-              </button>
-              <button
-                onClick={() => handleOpenMeetingChoice('zoomapp')}
-                className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-sm font-medium transition-colors"
-              >
-                فتح عبر تطبيق Zoom
-              </button>
-              <button
-                onClick={() => {
-                  setShowOpenMeetingChoice(false);
-                  setPendingMeeting(null);
-                }}
-                className="w-full py-2 text-gray-400 hover:text-gray-600 text-xs mt-1"
-              >
-                إلغاء
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* مودال عرض Zoom المباشر في حال تفعيله */}
-      {isZoomOpen && activeMeeting && (
-        <ZoomMeetingModal
-          isOpen={isZoomOpen}
-          onClose={() => setIsZoomOpen(false)}
-          meetingDetails={activeMeeting}
-          userName={user?.displayName || user?.name || 'المعلم'}
-          userEmail={user?.email}
-        />
-      )}
-    </div>
-  );
-};
-
-export default TeacherPanel;
 
   // ===== دوال الإشعارات =====
   const requestNotificationPermission = async () => {
@@ -4840,8 +4727,6 @@ export default TeacherPanel;
             >
               <FaVideo className="inline-block me-2" /> إنشاء غرفة صفية فورية
             </button>
-
-            {/* لم نعد نعرض حاوية zmmtg-root مباشرة، بل نعتمد على المودال */}
           </div>
         </div>
 
@@ -5045,7 +4930,7 @@ export default TeacherPanel;
         ]}
       />
 
-      {/* ===== المودالات الأخرى (نفسها) ===== */}
+      {/* ===== المودالات الأخرى ===== */}
       {showSupervisorModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowSupervisorModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-indigo-500/30" onClick={(e) => e.stopPropagation()}>
@@ -5692,7 +5577,7 @@ export default TeacherPanel;
       )}
     </div>
   );
-;
+};
 
 // ============================================================
 // StudentPanel (معدل + Zoom Modal)
@@ -6863,6 +6748,11 @@ const Root = () => (
     <App />
   </ConfirmProvider>
 );
+
+// ============================================================
+// ✅ التصدير الافتراضي للمكون الرئيسي App
+// ============================================================
+export default App;
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
