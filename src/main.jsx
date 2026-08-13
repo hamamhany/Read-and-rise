@@ -9,6 +9,7 @@
 // 7. دمج Zoom داخل مودال منبثق بدلاً من فتح نافذة جديدة.
 // 8. تحديث Zoom SDK لأحدث إصدار.
 // 9. إصلاح أخطاء iframe الخاصة بـ Firebase Auth (Cross-Origin) باستخدام initializeAuth.
+// 10. تنظيف رقم الاجتماع من المسافات واستخدام clientId بدلاً من sdkKey (حسب تحديثات Zoom SDK).
 
 import './index.css';
 import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
@@ -872,6 +873,9 @@ const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, userEmail
       client = ZoomMtgEmbedded.createClient();
       clientRef.current = client;
 
+      // ✅ تنظيف رقم الاجتماع من أي مسافات
+      const cleanMeetingNumber = String(meetingDetails.meeting_number).replace(/\s+/g, '');
+
       client
         .init({
           zoomAppRoot: zoomContainerRef.current,
@@ -880,9 +884,10 @@ const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, userEmail
         })
         .then(() => {
           return client.join({
-            sdkKey: import.meta.env.VITE_ZOOM_SDK_KEY || "PBgN3JSjQKFXka6N4_Zng",
+            // ✅ تم التغيير من sdkKey إلى clientId حسب تحديثات Zoom SDK
+            clientId: import.meta.env.VITE_ZOOM_SDK_KEY || "PBgN3JSjQKFXka6N4_Zng",
             signature: meetingDetails.signature,
-            meetingNumber: String(meetingDetails.meeting_number),
+            meetingNumber: cleanMeetingNumber, // ✅ استخدام الرقم المنظف
             password: meetingDetails.password || "",
             userName: userName || "مستخدم",
             userEmail: userEmail || `${userName || 'user'}@readandrise.com`,
