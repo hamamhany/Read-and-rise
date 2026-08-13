@@ -1,18 +1,19 @@
-// ===================== main.jsx (النسخة النهائية المصححة بالكامل + Zoom Embedded) =====================
+// ===================== main.jsx (النسخة النهائية المصححة بالكامل + Zoom Embedded Modal) =====================
 // الإصلاحات:
-// 1. استخدام Zoom Web SDK عبر الحزمة @zoomus/websdk.
+// 1. استخدام Zoom Web SDK عبر الحزمة @zoomus/websdk/embedded مع النافذة المنبثقة.
 // 2. تمرير اسم المعلم تلقائياً إلى رابط الاجتماع.
 // 3. تحسين إنشاء الاجتماع للتأكد من وجود توقيع صحيح.
 // 4. إصلاح إعادة تعيين الحساب: توليد كلمة مرور جديدة وإرسالها للطالب.
 // 5. إضافة تنبيهات لحذف حساب المصادقة يدوياً.
 // 6. تحسين إضافة طالب جديد مع رسائل خطأ واضحة.
-// 7. دمج Zoom داخل الواجهة (Embedded) بدلاً من فتح نافذة جديدة.
+// 7. دمج Zoom داخل مودال منبثق بدلاً من فتح نافذة جديدة.
 
 import './index.css';
 import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 import toast, { Toaster } from 'react-hot-toast';
-import ZoomMtg from '@zoom/meetingsdk';
+// استيراد Zoom Embedded SDK بدلاً من SDK العادي
+import ZoomMtgEmbedded from '@zoomus/websdk/embedded';
 // Firebase imports
 import { auth, db, messaging, firebaseApp } from './firebase.js';
 import {
@@ -827,6 +828,104 @@ const createRealZoomMeeting = async (topic, startTime, duration = 60, classId, t
     console.error('فشل إنشاء الاجتماع الحقيقي:', err);
     throw err;
   }
+};
+
+// ============================================================
+// مكون النافذة المنبثقة لـ Zoom (ZoomMeetingModal)
+// ============================================================
+const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, userEmail }) => {
+  const [isMaximized, setIsMaximized] = useState(false);
+  const zoomContainerRef = useRef(null);
+  const clientRef = useRef(null);
+
+  useEffect(() => {
+    if (isOpen && meetingDetails && zoomContainerRef.current) {
+      const client = ZoomMtgEmbedded.createClient();
+      clientRef.current = client;
+
+      client.init({
+        zoomAppRoot: zoomContainerRef.current,
+        language: 'ar-AR',
+        patchJsMedia: true
+      }).then(() => {
+        client.join({
+          sdkKey: import.meta.env.VITE_ZOOM_SDK_KEY || "PBgN3JSjQKFXka6N4_Zng",
+          signature: meetingDetails.signature,
+          meetingNumber: meetingDetails.meeting_number,
+          password: meetingDetails.password || "",
+          userName: userName || "مستخدم",
+          userEmail: userEmail || `${userName || 'user'}@readandrise.com`,
+          tk: "",
+          userZak: "",
+          success: (res) => {
+            console.log("تم الانضمام للاجتماع بنجاح داخل النافذة المنبثقة", res);
+          },
+          error: (err) => {
+            console.error("خطأ أثناء الانضمام للاجتماع:", err);
+            toast.error("فشل الانضمام للاجتماع: " + (err.message || err));
+          }
+        });
+      }).catch((err) => {
+        console.error("خطأ في تهيئة Zoom SDK:", err);
+        toast.error("فشل تهيئة Zoom: " + (err.message || err));
+      });
+    }
+
+    return () => {
+      if (clientRef.current) {
+        try {
+          clientRef.current.leave();
+        } catch (e) {
+          console.warn("إغلاق الجلسة:", e);
+        }
+      }
+    };
+  }, [isOpen, meetingDetails, userName, userEmail]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+      <div 
+        className={`bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl flex flex-col transition-all duration-300 overflow-hidden ${
+          isMaximized ? "w-full h-full rounded-none" : "w-[90%] max-w-4xl h-[80vh]"
+        }`}
+      >
+        {/* شريط التحكم الأعلى للنافذة المنبثقة */}
+        <div className="bg-gray-800 px-4 py-3 border-b border-gray-700 flex justify-between items-center text-white">
+          <div className="flex items-center gap-2 font-bold">
+            <FaVideo className="text-blue-400" />
+            <span>اجتماع Zoom المباشر</span>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            {/* زر التكبير/التصغير */}
+            <button
+              onClick={() => setIsMaximized(!isMaximized)}
+              className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm transition flex items-center gap-1"
+              title={isMaximized ? "تصغير" : "تكبير"}
+            >
+              <FaWindowRestore />
+              <span>{isMaximized ? "استعادة" : "تكبير"}</span>
+            </button>
+
+            {/* زر الإغلاق */}
+            <button
+              onClick={onClose}
+              className="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-sm transition font-bold"
+            >
+              إغلاق
+            </button>
+          </div>
+        </div>
+
+        {/* الحاوي الخاص بجروم اجتماعات Zoom */}
+        <div className="flex-1 w-full h-full bg-black relative">
+          <div ref={zoomContainerRef} className="w-full h-full" id="zoomEmbedContainer"></div>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 // ============================================================
@@ -2148,7 +2247,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
 };
 
 // ============================================================
-// Login (معدل)
+// Login (مكتمل)
 // ============================================================
 const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [username, setUsername] = useState('');
@@ -2479,19 +2578,26 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
                   required
                 />
               </div>
-              {resetError && <p className="text-red-400 text-sm text-center">{resetError}</p>}
-              <div className="flex gap-3 mt-2">
+              {resetError && (
+                <p className="text-red-400 text-sm text-center bg-red-500/10 py-2 px-3 rounded-lg border border-red-500/20">
+                  {resetError}
+                </p>
+              )}
+
+              <div className="flex gap-3 pt-2">
                 <button
-                  onClick={handleResetRequest}
-                  className="flex-1 bg-purple-600 hover:bg-purple-700 text-white py-2.5 rounded-md font-medium transition"
-                >
-                  <FaWhatsapp className="inline-block me-2" /> طلب إعادة التعيين
-                </button>
-                <button
+                  type="button"
                   onClick={() => setShowResetModal(false)}
-                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-2.5 rounded-md font-medium transition"
+                  className="flex-1 py-2 px-4 bg-gray-700 hover:bg-gray-600 rounded-xl text-white text-sm transition"
                 >
                   إلغاء
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetRequest}
+                  className="flex-1 py-2 px-4 bg-purple-600 hover:bg-purple-700 rounded-xl text-white text-sm font-semibold transition"
+                >
+                  إرسال الطلب
                 </button>
               </div>
             </div>
@@ -2502,6 +2608,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   );
 };
 
+export default Login;
 // ============================================================
 // SupervisorPanel (معدل)
 // ============================================================
@@ -3052,7 +3159,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
 };
 
 // ============================================================
-// TeacherPanel (الكامل مع جميع التعديلات + Zoom Embedded)
+// TeacherPanel (الكامل مع جميع التعديلات + Zoom Modal)
 // ============================================================
 const TeacherPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -3122,10 +3229,9 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [selectedSupervisorForWarning, setSelectedSupervisorForWarning] = useState(null);
   const [supervisorWarningDescription, setSupervisorWarningDescription] = useState('');
 
-  // ===== حالات Zoom الجديدة (Embedded) =====
-  const [showZoomEmbedded, setShowZoomEmbedded] = useState(false);
-  const [currentMeetingForEmbed, setCurrentMeetingForEmbed] = useState(null);
-  const [isJoiningEmbed, setIsJoiningEmbed] = useState(false);
+  // ===== حالات Zoom الجديدة (مودال) =====
+  const [isZoomOpen, setIsZoomOpen] = useState(false);
+  const [activeMeeting, setActiveMeeting] = useState(null);
 
   // حالات اختيار طريقة فتح الحصة (للتوافق مع القديم)
   const [showOpenMeetingChoice, setShowOpenMeetingChoice] = useState(false);
@@ -3134,74 +3240,17 @@ const TeacherPanel = ({ user, onLogout }) => {
   // قائمة الحصص النشطة للمعلم
   const [teacherZoomMeetings, setTeacherZoomMeetings] = useState([]);
 
-  // ===== دوال Zoom Embedded =====
-  // تهيئة Zoom: لا حاجة لاستدعاء preLoadWasm أو prepareWebSDK
-  useEffect(() => {
-    // فقط تأكد من أن ZoomMtg متاح
-    if (typeof ZoomMtg === 'undefined') {
-      console.warn('ZoomMtg not loaded');
-    }
-  }, []);
-
-  const joinZoomMeetingEmbedded = ({ meetingNumber, passWord, userName, userEmail, signature }) => {
-    const meetingSDKElement = document.getElementById('zmmtg-root');
-    if (!meetingSDKElement) {
-      toast.error('عنصر حاوية Zoom غير موجود.');
-      return;
-    }
-
-    ZoomMtg.init({
-      leaveUrl: window.location.href, // عند مغادرة الاجتماع يعود المستخدم للموقع نفسه
-      patchJsMedia: true,
-      leaveOnPageUnload: true,
-      success: () => {
-        ZoomMtg.join({
-          signature: signature,
-          sdkKey: import.meta.env.VITE_ZOOM_SDK_KEY,
-          meetingNumber: meetingNumber,
-          passWord: passWord || '',
-          userName: userName,
-          userEmail: userEmail || 'teacher@readandrise.com',
-          tk: '',
-          userZak: '',
-          success: (res) => {
-            console.log('تم الانضمام للاجتماع بنجاح داخل الموقع', res);
-            setIsJoiningEmbed(false);
-          },
-          error: (err) => {
-            console.error('خطأ أثناء الانضمام للاجتماع:', err);
-            toast.error('فشل الانضمام للاجتماع: ' + (err.message || err));
-            setIsJoiningEmbed(false);
-          }
-        });
-      },
-      error: (err) => {
-        console.error('خطأ في تهيئة Zoom SDK:', err);
-        toast.error('فشل تهيئة Zoom: ' + (err.message || err));
-        setIsJoiningEmbed(false);
-      }
-    });
-  };
-
+  // ===== دوال Zoom =====
   const handleOpenMeetingChoice = (choice) => {
     if (!pendingMeeting) return;
 
     if (choice === 'iframe') {
-      // استخدام الطريقة المضمنة (Embedded)
-      const teacherName = user.name || user.username || 'معلم';
-      setCurrentMeetingForEmbed(pendingMeeting);
-      setShowZoomEmbedded(true);
-      setIsJoiningEmbed(true);
-      // تأخير بسيط للتأكد من ظهور الحاوية
-      setTimeout(() => {
-        joinZoomMeetingEmbedded({
-          meetingNumber: pendingMeeting.meeting_number,
-          passWord: pendingMeeting.password || '',
-          userName: teacherName,
-          userEmail: user.email || 'teacher@readandrise.com',
-          signature: pendingMeeting.signature
-        });
-      }, 300);
+      setActiveMeeting({
+        meeting_number: pendingMeeting.meeting_number,
+        password: pendingMeeting.password || '',
+        signature: pendingMeeting.signature,
+      });
+      setIsZoomOpen(true);
     } else if (choice === 'zoomapp') {
       window.open(pendingMeeting.join_url, '_blank');
       toast.info('تم فتح الحصة في تطبيق زوم.');
@@ -3219,8 +3268,8 @@ const TeacherPanel = ({ user, onLogout }) => {
       const deleted = await deleteZoomMeeting(meetingId);
       if (deleted) {
         toast.success('✅ تم إنهاء الحصة وحذفها بنجاح.');
-        setShowZoomEmbedded(false);
-        setCurrentMeetingForEmbed(null);
+        setIsZoomOpen(false);
+        setActiveMeeting(null);
         await fetchTeacherMeetings();
       } else {
         toast.error('فشل حذف الحصة.');
@@ -4611,25 +4660,7 @@ const TeacherPanel = ({ user, onLogout }) => {
               <FaVideo className="inline-block me-2" /> إنشاء غرفة صفية فورية
             </button>
 
-            {/* عرض حاوية Zoom المضمنة إذا تم فتحها */}
-            {showZoomEmbedded && (
-              <div className="mt-4 border border-cyan-500/30 rounded-2xl overflow-hidden bg-black">
-                <div className="flex justify-between items-center p-2 bg-gray-800/80">
-                  <span className="text-sm text-cyan-300 font-medium">📹 الغرفة الصفية (مضمنة)</span>
-                  <button
-                    onClick={() => {
-                      setShowZoomEmbedded(false);
-                      setCurrentMeetingForEmbed(null);
-                      // إنهاء الاجتماع إذا كان مفتوحاً (اختياري)
-                    }}
-                    className="text-xs bg-red-500/20 text-red-300 px-3 py-1 rounded-lg hover:bg-red-500/30 transition"
-                  >
-                    ✕ إغلاق
-                  </button>
-                </div>
-                <div id="zmmtg-root" className="w-full h-[600px] bg-black"></div>
-              </div>
-            )}
+            {/* لم نعد نعرض حاوية zmmtg-root مباشرة، بل نعتمد على المودال */}
           </div>
         </div>
 
@@ -4803,6 +4834,18 @@ const TeacherPanel = ({ user, onLogout }) => {
           )}
         </div>
         {/* ===== نهاية قسم المشرفين ===== */}
+
+        {/* ===== مودال Zoom المضمن ===== */}
+        <ZoomMeetingModal
+          isOpen={isZoomOpen}
+          onClose={() => {
+            setIsZoomOpen(false);
+            setActiveMeeting(null);
+          }}
+          meetingDetails={activeMeeting}
+          userName={user.name || user.username || "معلم"}
+          userEmail={user.email || `${user.username}@readandrise.com`}
+        />
 
       </div> {/* نهاية container */}
 
@@ -5471,7 +5514,7 @@ const TeacherPanel = ({ user, onLogout }) => {
 };
 
 // ============================================================
-// StudentPanel (معدل + Zoom Embedded)
+// StudentPanel (معدل + Zoom Modal)
 // ============================================================
 const StudentPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -5502,20 +5545,10 @@ const StudentPanel = ({ user, onLogout }) => {
 
   const [classStudentCount, setClassStudentCount] = useState({});
 
-  // حالات Zoom Embedded
+  // حالات Zoom
   const [zoomMeetings, setZoomMeetings] = useState([]);
-  const [showZoomEmbedded, setShowZoomEmbedded] = useState(false);
-  const [currentMeetingForEmbed, setCurrentMeetingForEmbed] = useState(null);
-  const [isJoiningEmbed, setIsJoiningEmbed] = useState(false);
-  const SDK_KEY = import.meta.env.VITE_ZOOM_SDK_KEY;
-
-  // تهيئة Zoom: لا حاجة لاستدعاء preLoadWasm أو prepareWebSDK
-  useEffect(() => {
-    // فقط تأكد من أن ZoomMtg متاح
-    if (typeof ZoomMtg === 'undefined') {
-      console.warn('ZoomMtg not loaded');
-    }
-  }, []);
+  const [isZoomOpen, setIsZoomOpen] = useState(false);
+  const [activeMeeting, setActiveMeeting] = useState(null);
 
   // طلب إذن الإشعارات
   const requestNotificationPermission = async () => {
@@ -5870,72 +5903,19 @@ const StudentPanel = ({ user, onLogout }) => {
 
   const nextLesson = getNextLessonTime();
 
-  // ===== دالة الانضمام إلى الاجتماع عبر Zoom Web SDK (Embedded) =====
-  const joinZoomMeetingEmbedded = ({ meetingNumber, passWord, userName, userEmail, signature }) => {
-    const meetingSDKElement = document.getElementById('zmmtg-root');
-    if (!meetingSDKElement) {
-      toast.error('عنصر حاوية Zoom غير موجود.');
-      return;
-    }
-
-    ZoomMtg.init({
-      leaveUrl: window.location.href,
-      patchJsMedia: true,
-      leaveOnPageUnload: true,
-      success: () => {
-        ZoomMtg.join({
-          signature: signature,
-          sdkKey: SDK_KEY,
-          meetingNumber: meetingNumber,
-          passWord: passWord || '',
-          userName: userName,
-          userEmail: userEmail || 'student@readandrise.com',
-          tk: '',
-          userZak: '',
-          success: (res) => {
-            console.log('تم الانضمام للاجتماع بنجاح داخل الموقع', res);
-            setIsJoiningEmbed(false);
-          },
-          error: (err) => {
-            console.error('خطأ أثناء الانضمام للاجتماع:', err);
-            toast.error('فشل الانضمام للاجتماع: ' + (err.message || err));
-            setIsJoiningEmbed(false);
-          }
-        });
-      },
-      error: (err) => {
-        console.error('خطأ في تهيئة Zoom SDK:', err);
-        toast.error('فشل تهيئة Zoom: ' + (err.message || err));
-        setIsJoiningEmbed(false);
-      }
-    });
-  };
-
+  // ===== دالة الانضمام إلى الاجتماع عبر المودال =====
   const handleJoinMeeting = (meeting) => {
-    if (!SDK_KEY) {
-      toast.error('مفتاح Zoom غير مضبوط، يرجى التواصل مع الدعم الفني.');
-      return;
-    }
     if (!meeting.signature) {
       toast.error('لا يوجد توقيع صالح لهذا الاجتماع.');
       return;
     }
-    if (isJoiningEmbed) return;
-
-    setCurrentMeetingForEmbed(meeting);
-    setShowZoomEmbedded(true);
-    setIsJoiningEmbed(true);
-
-    // تأخير بسيط لضمان ظهور الحاوية
-    setTimeout(() => {
-      joinZoomMeetingEmbedded({
-        meetingNumber: meeting.meeting_number,
-        passWord: meeting.password || '',
-        userName: user.name || 'طالب',
-        userEmail: user.email || 'student@readandrise.com',
-        signature: meeting.signature
-      });
-    }, 300);
+    setActiveMeeting({
+      meeting_number: meeting.meeting_number,
+      password: meeting.password || '',
+      signature: meeting.signature,
+      topic: meeting.topic
+    });
+    setIsZoomOpen(true);
   };
 
   const openProfileModal = () => {
@@ -6090,7 +6070,7 @@ const StudentPanel = ({ user, onLogout }) => {
             </div>
           )}
 
-          {/* زر الانضمام إلى الغرفة باستخدام Zoom Web SDK Embedded */}
+          {/* زر الانضمام إلى الغرفة باستخدام المودال */}
           {zoomMeetings.length > 0 && (() => {
             const now = new Date();
             let nearestMeeting = null;
@@ -6108,11 +6088,10 @@ const StudentPanel = ({ user, onLogout }) => {
                 <div className="mt-4 flex flex-col items-center gap-2 w-full">
                   <button
                     onClick={() => handleJoinMeeting(nearestMeeting)}
-                    disabled={isJoiningEmbed}
-                    className={`bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl text-lg font-bold shadow-lg transition-all duration-300 transform hover:scale-105 w-full text-center block ${isJoiningEmbed ? 'opacity-50 cursor-not-allowed' : 'animate-pulse'}`}
+                    className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl text-lg font-bold shadow-lg transition-all duration-300 transform hover:scale-105 w-full text-center block animate-pulse"
                   >
                     <FaVideo className="inline-block me-2" />
-                    {isJoiningEmbed ? 'جاري الانضمام...' : '🎯 انضم إلى غرفة الصف الآن (داخل المنصة)'}
+                    🎯 انضم إلى غرفة الصف الآن (داخل المنصة)
                   </button>
                   <span className="text-xs text-gray-400">
                     الاجتماع يبدأ {nearestDiff >= 0 ? `خلال ${Math.round(nearestDiff)} دقيقة` : `منذ ${Math.round(-nearestDiff)} دقيقة`}
@@ -6123,25 +6102,17 @@ const StudentPanel = ({ user, onLogout }) => {
             return null;
           })()}
 
-          {/* عرض حاوية Zoom المضمنة إذا تم فتحها */}
-          {showZoomEmbedded && (
-            <div className="mt-4 border border-cyan-500/30 rounded-2xl overflow-hidden bg-black">
-              <div className="flex justify-between items-center p-2 bg-gray-800/80">
-                <span className="text-sm text-cyan-300 font-medium">📹 الغرفة الصفية (مضمنة)</span>
-                <button
-                  onClick={() => {
-                    setShowZoomEmbedded(false);
-                    setCurrentMeetingForEmbed(null);
-                    setIsJoiningEmbed(false);
-                  }}
-                  className="text-xs bg-red-500/20 text-red-300 px-3 py-1 rounded-lg hover:bg-red-500/30 transition"
-                >
-                  ✕ إغلاق
-                </button>
-              </div>
-              <div id="zmmtg-root" className="w-full h-[600px] bg-black"></div>
-            </div>
-          )}
+          {/* مودال Zoom المضمن */}
+          <ZoomMeetingModal
+            isOpen={isZoomOpen}
+            onClose={() => {
+              setIsZoomOpen(false);
+              setActiveMeeting(null);
+            }}
+            meetingDetails={activeMeeting}
+            userName={user.name || user.username || "طالب"}
+            userEmail={user.email || `${user.username}@readandrise.com`}
+          />
         </div>
 
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700 space-y-3">
