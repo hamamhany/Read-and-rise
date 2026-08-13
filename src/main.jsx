@@ -3135,11 +3135,11 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [teacherZoomMeetings, setTeacherZoomMeetings] = useState([]);
 
   // ===== دوال Zoom Embedded =====
-  // تحميل WASM وتحضير SDK (يتم مرة واحدة)
+  // تهيئة Zoom: لا حاجة لاستدعاء preLoadWasm أو prepareWebSDK
   useEffect(() => {
-    if (typeof ZoomMtg !== 'undefined') {
-      ZoomMtg.preLoadWasm();
-      ZoomMtg.prepareWebSDK();
+    // فقط تأكد من أن ZoomMtg متاح
+    if (typeof ZoomMtg === 'undefined') {
+      console.warn('ZoomMtg not loaded');
     }
   }, []);
 
@@ -5509,11 +5509,11 @@ const StudentPanel = ({ user, onLogout }) => {
   const [isJoiningEmbed, setIsJoiningEmbed] = useState(false);
   const SDK_KEY = import.meta.env.VITE_ZOOM_SDK_KEY;
 
-  // تحميل WASM وتحضير SDK
+  // تهيئة Zoom: لا حاجة لاستدعاء preLoadWasm أو prepareWebSDK
   useEffect(() => {
-    if (typeof ZoomMtg !== 'undefined') {
-      ZoomMtg.preLoadWasm();
-      ZoomMtg.prepareWebSDK();
+    // فقط تأكد من أن ZoomMtg متاح
+    if (typeof ZoomMtg === 'undefined') {
+      console.warn('ZoomMtg not loaded');
     }
   }, []);
 
