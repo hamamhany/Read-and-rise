@@ -188,16 +188,19 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-0 md:p-4">
       {/* هذا هو التعديل: حقن CSS مباشرة داخل المكون */}
       <style>{`
-        #zoomEmbedContainer, 
-        #zoomEmbedContainer div, 
-        #zoomEmbedContainer iframe,
-        .meeting-client, 
-        .meeting-client-inner {
-          height: 100% !important;
+        #zoomEmbedContainer {
           width: 100% !important;
-          position: absolute !important;
-          top: 0 !important;
-          left: 0 !important;
+          height: 100% !important;
+          position: relative !important;
+          overflow: hidden !important;
+        }
+        #zoomEmbedContainer > div {
+          width: 100% !important;
+          height: 100% !important;
+        }
+        .meeting-client {
+          width: 100% !important;
+          height: 100% !important;
         }
       `}</style>
 
