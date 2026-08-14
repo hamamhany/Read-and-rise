@@ -1,14 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import ZoomMtgEmbedded from '@zoom/meetingsdk/embedded';
-import { FaVideo, FaWindowRestore } from 'react-icons/fa';
+import { FaVideo, FaWindowRestore, FaTimes } from 'react-icons/fa';
 import { supabase } from '../../supabaseClient';
 
 export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, userEmail, userRole = 1 }) => {
   const [isMaximized, setIsMaximized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   
-  // البدء بالاسم المُمرر أو كقيمة افتراضية فورية لعدم التعليق
   const [actualName, setActualName] = useState(
     (userName && userName !== 'teacher') ? userName : "المعلم"
   );
@@ -17,7 +16,6 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
   const zoomContainerRef = useRef(null);
   const clientRef = useRef(null);
 
-  // جلب الاسم الحقيقي والدقيق من قاعدة البيانات في الخلفية
   useEffect(() => {
     const fetchRealUser = async () => {
       try {
@@ -186,7 +184,7 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-0 md:p-4">
-      {/* هذا هو التعديل: حقن CSS مباشرة داخل المكون */}
+      {/* CSS قوي جداً لإلغاء أي قيود ارتفاع أو فراغات سوداء فرضها زوم */}
       <style>{`
         #zoomEmbedContainer {
           width: 100% !important;
@@ -197,8 +195,20 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
           right: 0 !important;
           bottom: 0 !important;
           overflow: hidden !important;
+          background-color: #000 !important;
         }
-        #zoomEmbedContainer > div {
+        #zoomEmbedContainer > div,
+        #zoomEmbedContainer .wal-layout-container,
+        #zoomEmbedContainer .zm-client-container,
+        #zoomEmbedContainer .meeting-client {
+          width: 100% !important;
+          height: 100% !important;
+          max-height: 100% !important;
+          background-color: #111 !important;
+        }
+        #zoomEmbedContainer video,
+        #zoomEmbedContainer canvas,
+        #zoomEmbedContainer div[class*="video-container"] {
           width: 100% !important;
           height: 100% !important;
         }
