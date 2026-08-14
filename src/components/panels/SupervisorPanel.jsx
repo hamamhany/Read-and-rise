@@ -5,7 +5,7 @@ import {
   FaSpinner, FaUpload, FaClock, FaEye 
 } from 'react-icons/fa';
 import { db, messaging } from '../../firebase';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, serverTimestamp, writeBatch, deleteDoc, getDocs, where } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, serverTimestamp, writeBatch, deleteDoc, getDocs, where, setDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import { updateDoc as updateFirestoreDoc, arrayUnion } from 'firebase/firestore';
 import { createGeneralAnnouncement, updateAnnouncement, deleteAnnouncement } from '../../services/announcements';
@@ -14,7 +14,7 @@ import { auth } from '../../services/firebaseAuth';
 import { ANNOUNCEMENTS_LIMIT } from '../../constants';
 import { sanitizeInput, arabicToEnglishNumber } from '../../utils/helpers';
 
-export const SupervisorPanel = ({ user, onLogout }) => {
+const SupervisorPanel = ({ user, onLogout }) => {
   const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [displayCount, setDisplayCount] = useState(ANNOUNCEMENTS_LIMIT);
@@ -559,3 +559,5 @@ export const SupervisorPanel = ({ user, onLogout }) => {
     </div>
   );
 };
+
+export default SupervisorPanel;
