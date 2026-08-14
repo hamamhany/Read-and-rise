@@ -9,6 +9,13 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
   useEffect(() => {
     let isMounted = true;
 
+    if (isOpen) {
+      // منع التمرير في الخلفية فقط عند فتح النافذة
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'auto';
+    }
+
     const initializeUserAndRoom = async () => {
       if (!isOpen || !meetingDetails) return;
 
@@ -66,6 +73,7 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
 
     return () => {
       isMounted = false;
+      document.body.style.overflow = 'auto'; // ضمان إعادة تفعيل السكرول دائماً عند الخروج
     };
   }, [isOpen, meetingDetails, userName]);
 
@@ -74,8 +82,13 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
   const openMeetingInNewTab = () => {
     if (roomUrl) {
       window.open(roomUrl, '_blank');
-      onClose();
+      handleClose();
     }
+  };
+
+  const handleClose = () => {
+    document.body.style.overflow = 'auto'; // إعادة السكرول عند الإغلاق
+    onClose();
   };
 
   return (
@@ -97,11 +110,11 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
             className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition flex items-center justify-center gap-2 shadow-lg cursor-pointer"
           >
             <FaExternalLinkAlt />
-            <span>الانضمام إلى الاجتماع الآن</span>
+            <span>الانضمام إلى الغرفة الآن</span>
           </button>
 
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="w-full py-2.5 px-4 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl transition font-medium cursor-pointer"
           >
             إغلاق
