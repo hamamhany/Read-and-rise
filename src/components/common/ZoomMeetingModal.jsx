@@ -20,7 +20,7 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
         
         console.log('🔍 جاري طلب توقيع لحظي:', {
           meetingNumber: cleanMeetingNumber,
-          role: userRole // 1 للمضيف، 0 للمشارك
+          role: userRole
         });
         
         const response = await fetch(`${endpoint}/api/generate-signature`, {
@@ -46,12 +46,20 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
     };
 
     const initializeMeeting = async () => {
-      if (!isOpen || !meetingDetails || !zoomContainerRef.current || !isMounted) return;
+      if (!isOpen || !meetingDetails || !zoomContainerRef.current || !isMounted) {
+        setIsLoading(false);
+        return;
+      }
+
+      if (!meetingDetails.meeting_number) {
+        toast.error('⚠️ رقم الاجتماع غير موجود.');
+        setIsLoading(false);
+        return;
+      }
 
       setIsLoading(true);
 
       try {
-        // 1. جلب توقيع طازج (جديد) من السيرفر
         const liveSignature = await getLiveSignature();
         
         if (!liveSignature) {
@@ -60,7 +68,6 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
           return;
         }
 
-        // 2. إنشاء عميل Zoom
         client = ZoomMtgEmbedded.createClient();
         clientRef.current = client;
 
@@ -72,20 +79,22 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
           signature: liveSignature.substring(0, 50) + '...'
         });
 
-        // 3. تهيئة وبدء الاجتماع
         await client.init({
           zoomAppRoot: zoomContainerRef.current,
           language: 'ar-AR',
           patchJsMedia: true
         });
 
+        const displayName = userName || 'مستخدم';
+        const email = userEmail || `${displayName}@readandrise.com`;
+
         await client.join({
-          signature: liveSignature, // ✅ استخدام التوقيع اللحظي (غير المخزن)
+          signature: liveSignature,
           meetingNumber: cleanMeetingNumber,
           password: meetingDetails.password || "",
-          userName: userName || "مستخدم",
-          userEmail: userEmail || `${userName || 'user'}@readandrise.com`,
-          role: userRole, // 1 = مضيف، 0 = مشارك
+          userName: displayName,
+          userEmail: email,
+          role: userRole,
           tk: "",
           userZak: "",
           leaveUrl: window.location.href
@@ -127,7 +136,8 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
           isMaximized ? "w-full h-full rounded-none" : "w-[90%] max-w-4xl h-[80vh]"
         }`}
       >
-        <div className="bg-gray-800 px-4 py-3 border-b border-gray-700 flex justify-between items-center text-white">
+        {/* رأس النافذة */}
+        <div className="bg-gray-800 px-4 py-3 border-b border-gray-700 flex justify-between items-center text-white flex-shrink-0">
           <div className="flex items-center gap-2 font-bold">
             <FaVideo className="text-blue-400" />
             <span>اجتماع Zoom المباشر</span>
@@ -151,13 +161,19 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
           </div>
         </div>
 
-        <div className="flex-1 w-full h-full bg-black relative">
+        {/* حاوية Zoom مع منع الفائض والتمركز */}
+        <div className="flex-1 w-full h-full bg-black relative overflow-hidden">
           {isLoading && (
             <div className="absolute inset-0 flex items-center justify-center z-10 bg-black/50">
               <div className="text-white text-lg">جاري تحميل الاجتماع...</div>
             </div>
           )}
-          <div ref={zoomContainerRef} className="w-full h-full" id="zoomEmbedContainer"></div>
+          <div 
+            ref={zoomContainerRef} 
+            id="zoomEmbedContainer" 
+            className="w-full h-full"
+            style={{ width: '100%', height: '100%', position: 'relative' }}
+          />
         </div>
       </div>
     </div>
