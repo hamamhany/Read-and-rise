@@ -10,7 +10,7 @@ export const saveZoomMeeting = async (meetingData) => {
         meeting_number: meetingData.meeting_number,
         password: meetingData.password || '',
         join_url: meetingData.join_url,
-        signature: meetingData.signature || '',
+        // ✅ تم إزالة حفظ التوقيع في قاعدة البيانات لتجنب مشكلة انتهاء الصلاحية
         start_time: meetingData.start_time || new Date().toISOString()
       }])
       .select();
@@ -65,35 +65,6 @@ export const deleteZoomMeeting = async (meetingId) => {
   }
 };
 
-// دالة مساعدة لجلب التوقيع من الخادم الخلفي
-const fetchZoomSignature = async (meetingNumber, role = 0) => {
-  try {
-    const endpoint = import.meta.env.VITE_ZOOM_AUTH_ENDPOINT || 'https://zoom-backend-xcew.onrender.com';
-    
-    console.log('🔍 جاري طلب التوقيع بالقيم التالية:');
-    console.log('   meetingNumber:', meetingNumber);
-    console.log('   role:', role);
-    
-    const response = await fetch(`${endpoint}/api/generate-signature`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ meetingNumber, role })
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || 'فشل في جلب التوقيع');
-    }
-
-    const data = await response.json();
-    console.log('✅ تم استلام التوقيع بنجاح');
-    return data.signature;
-  } catch (err) {
-    console.error('❌ فشل جلب التوقيع:', err);
-    throw err;
-  }
-};
-
 export const createRealZoomMeeting = async (topic, startTime, duration = 60, classId, teacherId) => {
   try {
     const endpoint = import.meta.env.VITE_ZOOM_AUTH_ENDPOINT || 'https://zoom-backend-xcew.onrender.com';
@@ -117,24 +88,15 @@ export const createRealZoomMeeting = async (topic, startTime, duration = 60, cla
     const joinUrl = data.join_url || data.start_url;
     const password = data.password || '';
 
-    // 2. جلب التوقيع من الخادم مع role = 0 (مضيف)
-    let signature = '';
-    try {
-      // المعلم دائماً يكون مضيف role = 0
-      signature = await fetchZoomSignature(meetingNumber, 0);
-      console.log('✅ تم جلب التوقيع بنجاح');
-    } catch (sigError) {
-      console.warn('⚠️ فشل جلب التوقيع، سيتم فتح الاجتماع بدون توقيع (قد لا يعمل داخل iframe):', sigError.message);
-    }
+    // ✅ تم إزالة خطوة جلب التوقيع من هنا لأنها ستحدث لحظياً عند فتح نافذة الاجتماع
 
-    // 3. حفظ الاجتماع في Supabase
+    // 2. حفظ الاجتماع في Supabase بدون التوقيع
     const meetingData = {
       class_id: classId,
       teacher_id: teacherId,
       meeting_number: meetingNumber,
       password: password,
       join_url: joinUrl,
-      signature: signature,
       start_time: data.start_time || startTime
     };
     
@@ -146,7 +108,6 @@ export const createRealZoomMeeting = async (topic, startTime, duration = 60, cla
       meeting_number: meetingNumber,
       join_url: joinUrl,
       password: password,
-      signature: signature,
       topic: data.topic || topic,
       start_time: data.start_time || startTime
     };

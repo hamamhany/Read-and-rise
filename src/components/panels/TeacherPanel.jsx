@@ -133,7 +133,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ✅ دالة إنشاء الاجتماع المعدلة (تتعامل مع البيانات الجديدة وتتحقق من join_url)
+  // دالة إنشاء الاجتماع (لا تحفظ التوقيع)
   const handleCreateMeeting = async (topic, startTime, classId) => {
     try {
       toast.loading('جاري إنشاء الغرفة...', { id: 'zoom-create' });
@@ -143,14 +143,14 @@ const TeacherPanel = ({ user, onLogout }) => {
       toast.dismiss('zoom-create');
       
       if (result && result.join_url) {
-        // ✅ تأكد من وجود جميع البيانات
+        // ✅ لا نخزن التوقيع هنا، سيتم جلبه لحظياً عند فتح المودال
         setPendingMeeting({
           id: result.id,
           join_url: result.join_url,
           topic: topic,
           meeting_number: result.meeting_number,
           password: result.password || '',
-          signature: result.signature || '' // قد تكون فارغة
+          // لا نمرر signature هنا
         });
         setShowOpenMeetingChoice(true);
         await fetchTeacherMeetings();
@@ -165,24 +165,24 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ✅ دالة اختيار طريقة الفتح (مضمن أو تطبيق)
+  // دالة اختيار طريقة الفتح
   const handleOpenMeetingChoice = (choice) => {
     if (!pendingMeeting) return;
     const rawNumber = pendingMeeting.meeting_number || pendingMeeting.id || pendingMeeting.meetingNumber;
     const cleanMeetingNumber = String(rawNumber || '').replace(/\D/g, '');
 
     if (choice === 'iframe') {
-      // فتح داخل الموقع (يتطلب signature)
+      // فتح داخل الموقع (نمرر البيانات بدون توقيع، سيتم جلبه لحظياً في المودال)
       setActiveMeeting({
         id: pendingMeeting.id || pendingMeeting._id,
         meeting_number: cleanMeetingNumber,
         password: pendingMeeting.password || '',
-        signature: pendingMeeting.signature || '',
+        signature: '', // فارغ، سيتم جلبه في المودال
         topic: pendingMeeting.topic || 'حصة زوم المباشرة',
+        join_url: pendingMeeting.join_url
       });
       setIsZoomOpen(true);
     } else if (choice === 'zoomapp') {
-      // فتح في تطبيق زوم (يستخدم join_url)
       if (pendingMeeting.join_url) {
         window.open(pendingMeeting.join_url, '_blank');
         toast.info('تم فتح الحصة في تطبيق زوم.');
@@ -1621,7 +1621,7 @@ const TeacherPanel = ({ user, onLogout }) => {
           )}
         </div>
 
-        {/* Zoom Meeting Modal */}
+        {/* Zoom Meeting Modal - مع تمرير userRole={1} للمعلم (مضيف) */}
         <ZoomMeetingModal
           isOpen={isZoomOpen}
           onClose={() => {
@@ -1631,6 +1631,7 @@ const TeacherPanel = ({ user, onLogout }) => {
           meetingDetails={activeMeeting}
           userName={user.name || user.username || "معلم"}
           userEmail={user.email || `${user.username}@readandrise.com`}
+          userRole={1} // ✅ المعلم هو المضيف (role = 1)
         />
 
       </div> {/* end container */}
