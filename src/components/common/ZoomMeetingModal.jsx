@@ -8,7 +8,7 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
   const [isMaximized, setIsMaximized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   
-  // نبدأ مباشرة بالاسم المُمرر، أو جزء من الإيميل، أو "المعلم" لكي لا يعلق التحميل أبداً
+  // البدء بالاسم المُمرر أو كقيمة افتراضية فورية لعدم التعليق
   const [actualName, setActualName] = useState(
     (userName && userName !== 'teacher') ? userName : "المعلم"
   );
@@ -17,7 +17,7 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
   const zoomContainerRef = useRef(null);
   const clientRef = useRef(null);
 
-  // جلب الاسم الحقيقي في الخلفية دون تعطيل فتح النافذة
+  // جلب الاسم الحقيقي والدقيق من قاعدة البيانات في الخلفية
   useEffect(() => {
     const fetchRealUser = async () => {
       try {
@@ -226,6 +226,7 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
           <div 
             ref={zoomContainerRef} 
             id="zoomEmbedContainer"
+            style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }}
             className="w-full h-full absolute inset-0 !absolute !inset-0"
           ></div>
         </div>
