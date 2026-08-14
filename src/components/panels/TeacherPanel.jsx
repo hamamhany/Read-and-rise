@@ -47,8 +47,7 @@ import {
 import { MAX_SUPERVISORS, ANNOUNCEMENTS_LIMIT, TEACHER_PHONE } from '../../constants';
 
 // ============================================================
-// TeacherPanel - الكود الكامل من الملف الأصلي (بدءاً من السطر 1260 تقريباً)
-// تم تعديل المسارات فقط.
+// TeacherPanel - الكود الكامل مع تعديل Zoom
 // ============================================================
 const TeacherPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -137,6 +136,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
+  // ✅ دالة إنشاء الاجتماع المعدلة (تستخدم join_url مباشرة)
   const handleCreateMeeting = async (topic, startTime, classId) => {
     try {
       const result = await createRealZoomMeeting(topic, startTime, 60, classId, user.id);
@@ -147,31 +147,36 @@ const TeacherPanel = ({ user, onLogout }) => {
           topic: topic,
           meeting_number: result.meeting_number,
           password: result.password,
-          signature: result.signature
+          signature: result.signature || '' // نتركها فارغة
         });
         setShowOpenMeetingChoice(true);
         await fetchTeacherMeetings();
+      } else {
+        toast.error('❌ لم يتم استلام رابط الاجتماع.');
       }
     } catch (err) {
       toast.error('❌ فشل إنشاء الغرفة: ' + err.message);
     }
   };
 
+  // ✅ دالة اختيار طريقة الفتح (مضمن أو تطبيق)
   const handleOpenMeetingChoice = (choice) => {
     if (!pendingMeeting) return;
     const rawNumber = pendingMeeting.meeting_number || pendingMeeting.id || pendingMeeting.meetingNumber;
     const cleanMeetingNumber = String(rawNumber || '').replace(/\D/g, '');
 
     if (choice === 'iframe') {
+      // فتح داخل الموقع (يتطلب signature)
       setActiveMeeting({
         id: pendingMeeting.id || pendingMeeting._id,
         meeting_number: cleanMeetingNumber,
         password: pendingMeeting.password || '',
-        signature: pendingMeeting.signature,
+        signature: pendingMeeting.signature || '',
         topic: pendingMeeting.topic || 'حصة زوم المباشرة',
       });
       setIsZoomOpen(true);
     } else if (choice === 'zoomapp') {
+      // فتح في تطبيق زوم (يستخدم join_url)
       if (pendingMeeting.join_url) {
         window.open(pendingMeeting.join_url, '_blank');
         toast.info('تم فتح الحصة في تطبيق زوم.');
