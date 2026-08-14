@@ -9,12 +9,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.112.2",
+    "@supabase/supabase-js": "^2.112.3",
     "@zoom/meetingsdk": "^6.2.0",
-    "firebase": "^12.16.0",
+    "crypto-js": "^4.2.0",
+    "firebase": "^12.17.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-hot-toast": "^2.4.1",
+    "react-hot-toast": "^2.6.0",
     "react-icons": "^5.7.0"
   },
   "devDependencies": {
