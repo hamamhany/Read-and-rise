@@ -68,6 +68,8 @@ export const deleteZoomMeeting = async (meetingId) => {
 export const createRealZoomMeeting = async (topic, startTime, duration = 60, classId, teacherId) => {
   try {
     const endpoint = import.meta.env.VITE_ZOOM_AUTH_ENDPOINT || 'https://zoom-backend-xcew.onrender.com';
+    console.log('🚀 جاري إنشاء اجتماع عبر الخادم:', endpoint);
+    
     const response = await fetch(`${endpoint}/api/create-meeting`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -75,35 +77,56 @@ export const createRealZoomMeeting = async (topic, startTime, duration = 60, cla
     });
     
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'فشل إنشاء الاجتماع');
+      const errorData = await response.json().catch(() => ({}));
+      console.error('❌ رد الخادم غير ناجح:', response.status, errorData);
+      throw new Error(errorData.message || `فشل إنشاء الاجتماع (HTTP ${response.status})`);
     }
     
     const data = await response.json();
     console.log('✅ بيانات الاجتماع من الخادم:', data);
     
-    // ✅ استخدام join_url مباشرة، والتوقيع ليس ضرورياً لفتح التطبيق
+    // ✅ التحقق من وجود البيانات الأساسية
+    if (!data.id && !data.meeting_number) {
+      console.error('❌ الخادم لم يعد رقم الاجتماع:', data);
+      throw new Error('الخادم لم يعد بيانات الاجتماع الصحيحة');
+    }
+    
+    const meetingNumber = data.id || data.meeting_number;
+    const joinUrl = data.join_url || data.start_url;
+    const password = data.password || '';
+    
+    if (!joinUrl) {
+      console.error('❌ الخادم لم يعد رابط الانضمام:', data);
+      throw new Error('لم يتم استلام رابط الانضمام من الخادم');
+    }
+    
+    // ✅ حفظ الاجتماع في Supabase
     const meetingData = {
       class_id: classId,
       teacher_id: teacherId,
-      meeting_number: data.id,        // <-- id هو رقم الاجتماع
-      password: data.password || '',
-      join_url: data.join_url,        // <-- رابط الانضمام
-      signature: '',                  // نتركها فارغة مؤقتاً
+      meeting_number: meetingNumber,
+      password: password,
+      join_url: joinUrl,
+      signature: data.signature || '', // قد يكون موجوداً في بعض الإصدارات
       start_time: data.start_time || startTime
     };
     
     const saved = await saveZoomMeeting(meetingData);
     const savedId = saved && saved.length > 0 ? saved[0].id : null;
-    return { 
-      ...data, 
+    
+    // ✅ إرجاع البيانات مع التأكد من وجود جميع الحقول
+    return {
       id: savedId,
-      meeting_number: data.id,
-      join_url: data.join_url,
-      password: data.password
+      meeting_number: meetingNumber,
+      join_url: joinUrl,
+      password: password,
+      signature: data.signature || '',
+      topic: data.topic || topic,
+      start_time: data.start_time || startTime,
+      raw: data // للتصحيح
     };
   } catch (err) {
-    console.error('فشل إنشاء الاجتماع الحقيقي:', err);
+    console.error('❌ فشل إنشاء الاجتماع الحقيقي:', err);
     throw err;
   }
 };
