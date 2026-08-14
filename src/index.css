@@ -2,4 +2,32 @@
 @tailwind components;
 @tailwind utilities;
 
-/* يمكنك إضافة أي أنماط مخصصة إضافية هنا، مع بقاء التصميم الزجاجي الحالي */
+/* --------------------------------------------------
+   إصلاح شاشة Zoom لمنع خروجها عن الصندوق المخصص
+-------------------------------------------------- */
+
+/* تقييد حاوية الزوم الرئيسية */
+#zoomEmbedContainer {
+  width: 100% !important;
+  height: 100% !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+/* تقييد العناصر والإطارات التي ينشئها زوم تلقائياً داخل الحاوية */
+#zoomEmbedContainer > div,
+#zoomEmbedContainer iframe,
+#zoomEmbedContainer .meeting-client,
+#zoomEmbedContainer .meeting-client-inner {
+  width: 100% !important;
+  height: 100% !important;
+  position: relative !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  border: none !important;
+}
+
+/* إخفاء أي طبقات جذرية قد ينشئها زوم وخارج نطاق الحاوية */
+#zmmtg-root {
+  display: none !important;
+}

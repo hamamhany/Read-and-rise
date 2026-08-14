@@ -10,7 +10,6 @@ export const saveZoomMeeting = async (meetingData) => {
         meeting_number: meetingData.meeting_number,
         password: meetingData.password || '',
         join_url: meetingData.join_url,
-        // ✅ تم إزالة حفظ التوقيع في قاعدة البيانات لتجنب مشكلة انتهاء الصلاحية
         start_time: meetingData.start_time || new Date().toISOString()
       }])
       .select();
@@ -87,8 +86,6 @@ export const createRealZoomMeeting = async (topic, startTime, duration = 60, cla
     const meetingNumber = data.id || data.meeting_number;
     const joinUrl = data.join_url || data.start_url;
     const password = data.password || '';
-
-    // ✅ تم إزالة خطوة جلب التوقيع من هنا لأنها ستحدث لحظياً عند فتح نافذة الاجتماع
 
     // 2. حفظ الاجتماع في Supabase بدون التوقيع
     const meetingData = {
