@@ -2,12 +2,57 @@ import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import ZoomMtgEmbedded from '@zoom/meetingsdk/embedded';
 import { FaVideo, FaWindowRestore } from 'react-icons/fa';
+import { supabase } from '../../supabaseClient'; // تأكد من مسار ملف الـ supabaseClient حسب مكان ملفك
 
 export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, userEmail, userRole = 1 }) => {
   const [isMaximized, setIsMaximized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [actualName, setActualName] = useState(userName || "مستخدم");
+  const [actualEmail, setActualEmail] = useState(userEmail || "user@readandrise.com");
   const zoomContainerRef = useRef(null);
   const clientRef = useRef(null);
+
+  // جلب الاسم الحقيقي للمستخدم من Supabase إذا كان المُمرر "teacher" أو غير موجود
+  useEffect(() => {
+    const fetchRealUser = async () => {
+      try {
+        if (!userName || userName === 'teacher' || userName === 'المعلم') {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            // محاولة البحث في جدول المستخدمين لديك (مثلاً users أو profiles)
+            const { data: profile } = await supabase
+              .from('users')
+              .select('name, full_name, email')
+              .eq('id', user.id)
+              .maybeSingle();
+
+            if (profile) {
+              setActualName(profile.name || profile.full_name || user.email.split('@')[0]);
+              setActualEmail(profile.email || user.email);
+            } else if (user.user_metadata?.full_name) {
+              setActualName(user.user_metadata.full_name);
+              setActualEmail(user.email);
+            } else {
+              setActualName(user.email.split('@')[0]);
+              setActualEmail(user.email);
+            }
+          } else {
+            setActualName("مستخدم المنصة");
+          }
+        } else {
+          setActualName(userName);
+          setActualEmail(userEmail || `${userName}@readandrise.com`);
+        }
+      } catch (err) {
+        console.error("خطأ في جلب بيانات المستخدم:", err);
+        setActualName(userName !== 'teacher' ? userName : "مستخدم");
+      }
+    };
+
+    if (isOpen) {
+      fetchRealUser();
+    }
+  }, [isOpen, userName, userEmail]);
 
   useEffect(() => {
     let client = null;
@@ -69,8 +114,8 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
           signature: liveSignature,
           meetingNumber: cleanMeetingNumber,
           password: meetingDetails.password || "",
-          userName: userName || "مستخدم",
-          userEmail: userEmail || `${userName || 'user'}@readandrise.com`,
+          userName: actualName,   // ✅ الاسم الحقيقي الذي تم جلبه
+          userEmail: actualEmail, // ✅ البريد الحقيقي
           role: userRole,
           tk: "",
           userZak: "",
@@ -85,10 +130,11 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
       }
     };
 
-    // تأخير بسيط جداً لضمان ثبات أبعاد الصندوق قبل تشغيل الزوم
     const timer = setTimeout(() => {
-      initializeMeeting();
-    }, 100);
+      if (actualName) {
+        initializeMeeting();
+      }
+    }, 150);
 
     return () => {
       clearTimeout(timer);
@@ -105,7 +151,7 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
         }
       }
     };
-  }, [isOpen, meetingDetails, userName, userEmail, userRole]);
+  }, [isOpen, meetingDetails, actualName, actualEmail, userRole]);
 
   if (!isOpen) return null;
 
@@ -119,7 +165,7 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
         <div className="bg-gray-800 px-4 py-3 border-b border-gray-700 flex justify-between items-center text-white shrink-0">
           <div className="flex items-center gap-2 font-bold">
             <FaVideo className="text-blue-400" />
-            <span>اجتماع Zoom المباشر</span>
+            <span>اجتماع Zoom المباشر ({actualName})</span>
           </div>
           
           <div className="flex items-center gap-2">
@@ -143,7 +189,7 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
         <div className="flex-1 w-full relative bg-black overflow-hidden">
           {isLoading && (
             <div className="absolute inset-0 flex items-center justify-center z-20 bg-black/70">
-              <div className="text-white text-lg font-bold animate-pulse">جاري تحميل الاجتماع وتجهيز الشاشة...</div>
+              <div className="text-white text-lg font-bold animate-pulse">جاري تسجيل الدخول باسم {actualName}...</div>
             </div>
           )}
           <div 
