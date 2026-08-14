@@ -18,11 +18,6 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
         const cleanMeetingNumber = String(meetingDetails.meeting_number).replace(/\s+/g, '');
         const endpoint = import.meta.env.VITE_ZOOM_AUTH_ENDPOINT || 'https://zoom-backend-xcew.onrender.com';
         
-        console.log('🔍 جاري طلب توقيع لحظي:', {
-          meetingNumber: cleanMeetingNumber,
-          role: userRole
-        });
-        
         const response = await fetch(`${endpoint}/api/generate-signature`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -46,16 +41,7 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
     };
 
     const initializeMeeting = async () => {
-      if (!isOpen || !meetingDetails || !zoomContainerRef.current || !isMounted) {
-        setIsLoading(false);
-        return;
-      }
-
-      if (!meetingDetails.meeting_number) {
-        toast.error('⚠️ رقم الاجتماع غير موجود.');
-        setIsLoading(false);
-        return;
-      }
+      if (!isOpen || !meetingDetails || !zoomContainerRef.current || !isMounted) return;
 
       setIsLoading(true);
 
@@ -73,34 +59,24 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
 
         const cleanMeetingNumber = String(meetingDetails.meeting_number).replace(/\s+/g, '');
 
-        console.log('🔍 جاري الانضمام للاجتماع:', {
-          meetingNumber: cleanMeetingNumber,
-          role: userRole,
-          signature: liveSignature.substring(0, 50) + '...'
-        });
-
         await client.init({
           zoomAppRoot: zoomContainerRef.current,
           language: 'ar-AR',
           patchJsMedia: true
         });
 
-        const displayName = userName || 'مستخدم';
-        const email = userEmail || `${displayName}@readandrise.com`;
-
         await client.join({
           signature: liveSignature,
           meetingNumber: cleanMeetingNumber,
           password: meetingDetails.password || "",
-          userName: displayName,
-          userEmail: email,
+          userName: userName || "مستخدم",
+          userEmail: userEmail || `${userName || 'user'}@readandrise.com`,
           role: userRole,
           tk: "",
           userZak: "",
           leaveUrl: window.location.href
         });
 
-        console.log("✅ تم الانضمام للاجتماع بنجاح داخل النافذة المنبثقة");
         setIsLoading(false);
       } catch (err) {
         console.error("❌ خطأ أثناء الانضمام للاجتماع:", err);
@@ -109,9 +85,13 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
       }
     };
 
-    initializeMeeting();
+    // تأخير بسيط جداً لضمان ثبات أبعاد الصندوق قبل تشغيل الزوم
+    const timer = setTimeout(() => {
+      initializeMeeting();
+    }, 100);
 
     return () => {
+      clearTimeout(timer);
       isMounted = false;
       if (clientRef.current) {
         try {
@@ -130,14 +110,13 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-2 md:p-4">
       <div 
-        className={`bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl flex flex-col transition-all duration-300 overflow-hidden ${
-          isMaximized ? "w-full h-full rounded-none" : "w-[90%] max-w-4xl h-[80vh]"
+        className={`bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden ${
+          isMaximized ? "w-full h-full rounded-none" : "w-[95%] max-w-6xl h-[85vh]"
         }`}
       >
-        {/* رأس النافذة */}
-        <div className="bg-gray-800 px-4 py-3 border-b border-gray-700 flex justify-between items-center text-white flex-shrink-0">
+        <div className="bg-gray-800 px-4 py-3 border-b border-gray-700 flex justify-between items-center text-white shrink-0">
           <div className="flex items-center gap-2 font-bold">
             <FaVideo className="text-blue-400" />
             <span>اجتماع Zoom المباشر</span>
@@ -146,7 +125,7 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
           <div className="flex items-center gap-2">
             <button
               onClick={() => setIsMaximized(!isMaximized)}
-              className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm transition flex items-center gap-1"
+              className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm transition flex items-center gap-1 cursor-pointer"
             >
               <FaWindowRestore />
               <span>{isMaximized ? "استعادة" : "تكبير"}</span>
@@ -154,26 +133,24 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
 
             <button
               onClick={onClose}
-              className="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-sm transition font-bold"
+              className="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-sm transition font-bold cursor-pointer"
             >
               إغلاق
             </button>
           </div>
         </div>
 
-        {/* حاوية Zoom مع منع الفائض والتمركز */}
-        <div className="flex-1 w-full h-full bg-black relative overflow-hidden">
+        <div className="flex-1 w-full relative bg-black overflow-hidden">
           {isLoading && (
-            <div className="absolute inset-0 flex items-center justify-center z-10 bg-black/50">
-              <div className="text-white text-lg">جاري تحميل الاجتماع...</div>
+            <div className="absolute inset-0 flex items-center justify-center z-20 bg-black/70">
+              <div className="text-white text-lg font-bold animate-pulse">جاري تحميل الاجتماع وتجهيز الشاشة...</div>
             </div>
           )}
           <div 
             ref={zoomContainerRef} 
-            id="zoomEmbedContainer" 
-            className="w-full h-full"
-            style={{ width: '100%', height: '100%', position: 'relative' }}
-          />
+            id="zoomEmbedContainer"
+            className="w-full h-full absolute inset-0"
+          ></div>
         </div>
       </div>
     </div>

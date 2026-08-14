@@ -2,32 +2,27 @@
 @tailwind components;
 @tailwind utilities;
 
-/* --------------------------------------------------
-   إصلاح شاشة Zoom لمنع خروجها عن الصندوق المخصص
--------------------------------------------------- */
-
-/* تقييد حاوية الزوم الرئيسية */
+/* إجبار حاوية وعناصر زوم على ملء الصندوق بالكامل بدون انكماش */
 #zoomEmbedContainer {
   width: 100% !important;
   height: 100% !important;
-  position: relative !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
   overflow: hidden !important;
 }
 
-/* تقييد العناصر والإطارات التي ينشئها زوم تلقائياً داخل الحاوية */
 #zoomEmbedContainer > div,
 #zoomEmbedContainer iframe,
 #zoomEmbedContainer .meeting-client,
 #zoomEmbedContainer .meeting-client-inner {
   width: 100% !important;
   height: 100% !important;
-  position: relative !important;
   max-width: 100% !important;
   max-height: 100% !important;
-  border: none !important;
-}
-
-/* إخفاء أي طبقات جذرية قد ينشئها زوم وخارج نطاق الحاوية */
-#zmmtg-root {
-  display: none !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
 }
