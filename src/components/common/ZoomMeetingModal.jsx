@@ -22,10 +22,8 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
       clientRef.current = client;
 
       const cleanMeetingNumber = String(meetingDetails.meeting_number).replace(/\s+/g, '');
-      const sdkKey = import.meta.env.VITE_ZOOM_SDK_KEY || "PBgN3JSjQKFXka6N4_Zng";
 
       console.log('🔍 جاري الانضمام للاجتماع بالقيم التالية:');
-      console.log('   sdkKey:', sdkKey);
       console.log('   meetingNumber:', cleanMeetingNumber);
       console.log('   role:', userRole);
       console.log('   signature:', meetingDetails.signature.substring(0, 50) + '...');
@@ -37,17 +35,17 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
           patchJsMedia: true
         })
         .then(() => {
+          // ✅ تم إزالة sdkKey من هنا (حسب تعليمات Zoom SDK v4.0+)
           return client.join({
-            sdkKey: sdkKey,                // ✅ استخدام sdkKey بدلاً من clientId
             signature: meetingDetails.signature,
             meetingNumber: cleanMeetingNumber,
             password: meetingDetails.password || "",
             userName: userName || "مستخدم",
             userEmail: userEmail || `${userName || 'user'}@readandrise.com`,
-            role: userRole,                // ✅ تمرير role من props (0 = مضيف، 1 = مشارك)
+            role: userRole,                // 0 = مضيف, 1 = مشارك
             tk: "",
             userZak: "",
-            leaveUrl: window.location.href // ✅ إضافة leaveUrl لضمان العودة بعد الخروج
+            leaveUrl: window.location.href
           });
         })
         .then(() => {
