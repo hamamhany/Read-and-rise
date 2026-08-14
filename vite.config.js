@@ -28,17 +28,19 @@ export default defineConfig({
         ]
       },
       workbox: {
-        // تم إزالة woff2 للتخلص من تحذير التجميع
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,jsx,tsx}'], // أضفنا jsx و tsx
         navigateFallbackDenylist: [/^\/api/],
         cleanupOutdatedCaches: true,
-        maximumFileSizeToCacheInBytes: 15 * 1024 * 1024
+        maximumFileSizeToCacheInBytes: 20 * 1024 * 1024 // رفع الحد إلى 20 ميجابايت
       },
       devOptions: {
         enabled: true
       }
     })
   ],
+  resolve: {
+    extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'] // إضافة دعم jsx
+  },
   server: {
     port: 3000,
     watch: {
@@ -46,7 +48,7 @@ export default defineConfig({
     }
   },
   build: {
-    chunkSizeWarningLimit: 1000,
+    chunkSizeWarningLimit: 1200,
     rollupOptions: {
       output: {
         manualChunks(id) {
