@@ -12,6 +12,13 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
     let client = null;
 
     if (isOpen && meetingDetails && zoomContainerRef.current) {
+      // ✅ التحقق من وجود التوقيع
+      if (!meetingDetails.signature || meetingDetails.signature === '') {
+        toast.error('⚠️ لا يوجد توقيع صالح. تأكد من أن الخادم الخلفي يعمل بشكل صحيح.');
+        // يمكن إغلاق المودال أو عرض رسالة، لكن سنكتفي بتنبيه المستخدم
+        return;
+      }
+
       client = ZoomMtgEmbedded.createClient();
       clientRef.current = client;
 
@@ -36,10 +43,10 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
           });
         })
         .then(() => {
-          console.log("تم الانضمام للاجتماع بنجاح داخل النافذة المنبثقة");
+          console.log("✅ تم الانضمام للاجتماع بنجاح داخل النافذة المنبثقة");
         })
         .catch((err) => {
-          console.error("خطأ أثناء التهيئة أو الانضمام للاجتماع:", err);
+          console.error("❌ خطأ أثناء الانضمام للاجتماع:", err);
           toast.error("فشل الانضمام للاجتماع: " + (err.reason || err.message || JSON.stringify(err)));
         });
     }

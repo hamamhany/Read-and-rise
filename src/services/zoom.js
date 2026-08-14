@@ -65,11 +65,34 @@ export const deleteZoomMeeting = async (meetingId) => {
   }
 };
 
+// دالة مساعدة لجلب التوقيع من الخادم الخلفي
+const fetchZoomSignature = async (meetingNumber, role = 0) => {
+  try {
+    const endpoint = import.meta.env.VITE_ZOOM_AUTH_ENDPOINT || 'https://zoom-backend-xcew.onrender.com';
+    const response = await fetch(`${endpoint}/api/generate-signature`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ meetingNumber, role })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'فشل في جلب التوقيع');
+    }
+
+    const data = await response.json();
+    return data.signature;
+  } catch (err) {
+    console.error('❌ فشل جلب التوقيع:', err);
+    throw err;
+  }
+};
+
 export const createRealZoomMeeting = async (topic, startTime, duration = 60, classId, teacherId) => {
   try {
     const endpoint = import.meta.env.VITE_ZOOM_AUTH_ENDPOINT || 'https://zoom-backend-xcew.onrender.com';
-    console.log('🚀 جاري إنشاء اجتماع عبر الخادم:', endpoint);
     
+    // 1. إنشاء الاجتماع عبر الخادم الخلفي
     const response = await fetch(`${endpoint}/api/create-meeting`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -78,52 +101,47 @@ export const createRealZoomMeeting = async (topic, startTime, duration = 60, cla
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error('❌ رد الخادم غير ناجح:', response.status, errorData);
-      throw new Error(errorData.message || `فشل إنشاء الاجتماع (HTTP ${response.status})`);
+      throw new Error(errorData.error || `فشل إنشاء الاجتماع (HTTP ${response.status})`);
     }
     
     const data = await response.json();
     console.log('✅ بيانات الاجتماع من الخادم:', data);
     
-    // ✅ التحقق من وجود البيانات الأساسية
-    if (!data.id && !data.meeting_number) {
-      console.error('❌ الخادم لم يعد رقم الاجتماع:', data);
-      throw new Error('الخادم لم يعد بيانات الاجتماع الصحيحة');
-    }
-    
     const meetingNumber = data.id || data.meeting_number;
     const joinUrl = data.join_url || data.start_url;
     const password = data.password || '';
-    
-    if (!joinUrl) {
-      console.error('❌ الخادم لم يعد رابط الانضمام:', data);
-      throw new Error('لم يتم استلام رابط الانضمام من الخادم');
+
+    // 2. جلب التوقيع من الخادم (دور 0 = مضيف)
+    let signature = '';
+    try {
+      signature = await fetchZoomSignature(meetingNumber, 0);
+      console.log('✅ تم جلب التوقيع بنجاح');
+    } catch (sigError) {
+      console.warn('⚠️ فشل جلب التوقيع، سيتم فتح الاجتماع بدون توقيع (قد لا يعمل داخل iframe):', sigError.message);
     }
-    
-    // ✅ حفظ الاجتماع في Supabase
+
+    // 3. حفظ الاجتماع في Supabase
     const meetingData = {
       class_id: classId,
       teacher_id: teacherId,
       meeting_number: meetingNumber,
       password: password,
       join_url: joinUrl,
-      signature: data.signature || '', // قد يكون موجوداً في بعض الإصدارات
+      signature: signature,
       start_time: data.start_time || startTime
     };
     
     const saved = await saveZoomMeeting(meetingData);
     const savedId = saved && saved.length > 0 ? saved[0].id : null;
     
-    // ✅ إرجاع البيانات مع التأكد من وجود جميع الحقول
     return {
       id: savedId,
       meeting_number: meetingNumber,
       join_url: joinUrl,
       password: password,
-      signature: data.signature || '',
+      signature: signature,
       topic: data.topic || topic,
-      start_time: data.start_time || startTime,
-      raw: data // للتصحيح
+      start_time: data.start_time || startTime
     };
   } catch (err) {
     console.error('❌ فشل إنشاء الاجتماع الحقيقي:', err);
