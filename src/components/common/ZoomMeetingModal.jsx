@@ -191,14 +191,14 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
         #zoomEmbedContainer {
           width: 100% !important;
           height: 100% !important;
-          position: relative !important;
+          position: absolute !important;
+          top: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: 0 !important;
           overflow: hidden !important;
         }
         #zoomEmbedContainer > div {
-          width: 100% !important;
-          height: 100% !important;
-        }
-        .meeting-client {
           width: 100% !important;
           height: 100% !important;
         }
