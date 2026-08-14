@@ -73,26 +73,35 @@ export const createRealZoomMeeting = async (topic, startTime, duration = 60, cla
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ topic, startTime, duration, classId, teacherId })
     });
+    
     if (!response.ok) {
       const errorData = await response.json();
       throw new Error(errorData.message || 'فشل إنشاء الاجتماع');
     }
+    
     const data = await response.json();
-    if (!data.signature) {
-      throw new Error('لم يتم استلام توقيع صالح من الخادم');
-    }
+    console.log('✅ بيانات الاجتماع من الخادم:', data);
+    
+    // ✅ استخدم join_url مباشرة، ولا تطلب signature
     const meetingData = {
       class_id: classId,
       teacher_id: teacherId,
-      meeting_number: data.meeting_number,
+      meeting_number: data.id,        // <-- id هو رقم الاجتماع
       password: data.password || '',
-      join_url: data.join_url,
-      signature: data.signature,
+      join_url: data.join_url,        // <-- رابط الانضمام
+      signature: '',                   // <-- نتركها فارغة مؤقتاً
       start_time: data.start_time || startTime
     };
+    
     const saved = await saveZoomMeeting(meetingData);
     const savedId = saved && saved.length > 0 ? saved[0].id : null;
-    return { ...data, id: savedId };
+    return { 
+      ...data, 
+      id: savedId,
+      meeting_number: data.id,
+      join_url: data.join_url,
+      password: data.password
+    };
   } catch (err) {
     console.error('فشل إنشاء الاجتماع الحقيقي:', err);
     throw err;
