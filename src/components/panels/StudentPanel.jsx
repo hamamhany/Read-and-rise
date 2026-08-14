@@ -1,9 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { FaUser, FaBell, FaSignOutAlt, FaPen, FaUsers, FaVideo, FaEdit, FaUpload, FaClock, FaCheckCircle, FaTimesCircle, FaEnvelope, FaComment, FaBan, FaExclamationTriangle } from 'react-icons/fa';
+import { 
+  FaUser, FaBell, FaSignOutAlt, FaPen, FaUsers, FaVideo, FaEdit, 
+  FaUpload, FaClock, FaCheckCircle, FaTimesCircle, FaEnvelope, 
+  FaComment, FaBan, FaExclamationTriangle 
+} from 'react-icons/fa';
 import { db, messaging } from '../../firebase';
 import { auth } from '../../services/firebaseAuth';
-import { doc, getDoc, updateDoc, collection, query, where, getDocs, onSnapshot, orderBy, serverTimestamp, writeBatch, deleteDoc } from 'firebase/firestore';
+import { 
+  doc, getDoc, updateDoc, collection, query, where, getDocs, 
+  onSnapshot, orderBy, serverTimestamp, writeBatch, deleteDoc,
+  arrayUnion
+} from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import { useConfirm } from '../common/ConfirmContext';
 import { CountdownTimer, HomeworkTextCountdown } from '../common/CountdownTimer';
