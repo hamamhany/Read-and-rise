@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* تنسيق حاوية Zoom Embedded لملء النافذة بالكامل بدون فراغات */
+/* إجبار الحاوية وعناصر زوم الداخلية على ملء الشاشة بالكامل */
 #zoomEmbedContainer {
   width: 100% !important;
   height: 100% !important;
@@ -14,10 +14,15 @@
   overflow: hidden !important;
 }
 
+/* استهداف كلاسات زوم الداخلية التي قد تفرض أبعاداً ثابتة */
 #zoomEmbedContainer > div,
 #zoomEmbedContainer iframe,
-#zoomEmbedContainer .meeting-client,
-#zoomEmbedContainer .meeting-client-inner {
+#zoomEmbedContainer section,
+.wal-layout-container,
+.meeting-client,
+.meeting-client-inner,
+.zoom-app-container,
+.zm-main-layout {
   width: 100% !important;
   height: 100% !important;
   max-width: 100% !important;
@@ -25,4 +30,11 @@
   position: absolute !important;
   top: 0 !important;
   left: 0 !important;
+}
+
+/* لضمان أن الجسم (Body) لا يحتوي على هوامش تؤثر على المودال */
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
 }
