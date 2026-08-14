@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FaVideo, FaExternalLinkAlt, FaTimes } from 'react-icons/fa';
+import { FaVideo, FaExternalLinkAlt } from 'react-icons/fa';
 import { supabase } from '../../supabaseClient';
 
 export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, userEmail }) => {
@@ -8,13 +8,6 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
 
   useEffect(() => {
     let isMounted = true;
-
-    if (isOpen) {
-      // منع التمرير في الخلفية فقط عند فتح النافذة
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'auto';
-    }
 
     const initializeUserAndRoom = async () => {
       if (!isOpen || !meetingDetails) return;
@@ -73,7 +66,6 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
 
     return () => {
       isMounted = false;
-      document.body.style.overflow = 'auto'; // ضمان إعادة تفعيل السكرول دائماً عند الخروج
     };
   }, [isOpen, meetingDetails, userName]);
 
@@ -82,17 +74,12 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
   const openMeetingInNewTab = () => {
     if (roomUrl) {
       window.open(roomUrl, '_blank');
-      handleClose();
+      onClose();
     }
   };
 
-  const handleClose = () => {
-    document.body.style.overflow = 'auto'; // إعادة السكرول عند الإغلاق
-    onClose();
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4" dir="rtl">
       <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl text-white p-6 flex flex-col items-center text-center">
         
         <div className="w-16 h-16 bg-blue-600/25 text-blue-400 rounded-full flex items-center justify-center text-2xl mb-4 shadow-inner">
@@ -101,7 +88,8 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
 
         <h3 className="text-xl font-bold mb-2">غرفة البث المباشر</h3>
         <p className="text-gray-400 text-sm mb-6">
-          جاهز للانضمام باسم: <span className="text-white font-semibold">{actualName}</span>
+          <span>جاهز للانضمام باسم: </span>
+          <span className="text-white font-semibold">{actualName}</span>
         </p>
 
         <div className="w-full flex flex-col gap-3">
@@ -114,7 +102,7 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
           </button>
 
           <button
-            onClick={handleClose}
+            onClick={onClose}
             className="w-full py-2.5 px-4 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl transition font-medium cursor-pointer"
           >
             إغلاق
