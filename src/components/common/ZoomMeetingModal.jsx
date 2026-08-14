@@ -14,8 +14,7 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
     if (isOpen && meetingDetails && zoomContainerRef.current) {
       // ✅ التحقق من وجود التوقيع
       if (!meetingDetails.signature || meetingDetails.signature === '') {
-        toast.error('⚠️ لا يوجد توقيع صالح. تأكد من أن الخادم الخلفي يعمل بشكل صحيح.');
-        // يمكن إغلاق المودال أو عرض رسالة، لكن سنكتفي بتنبيه المستخدم
+        toast.error('⚠️ لا يوجد توقيع صالح. تأكد من إعداد الخادم الخلفي بشكل صحيح.');
         return;
       }
 
@@ -23,6 +22,9 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
       clientRef.current = client;
 
       const cleanMeetingNumber = String(meetingDetails.meeting_number).replace(/\s+/g, '');
+
+      // ✅ استخدم sdkKey بدلاً من clientId (هذا هو التصحيح الأساسي)
+      const sdkKey = import.meta.env.VITE_ZOOM_SDK_KEY || "PBgN3JSjQKFXka6N4_Zng";
 
       client
         .init({
@@ -32,7 +34,7 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
         })
         .then(() => {
           return client.join({
-            clientId: import.meta.env.VITE_ZOOM_SDK_KEY || "PBgN3JSjQKFXka6N4_Zng",
+            sdkKey: sdkKey,                // ✅ تم التغيير من clientId إلى sdkKey
             signature: meetingDetails.signature,
             meetingNumber: cleanMeetingNumber,
             password: meetingDetails.password || "",
