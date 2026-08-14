@@ -1,4 +1,3 @@
-// src/App.jsx
 import React, { useState, useEffect } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
 import { auth } from './services/firebaseAuth';
@@ -8,12 +7,12 @@ import { doc, getDoc, getDocs, query, collection, where, updateDoc } from 'fireb
 import { fetchClassNames } from './utils/helpers';
 import { useDynamicBackground } from './hooks/useDynamicBackground';
 import { ConfirmProvider } from './components/common/ConfirmContext';
-import { Login } from './components/auth/Login';
-import { CompleteProfile } from './components/auth/CompleteProfile';
-import { FrozenAccount } from './components/common/FrozenAccount';
-import { SupervisorPanel } from './components/panels/SupervisorPanel';
-import { TeacherPanel } from './components/panels/TeacherPanel';
-import { StudentPanel } from './components/panels/StudentPanel';
+import Login from './components/auth/Login';
+import CompleteProfile from './components/auth/CompleteProfile';
+import FrozenAccount from './components/common/FrozenAccount';
+import SupervisorPanel from './components/panels/SupervisorPanel';
+import TeacherPanel from './components/panels/TeacherPanel';
+import StudentPanel from './components/panels/StudentPanel';
 
 const App = () => {
   const [user, setUser] = useState(null);
