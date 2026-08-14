@@ -6,7 +6,7 @@ import { updatePassword, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc, query, collection, where, getDocs, serverTimestamp } from 'firebase/firestore';
 import { sanitizeInput } from '../../utils/helpers';
 
-export const CompleteProfile = ({ user, onSuccess, onCancel }) => {
+const CompleteProfile = ({ user, onSuccess, onCancel }) => {
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -169,3 +169,5 @@ export const CompleteProfile = ({ user, onSuccess, onCancel }) => {
     </div>
   );
 };
+
+export default CompleteProfile;
