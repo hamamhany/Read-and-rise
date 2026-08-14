@@ -2,7 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
-/* إجبار حاوية وعناصر زوم على ملء الصندوق بالكامل بدون انكماش */
+/* --------------------------------------------------
+   تثبيت شاشة Zoom داخل الصندوق الأسود بدقة كاملة
+-------------------------------------------------- */
+
 #zoomEmbedContainer {
   width: 100% !important;
   height: 100% !important;
@@ -17,7 +20,8 @@
 #zoomEmbedContainer > div,
 #zoomEmbedContainer iframe,
 #zoomEmbedContainer .meeting-client,
-#zoomEmbedContainer .meeting-client-inner {
+#zoomEmbedContainer .meeting-client-inner,
+#zoomEmbedContainer canvas {
   width: 100% !important;
   height: 100% !important;
   max-width: 100% !important;
@@ -25,4 +29,10 @@
   position: absolute !important;
   top: 0 !important;
   left: 0 !important;
+  box-sizing: border-box !important;
+}
+
+/* منع ظهور أي عناصر زائدة للخارج */
+.overflow-hidden {
+  overflow: hidden !important;
 }
