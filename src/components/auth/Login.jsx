@@ -8,7 +8,7 @@ import { doc, getDoc, updateDoc, query, collection, where, getDocs } from 'fireb
 import { sanitizeInput, arabicToEnglishNumber } from '../../utils/helpers';
 import { sendWhatsAppToTeacher } from '../../utils/whatsapp';
 
-export const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
+const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -366,3 +366,5 @@ export const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     </div>
   );
 };
+
+export default Login;

@@ -52,3 +52,5 @@ export const FrozenAccount = ({ user, onLogout }) => {
     </div>
   );
 };
+
+export default FrozenAccount;
