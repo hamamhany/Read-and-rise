@@ -2,50 +2,47 @@ import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import ZoomMtgEmbedded from '@zoom/meetingsdk/embedded';
 import { FaVideo, FaWindowRestore } from 'react-icons/fa';
-import { supabase } from '../../supabaseClient'; // تأكد من مسار ملف الـ supabaseClient حسب مكان ملفك
+import { supabase } from '../../supabaseClient';
 
 export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, userEmail, userRole = 1 }) => {
   const [isMaximized, setIsMaximized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [actualName, setActualName] = useState(userName || "مستخدم");
-  const [actualEmail, setActualEmail] = useState(userEmail || "user@readandrise.com");
+  // ضبط الاسم الافتراضي ليكون "همام هاني" مباشرة
+  const [actualName, setActualName] = useState(userName && userName !== 'teacher' ? userName : "همام هاني");
+  const [actualEmail, setActualEmail] = useState(userEmail || "homam@readandrise.com");
   const zoomContainerRef = useRef(null);
   const clientRef = useRef(null);
 
-  // جلب الاسم الحقيقي للمستخدم من Supabase إذا كان المُمرر "teacher" أو غير موجود
+  // جلب البيانات مع اعتماد اسمك الصحيح
   useEffect(() => {
     const fetchRealUser = async () => {
       try {
-        if (!userName || userName === 'teacher' || userName === 'المعلم') {
+        if (!userName || userName === 'teacher' || userName === 'المعلم' || userName === 'مستخدم المنصة') {
           const { data: { user } } = await supabase.auth.getUser();
           if (user) {
-            // محاولة البحث في جدول المستخدمين لديك (مثلاً users أو profiles)
             const { data: profile } = await supabase
               .from('users')
               .select('name, full_name, email')
               .eq('id', user.id)
               .maybeSingle();
 
-            if (profile) {
-              setActualName(profile.name || profile.full_name || user.email.split('@')[0]);
+            if (profile?.name || profile?.full_name) {
+              setActualName(profile.name || profile.full_name);
               setActualEmail(profile.email || user.email);
-            } else if (user.user_metadata?.full_name) {
-              setActualName(user.user_metadata.full_name);
-              setActualEmail(user.email);
             } else {
-              setActualName(user.email.split('@')[0]);
+              setActualName("همام هاني");
               setActualEmail(user.email);
             }
           } else {
-            setActualName("مستخدم المنصة");
+            setActualName("همام هاني");
           }
         } else {
           setActualName(userName);
-          setActualEmail(userEmail || `${userName}@readandrise.com`);
+          setActualEmail(userEmail || "homam@readandrise.com");
         }
       } catch (err) {
         console.error("خطأ في جلب بيانات المستخدم:", err);
-        setActualName(userName !== 'teacher' ? userName : "مستخدم");
+        setActualName("همام هاني");
       }
     };
 
@@ -114,8 +111,8 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
           signature: liveSignature,
           meetingNumber: cleanMeetingNumber,
           password: meetingDetails.password || "",
-          userName: actualName,   // ✅ الاسم الحقيقي الذي تم جلبه
-          userEmail: actualEmail, // ✅ البريد الحقيقي
+          userName: actualName,
+          userEmail: actualEmail,
           role: userRole,
           tk: "",
           userZak: "",
@@ -125,7 +122,13 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
         setIsLoading(false);
       } catch (err) {
         console.error("❌ خطأ أثناء الانضمام للاجتماع:", err);
-        toast.error("فشل الانضمام للاجتماع: " + (err.reason || err.message || JSON.stringify(err)));
+        
+        if (err.errorCode === 3000 || (err.reason && err.reason.includes("Already has other meetings in progress"))) {
+          toast.error("⚠️ يوجد اجتماع زوم مفتوح بالفعل بنفس الحساب. يرجى إغلاق أي نافذة سابقة.");
+        } else {
+          toast.error("فشل الانضمام للاجتماع: " + (err.reason || err.message || JSON.stringify(err)));
+        }
+        
         setIsLoading(false);
       }
     };
@@ -186,16 +189,19 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
           </div>
         </div>
 
-        <div className="flex-1 w-full relative bg-black overflow-hidden">
+        {/* تم إضافة min-h-0 لمنع الفراغ الأسود بالأسفل وتعبئة الشاشة بالكامل */}
+        <div className="flex-1 w-full relative bg-black overflow-hidden min-h-0 flex flex-col">
           {isLoading && (
             <div className="absolute inset-0 flex items-center justify-center z-20 bg-black/70">
-              <div className="text-white text-lg font-bold animate-pulse">جاري تسجيل الدخول باسم {actualName}...</div>
+              <div className="text-white text-lg font-bold animate-pulse text-center px-4">
+                جاري الانضمام للاجتماع باسم {actualName}...
+              </div>
             </div>
           )}
           <div 
             ref={zoomContainerRef} 
             id="zoomEmbedContainer"
-            className="w-full h-full absolute inset-0"
+            className="w-full h-full absolute inset-0 !absolute !inset-0"
           ></div>
         </div>
       </div>
