@@ -46,9 +46,6 @@ import {
 } from '../../services/zoom';
 import { MAX_SUPERVISORS, ANNOUNCEMENTS_LIMIT, TEACHER_PHONE } from '../../constants';
 
-// ============================================================
-// TeacherPanel - الكود الكامل مع تعديل Zoom
-// ============================================================
 const TeacherPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
   const [lessonTimes, setLessonTimes] = useState([]);
@@ -136,26 +133,35 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ✅ دالة إنشاء الاجتماع المعدلة (تستخدم join_url مباشرة)
+  // ✅ دالة إنشاء الاجتماع المعدلة (تتعامل مع البيانات الجديدة وتتحقق من join_url)
   const handleCreateMeeting = async (topic, startTime, classId) => {
     try {
+      toast.loading('جاري إنشاء الغرفة...', { id: 'zoom-create' });
+      
       const result = await createRealZoomMeeting(topic, startTime, 60, classId, user.id);
+      
+      toast.dismiss('zoom-create');
+      
       if (result && result.join_url) {
+        // ✅ تأكد من وجود جميع البيانات
         setPendingMeeting({
           id: result.id,
           join_url: result.join_url,
           topic: topic,
           meeting_number: result.meeting_number,
-          password: result.password,
-          signature: result.signature || '' // نتركها فارغة
+          password: result.password || '',
+          signature: result.signature || '' // قد تكون فارغة
         });
         setShowOpenMeetingChoice(true);
         await fetchTeacherMeetings();
+        toast.success('✅ تم إنشاء الغرفة بنجاح!');
       } else {
-        toast.error('❌ لم يتم استلام رابط الاجتماع.');
+        toast.error('❌ لم يتم استلام رابط الاجتماع. حاول مرة أخرى.');
       }
     } catch (err) {
-      toast.error('❌ فشل إنشاء الغرفة: ' + err.message);
+      toast.dismiss('zoom-create');
+      console.error('❌ فشل إنشاء الغرفة:', err);
+      toast.error('❌ فشل إنشاء الغرفة: ' + (err.message || 'خطأ غير معروف'));
     }
   };
 
