@@ -133,7 +133,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // دالة إنشاء الاجتماع (لا تحفظ التوقيع)
   const handleCreateMeeting = async (topic, startTime, classId) => {
     try {
       toast.loading('جاري إنشاء الغرفة...', { id: 'zoom-create' });
@@ -143,14 +142,12 @@ const TeacherPanel = ({ user, onLogout }) => {
       toast.dismiss('zoom-create');
       
       if (result && result.join_url) {
-        // ✅ لا نخزن التوقيع هنا، سيتم جلبه لحظياً عند فتح المودال
         setPendingMeeting({
           id: result.id,
           join_url: result.join_url,
           topic: topic,
           meeting_number: result.meeting_number,
           password: result.password || '',
-          // لا نمرر signature هنا
         });
         setShowOpenMeetingChoice(true);
         await fetchTeacherMeetings();
@@ -165,19 +162,17 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // دالة اختيار طريقة الفتح
   const handleOpenMeetingChoice = (choice) => {
     if (!pendingMeeting) return;
     const rawNumber = pendingMeeting.meeting_number || pendingMeeting.id || pendingMeeting.meetingNumber;
     const cleanMeetingNumber = String(rawNumber || '').replace(/\D/g, '');
 
     if (choice === 'iframe') {
-      // فتح داخل الموقع (نمرر البيانات بدون توقيع، سيتم جلبه لحظياً في المودال)
       setActiveMeeting({
         id: pendingMeeting.id || pendingMeeting._id,
         meeting_number: cleanMeetingNumber,
         password: pendingMeeting.password || '',
-        signature: '', // فارغ، سيتم جلبه في المودال
+        signature: '',
         topic: pendingMeeting.topic || 'حصة زوم المباشرة',
         join_url: pendingMeeting.join_url
       });
@@ -214,19 +209,28 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // Request notification permission
+  // ✅ الدالة المعدلة – استخدام VAPID_KEY من متغيرات البيئة
   const requestNotificationPermission = async () => {
     if (!auth.currentUser) {
       toast.error('يرجى تسجيل الدخول أولاً.');
       return;
     }
+
+    // ✅ جلب مفتاح VAPID من متغيرات البيئة (آمن)
+    const vapidKey = import.meta.env.VITE_VAPID_KEY;
+    if (!vapidKey) {
+      toast.error('مفتاح VAPID غير مضبوط في البيئة. يرجى إضافته في Vercel.');
+      return;
+    }
+
     if (Notification.permission === 'granted') {
       try {
-        const token = await getToken(messaging, { vapidKey: 'BMuOctGyoxHcX03mppaXioqagujweclql9d9dpeLRTsZAIQpcgdcBveP-DGzaVctK7nIF1liaeo6vvfxg-uIAbI' });
+        const token = await getToken(messaging, { vapidKey });
         if (token) {
           await updateDoc(doc(db, 'profiles', user.id), {
             fcmTokens: arrayUnion(token)
           });
+          toast.success('تم تفعيل الإشعارات');
         }
       } catch (err) {
         console.error('FCM token error:', err);
@@ -234,14 +238,16 @@ const TeacherPanel = ({ user, onLogout }) => {
       }
       return;
     }
+
     if (Notification.permission === 'denied') {
       toast.error('تم رفض الإذن، يرجى تفعيله من إعدادات المتصفح');
       return;
     }
+
     const permission = await Notification.requestPermission();
     if (permission === 'granted') {
       try {
-        const token = await getToken(messaging, { vapidKey: 'BMuOctGyoxHcX03mppaXioqagujweclql9d9dpeLRTsZAIQpcgdcBveP-DGzaVctK7nIF1liaeo6vvfxg-uIAbI' });
+        const token = await getToken(messaging, { vapidKey });
         if (token) {
           await updateDoc(doc(db, 'profiles', user.id), {
             fcmTokens: arrayUnion(token)
@@ -265,6 +271,13 @@ const TeacherPanel = ({ user, onLogout }) => {
     });
     return () => unsubscribe();
   }, []);
+
+  // باقي الكود كما هو (جميع الدوال الأخرى لم تتغير)
+  // ... (سأضع باقي الدوال بنفس الشكل السابق لكن باختصار لتوفير المساحة، أو يمكنك الاحتفاظ بنسختك السابقة)
+
+  // ============================================================
+  // باقي الدوال (نفس الكود السابق)
+  // ============================================================
 
   // Supervisor handlers
   const handleAddSupervisor = async (e) => {
@@ -1285,6 +1298,9 @@ const TeacherPanel = ({ user, onLogout }) => {
 
   if (loading) return <div className="text-center text-gray-400 p-8">جاري التحميل...</div>;
 
+  // ============================================================
+  // قسم التصيير (Render) – نفسه كما في النسخة السابقة
+  // ============================================================
   return (
     <div className="container-center min-h-screen p-4 relative" dir="rtl">
       <div className="bg-gray-900/80 p-8 max-w-4xl w-full space-y-6 z-10 border border-gray-700 rounded-3xl backdrop-blur-sm">
@@ -1317,6 +1333,7 @@ const TeacherPanel = ({ user, onLogout }) => {
 
         {errorMsg && <p className="text-red-400 text-sm bg-red-500/10 p-3 rounded-xl border border-red-500/20">{errorMsg}</p>}
 
+        {/* باقي الأقسام كاملة كما في النسخة السابقة – لم تتغير */}
         {/* Pending reviews */}
         {pendingReviews.length > 0 && (
           <div className="bg-yellow-900/30 p-6 rounded-2xl border border-yellow-500/40 shadow-lg">
@@ -1621,7 +1638,7 @@ const TeacherPanel = ({ user, onLogout }) => {
           )}
         </div>
 
-        {/* Zoom Meeting Modal - مع تمرير userRole={1} للمعلم (مضيف) */}
+        {/* Zoom Meeting Modal - مع userRole={1} للمعلم (مضيف) */}
         <ZoomMeetingModal
           isOpen={isZoomOpen}
           onClose={() => {
@@ -1631,10 +1648,10 @@ const TeacherPanel = ({ user, onLogout }) => {
           meetingDetails={activeMeeting}
           userName={user.name || user.username || "معلم"}
           userEmail={user.email || `${user.username}@readandrise.com`}
-          userRole={1} // ✅ المعلم هو المضيف (role = 1)
+          userRole={1}
         />
 
-      </div> {/* end container */}
+      </div>
 
       {/* Choice modal for opening meeting */}
       <ChoiceModal
@@ -1651,7 +1668,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         ]}
       />
 
-      {/* Modals for supervisor, students, classes, warnings, review, etc. */}
+      {/* باقي المودالات كما هي - لم تتغير */}
       {/* Supervisors add modal */}
       {showSupervisorModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowSupervisorModal(false)}>
