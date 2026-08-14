@@ -7,42 +7,66 @@ import { supabase } from '../../supabaseClient';
 export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, userEmail, userRole = 1 }) => {
   const [isMaximized, setIsMaximized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  // ضبط الاسم الافتراضي ليكون "همام هاني" مباشرة
-  const [actualName, setActualName] = useState(userName && userName !== 'teacher' ? userName : "همام هاني");
-  const [actualEmail, setActualEmail] = useState(userEmail || "homam@readandrise.com");
+  const [actualName, setActualName] = useState(userName && userName !== 'teacher' ? userName : "جاري التحميل...");
+  const [actualEmail, setActualEmail] = useState(userEmail || "user@readandrise.com");
   const zoomContainerRef = useRef(null);
   const clientRef = useRef(null);
 
-  // جلب البيانات مع اعتماد اسمك الصحيح
+  // جلب الاسم الحقيقي والدقيق من قاعدة البيانات بناءً على المستخدم المسجل حالياً
   useEffect(() => {
     const fetchRealUser = async () => {
       try {
-        if (!userName || userName === 'teacher' || userName === 'المعلم' || userName === 'مستخدم المنصة') {
-          const { data: { user } } = await supabase.auth.getUser();
-          if (user) {
-            const { data: profile } = await supabase
+        if (userName && userName !== 'teacher' && userName !== 'المعلم' && userName !== 'مستخدم المنصة') {
+          setActualName(userName);
+          setActualEmail(userEmail || "user@readandrise.com");
+          return;
+        }
+
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          let resolvedName = null;
+          let resolvedEmail = user.email;
+
+          if (user.user_metadata?.full_name) {
+            resolvedName = user.user_metadata.full_name;
+          } else if (user.user_metadata?.name) {
+            resolvedName = user.user_metadata.name;
+          }
+
+          if (!resolvedName) {
+            const { data: userRecord } = await supabase
               .from('users')
-              .select('name, full_name, email')
+              .select('name, full_name, username')
               .eq('id', user.id)
               .maybeSingle();
 
-            if (profile?.name || profile?.full_name) {
-              setActualName(profile.name || profile.full_name);
-              setActualEmail(profile.email || user.email);
-            } else {
-              setActualName("همام هاني");
-              setActualEmail(user.email);
+            if (userRecord) {
+              resolvedName = userRecord.full_name || userRecord.name || userRecord.username;
             }
-          } else {
-            setActualName("همام هاني");
           }
-        } else {
-          setActualName(userName);
-          setActualEmail(userEmail || "homam@readandrise.com");
+
+          if (!resolvedName) {
+            const { data: profileRecord } = await supabase
+              .from('profiles')
+              .select('full_name, name, username')
+              .eq('id', user.id)
+              .maybeSingle();
+
+            if (profileRecord) {
+              resolvedName = profileRecord.full_name || profileRecord.name || profileRecord.username;
+            }
+          }
+
+          if (!resolvedName && user.email) {
+            resolvedName = user.email.split('@')[0];
+          }
+
+          setActualName(resolvedName || "مستخدم النظام");
+          setActualEmail(resolvedEmail);
         }
       } catch (err) {
-        console.error("خطأ في جلب بيانات المستخدم:", err);
-        setActualName("همام هاني");
+        console.error("خطأ في جلب بيانات المعلم من النظام:", err);
+        setActualName(userName && userName !== 'teacher' ? userName : "مستخدم");
       }
     };
 
@@ -83,7 +107,7 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
     };
 
     const initializeMeeting = async () => {
-      if (!isOpen || !meetingDetails || !zoomContainerRef.current || !isMounted) return;
+      if (!isOpen || !meetingDetails || !zoomContainerRef.current || !isMounted || actualName === "جاري التحميل...") return;
 
       setIsLoading(true);
 
@@ -134,7 +158,7 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
     };
 
     const timer = setTimeout(() => {
-      if (actualName) {
+      if (actualName && actualName !== "جاري التحميل...") {
         initializeMeeting();
       }
     }, 150);
@@ -189,7 +213,6 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
           </div>
         </div>
 
-        {/* تم إضافة min-h-0 لمنع الفراغ الأسود بالأسفل وتعبئة الشاشة بالكامل */}
         <div className="flex-1 w-full relative bg-black overflow-hidden min-h-0 flex flex-col">
           {isLoading && (
             <div className="absolute inset-0 flex items-center justify-center z-20 bg-black/70">
