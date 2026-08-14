@@ -6,83 +6,66 @@ import { supabase } from '../../supabaseClient';
 
 export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, userEmail, userRole = 1 }) => {
   const [isMaximized, setIsMaximized] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  
-  const [actualName, setActualName] = useState(
-    (userName && userName !== 'teacher') ? userName : "المعلم"
-  );
-  const [actualEmail, setActualEmail] = useState(userEmail || "teacher@readandrise.com");
+  const [isLoading, setIsLoading] = useState(true);
+  const [actualName, setActualName] = useState("جاري التحميل...");
   
   const zoomContainerRef = useRef(null);
   const clientRef = useRef(null);
 
   useEffect(() => {
-    const fetchRealUser = async () => {
-      try {
-        if (userName && userName !== 'teacher' && userName !== 'المعلم' && userName !== 'مستخدم المنصة') {
-          setActualName(userName);
-          return;
-        }
-
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          let resolvedName = null;
-
-          if (user.user_metadata?.full_name) {
-            resolvedName = user.user_metadata.full_name;
-          } else if (user.user_metadata?.name) {
-            resolvedName = user.user_metadata.name;
-          }
-
-          if (!resolvedName) {
-            const { data: userRecord } = await supabase
-              .from('users')
-              .select('name, full_name, username')
-              .eq('id', user.id)
-              .maybeSingle();
-
-            if (userRecord) {
-              resolvedName = userRecord.full_name || userRecord.name || userRecord.username;
-            }
-          }
-
-          if (!resolvedName) {
-            const { data: profileRecord } = await supabase
-              .from('profiles')
-              .select('full_name, name, username')
-              .eq('id', user.id)
-              .maybeSingle();
-
-            if (profileRecord) {
-              resolvedName = profileRecord.full_name || profileRecord.name || profileRecord.username;
-            }
-          }
-
-          if (!resolvedName && user.email) {
-            resolvedName = user.email.split('@')[0];
-          }
-
-          if (resolvedName) {
-            setActualName(resolvedName);
-            setActualEmail(user.email);
-          }
-        }
-      } catch (err) {
-        console.error("خطأ في جلب بيانات المستخدم:", err);
-      }
-    };
-
-    if (isOpen) {
-      fetchRealUser();
-    }
-  }, [isOpen, userName]);
-
-  useEffect(() => {
     let client = null;
     let isMounted = true;
 
-    const getLiveSignature = async () => {
+    const initializeMeetingAndUser = async () => {
+      if (!isOpen || !meetingDetails || !zoomContainerRef.current) return;
+
+      setIsLoading(true);
+
       try {
+        // 1. تحديد الاسم والإيميل فوراً أو جلبهما من قاعدة البيانات مرة واحدة فقط
+        let resolvedName = (userName && userName !== 'teacher' && userName !== 'المعلم') ? userName : null;
+        let resolvedEmail = userEmail || "teacher@readandrise.com";
+
+        if (!resolvedName) {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            if (user.user_metadata?.full_name) {
+              resolvedName = user.user_metadata.full_name;
+            } else if (user.user_metadata?.name) {
+              resolvedName = user.user_metadata.name;
+            } else {
+              const { data: userRecord } = await supabase
+                .from('users')
+                .select('name, full_name, username')
+                .eq('id', user.id)
+                .maybeSingle();
+              if (userRecord) {
+                resolvedName = userRecord.full_name || userRecord.name || userRecord.username;
+              } else {
+                const { data: profileRecord } = await supabase
+                  .from('profiles')
+                  .select('full_name, name, username')
+                  .eq('id', user.id)
+                  .maybeSingle();
+                if (profileRecord) {
+                  resolvedName = profileRecord.full_name || profileRecord.name || profileRecord.username;
+                }
+              }
+            }
+            if (user.email) {
+              resolvedEmail = user.email;
+              if (!resolvedName) resolvedName = user.email.split('@')[0];
+            }
+          }
+        }
+
+        if (!resolvedName) resolvedName = "المعلم";
+
+        if (isMounted) {
+          setActualName(resolvedName);
+        }
+
+        // 2. جلب التوقيع من الخادم
         const cleanMeetingNumber = String(meetingDetails.meeting_number).replace(/\s+/g, '');
         const endpoint = import.meta.env.VITE_ZOOM_AUTH_ENDPOINT || 'https://zoom-backend-xcew.onrender.com';
         
@@ -101,31 +84,15 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
         }
         
         const data = await response.json();
-        return data.signature;
-      } catch (err) {
-        console.error('❌ فشل جلب التوقيع اللحظي:', err);
-        throw err;
-      }
-    };
-
-    const initializeMeeting = async () => {
-      if (!isOpen || !meetingDetails || !zoomContainerRef.current || !isMounted) return;
-
-      setIsLoading(true);
-
-      try {
-        const liveSignature = await getLiveSignature();
-        
-        if (!liveSignature) {
-          toast.error('⚠️ فشل الحصول على توقيع صالح للاجتماع.');
-          setIsLoading(false);
-          return;
+        if (!data.signature) {
+          throw new Error('فشل الحصول على توقيع صالح للاجتماع.');
         }
 
+        if (!isMounted) return;
+
+        // 3. تهيئة وبدء اجتماع Zoom مرة واحدة فقط
         client = ZoomMtgEmbedded.createClient();
         clientRef.current = client;
-
-        const cleanMeetingNumber = String(meetingDetails.meeting_number).replace(/\s+/g, '');
 
         await client.init({
           zoomAppRoot: zoomContainerRef.current,
@@ -134,37 +101,38 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
         });
 
         await client.join({
-          signature: liveSignature,
+          signature: data.signature,
           meetingNumber: cleanMeetingNumber,
           password: meetingDetails.password || "",
-          userName: actualName,
-          userEmail: actualEmail,
+          userName: resolvedName,
+          userEmail: resolvedEmail,
           role: userRole,
           tk: "",
           userZak: "",
           leaveUrl: window.location.href
         });
 
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       } catch (err) {
         console.error("❌ خطأ أثناء الانضمام للاجتماع:", err);
-        
-        if (err.errorCode === 3000 || (err.reason && err.reason.includes("Already has other meetings in progress"))) {
-          toast.error("⚠️ يوجد اجتماع زوم مفتوح بالفعل بنفس الحساب. يرجى إغلاق أي نافذة سابقة.");
-        } else {
-          toast.error("فشل الانضمام للاجتماع: " + (err.reason || err.message || JSON.stringify(err)));
+        if (isMounted) {
+          if (err.errorCode === 3000 || (err.reason && err.reason.includes("Already has other meetings in progress"))) {
+            toast.error("⚠️ يوجد اجتماع زوم مفتوح بالفعل بنفس الحساب. يرجى إغلاق أي نافذة سابقة.");
+          } else {
+            toast.error("فشل الانضمام للاجتماع: " + (err.reason || err.message || JSON.stringify(err)));
+          }
+          setIsLoading(false);
         }
-        
-        setIsLoading(false);
       }
     };
 
-    const timer = setTimeout(() => {
-      initializeMeeting();
-    }, 150);
+    if (isOpen && meetingDetails) {
+      initializeMeetingAndUser();
+    }
 
     return () => {
-      clearTimeout(timer);
       isMounted = false;
       if (clientRef.current) {
         try {
@@ -178,13 +146,12 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
         }
       }
     };
-  }, [isOpen, meetingDetails, actualName, actualEmail, userRole]);
+  }, [isOpen, meetingDetails, userRole]);
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-0 md:p-4">
-      {/* CSS قوي جداً لإلغاء أي قيود ارتفاع أو فراغات سوداء فرضها زوم */}
       <style>{`
         #zoomEmbedContainer {
           width: 100% !important;
@@ -204,13 +171,6 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
           width: 100% !important;
           height: 100% !important;
           max-height: 100% !important;
-          background-color: #111 !important;
-        }
-        #zoomEmbedContainer video,
-        #zoomEmbedContainer canvas,
-        #zoomEmbedContainer div[class*="video-container"] {
-          width: 100% !important;
-          height: 100% !important;
         }
       `}</style>
 
@@ -244,7 +204,9 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
         <div className="flex-1 w-full relative bg-black overflow-hidden">
           {isLoading && (
             <div className="absolute inset-0 flex items-center justify-center z-10 bg-gray-950">
-              <div className="text-white font-bold animate-pulse">جاري الانضمام...</div>
+              <div className="text-white font-bold animate-pulse text-lg">
+                جاري الانضمام للاجتماع...
+              </div>
             </div>
           )}
           <div ref={zoomContainerRef} id="zoomEmbedContainer" className="w-full h-full block"></div>
