@@ -185,13 +185,26 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-2 md:p-4">
-      <div 
-        className={`bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden ${
-          isMaximized ? "w-full h-full rounded-none" : "w-[95%] max-w-6xl h-[85vh]"
-        }`}
-      >
-        <div className="bg-gray-800 px-4 py-3 border-b border-gray-700 flex justify-between items-center text-white shrink-0">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-0 md:p-4">
+      {/* هذا هو التعديل: حقن CSS مباشرة داخل المكون */}
+      <style>{`
+        #zoomEmbedContainer, 
+        #zoomEmbedContainer div, 
+        #zoomEmbedContainer iframe,
+        .meeting-client, 
+        .meeting-client-inner {
+          height: 100% !important;
+          width: 100% !important;
+          position: absolute !important;
+          top: 0 !important;
+          left: 0 !important;
+        }
+      `}</style>
+
+      <div className={`bg-gray-950 flex flex-col overflow-hidden shadow-2xl ${
+        isMaximized ? "w-screen h-screen" : "w-full md:w-[90vw] h-full md:h-[90vh] md:rounded-2xl border border-gray-800"
+      }`}>
+        <div className="bg-gray-900 px-4 py-3 flex justify-between items-center text-white shrink-0">
           <div className="flex items-center gap-2 font-bold">
             <FaVideo className="text-blue-400" />
             <span>اجتماع Zoom المباشر ({actualName})</span>
@@ -215,20 +228,13 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
           </div>
         </div>
 
-        <div className="flex-1 w-full relative bg-black overflow-hidden min-h-0 flex flex-col">
+        <div className="flex-1 w-full relative bg-black overflow-hidden">
           {isLoading && (
-            <div className="absolute inset-0 flex items-center justify-center z-20 bg-black/70">
-              <div className="text-white text-lg font-bold animate-pulse text-center px-4">
-                جاري الانضمام للاجتماع باسم {actualName}...
-              </div>
+            <div className="absolute inset-0 flex items-center justify-center z-10 bg-gray-950">
+              <div className="text-white font-bold animate-pulse">جاري الانضمام...</div>
             </div>
           )}
-          <div 
-            ref={zoomContainerRef} 
-            id="zoomEmbedContainer"
-            style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }}
-            className="w-full h-full absolute inset-0 !absolute !inset-0"
-          ></div>
+          <div ref={zoomContainerRef} id="zoomEmbedContainer" className="w-full h-full block"></div>
         </div>
       </div>
     </div>
