@@ -32,9 +32,9 @@
   left: 0 !important;
 }
 
-/* لضمان أن الجسم (Body) لا يحتوي على هوامش تؤثر على المودال */
+/* إعادة تفعيل التمرير والحركة في الصفحة بشكل طبيعي */
 body {
   margin: 0;
   padding: 0;
-  overflow: hidden;
+  overflow: auto;
 }
