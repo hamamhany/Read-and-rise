@@ -82,14 +82,14 @@ export const createRealZoomMeeting = async (topic, startTime, duration = 60, cla
     const data = await response.json();
     console.log('✅ بيانات الاجتماع من الخادم:', data);
     
-    // ✅ استخدم join_url مباشرة، ولا تطلب signature
+    // ✅ استخدام join_url مباشرة، والتوقيع ليس ضرورياً لفتح التطبيق
     const meetingData = {
       class_id: classId,
       teacher_id: teacherId,
       meeting_number: data.id,        // <-- id هو رقم الاجتماع
       password: data.password || '',
       join_url: data.join_url,        // <-- رابط الانضمام
-      signature: '',                   // <-- نتركها فارغة مؤقتاً
+      signature: '',                  // نتركها فارغة مؤقتاً
       start_time: data.start_time || startTime
     };
     
