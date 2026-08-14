@@ -69,6 +69,11 @@ export const deleteZoomMeeting = async (meetingId) => {
 const fetchZoomSignature = async (meetingNumber, role = 0) => {
   try {
     const endpoint = import.meta.env.VITE_ZOOM_AUTH_ENDPOINT || 'https://zoom-backend-xcew.onrender.com';
+    
+    console.log('🔍 جاري طلب التوقيع بالقيم التالية:');
+    console.log('   meetingNumber:', meetingNumber);
+    console.log('   role:', role);
+    
     const response = await fetch(`${endpoint}/api/generate-signature`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -81,6 +86,7 @@ const fetchZoomSignature = async (meetingNumber, role = 0) => {
     }
 
     const data = await response.json();
+    console.log('✅ تم استلام التوقيع بنجاح');
     return data.signature;
   } catch (err) {
     console.error('❌ فشل جلب التوقيع:', err);
@@ -111,9 +117,10 @@ export const createRealZoomMeeting = async (topic, startTime, duration = 60, cla
     const joinUrl = data.join_url || data.start_url;
     const password = data.password || '';
 
-    // 2. جلب التوقيع من الخادم (دور 0 = مضيف)
+    // 2. جلب التوقيع من الخادم مع role = 0 (مضيف)
     let signature = '';
     try {
+      // المعلم دائماً يكون مضيف role = 0
       signature = await fetchZoomSignature(meetingNumber, 0);
       console.log('✅ تم جلب التوقيع بنجاح');
     } catch (sigError) {

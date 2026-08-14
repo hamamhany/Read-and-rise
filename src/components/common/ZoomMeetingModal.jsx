@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import ZoomMtgEmbedded from '@zoom/meetingsdk/embedded';
 import { FaVideo, FaWindowRestore } from 'react-icons/fa';
 
-export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, userEmail }) => {
+export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, userEmail, userRole = 0 }) => {
   const [isMaximized, setIsMaximized] = useState(false);
   const zoomContainerRef = useRef(null);
   const clientRef = useRef(null);
@@ -22,9 +22,13 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
       clientRef.current = client;
 
       const cleanMeetingNumber = String(meetingDetails.meeting_number).replace(/\s+/g, '');
-
-      // ✅ استخدم sdkKey بدلاً من clientId (هذا هو التصحيح الأساسي)
       const sdkKey = import.meta.env.VITE_ZOOM_SDK_KEY || "PBgN3JSjQKFXka6N4_Zng";
+
+      console.log('🔍 جاري الانضمام للاجتماع بالقيم التالية:');
+      console.log('   sdkKey:', sdkKey);
+      console.log('   meetingNumber:', cleanMeetingNumber);
+      console.log('   role:', userRole);
+      console.log('   signature:', meetingDetails.signature.substring(0, 50) + '...');
 
       client
         .init({
@@ -34,14 +38,16 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
         })
         .then(() => {
           return client.join({
-            sdkKey: sdkKey,                // ✅ تم التغيير من clientId إلى sdkKey
+            sdkKey: sdkKey,                // ✅ استخدام sdkKey بدلاً من clientId
             signature: meetingDetails.signature,
             meetingNumber: cleanMeetingNumber,
             password: meetingDetails.password || "",
             userName: userName || "مستخدم",
             userEmail: userEmail || `${userName || 'user'}@readandrise.com`,
+            role: userRole,                // ✅ تمرير role من props (0 = مضيف، 1 = مشارك)
             tk: "",
-            userZak: ""
+            userZak: "",
+            leaveUrl: window.location.href // ✅ إضافة leaveUrl لضمان العودة بعد الخروج
           });
         })
         .then(() => {
@@ -66,7 +72,7 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
         }
       }
     };
-  }, [isOpen, meetingDetails, userName, userEmail]);
+  }, [isOpen, meetingDetails, userName, userEmail, userRole]);
 
   if (!isOpen) return null;
 
