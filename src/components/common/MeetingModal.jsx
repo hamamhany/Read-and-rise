@@ -80,7 +80,10 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName }) 
             configOverwrite: {
               startWithAudioMuted: false,
               startWithVideoMuted: false,
-              prejoinPageEnabled: false, // إلغاء شاشة المعاينة تماماً للدخول المباشر
+              prejoinConfig: {
+                enabled: false, // تم تعديلها لإلغاء شاشة الانتظار والدخول المباشر
+              },
+              prejoinPageEnabled: false, // تأكيد إضافي لإلغاء شاشة المعاينة
               enableWelcomePage: false,
               disableDeepLinking: true,
             },
@@ -109,7 +112,7 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName }) 
         if (!scriptTag) {
           scriptTag = document.createElement('script');
           scriptTag.id = 'jitsi-external-api-script';
-          scriptTag.src = 'https://8x8.vc/v1/external_api.js'; // تم التعديل لتجاوز حظر CORS
+          scriptTag.src = 'https://8x8.vc/v1/external_api.js'; // تجاوز حظر CORS
           scriptTag.async = true;
           scriptTag.onload = init;
           document.body.appendChild(scriptTag);
