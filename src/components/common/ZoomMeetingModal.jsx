@@ -80,7 +80,7 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName }) 
             configOverwrite: {
               startWithAudioMuted: false,
               startWithVideoMuted: false,
-              prejoinPageEnabled: false,
+              prejoinPageEnabled: false, // إلغاء شاشة المعاينة تماماً للدخول المباشر
               enableWelcomePage: false,
               disableDeepLinking: true,
             },
