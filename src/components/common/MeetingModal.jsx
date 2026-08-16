@@ -21,10 +21,6 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName }) 
       const rawMeetingNum = String(meetingDetails.meeting_number || meetingDetails.id || 'ReadAndRiseClass');
       const cleanRoom = `ReadAndRise_${rawMeetingNum.replace(/[^a-zA-Z0-9_-]/g, '')}`;
       
-      // معرف حساب JaaS الخاص بك من لوحة التحكم
-      const appID = "8ddf7e6e53d64f5ab890462f1ddbaf3a";
-      const fullRoomName = `vpaas-magic-cookie-${appID}/${cleanRoom}`;
-      
       let resolvedName = (userName && userName !== 'teacher' && userName !== 'المعلم') ? userName : null;
 
       if (!resolvedName) {
@@ -74,7 +70,7 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName }) 
           }
 
           const options = {
-            roomName: fullRoomName,
+            roomName: cleanRoom,
             width: '100%',
             height: '100%',
             parentNode: jitsiContainerRef.current,
@@ -85,9 +81,9 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName }) 
               startWithAudioMuted: false,
               startWithVideoMuted: false,
               prejoinConfig: {
-                enabled: false,
+                enabled: false, // تم تعديلها لإلغاء شاشة الانتظار والدخول المباشر
               },
-              prejoinPageEnabled: false,
+              prejoinPageEnabled: false, // تأكيد إضافي لإلغاء شاشة المعاينة
               enableWelcomePage: false,
               disableDeepLinking: true,
             },
@@ -99,8 +95,8 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName }) 
             }
           };
 
-          // الاتصال عبر سيرفر JaaS المخصص لك
-          jitsiApiRef.current = new window.JitsiMeetExternalAPI("8x8.vc", options);
+          // استخدام meet.jit.si كدومين للغرفة بشكل طبيعي
+          jitsiApiRef.current = new window.JitsiMeetExternalAPI("meet.jit.si", options);
           
           jitsiApiRef.current.addEventListeners({
             readyToClose: () => {
@@ -110,20 +106,19 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName }) 
         }
       };
 
-      // تحميل مكتبة JaaS الخاصة بحسابك
-      const scriptId = 'jitsi-external-api-script';
-      let scriptTag = document.getElementById(scriptId);
-      const expectedSrc = `https://8x8.vc/vpaas-magic-cookie-${appID}/external_api.js`;
-
-      if (!window.JitsiMeetExternalAPI || (scriptTag && scriptTag.src !== expectedSrc)) {
-        if (scriptTag) scriptTag.remove();
-        
-        scriptTag = document.createElement('script');
-        scriptTag.id = scriptId;
-        scriptTag.src = expectedSrc;
-        scriptTag.async = true;
-        scriptTag.onload = init;
-        document.body.appendChild(scriptTag);
+      // التحقق من وجود السكريبت أو تحميله من رابط 8x8 الآمن لتجاوز مشكلة CORS
+      let scriptTag = document.getElementById('jitsi-external-api-script');
+      if (!window.JitsiMeetExternalAPI) {
+        if (!scriptTag) {
+          scriptTag = document.createElement('script');
+          scriptTag.id = 'jitsi-external-api-script';
+          scriptTag.src = 'https://8x8.vc/v1/external_api.js'; // تجاوز حظر CORS
+          scriptTag.async = true;
+          scriptTag.onload = init;
+          document.body.appendChild(scriptTag);
+        } else {
+          scriptTag.onload = init;
+        }
       } else {
         init();
       }
