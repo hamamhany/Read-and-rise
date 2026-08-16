@@ -15,7 +15,7 @@ import {
 import { getToken, onMessage } from 'firebase/messaging';
 import { useConfirm } from '../common/ConfirmContext';
 import { CountdownTimer, HomeworkTextCountdown } from '../common/CountdownTimer';
-import { MeetingModal } from '../common/ZoomMeetingModal';
+import { MeetingModal } from '../common/MeetingModal';
 import { sanitizeInput, arabicToEnglishNumber, fetchClassNames } from '../../utils/helpers';
 import { getZoomMeetings } from '../../services/zoom';
 import { sendUrgentReminderMessage, sendContactTeacherMessage } from '../../utils/whatsapp';
