@@ -1,6 +1,6 @@
-@tailwind base;[cite: 6]
-@tailwind components;[cite: 6]
-@tailwind utilities;[cite: 6]
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 /* تحويل حاوية الاجتماع إلى نافذة منبثقة (Modal) ثابتة في منتصف الشاشة */
 #zoomEmbedContainer {
@@ -21,13 +21,13 @@
 }
 
 /* استهداف كلاسات الاجتماع الداخلية لملء النافذة المنبثقة بالكامل */
-#zoomEmbedContainer > div,[cite: 6]
-#zoomEmbedContainer iframe,[cite: 6]
-#zoomEmbedContainer section,[cite: 6]
-.wal-layout-container,[cite: 6]
-.meeting-client,[cite: 6]
-.meeting-client-inner,[cite: 6]
-.zoom-app-container,[cite: 6]
+#zoomEmbedContainer > div,
+#zoomEmbedContainer iframe,
+#zoomEmbedContainer section,
+.wal-layout-container,
+.meeting-client,
+.meeting-client-inner,
+.zoom-app-container,
 .zm-main-layout {
   width: 100% !important;
   height: 100% !important;
@@ -40,7 +40,7 @@
 
 /* إعادة تفعيل التمرير والحركة في الصفحة بشكل طبيعي */
 body {
-  margin: 0;[cite: 6]
-  padding: 0;[cite: 6]
-  overflow: auto !important;[cite: 6]
+  margin: 0;
+  padding: 0;
+  overflow: auto !important;
 }
