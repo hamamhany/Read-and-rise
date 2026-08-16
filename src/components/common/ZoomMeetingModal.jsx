@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { FaWindowRestore, FaTimes } from 'react-icons/fa';
+import { FaTimes } from 'react-icons/fa';
 import { supabase } from '../../supabaseClient';
 
 export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName }) => {
@@ -63,9 +63,6 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName }) 
 
       if (!isMounted) return;
 
-      // حقن وتشغيل Jitsi مباشرة داخل الصفحة بدون أي أزرار خارجية
-      let scriptTag = document.getElementById('jitsi-external-api-script');
-
       const init = () => {
         if (window.JitsiMeetExternalAPI && jitsiContainerRef.current) {
           if (jitsiApiRef.current) {
@@ -83,7 +80,15 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName }) 
             configOverwrite: {
               startWithAudioMuted: false,
               startWithVideoMuted: false,
-              prejoinPageEnabled: false, // إلغاء شاشة الانتظار والانضمام نهائياً
+              prejoinPageEnabled: false,
+              enableWelcomePage: false, // تم إضافتها لمنع ظهور صفحة الترحيب
+              disableDeepLinking: true, // تمنع محاولة فتح تطبيق Jitsi
+            },
+            interfaceConfigOverwrite: {
+              SHOW_JITSI_WATERMARK: false,
+              SHOW_WATERMARK_FOR_GUESTS: false,
+              SHOW_BRAND_WATERMARK: false,
+              DISABLE_JOIN_LEAVE_NOTIFICATIONS: true,
             }
           };
 
@@ -97,8 +102,8 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName }) 
         }
       };
 
-      if (!scriptTag) {
-        scriptTag = document.createElement('script');
+      if (!window.JitsiMeetExternalAPI) {
+        const scriptTag = document.createElement('script');
         scriptTag.id = 'jitsi-external-api-script';
         scriptTag.src = 'https://meet.jit.si/external_api.js';
         scriptTag.async = true;
@@ -134,30 +139,22 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName }) 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md p-0 md:p-4" dir="rtl">
       <div className="w-full h-full md:w-[95vw] md:h-[94vh] bg-gray-950 md:rounded-2xl border border-gray-800 flex flex-col overflow-hidden shadow-2xl">
-        
-        {/* شريط التحكم العلوي */}
         <div className="bg-gray-900 px-4 py-2.5 flex justify-between items-center text-white shrink-0 border-b border-gray-800">
           <div className="flex items-center gap-2 font-bold text-sm md:text-base">
             <span className="w-3 h-3 bg-red-500 rounded-full animate-ping"></span>
-            <span>غرفة البث المباشر المدمجة</span>
+            <span>غرفة البث المباشر</span>
           </div>
-          
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleClose}
-              className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs md:text-sm transition font-bold flex items-center gap-1 cursor-pointer"
-            >
-              <FaTimes />
-              <span>إغلاق الغرفة والمغادرة</span>
-            </button>
-          </div>
+          <button
+            onClick={handleClose}
+            className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs md:text-sm transition font-bold flex items-center gap-1 cursor-pointer"
+          >
+            <FaTimes />
+            <span>إغلاق</span>
+          </button>
         </div>
-
-        {/* الحاوية الأساسية للبث داخل الموقع */}
         <div className="flex-1 w-full relative bg-black">
           <div ref={jitsiContainerRef} className="w-full h-full absolute inset-0" />
         </div>
-
       </div>
     </div>
   );
