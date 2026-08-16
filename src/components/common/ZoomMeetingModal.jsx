@@ -81,8 +81,8 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName }) 
               startWithAudioMuted: false,
               startWithVideoMuted: false,
               prejoinPageEnabled: false,
-              enableWelcomePage: false, // تم إضافتها لمنع ظهور صفحة الترحيب
-              disableDeepLinking: true, // تمنع محاولة فتح تطبيق Jitsi
+              enableWelcomePage: false,
+              disableDeepLinking: true,
             },
             interfaceConfigOverwrite: {
               SHOW_JITSI_WATERMARK: false,
@@ -92,6 +92,7 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName }) 
             }
           };
 
+          // استخدام meet.jit.si كدومين للغرفة بشكل طبيعي
           jitsiApiRef.current = new window.JitsiMeetExternalAPI("meet.jit.si", options);
           
           jitsiApiRef.current.addEventListeners({
@@ -102,13 +103,19 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName }) 
         }
       };
 
+      // التحقق من وجود السكريبت أو تحميله من رابط 8x8 الآمن لتجاوز مشكلة CORS
+      let scriptTag = document.getElementById('jitsi-external-api-script');
       if (!window.JitsiMeetExternalAPI) {
-        const scriptTag = document.createElement('script');
-        scriptTag.id = 'jitsi-external-api-script';
-        scriptTag.src = 'https://meet.jit.si/external_api.js';
-        scriptTag.async = true;
-        scriptTag.onload = init;
-        document.body.appendChild(scriptTag);
+        if (!scriptTag) {
+          scriptTag = document.createElement('script');
+          scriptTag.id = 'jitsi-external-api-script';
+          scriptTag.src = 'https://8x8.vc/v1/external_api.js'; // تم التعديل لتجاوز حظر CORS
+          scriptTag.async = true;
+          scriptTag.onload = init;
+          document.body.appendChild(scriptTag);
+        } else {
+          scriptTag.onload = init;
+        }
       } else {
         init();
       }
