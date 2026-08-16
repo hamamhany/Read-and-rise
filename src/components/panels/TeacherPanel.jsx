@@ -43,7 +43,7 @@ import {
 import { createSupervisorAccount } from '../../services/supervisor';
 import { 
   getZoomMeetings, deleteZoomMeeting, createRealZoomMeeting 
-} from '../../services/zoom';
+} from '../../services/meeting';
 import { MAX_SUPERVISORS, ANNOUNCEMENTS_LIMIT, TEACHER_PHONE } from '../../constants';
 
 const TeacherPanel = ({ user, onLogout }) => {
