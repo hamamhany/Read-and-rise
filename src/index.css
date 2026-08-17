@@ -148,17 +148,23 @@ body {
   max-height: 100% !important;
 }
 
-/* أي div بأي مستوى تحت tabpanel، بغض النظر عن الكلاس أو الـ attributes */
-#zoomEmbedContainer [role="tabpanel"] div {
+/* الطبقة 1: عنصر عنده width/height كـ HTML attributes */
+#zoomEmbedContainer [role="tabpanel"] div[width][height] {
   width: 100% !important;
   height: 100% !important;
   max-width: 100% !important;
   max-height: 100% !important;
-  top: 0 !important;
-  left: 0 !important;
 }
 
-/* الصندوق المرئي الفعلي (الاسم/الأفاتار) - custom element */
+/* الطبقة 2: عنصر عنده inline style فيه position: relative */
+#zoomEmbedContainer [role="tabpanel"] div[style*="position: relative"] {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+}
+
+/* الطبقة 3: الصندوق المرئي الفعلي (الاسم/الأفاتار) */
 #zoomEmbedContainer video-player-container {
   position: absolute !important;
   top: 0 !important;
