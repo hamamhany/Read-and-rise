@@ -106,7 +106,8 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
         await client.init({
           zoomAppRoot: zoomContainerRef.current,
           language: 'ar-AR',
-          patchJsMedia: true
+          patchJsMedia: false,
+          canvas: true
         });
 
         await client.join({
