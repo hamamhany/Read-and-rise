@@ -2,209 +2,158 @@
 @tailwind components;
 @tailwind utilities;
 
-/* =========================================================
-   Zoom Embedded SDK
-   مهم: لا نفرض أبعاداً أو position على عناصر Zoom الداخلية.
-   الـ SDK هو المسؤول عن بناء واجهة الاجتماع.
-   ========================================================= */
-
 html,
 body,
 #root {
   min-height: 100%;
 }
-
 body {
   margin: 0;
   padding: 0;
 }
 
-/* الحاوية التي يستقبل فيها Zoom Embedded SDK واجهته */
-#zoomEmbedContainer.zoom-embed-root {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-  display: block;
-  background: #000;
-}
-
 /* =========================================================
-   نافذة الاجتماع
+   عناصر واجهة المودال الخارجية (زر الإغلاق، التحميل، الأخطاء)
    ========================================================= */
-
 .zoom-meeting-modal {
   position: fixed;
   inset: 0;
-  z-index: 2147483647;
-  width: 100vw;
-  height: 100dvh;
-  min-height: 100vh;
+  z-index: 9999;
+  background: #000;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  background: #000;
-  isolation: isolate;
 }
 
 .zoom-floating-close {
   position: absolute;
-  top: 14px;
-  right: 14px;
-  z-index: 1000;
-  min-height: 34px;
-  padding: 0 14px;
-  border: 0;
-  border-radius: 7px;
+  top: 12px;
+  left: 12px;
+  z-index: 10000;
+  background: #dc2626;
   color: #fff;
-  background: rgba(220, 38, 38, 0.92);
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
-  font-size: 13px;
-  font-weight: 700;
+  font-weight: bold;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: none;
   cursor: pointer;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
 }
-
 .zoom-floating-close:hover {
-  background: rgba(185, 28, 28, 0.96);
+  background: #b91c1c;
 }
 
 .zoom-meeting-stage {
   position: relative;
-  flex: 1 1 auto;
+  flex: 1;
   width: 100%;
-  min-width: 0;
+  height: 100%;
   min-height: 0;
-  height: 100%;
-  overflow: hidden;
   background: #000;
+  overflow: hidden;
 }
 
-/*
- * Zoom يحتاج أن تكون الحاوية المباشرة له ذات ارتفاع حقيقي.
- * لا نلمس العناصر التي ينشئها SDK بعد ذلك.
- */
-.zoom-meeting-stage > #zoomEmbedContainer.zoom-embed-root {
-  position: absolute;
-  inset: 0;
+.zoom-embed-root {
   width: 100%;
   height: 100%;
 }
 
-/* طبقة التحميل فوق Zoom فقط أثناء الاتصال */
 .zoom-loading-overlay,
 .zoom-error-overlay {
   position: absolute;
   inset: 0;
-  z-index: 100;
+  z-index: 20;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #090909;
-}
-
-.zoom-loading-card,
-.zoom-error-card {
-  width: min(92vw, 420px);
-  box-sizing: border-box;
-  padding: 28px;
-  border-radius: 14px;
-  text-align: center;
-  background: #181818;
-  color: #fff;
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+  background: #0b1220;
 }
 
 .zoom-loading-card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 14px;
-  font-weight: 700;
+  gap: 12px;
+  color: #fff;
+  font-weight: bold;
 }
 
 .zoom-loading-spinner {
-  width: 34px;
-  height: 34px;
-  border: 3px solid #374151;
-  border-top-color: #3b82f6;
+  width: 36px;
+  height: 36px;
+  border: 4px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #a855f7;
   border-radius: 50%;
-  animation: zoom-loading-spin 0.8s linear infinite;
+  animation: zoom-spin 0.8s linear infinite;
+}
+@keyframes zoom-spin {
+  to { transform: rotate(360deg); }
 }
 
-@keyframes zoom-loading-spin {
-  to {
-    transform: rotate(360deg);
-  }
+.zoom-error-card {
+  max-width: 420px;
+  text-align: center;
+  padding: 16px;
 }
-
 .zoom-error-title {
+  font-size: 1.25rem;
+  font-weight: bold;
   color: #f87171;
-  font-size: 20px;
-  font-weight: 800;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
-
 .zoom-error-message {
-  color: #d1d5db;
-  font-size: 14px;
-  line-height: 1.7;
-  overflow-wrap: anywhere;
+  font-size: 0.9rem;
+  color: #fca5a5;
 }
-
 .zoom-error-button {
-  margin-top: 18px;
-  border: 0;
-  border-radius: 7px;
-  padding: 9px 18px;
-  color: #fff;
+  margin-top: 16px;
   background: #dc2626;
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: none;
   cursor: pointer;
-  font-weight: 700;
-}
-
-.zoom-error-button:hover {
-  background: #b91c1c;
-}
-
-/* الشاشات الصغيرة */
-@media (max-width: 640px) {
-  .zoom-floating-close {
-    top: 10px;
-    right: 10px;
-    min-height: 32px;
-    padding: 0 11px;
-    font-size: 12px;
-  }
 }
 
 /* =========================================================
-   إجبار عناصر حاوية Zoom على ملء المساحة (باستثناء أشرطة التحكم)
+   Zoom Embedded SDK - تثبيت الأبعاد داخل الحاوية
    ========================================================= */
-/* إجبار كل عنصر جوا حاوية زوم على ملء المساحة بالكامل، 
-   ما عدا أشرطة التحكم (share/streaming) اللي لازم تبقى بحجمها الطبيعي */
-#zoomEmbedContainer [aria-label="Zoom app container"] > div:not([aria-label]) {
-  position: absolute !important;
-  inset: 0 !important;
+#zoomEmbedContainer {
+  width: 100% !important;
+  height: 100% !important;
+  display: block !important;
+  overflow: hidden !important;
+  position: relative !important;
+}
+#zoomEmbedContainer > div,
+#zoomEmbedContainer iframe,
+#zoomEmbedContainer section,
+.wal-layout-container,
+.meeting-client,
+.meeting-client-inner,
+.zoom-app-container,
+.zm-main-layout {
   width: 100% !important;
   height: 100% !important;
   max-width: 100% !important;
   max-height: 100% !important;
-  min-width: 100% !important;
-  min-height: 100% !important;
-  transform: none !important;
-  margin: 0 !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
 }
 
-/* وأي عنصر بداخله (avatar/canvas/video/div) يمتد معه بالكامل */
-#zoomEmbedContainer [aria-label="Zoom app container"] > div:not([aria-label]) * {
-  max-width: 100% !important;
-}
-
-#zoomEmbedContainer [aria-label="Zoom app container"] > div:not([aria-label]) > div {
+/* صندوق العرض الشخصي (self-view) فقط -- نستثني أشرطة التحكم */
+#zoomEmbedContainer [aria-label="Zoom app container"] {
+  position: relative !important;
   width: 100% !important;
   height: 100% !important;
+}
+#zoomEmbedContainer [aria-label="Zoom app container"] > div.react-draggable:not([aria-label]) {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  transform: none !important;
+  margin: 0 !important;
 }

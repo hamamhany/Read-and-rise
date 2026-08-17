@@ -21,7 +21,6 @@ export const ZoomMeetingModal = ({
   useEffect(() => {
     let isMounted = true;
     let client = null;
-    let sizeInterval = null; // 👈 مراقبة مستمرة لفرض الحجم الكامل
 
     const initializeMeetingAndUser = async () => {
       if (!isOpen || !meetingDetails || !zoomContainerRef.current) {
@@ -138,28 +137,6 @@ export const ZoomMeetingModal = ({
           leaveUrl: window.location.href
         });
 
-        // =========================================================
-        // طبقة أمان إضافية (JS) لفرض الحجم الكامل على عناصر Zoom
-        // لأن أحياناً !important في CSS لا تكفي مع inline styles
-        // =========================================================
-        const enforceFullSize = () => {
-          const appContainer = zoomContainerRef.current?.querySelector('[aria-label="Zoom app container"]');
-          if (!appContainer) return;
-          Array.from(appContainer.children).forEach((child) => {
-            if (!child.getAttribute('aria-label')) {
-              child.style.setProperty('position', 'absolute', 'important');
-              child.style.setProperty('inset', '0', 'important');
-              child.style.setProperty('width', '100%', 'important');
-              child.style.setProperty('height', '100%', 'important');
-              child.style.setProperty('transform', 'none', 'important');
-            }
-          });
-        };
-
-        // تشغيلها فوراً وكل 500 مللي ثانية للحفاظ على التحكم
-        sizeInterval = setInterval(enforceFullSize, 500);
-        enforceFullSize();
-
         if (isMounted) setIsLoading(false);
       } catch (err) {
         console.error('❌ خطأ أثناء الانضمام للاجتماع:', err);
@@ -189,9 +166,6 @@ export const ZoomMeetingModal = ({
 
     return () => {
       isMounted = false;
-
-      // تنظيف الـ interval الخاص بفرض الحجم
-      if (sizeInterval) clearInterval(sizeInterval);
 
       // تنظيف جلسة Zoom
       if (clientRef.current) {
