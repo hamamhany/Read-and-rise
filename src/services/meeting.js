@@ -1,4 +1,4 @@
-import { supabase } from '../supabaseClient';
+import { supabase } from './supabaseClient';
 
 export const saveMeeting = async (meetingData) => {
   try {
@@ -41,7 +41,7 @@ export const getMeetings = async (classId, teacherId) => {
       console.error('خطأ في جلب الاجتماعات من Supabase:', error);
       throw error;
     }
-    return data;
+    return data || [];
   } catch (err) {
     console.error('فشل جلب الاجتماعات:', err);
     return [];
@@ -63,7 +63,6 @@ export const deleteMeeting = async (meetingId) => {
   }
 };
 
-// إنشاء اجتماع مباشر عبر المنصة بدون زوم وبدون تعقيد
 export const createJitsiMeeting = async (topic, startTime, classId, teacherId) => {
   try {
     const meetingNumber = Math.floor(100000 + Math.random() * 900000).toString();
@@ -90,4 +89,10 @@ export const createJitsiMeeting = async (topic, startTime, classId, teacherId) =
     console.error('❌ فشل إنشاء الاجتماع:', err);
     throw err;
   }
+};
+
+export const getZoomMeetings = getMeetings;
+export const deleteZoomMeeting = deleteMeeting;
+export const createRealZoomMeeting = async (topic, startTime, classId, teacherId) => {
+  return await createJitsiMeeting(topic, startTime, classId, teacherId);
 };
