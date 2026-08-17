@@ -38,3 +38,8 @@ body {
   padding: 0;
   overflow: hidden;
 }
+
+/* إضافة لمنع الفراغات الإضافية في مودال Zoom */
+.fixed.inset-0 .bg-gray-950 .flex-1 {
+  min-height: 0;
+}

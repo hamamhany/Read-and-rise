@@ -133,6 +133,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
+  // ✅ الدالة المعدلة لإنشاء الغرفة
   const handleCreateMeeting = async (topic, startTime, classId) => {
     try {
       toast.loading('جاري إنشاء الغرفة...', { id: 'zoom-create' });
@@ -141,19 +142,19 @@ const TeacherPanel = ({ user, onLogout }) => {
       
       toast.dismiss('zoom-create');
       
-      if (result && result.join_url) {
+      if (result && result.meeting_number) {
         setPendingMeeting({
           id: result.id,
           join_url: result.join_url,
-          topic: topic,
-          meeting_number: result.meeting_number,
+          topic: result.topic || topic,
+          meeting_number: String(result.meeting_number).replace(/\s+/g, ''),
           password: result.password || '',
         });
         setShowOpenMeetingChoice(true);
         await fetchTeacherMeetings();
         toast.success('✅ تم إنشاء الغرفة بنجاح!');
       } else {
-        toast.error('❌ لم يتم استلام رابط الاجتماع. حاول مرة أخرى.');
+        toast.error('❌ لم يتم استلام رقم الاجتماع الصحيح. حاول مرة أخرى.');
       }
     } catch (err) {
       toast.dismiss('zoom-create');
@@ -162,10 +163,18 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
+  // ✅ الدالة المعدلة لفتح الغرفة
   const handleOpenMeetingChoice = (choice) => {
     if (!pendingMeeting) return;
     const rawNumber = pendingMeeting.meeting_number || pendingMeeting.id || pendingMeeting.meetingNumber;
     const cleanMeetingNumber = String(rawNumber || '').replace(/\D/g, '');
+    
+    if (!cleanMeetingNumber) {
+      toast.error('رقم الاجتماع غير صالح، لا يمكن فتح الغرفة.');
+      setShowOpenMeetingChoice(false);
+      setPendingMeeting(null);
+      return;
+    }
 
     if (choice === 'iframe') {
       setActiveMeeting({
@@ -209,14 +218,13 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ✅ الدالة المعدلة – استخدام VAPID_KEY من متغيرات البيئة
+  // ✅ الدالة المعدلة لتفعيل الإشعارات (باستخدام VAPID من البيئة)
   const requestNotificationPermission = async () => {
     if (!auth.currentUser) {
       toast.error('يرجى تسجيل الدخول أولاً.');
       return;
     }
 
-    // ✅ جلب مفتاح VAPID من متغيرات البيئة (آمن)
     const vapidKey = import.meta.env.VITE_VAPID_KEY;
     if (!vapidKey) {
       toast.error('مفتاح VAPID غير مضبوط في البيئة. يرجى إضافته في Vercel.');
@@ -272,13 +280,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     return () => unsubscribe();
   }, []);
 
-  // باقي الكود كما هو (جميع الدوال الأخرى لم تتغير)
-  // ... (سأضع باقي الدوال بنفس الشكل السابق لكن باختصار لتوفير المساحة، أو يمكنك الاحتفاظ بنسختك السابقة)
-
-  // ============================================================
-  // باقي الدوال (نفس الكود السابق)
-  // ============================================================
-
+  // باقي الدوال (نفس الكود السابق، لم تتغير)
   // Supervisor handlers
   const handleAddSupervisor = async (e) => {
     e.preventDefault();
@@ -1299,7 +1301,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   if (loading) return <div className="text-center text-gray-400 p-8">جاري التحميل...</div>;
 
   // ============================================================
-  // قسم التصيير (Render) – نفسه كما في النسخة السابقة
+  // Render
   // ============================================================
   return (
     <div className="container-center min-h-screen p-4 relative" dir="rtl">
@@ -1333,7 +1335,6 @@ const TeacherPanel = ({ user, onLogout }) => {
 
         {errorMsg && <p className="text-red-400 text-sm bg-red-500/10 p-3 rounded-xl border border-red-500/20">{errorMsg}</p>}
 
-        {/* باقي الأقسام كاملة كما في النسخة السابقة – لم تتغير */}
         {/* Pending reviews */}
         {pendingReviews.length > 0 && (
           <div className="bg-yellow-900/30 p-6 rounded-2xl border border-yellow-500/40 shadow-lg">
@@ -1638,7 +1639,7 @@ const TeacherPanel = ({ user, onLogout }) => {
           )}
         </div>
 
-        {/* Zoom Meeting Modal - مع userRole={1} للمعلم (مضيف) */}
+        {/* Zoom Meeting Modal - with userRole={1} for teacher (host) */}
         <ZoomMeetingModal
           isOpen={isZoomOpen}
           onClose={() => {
@@ -1650,7 +1651,6 @@ const TeacherPanel = ({ user, onLogout }) => {
           userEmail={user.email || `${user.username}@readandrise.com`}
           userRole={1}
         />
-
       </div>
 
       {/* Choice modal for opening meeting */}
@@ -1668,7 +1668,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         ]}
       />
 
-      {/* باقي المودالات كما هي - لم تتغير */}
       {/* Supervisors add modal */}
       {showSupervisorModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowSupervisorModal(false)}>
@@ -2328,7 +2327,6 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
         </div>
       )}
-
     </div>
   );
 };

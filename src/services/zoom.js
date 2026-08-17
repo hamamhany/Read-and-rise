@@ -64,11 +64,11 @@ export const deleteZoomMeeting = async (meetingId) => {
   }
 };
 
+// ✅ الدالة المحسّنة لإنشاء اجتماع زوم حقيقي
 export const createRealZoomMeeting = async (topic, startTime, duration = 60, classId, teacherId) => {
   try {
     const endpoint = import.meta.env.VITE_ZOOM_AUTH_ENDPOINT || 'https://zoom-backend-xcew.onrender.com';
     
-    // 1. إنشاء الاجتماع عبر الخادم الخلفي
     const response = await fetch(`${endpoint}/api/create-meeting`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -83,15 +83,20 @@ export const createRealZoomMeeting = async (topic, startTime, duration = 60, cla
     const data = await response.json();
     console.log('✅ بيانات الاجتماع من الخادم:', data);
     
+    // التأكد من استلام رقم الاجتماع
     const meetingNumber = data.id || data.meeting_number;
+    if (!meetingNumber) {
+      throw new Error('لم يتم استلام رقم الاجتماع من الخادم.');
+    }
+    
     const joinUrl = data.join_url || data.start_url;
     const password = data.password || '';
 
-    // 2. حفظ الاجتماع في Supabase بدون التوقيع
+    // حفظ الاجتماع في Supabase
     const meetingData = {
       class_id: classId,
       teacher_id: teacherId,
-      meeting_number: meetingNumber,
+      meeting_number: String(meetingNumber).replace(/\s+/g, ''),
       password: password,
       join_url: joinUrl,
       start_time: data.start_time || startTime

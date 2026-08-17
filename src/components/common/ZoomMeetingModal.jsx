@@ -7,6 +7,7 @@ import { supabase } from '../../supabaseClient';
 export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, userEmail, userRole = 1 }) => {
   const [isMaximized, setIsMaximized] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
   const [actualName, setActualName] = useState("جاري التحميل...");
   
   const zoomContainerRef = useRef(null);
@@ -17,12 +18,24 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
     let isMounted = true;
 
     const initializeMeetingAndUser = async () => {
-      if (!isOpen || !meetingDetails || !zoomContainerRef.current) return;
+      if (!isOpen || !meetingDetails || !zoomContainerRef.current) {
+        setIsLoading(false);
+        return;
+      }
+
+      // التحقق من وجود رقم الاجتماع
+      const cleanMeetingNumber = String(meetingDetails.meeting_number || '').replace(/\s+/g, '');
+      if (!cleanMeetingNumber) {
+        setErrorMessage('رقم الاجتماع غير موجود أو غير صالح.');
+        setIsLoading(false);
+        return;
+      }
 
       setIsLoading(true);
+      setErrorMessage('');
 
       try {
-        // 1. تحديد الاسم والإيميل فوراً أو جلبهما من قاعدة البيانات مرة واحدة فقط
+        // 1. تحديد الاسم
         let resolvedName = (userName && userName !== 'teacher' && userName !== 'المعلم') ? userName : null;
         let resolvedEmail = userEmail || "teacher@readandrise.com";
 
@@ -60,13 +73,9 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
         }
 
         if (!resolvedName) resolvedName = "المعلم";
-
-        if (isMounted) {
-          setActualName(resolvedName);
-        }
+        if (isMounted) setActualName(resolvedName);
 
         // 2. جلب التوقيع من الخادم
-        const cleanMeetingNumber = String(meetingDetails.meeting_number).replace(/\s+/g, '');
         const endpoint = import.meta.env.VITE_ZOOM_AUTH_ENDPOINT || 'https://zoom-backend-xcew.onrender.com';
         
         const response = await fetch(`${endpoint}/api/generate-signature`, {
@@ -80,17 +89,17 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
         
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || 'فشل جلب التوقيع');
+          throw new Error(errorData.error || `فشل جلب التوقيع (HTTP ${response.status})`);
         }
         
         const data = await response.json();
         if (!data.signature) {
-          throw new Error('فشل الحصول على توقيع صالح للاجتماع.');
+          throw new Error('لم يتم استلام توقيع صالح من الخادم.');
         }
 
         if (!isMounted) return;
 
-        // 3. تهيئة وبدء اجتماع Zoom مرة واحدة فقط
+        // 3. تهيئة وبدء اجتماع Zoom
         client = ZoomMtgEmbedded.createClient();
         clientRef.current = client;
 
@@ -118,11 +127,11 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
       } catch (err) {
         console.error("❌ خطأ أثناء الانضمام للاجتماع:", err);
         if (isMounted) {
+          let msg = err.reason || err.message || JSON.stringify(err);
           if (err.errorCode === 3000 || (err.reason && err.reason.includes("Already has other meetings in progress"))) {
-            toast.error("⚠️ يوجد اجتماع زوم مفتوح بالفعل بنفس الحساب. يرجى إغلاق أي نافذة سابقة.");
-          } else {
-            toast.error("فشل الانضمام للاجتماع: " + (err.reason || err.message || JSON.stringify(err)));
+            msg = "⚠️ يوجد اجتماع زوم مفتوح بالفعل بنفس الحساب. يرجى إغلاق أي نافذة سابقة.";
           }
+          setErrorMessage(msg);
           setIsLoading(false);
         }
       }
@@ -130,6 +139,10 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
 
     if (isOpen && meetingDetails) {
       initializeMeetingAndUser();
+    } else {
+      // إذا أغلق المودال، نوقف التحميل ونمسح الأخطاء
+      setIsLoading(false);
+      setErrorMessage('');
     }
 
     return () => {
@@ -146,7 +159,7 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
         }
       }
     };
-  }, [isOpen, meetingDetails, userRole]);
+  }, [isOpen, meetingDetails, userRole, userName, userEmail]);
 
   if (!isOpen) return null;
 
@@ -206,6 +219,20 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
             <div className="absolute inset-0 flex items-center justify-center z-10 bg-gray-950">
               <div className="text-white font-bold animate-pulse text-lg">
                 جاري الانضمام للاجتماع...
+              </div>
+            </div>
+          )}
+          {!isLoading && errorMessage && (
+            <div className="absolute inset-0 flex items-center justify-center z-10 bg-gray-950 p-4">
+              <div className="text-red-400 text-center max-w-md">
+                <p className="text-xl font-bold mb-2">⚠️ حدث خطأ</p>
+                <p className="text-sm">{errorMessage}</p>
+                <button
+                  onClick={onClose}
+                  className="mt-4 bg-red-600 hover:bg-red-700 px-4 py-2 rounded text-white"
+                >
+                  إغلاق
+                </button>
               </div>
             </div>
           )}
