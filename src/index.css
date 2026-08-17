@@ -40,3 +40,27 @@ body {
 .fixed.inset-0 .bg-gray-950 .flex-1 {
   min-height: 0;
 }
+
+/* إجبار صندوق الفيديو الشخصي (self-view) على ملء الحاوية بدل ما يبقى عائم صغير */
+#zoomEmbedContainer [aria-label="Zoom app container"] > div.react-draggable:not([aria-label]) {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  transform: none !important;
+}
+
+/* أي عنصر داخلي (canvas/video/div) جوا هذا الصندوق لازم يمتد معه */
+#zoomEmbedContainer [aria-label="Zoom app container"] > div.react-draggable:not([aria-label]) > div,
+#zoomEmbedContainer [aria-label="Zoom app container"] > div.react-draggable:not([aria-label]) canvas,
+#zoomEmbedContainer [aria-label="Zoom app container"] > div.react-draggable:not([aria-label]) video {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+}
