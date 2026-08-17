@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { FaTimes } from 'react-icons/fa';
-import { supabase } from '../supabaseClient';
+import { supabase } from '../../supabaseClient';
 
 export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName }) => {
   const jitsiContainerRef = useRef(null);
