@@ -114,7 +114,7 @@ body {
 }
 
 /* =========================================================
-   Zoom Embedded SDK - تثبيت الأبعاد داخل الحاوية
+   Zoom Embedded SDK - تثبيت الأبعاد
    ========================================================= */
 #zoomEmbedContainer {
   width: 100% !important;
@@ -140,20 +140,25 @@ body {
   left: 0 !important;
 }
 
-/* صندوق العرض الشخصي (self-view) فقط -- نستثني أشرطة التحكم */
-#zoomEmbedContainer [aria-label="Zoom app container"] {
-  position: relative !important;
+/* --- إصلاح وضع "Suspension View" المصغّر --- */
+#zoomEmbedContainer #suspension-view-tabpanel-gallery-limited,
+#zoomEmbedContainer #suspension-view-tabpanel-gallery-limited > div,
+#zoomEmbedContainer #suspension-view-tabpanel-gallery-limited div[style*="position: relative"] {
   width: 100% !important;
   height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
 }
-#zoomEmbedContainer [aria-label="Zoom app container"] > div.react-draggable:not([aria-label]) {
+
+#zoomEmbedContainer video-player-container {
   position: absolute !important;
   top: 0 !important;
   left: 0 !important;
   width: 100% !important;
   height: 100% !important;
-  max-width: 100% !important;
-  max-height: 100% !important;
-  transform: none !important;
-  margin: 0 !important;
+}
+
+#zoomEmbedContainer li.zoom-MuiListItem-root {
+  width: 100% !important;
+  height: 100% !important;
 }
