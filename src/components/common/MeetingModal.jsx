@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { FaTimes } from 'react-icons/fa';
-import { supabase } from '../../supabaseClient';
+import { supabase } from '../supabaseClient';
 
 export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName }) => {
   const jitsiContainerRef = useRef(null);
@@ -20,6 +20,9 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName }) 
 
       const rawMeetingNum = String(meetingDetails.meeting_number || meetingDetails.id || 'ReadAndRiseClass');
       const cleanRoom = `ReadAndRise_${rawMeetingNum.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+      
+      const appID = "8ddf7e6e53d64f5ab890462f1ddbaf3a";
+      const fullRoomName = `vpaas-magic-cookie-${appID}/${cleanRoom}`;
       
       let resolvedName = (userName && userName !== 'teacher' && userName !== 'المعلم') ? userName : null;
 
@@ -61,6 +64,24 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName }) 
 
       if (!resolvedName) resolvedName = "مستخدم المنصة";
 
+      // 1. طلب التوكن (JWT) من الدالة السحابية التي أنشأناها لتجاوز شاشة الانتظار
+      let jitsiToken = null;
+      try {
+        const { data: funcData, error: funcError } = await supabase.functions.invoke('generate-jitsi-token', {
+          body: { 
+            userName: resolvedName, 
+            userEmail: "teacher@readandrise.com",
+            isModerator: true, 
+            roomName: fullRoomName 
+          }
+        });
+        if (!funcError && funcData?.token) {
+          jitsiToken = funcData.token;
+        }
+      } catch (err) {
+        console.error("خطأ في استدعاء توكن Jitsi:", err);
+      }
+
       if (!isMounted) return;
 
       const init = () => {
@@ -70,7 +91,8 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName }) 
           }
 
           const options = {
-            roomName: cleanRoom,
+            roomName: fullRoomName,
+            jwt: jitsiToken, // تمرير التوكن الأمني لفتح الغرفة فوراً كمضيف
             width: '100%',
             height: '100%',
             parentNode: jitsiContainerRef.current,
@@ -80,10 +102,8 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName }) 
             configOverwrite: {
               startWithAudioMuted: false,
               startWithVideoMuted: false,
-              prejoinConfig: {
-                enabled: false, // تم تعديلها لإلغاء شاشة الانتظار والدخول المباشر
-              },
-              prejoinPageEnabled: false, // تأكيد إضافي لإلغاء شاشة المعاينة
+              prejoinConfig: { enabled: false },
+              prejoinPageEnabled: false,
               enableWelcomePage: false,
               disableDeepLinking: true,
             },
@@ -95,8 +115,7 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName }) 
             }
           };
 
-          // استخدام meet.jit.si كدومين للغرفة بشكل طبيعي
-          jitsiApiRef.current = new window.JitsiMeetExternalAPI("meet.jit.si", options);
+          jitsiApiRef.current = new window.JitsiMeetExternalAPI("8x8.vc", options);
           
           jitsiApiRef.current.addEventListeners({
             readyToClose: () => {
@@ -106,19 +125,19 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName }) 
         }
       };
 
-      // التحقق من وجود السكريبت أو تحميله من رابط 8x8 الآمن لتجاوز مشكلة CORS
-      let scriptTag = document.getElementById('jitsi-external-api-script');
-      if (!window.JitsiMeetExternalAPI) {
-        if (!scriptTag) {
-          scriptTag = document.createElement('script');
-          scriptTag.id = 'jitsi-external-api-script';
-          scriptTag.src = 'https://8x8.vc/v1/external_api.js'; // تجاوز حظر CORS
-          scriptTag.async = true;
-          scriptTag.onload = init;
-          document.body.appendChild(scriptTag);
-        } else {
-          scriptTag.onload = init;
-        }
+      const scriptId = 'jitsi-external-api-script';
+      let scriptTag = document.getElementById(scriptId);
+      const expectedSrc = `https://8x8.vc/vpaas-magic-cookie-${appID}/external_api.js`;
+
+      if (!window.JitsiMeetExternalAPI || (scriptTag && scriptTag.src !== expectedSrc)) {
+        if (scriptTag) scriptTag.remove();
+        
+        scriptTag = document.createElement('script');
+        scriptTag.id = scriptId;
+        scriptTag.src = expectedSrc;
+        scriptTag.async = true;
+        scriptTag.onload = init;
+        document.body.appendChild(scriptTag);
       } else {
         init();
       }

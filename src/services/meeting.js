@@ -1,15 +1,14 @@
 import { supabase } from '../supabaseClient';
 
-export const saveZoomMeeting = async (meetingData) => {
+export const saveMeeting = async (meetingData) => {
   try {
     const { data, error } = await supabase
-      .from('zoom_meetings')
+      .from('meetings')
       .insert([{
         class_id: meetingData.class_id,
         teacher_id: meetingData.teacher_id,
         meeting_number: meetingData.meeting_number,
-        password: meetingData.password || '',
-        join_url: meetingData.join_url,
+        topic: meetingData.topic,
         start_time: meetingData.start_time || new Date().toISOString()
       }])
       .select();
@@ -25,9 +24,9 @@ export const saveZoomMeeting = async (meetingData) => {
   }
 };
 
-export const getZoomMeetings = async (classId, teacherId) => {
+export const getMeetings = async (classId, teacherId) => {
   try {
-    let query = supabase.from('zoom_meetings').select('*');
+    let query = supabase.from('meetings').select('*');
 
     if (classId) {
       query = query.eq('class_id', classId);
@@ -49,10 +48,10 @@ export const getZoomMeetings = async (classId, teacherId) => {
   }
 };
 
-export const deleteZoomMeeting = async (meetingId) => {
+export const deleteMeeting = async (meetingId) => {
   try {
     const { error } = await supabase
-      .from('zoom_meetings')
+      .from('meetings')
       .delete()
       .eq('id', meetingId);
 
@@ -64,52 +63,31 @@ export const deleteZoomMeeting = async (meetingId) => {
   }
 };
 
-export const createRealZoomMeeting = async (topic, startTime, duration = 60, classId, teacherId) => {
+// إنشاء اجتماع مباشر عبر المنصة بدون زوم وبدون تعقيد
+export const createJitsiMeeting = async (topic, startTime, classId, teacherId) => {
   try {
-    const endpoint = import.meta.env.VITE_ZOOM_AUTH_ENDPOINT || 'https://zoom-backend-xcew.onrender.com';
+    const meetingNumber = Math.floor(100000 + Math.random() * 900000).toString();
     
-    // 1. إنشاء الاجتماع عبر الخادم الخلفي
-    const response = await fetch(`${endpoint}/api/create-meeting`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ topic, startTime, duration, classId, teacherId })
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || `فشل إنشاء الاجتماع (HTTP ${response.status})`);
-    }
-    
-    const data = await response.json();
-    console.log('✅ بيانات الاجتماع من الخادم:', data);
-    
-    const meetingNumber = data.id || data.meeting_number;
-    const joinUrl = data.join_url || data.start_url;
-    const password = data.password || '';
-
-    // 2. حفظ الاجتماع في Supabase بدون التوقيع
     const meetingData = {
       class_id: classId,
       teacher_id: teacherId,
       meeting_number: meetingNumber,
-      password: password,
-      join_url: joinUrl,
-      start_time: data.start_time || startTime
+      topic: topic || 'حصة بث مباشر',
+      start_time: startTime || new Date().toISOString()
     };
     
-    const saved = await saveZoomMeeting(meetingData);
+    const saved = await saveMeeting(meetingData);
     const savedId = saved && saved.length > 0 ? saved[0].id : null;
     
     return {
       id: savedId,
       meeting_number: meetingNumber,
-      join_url: joinUrl,
-      password: password,
-      topic: data.topic || topic,
-      start_time: data.start_time || startTime
+      topic: topic,
+      start_time: startTime,
+      room_name: `ReadAndRise_${meetingNumber}`
     };
   } catch (err) {
-    console.error('❌ فشل إنشاء الاجتماع الحقيقي:', err);
+    console.error('❌ فشل إنشاء الاجتماع:', err);
     throw err;
   }
 };
