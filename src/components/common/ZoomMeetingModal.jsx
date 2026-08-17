@@ -1,21 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
-import toast from 'react-hot-toast';
+import { createPortal } from 'react-dom';
 import ZoomMtgEmbedded from '@zoom/meetingsdk/embedded';
-import { FaVideo, FaWindowRestore, FaTimes } from 'react-icons/fa';
 import { supabase } from '../../supabaseClient';
 
-export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, userEmail, userRole = 1 }) => {
-  const [isMaximized, setIsMaximized] = useState(false);
+export const ZoomMeetingModal = ({
+  isOpen,
+  onClose,
+  meetingDetails,
+  userName,
+  userEmail,
+  userRole = 1
+}) => {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
-  const [actualName, setActualName] = useState("جاري التحميل...");
-  
+  const [actualName, setActualName] = useState('جاري التحميل...');
+
   const zoomContainerRef = useRef(null);
   const clientRef = useRef(null);
 
   useEffect(() => {
-    let client = null;
     let isMounted = true;
+    let client = null;
 
     const initializeMeetingAndUser = async () => {
       if (!isOpen || !meetingDetails || !zoomContainerRef.current) {
@@ -23,8 +28,8 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
         return;
       }
 
-      // التحقق من وجود رقم الاجتماع
       const cleanMeetingNumber = String(meetingDetails.meeting_number || '').replace(/\s+/g, '');
+
       if (!cleanMeetingNumber) {
         setErrorMessage('رقم الاجتماع غير موجود أو غير صالح.');
         setIsLoading(false);
@@ -35,12 +40,18 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
       setErrorMessage('');
 
       try {
-        // 1. تحديد الاسم
-        let resolvedName = (userName && userName !== 'teacher' && userName !== 'المعلم') ? userName : null;
-        let resolvedEmail = userEmail || "teacher@readandrise.com";
+        // 1. تحديد اسم المستخدم
+        let resolvedName = (
+          userName &&
+          userName !== 'teacher' &&
+          userName !== 'المعلم'
+        ) ? userName : null;
+
+        let resolvedEmail = userEmail || 'teacher@readandrise.com';
 
         if (!resolvedName) {
           const { data: { user } } = await supabase.auth.getUser();
+
           if (user) {
             if (user.user_metadata?.full_name) {
               resolvedName = user.user_metadata.full_name;
@@ -52,6 +63,7 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
                 .select('name, full_name, username')
                 .eq('id', user.id)
                 .maybeSingle();
+
               if (userRecord) {
                 resolvedName = userRecord.full_name || userRecord.name || userRecord.username;
               } else {
@@ -60,11 +72,13 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
                   .select('full_name, name, username')
                   .eq('id', user.id)
                   .maybeSingle();
+
                 if (profileRecord) {
                   resolvedName = profileRecord.full_name || profileRecord.name || profileRecord.username;
                 }
               }
             }
+
             if (user.email) {
               resolvedEmail = user.email;
               if (!resolvedName) resolvedName = user.email.split('@')[0];
@@ -72,34 +86,35 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
           }
         }
 
-        if (!resolvedName) resolvedName = "المعلم";
+        if (!resolvedName) resolvedName = 'المعلم';
         if (isMounted) setActualName(resolvedName);
 
-        // 2. جلب التوقيع من الخادم
+        // 2. جلب توقيع Zoom
         const endpoint = import.meta.env.VITE_ZOOM_AUTH_ENDPOINT || 'https://zoom-backend-xcew.onrender.com';
-        
+
         const response = await fetch(`${endpoint}/api/generate-signature`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            meetingNumber: cleanMeetingNumber, 
-            role: userRole 
+          body: JSON.stringify({
+            meetingNumber: cleanMeetingNumber,
+            role: userRole
           })
         });
-        
+
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
           throw new Error(errorData.error || `فشل جلب التوقيع (HTTP ${response.status})`);
         }
-        
+
         const data = await response.json();
+
         if (!data.signature) {
           throw new Error('لم يتم استلام توقيع صالح من الخادم.');
         }
 
-        if (!isMounted) return;
+        if (!isMounted || !zoomContainerRef.current) return;
 
-        // 3. تهيئة وبدء اجتماع Zoom
+        // 3. تهيئة Zoom Embedded SDK
         client = ZoomMtgEmbedded.createClient();
         clientRef.current = client;
 
@@ -113,25 +128,29 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
         await client.join({
           signature: data.signature,
           meetingNumber: cleanMeetingNumber,
-          password: meetingDetails.password || "",
+          password: meetingDetails.password || '',
           userName: resolvedName,
           userEmail: resolvedEmail,
           role: userRole,
-          tk: "",
-          userZak: "",
+          tk: '',
+          userZak: '',
           leaveUrl: window.location.href
         });
 
-        if (isMounted) {
-          setIsLoading(false);
-        }
+        if (isMounted) setIsLoading(false);
       } catch (err) {
-        console.error("❌ خطأ أثناء الانضمام للاجتماع:", err);
+        console.error('❌ خطأ أثناء الانضمام للاجتماع:', err);
+
         if (isMounted) {
           let msg = err.reason || err.message || JSON.stringify(err);
-          if (err.errorCode === 3000 || (err.reason && err.reason.includes("Already has other meetings in progress"))) {
-            msg = "⚠️ يوجد اجتماع زوم مفتوح بالفعل بنفس الحساب. يرجى إغلاق أي نافذة سابقة.";
+
+          if (
+            err.errorCode === 3000 ||
+            (err.reason && err.reason.includes('Already has other meetings in progress'))
+          ) {
+            msg = '⚠️ يوجد اجتماع زوم مفتوح بالفعل بنفس الحساب. يرجى إغلاق أي نافذة سابقة.';
           }
+
           setErrorMessage(msg);
           setIsLoading(false);
         }
@@ -141,13 +160,13 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
     if (isOpen && meetingDetails) {
       initializeMeetingAndUser();
     } else {
-      // إذا أغلق المودال، نوقف التحميل ونمسح الأخطاء
       setIsLoading(false);
       setErrorMessage('');
     }
 
     return () => {
       isMounted = false;
+
       if (clientRef.current) {
         try {
           if (typeof clientRef.current.leaveMeeting === 'function') {
@@ -156,86 +175,78 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
             clientRef.current.leave();
           }
         } catch (e) {
-          console.warn("إغلاق الجلسة:", e);
+          console.warn('إغلاق جلسة Zoom:', e);
         }
+
+        clientRef.current = null;
       }
     };
   }, [isOpen, meetingDetails, userRole, userName, userEmail]);
 
-  if (!isOpen) return null;
+  // منع تمرير الصفحة أثناء وجود الاجتماع
+  useEffect(() => {
+    if (!isOpen) return undefined;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-0">
-      <style>{`
-        #zoomEmbedContainer {
-          width: 100% !important;
-          height: 100% !important;
-          overflow: hidden !important;
-          background-color: #000 !important;
-          display: block !important;
-        }
-        #zoomEmbedContainer > div,
-        #zoomEmbedContainer .wal-layout-container,
-        #zoomEmbedContainer .zm-client-container,
-        #zoomEmbedContainer .meeting-client {
-          width: 100% !important;
-          height: 100% !important;
-          max-height: 100% !important;
-        }
-      `}</style>
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
 
-      <div className={`bg-gray-950 flex flex-col overflow-hidden shadow-2xl ${
-        isMaximized ? "w-screen h-screen" : "w-full h-full"
-      } border border-gray-800`}>
-        <div className="bg-gray-900 px-4 py-3 flex justify-between items-center text-white shrink-0">
-          <div className="flex items-center gap-2 font-bold">
-            <FaVideo className="text-blue-400" />
-            <span>اجتماع Zoom المباشر ({actualName})</span>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setIsMaximized(!isMaximized)}
-              className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm transition flex items-center gap-1 cursor-pointer"
-            >
-              <FaWindowRestore />
-              <span>{isMaximized ? "استعادة" : "تكبير"}</span>
-            </button>
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isOpen]);
 
-            <button
-              onClick={onClose}
-              className="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-sm transition font-bold cursor-pointer"
-            >
-              إغلاق
-            </button>
-          </div>
-        </div>
+  if (!isOpen || typeof document === 'undefined') return null;
 
-        <div className="flex-1 w-full relative bg-black overflow-hidden" style={{ minHeight: 0 }}>
-          {isLoading && (
-            <div className="absolute inset-0 flex items-center justify-center z-10 bg-gray-950">
-              <div className="text-white font-bold animate-pulse text-lg">
-                جاري الانضمام للاجتماع...
-              </div>
+  const meetingUI = (
+    <div
+      className="zoom-meeting-modal"
+      dir="rtl"
+      role="dialog"
+      aria-modal="true"
+      aria-label="اجتماع Zoom"
+    >
+      {/* زر الإغلاق فقط؛ واجهة الاجتماع وأدواتها يملكها Zoom SDK */}
+      <button
+        type="button"
+        onClick={onClose}
+        className="zoom-floating-close"
+        aria-label="إغلاق الاجتماع"
+        title="إغلاق الاجتماع"
+      >
+        إغلاق
+      </button>
+
+      <div className="zoom-meeting-stage">
+        {isLoading && (
+          <div className="zoom-loading-overlay">
+            <div className="zoom-loading-card">
+              <div className="zoom-loading-spinner" />
+              <div>جاري الانضمام إلى الاجتماع...</div>
             </div>
-          )}
-          {!isLoading && errorMessage && (
-            <div className="absolute inset-0 flex items-center justify-center z-10 bg-gray-950 p-4">
-              <div className="text-red-400 text-center max-w-md">
-                <p className="text-xl font-bold mb-2">⚠️ حدث خطأ</p>
-                <p className="text-sm">{errorMessage}</p>
-                <button
-                  onClick={onClose}
-                  className="mt-4 bg-red-600 hover:bg-red-700 px-4 py-2 rounded text-white"
-                >
-                  إغلاق
-                </button>
-              </div>
+          </div>
+        )}
+
+        {!isLoading && errorMessage && (
+          <div className="zoom-error-overlay">
+            <div className="zoom-error-card">
+              <div className="zoom-error-title">⚠️ حدث خطأ</div>
+              <div className="zoom-error-message">{errorMessage}</div>
+              <button type="button" onClick={onClose} className="zoom-error-button">
+                إغلاق
+              </button>
             </div>
-          )}
-          <div ref={zoomContainerRef} id="zoomEmbedContainer" className="w-full h-full block"></div>
-        </div>
+          </div>
+        )}
+
+        {/* لا نضع أي CSS على عناصر Zoom الداخلية؛ SDK يتحكم بالـ layout بنفسه */}
+        <div
+          ref={zoomContainerRef}
+          id="zoomEmbedContainer"
+          className="zoom-embed-root"
+        />
       </div>
     </div>
   );
+
+  return createPortal(meetingUI, document.body);
 };

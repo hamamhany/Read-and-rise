@@ -2,65 +2,181 @@
 @tailwind components;
 @tailwind utilities;
 
-/* إجبار الحاوية وعناصر زوم الداخلية على ملء الشاشة بالكامل */
-#zoomEmbedContainer {
-  width: 100% !important;
-  height: 100% !important;
-  display: block !important;
-  overflow: hidden !important;
-  position: relative !important;
+/* =========================================================
+   Zoom Embedded SDK
+   مهم: لا نفرض أبعاداً أو position على عناصر Zoom الداخلية.
+   الـ SDK هو المسؤول عن بناء واجهة الاجتماع.
+   ========================================================= */
+
+html,
+body,
+#root {
+  min-height: 100%;
 }
 
-/* استهداف كلاسات زوم الداخلية التي قد تفرض أبعاداً ثابتة */
-#zoomEmbedContainer > div,
-#zoomEmbedContainer iframe,
-#zoomEmbedContainer section,
-.wal-layout-container,
-.meeting-client,
-.meeting-client-inner,
-.zoom-app-container,
-.zm-main-layout {
-  width: 100% !important;
-  height: 100% !important;
-  max-width: 100% !important;
-  max-height: 100% !important;
-  position: absolute !important;
-  top: 0 !important;
-  left: 0 !important;
-}
-
-/* لضمان أن الجسم (Body) لا يحتوي على هوامش تؤثر على المودال */
 body {
   margin: 0;
   padding: 0;
-  overflow: auto;
 }
 
-/* إضافة لمنع الفراغات الإضافية في مودال Zoom */
-.fixed.inset-0 .bg-gray-950 .flex-1 {
+/* الحاوية التي يستقبل فيها Zoom Embedded SDK واجهته */
+#zoomEmbedContainer.zoom-embed-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
   min-height: 0;
+  overflow: hidden;
+  display: block;
+  background: #000;
 }
 
-/* إجبار صندوق الفيديو الشخصي (self-view) على ملء الحاوية بدل ما يبقى عائم صغير */
-#zoomEmbedContainer [aria-label="Zoom app container"] > div.react-draggable:not([aria-label]) {
-  position: absolute !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-  max-width: 100% !important;
-  max-height: 100% !important;
-  transform: none !important;
+/* =========================================================
+   نافذة الاجتماع
+   ========================================================= */
+
+.zoom-meeting-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  width: 100vw;
+  height: 100dvh;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #000;
+  isolation: isolate;
 }
 
-/* أي عنصر داخلي (canvas/video/div) جوا هذا الصندوق لازم يمتد معه */
-#zoomEmbedContainer [aria-label="Zoom app container"] > div.react-draggable:not([aria-label]) > div,
-#zoomEmbedContainer [aria-label="Zoom app container"] > div.react-draggable:not([aria-label]) canvas,
-#zoomEmbedContainer [aria-label="Zoom app container"] > div.react-draggable:not([aria-label]) video {
-  width: 100% !important;
-  height: 100% !important;
-  max-width: 100% !important;
-  max-height: 100% !important;
+.zoom-floating-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 1000;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 7px;
+  color: #fff;
+  background: rgba(220, 38, 38, 0.92);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.zoom-floating-close:hover {
+  background: rgba(185, 28, 28, 0.96);
+}
+
+.zoom-meeting-stage {
+  position: relative;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+}
+
+/*
+ * Zoom يحتاج أن تكون الحاوية المباشرة له ذات ارتفاع حقيقي.
+ * لا نلمس العناصر التي ينشئها SDK بعد ذلك.
+ */
+.zoom-meeting-stage > #zoomEmbedContainer.zoom-embed-root {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* طبقة التحميل فوق Zoom فقط أثناء الاتصال */
+.zoom-loading-overlay,
+.zoom-error-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #090909;
+}
+
+.zoom-loading-card,
+.zoom-error-card {
+  width: min(92vw, 420px);
+  box-sizing: border-box;
+  padding: 28px;
+  border-radius: 14px;
+  text-align: center;
+  background: #181818;
+  color: #fff;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+}
+
+.zoom-loading-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  font-weight: 700;
+}
+
+.zoom-loading-spinner {
+  width: 34px;
+  height: 34px;
+  border: 3px solid #374151;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: zoom-loading-spin 0.8s linear infinite;
+}
+
+@keyframes zoom-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.zoom-error-title {
+  color: #f87171;
+  font-size: 20px;
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+
+.zoom-error-message {
+  color: #d1d5db;
+  font-size: 14px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.zoom-error-button {
+  margin-top: 18px;
+  border: 0;
+  border-radius: 7px;
+  padding: 9px 18px;
+  color: #fff;
+  background: #dc2626;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.zoom-error-button:hover {
+  background: #b91c1c;
+}
+
+/* الشاشات الصغيرة */
+@media (max-width: 640px) {
+  .zoom-floating-close {
+    top: 10px;
+    right: 10px;
+    min-height: 32px;
+    padding: 0 11px;
+    font-size: 12px;
+  }
 }
