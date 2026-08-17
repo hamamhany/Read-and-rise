@@ -164,18 +164,14 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-0 md:p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-0">
       <style>{`
         #zoomEmbedContainer {
           width: 100% !important;
           height: 100% !important;
-          position: absolute !important;
-          top: 0 !important;
-          left: 0 !important;
-          right: 0 !important;
-          bottom: 0 !important;
           overflow: hidden !important;
           background-color: #000 !important;
+          display: block !important;
         }
         #zoomEmbedContainer > div,
         #zoomEmbedContainer .wal-layout-container,
@@ -188,8 +184,8 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
       `}</style>
 
       <div className={`bg-gray-950 flex flex-col overflow-hidden shadow-2xl ${
-        isMaximized ? "w-screen h-screen" : "w-full md:w-[90vw] h-full md:h-[90vh] md:rounded-2xl border border-gray-800"
-      }`}>
+        isMaximized ? "w-screen h-screen" : "w-full h-full"
+      } border border-gray-800`}>
         <div className="bg-gray-900 px-4 py-3 flex justify-between items-center text-white shrink-0">
           <div className="flex items-center gap-2 font-bold">
             <FaVideo className="text-blue-400" />
@@ -214,7 +210,7 @@ export const ZoomMeetingModal = ({ isOpen, onClose, meetingDetails, userName, us
           </div>
         </div>
 
-        <div className="flex-1 w-full relative bg-black overflow-hidden">
+        <div className="flex-1 w-full relative bg-black overflow-hidden" style={{ minHeight: 0 }}>
           {isLoading && (
             <div className="absolute inset-0 flex items-center justify-center z-10 bg-gray-950">
               <div className="text-white font-bold animate-pulse text-lg">

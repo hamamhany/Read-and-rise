@@ -6,12 +6,9 @@
 #zoomEmbedContainer {
   width: 100% !important;
   height: 100% !important;
-  position: absolute !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
+  display: block !important;
   overflow: hidden !important;
+  position: relative !important;
 }
 
 /* استهداف كلاسات زوم الداخلية التي قد تفرض أبعاداً ثابتة */
@@ -37,7 +34,6 @@ body {
   margin: 0;
   padding: 0;
   overflow: auto;
-
 }
 
 /* إضافة لمنع الفراغات الإضافية في مودال Zoom */
