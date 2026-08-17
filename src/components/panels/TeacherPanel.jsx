@@ -24,7 +24,7 @@ import { CountdownTimer } from '../common/CountdownTimer';
 import { ChoiceModal } from '../common/ChoiceModal';
 import { AddAssignmentModal } from '../common/AddAssignmentModal';
 import { AddLessonModal } from '../common/AddLessonModal';
-import { ZoomMeetingModal } from '../common/MeetingModal';
+import { ZoomMeetingModal } from '../common/ZoomMeetingModal';
 import { 
   generateId, sanitizeInput, arabicToEnglishNumber, 
   fetchClassNames, cleanPhoneNumber 
@@ -43,7 +43,7 @@ import {
 import { createSupervisorAccount } from '../../services/supervisor';
 import { 
   getZoomMeetings, deleteZoomMeeting, createRealZoomMeeting 
-} from '../../services/meeting';
+} from '../../services/zoom';
 import { MAX_SUPERVISORS, ANNOUNCEMENTS_LIMIT, TEACHER_PHONE } from '../../constants';
 
 const TeacherPanel = ({ user, onLogout }) => {

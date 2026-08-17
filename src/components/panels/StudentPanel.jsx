@@ -15,9 +15,9 @@ import {
 import { getToken, onMessage } from 'firebase/messaging';
 import { useConfirm } from '../common/ConfirmContext';
 import { CountdownTimer, HomeworkTextCountdown } from '../common/CountdownTimer';
-import { MeetingModal } from '../common/MeetingModal';
+import { ZoomMeetingModal } from '../common/ZoomMeetingModal';
 import { sanitizeInput, arabicToEnglishNumber, fetchClassNames } from '../../utils/helpers';
-import { getZoomMeetings } from '../../services/meeting';
+import { getZoomMeetings } from '../../services/zoom';
 import { sendUrgentReminderMessage, sendContactTeacherMessage } from '../../utils/whatsapp';
 
 const StudentPanel = ({ user, onLogout }) => {
