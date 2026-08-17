@@ -141,9 +141,15 @@ body {
 }
 
 /* --- إصلاح وضع "Suspension View" المصغّر --- */
-#zoomEmbedContainer #suspension-view-tabpanel-gallery-limited,
-#zoomEmbedContainer #suspension-view-tabpanel-gallery-limited > div,
-#zoomEmbedContainer #suspension-view-tabpanel-gallery-limited div[style*="position: relative"] {
+#zoomEmbedContainer [role="tabpanel"] {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+}
+
+/* استهداف أي عنصر عنده width/height كـ HTML attributes حرفية (بغض النظر عن اسم الكلاس المتغيّر) */
+#zoomEmbedContainer [role="tabpanel"] div[width][height] {
   width: 100% !important;
   height: 100% !important;
   max-width: 100% !important;
