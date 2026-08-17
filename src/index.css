@@ -180,3 +180,31 @@ body {
     font-size: 12px;
   }
 }
+
+/* =========================================================
+   إجبار عناصر حاوية Zoom على ملء المساحة (باستثناء أشرطة التحكم)
+   ========================================================= */
+/* إجبار كل عنصر جوا حاوية زوم على ملء المساحة بالكامل، 
+   ما عدا أشرطة التحكم (share/streaming) اللي لازم تبقى بحجمها الطبيعي */
+#zoomEmbedContainer [aria-label="Zoom app container"] > div:not([aria-label]) {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  min-width: 100% !important;
+  min-height: 100% !important;
+  transform: none !important;
+  margin: 0 !important;
+}
+
+/* وأي عنصر بداخله (avatar/canvas/video/div) يمتد معه بالكامل */
+#zoomEmbedContainer [aria-label="Zoom app container"] > div:not([aria-label]) * {
+  max-width: 100% !important;
+}
+
+#zoomEmbedContainer [aria-label="Zoom app container"] > div:not([aria-label]) > div {
+  width: 100% !important;
+  height: 100% !important;
+}
