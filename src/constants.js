@@ -1,0 +1,3 @@
+export const TEACHER_PHONE = '962786117388';
+export const MAX_SUPERVISORS = 10;
+export const ANNOUNCEMENTS_LIMIT = 6;
