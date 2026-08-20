@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { joinAgoraRoom, leaveAgoraRoom } from '../services/agora'; // استيراد دوال أجورا
+import { joinAgoraRoom, leaveAgoraRoom } from '../../services/agora'; // استيراد دوال أجورا
 
 export const AgoraMeetingModal = ({
   isOpen,

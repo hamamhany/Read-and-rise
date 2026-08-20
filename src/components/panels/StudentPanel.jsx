@@ -17,7 +17,7 @@ import { useConfirm } from '../common/ConfirmContext';
 import { CountdownTimer, HomeworkTextCountdown } from '../common/CountdownTimer';
 import { AgoraMeetingModal } from '../common/AgoraMeetingModal';
 import { sanitizeInput, arabicToEnglishNumber, fetchClassNames } from '../../utils/helpers';
-import { getZoomMeetings } from '../../services/zoom';
+import { getZoomMeetings } from '../../services/agora';
 import { sendUrgentReminderMessage, sendContactTeacherMessage } from '../../utils/whatsapp';
 
 const StudentPanel = ({ user, onLogout }) => {
