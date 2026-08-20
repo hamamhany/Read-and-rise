@@ -24,7 +24,7 @@ import { CountdownTimer } from '../common/CountdownTimer';
 import { ChoiceModal } from '../common/ChoiceModal';
 import { AddAssignmentModal } from '../common/AddAssignmentModal';
 import { AddLessonModal } from '../common/AddLessonModal';
-import { ZoomMeetingModal } from '../common/ZoomMeetingModal';
+import { AgoraMeetingModal } from '../common/AgoraMeetingModal';
 import { 
   generateId, sanitizeInput, arabicToEnglishNumber, 
   fetchClassNames, cleanPhoneNumber 
