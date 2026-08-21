@@ -42,7 +42,7 @@ import {
 } from '../../utils/whatsapp';
 import { createSupervisorAccount } from '../../services/supervisor';
 import { 
-  getZoomMeetings, deleteZoomMeeting, createRealZoomMeeting 
+  getAgoraMeetings, deleteAgoraMeeting, createAgoraMeeting 
 } from '../../services/agora';
 import { MAX_SUPERVISORS, ANNOUNCEMENTS_LIMIT, TEACHER_PHONE } from '../../constants';
 
@@ -113,14 +113,12 @@ const TeacherPanel = ({ user, onLogout }) => {
   // Zoom states
   const [isZoomOpen, setIsZoomOpen] = useState(false);
   const [activeMeeting, setActiveMeeting] = useState(null);
-  const [showOpenMeetingChoice, setShowOpenMeetingChoice] = useState(false);
-  const [pendingMeeting, setPendingMeeting] = useState(null);
   const [teacherZoomMeetings, setTeacherZoomMeetings] = useState([]);
 
   // Functions for Zoom
   const fetchTeacherMeetings = async () => {
     try {
-      const meetings = await getZoomMeetings(null, user.id);
+      const meetings = await getAgoraMeetings(null, user.id);
       const now = new Date();
       const activeMeetings = meetings.filter(m => {
         const start = new Date(m.start_time);
@@ -138,23 +136,22 @@ const TeacherPanel = ({ user, onLogout }) => {
     try {
       toast.loading('جاري إنشاء الغرفة...', { id: 'zoom-create' });
       
-      const result = await createRealZoomMeeting(topic, startTime, 60, classId, user.id);
+      const result = await createAgoraMeeting(topic, startTime, classId, user.id);
       
       toast.dismiss('zoom-create');
       
-      if (result && result.meeting_number) {
-        setPendingMeeting({
+      if (result && result.channel_name) {
+        // نفتح الحصة مباشرة داخل المنصة، ما في داعي لاختيار طريقة الفتح
+        setActiveMeeting({
           id: result.id,
-          join_url: result.join_url,
-          topic: result.topic || topic,
-          meeting_number: String(result.meeting_number).replace(/\s+/g, ''),
-          password: result.password || '',
+          channel_name: result.channel_name,
+          topic: result.topic || topic
         });
-        setShowOpenMeetingChoice(true);
+        setIsZoomOpen(true);
         await fetchTeacherMeetings();
         toast.success('✅ تم إنشاء الغرفة بنجاح!');
       } else {
-        toast.error('❌ لم يتم استلام رقم الاجتماع الصحيح. حاول مرة أخرى.');
+        toast.error('❌ لم يتم إنشاء الغرفة بشكل صحيح. حاول مرة أخرى.');
       }
     } catch (err) {
       toast.dismiss('zoom-create');
@@ -163,48 +160,13 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ✅ الدالة المعدلة لفتح الغرفة
-  const handleOpenMeetingChoice = (choice) => {
-    if (!pendingMeeting) return;
-    const rawNumber = pendingMeeting.meeting_number || pendingMeeting.id || pendingMeeting.meetingNumber;
-    const cleanMeetingNumber = String(rawNumber || '').replace(/\D/g, '');
-    
-    if (!cleanMeetingNumber) {
-      toast.error('رقم الاجتماع غير صالح، لا يمكن فتح الغرفة.');
-      setShowOpenMeetingChoice(false);
-      setPendingMeeting(null);
-      return;
-    }
-
-    if (choice === 'iframe') {
-      setActiveMeeting({
-        id: pendingMeeting.id || pendingMeeting._id,
-        meeting_number: cleanMeetingNumber,
-        password: pendingMeeting.password || '',
-        signature: '',
-        topic: pendingMeeting.topic || 'حصة زوم المباشرة',
-        join_url: pendingMeeting.join_url
-      });
-      setIsZoomOpen(true);
-    } else if (choice === 'zoomapp') {
-      if (pendingMeeting.join_url) {
-        window.open(pendingMeeting.join_url, '_blank');
-        toast.info('تم فتح الحصة في تطبيق زوم.');
-      } else {
-        toast.error('رابط الانضمام غير متوفر.');
-      }
-    }
-    setShowOpenMeetingChoice(false);
-    setPendingMeeting(null);
-  };
-
   const handleEndMeeting = async (meetingId) => {
     const targetId = meetingId || activeMeeting?.id;
     if (!targetId) return;
     const ok = await confirm('إنهاء الحصة', 'هل أنت متأكد من إنهاء هذه الحصة؟ سيتم حذفها من النظام ولن يتمكن الطلاب من الانضمام إليها.');
     if (!ok) return;
     try {
-      const deleted = await deleteZoomMeeting(targetId);
+      const deleted = await deleteAgoraMeeting(targetId);
       if (deleted) {
         toast.success('✅ تم إنهاء الحصة وحذفها بنجاح.');
         setIsZoomOpen(false);
@@ -1561,7 +1523,7 @@ const TeacherPanel = ({ user, onLogout }) => {
                     <span className="text-xs text-gray-400">
                       {new Date(meeting.start_time).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })}
                     </span>
-                    <span className="text-xs text-cyan-300">رقم الاجتماع: {meeting.meeting_number}</span>
+                    <span className="text-xs text-cyan-300">اسم الغرفة: {meeting.meeting_number}</span>
                   </div>
                   <button
                     onClick={() => handleEndMeeting(meeting.id)}
@@ -1639,8 +1601,8 @@ const TeacherPanel = ({ user, onLogout }) => {
           )}
         </div>
 
-        {/* Zoom Meeting Modal - with userRole={1} for teacher (host) */}
-        <ZoomMeetingModal
+        {/* Agora Meeting Modal */}
+        <AgoraMeetingModal
           isOpen={isZoomOpen}
           onClose={() => {
             setIsZoomOpen(false);
@@ -1648,25 +1610,8 @@ const TeacherPanel = ({ user, onLogout }) => {
           }}
           meetingDetails={activeMeeting}
           userName={user.name || user.username || "معلم"}
-          userEmail={user.email || `${user.username}@readandrise.com`}
-          userRole={1}
         />
       </div>
-
-      {/* Choice modal for opening meeting */}
-      <ChoiceModal
-        isOpen={showOpenMeetingChoice}
-        onClose={() => {
-          setShowOpenMeetingChoice(false);
-          setPendingMeeting(null);
-        }}
-        onSelect={handleOpenMeetingChoice}
-        title="اختر طريقة فتح الحصة"
-        options={[
-          { value: 'iframe', label: <><FaWindowRestore className="inline-block me-2" /> فتح داخل المنصة (مضمن)</> },
-          { value: 'zoomapp', label: <><FaMobileAlt className="inline-block me-2" /> فتح في تطبيق زوم</> }
-        ]}
-      />
 
       {/* Supervisors add modal */}
       {showSupervisorModal && (

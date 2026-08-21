@@ -1,141 +1,117 @@
-import AgoraRTC from "agora-rtc-sdk-ng";
 import { supabase } from '../supabaseClient';
 
-// الـ App ID الخاص بك جاهز هنا
-const APP_ID = "070f70eead5d4ee28e4d1100bdefee78";
+// عنوان السيرفر الخلفي (نفس سيرفر Render القديم، بس بمنطق أجورا الآن)
+const AGORA_BACKEND_URL = import.meta.env.VITE_ZOOM_AUTH_ENDPOINT || 'https://zoom-backend-xcew.onrender.com';
 
-let client = null;
-let localAudioTrack = null;
-let localVideoTrack = null;
+// جلب توكن دخول آمن للغرفة من السيرفر الخلفي (لازم يصير هالنداء كل مرة يفتح فيها أي مستخدم الحصة)
+export const getAgoraToken = async (channelName) => {
+  try {
+    const response = await fetch(`${AGORA_BACKEND_URL}/api/generate-agora-token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channelName })
+    });
 
-// دالة الانضمام للغرفة وتشغيل الكاميرا والمايك
-export async function joinAgoraRoom(channelName, localContainerId, remoteContainerId) {
-  if (!client) {
-    client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
-  }
-
-  // الانضمام للقناة (وضع اختبار بدون Token)
-  await client.join(APP_ID, channelName, null, null);
-
-  // إنشاء مسارات الصوت والفيديو الخاصة بك
-  [localAudioTrack, localVideoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
-
-  // تشغيل الفيديو الخاص بك في المكان المخصص له في الصفحة
-  localVideoTrack.play(localContainerId);
-
-  // نشر الصوت والفيديو ليراهما الآخرون
-  await client.publish([localAudioTrack, localVideoTrack]);
-
-  // الاستماع لأي شخص آخر يدخل الغرفة
-  client.on("user-published", async (user, mediaType) => {
-    await client.subscribe(user, mediaType);
-
-    if (mediaType === "video") {
-      // إنشاء مكان لعرض فيديو الشخص القادم إذا لم يكن موجوداً
-      let remotePlayerContainer = document.getElementById(user.uid.toString());
-      if (!remotePlayerContainer) {
-        remotePlayerContainer = document.createElement("div");
-        remotePlayerContainer.id = user.uid.toString();
-        remotePlayerContainer.style.width = "100%";
-        remotePlayerContainer.style.height = "100%";
-        document.getElementById(remoteContainerId).appendChild(remotePlayerContainer);
-      }
-      user.videoTrack.play(remotePlayerContainer.id);
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `فشل جلب توكن الدخول (HTTP ${response.status})`);
     }
 
-    if (mediaType === "audio") {
-      user.audioTrack.play();
+    return await response.json(); // { token, appId, channelName, uid }
+  } catch (err) {
+    console.error('فشل جلب توكن Agora:', err);
+    throw err;
+  }
+};
+
+// حفظ بيانات الحصة في Supabase (نفس جدول zoom_meetings القديم بالضبط، ما في داعي نغيّره)
+const saveAgoraMeeting = async (meetingData) => {
+  try {
+    const { data, error } = await supabase
+      .from('zoom_meetings')
+      .insert([{
+        class_id: meetingData.class_id,
+        teacher_id: meetingData.teacher_id,
+        meeting_number: meetingData.channel_name, // نستخدم نفس العمود القديم لتخزين اسم الغرفة الجديد
+        join_url: '',
+        password: '',
+        start_time: meetingData.start_time || new Date().toISOString()
+      }])
+      .select();
+
+    if (error) {
+      console.error('خطأ في حفظ الحصة في Supabase:', error);
+      throw error;
     }
-  });
-
-  console.log("تم الانضمام بنجاح للبث عبر أجورا!");
-}
-
-// دالة مغادرة الغرفة وإنهاء الاتصال
-export async function leaveAgoraRoom() {
-  if (localAudioTrack) {
-    localAudioTrack.close();
-    localAudioTrack = null;
+    return data;
+  } catch (err) {
+    console.error('فشل حفظ الحصة:', err);
+    throw err;
   }
-  if (localVideoTrack) {
-    localVideoTrack.close();
-    localVideoTrack = null;
+};
+
+export const getAgoraMeetings = async (classId, teacherId) => {
+  try {
+    let query = supabase.from('zoom_meetings').select('*');
+
+    if (classId) {
+      query = query.eq('class_id', classId);
+    }
+    if (teacherId) {
+      query = query.eq('teacher_id', teacherId);
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('خطأ في جلب الحصص من Supabase:', error);
+      throw error;
+    }
+    return data;
+  } catch (err) {
+    console.error('فشل جلب الحصص:', err);
+    return [];
   }
-  if (client) {
-    await client.leave();
-    client = null;
+};
+
+export const deleteAgoraMeeting = async (meetingId) => {
+  try {
+    const { error } = await supabase
+      .from('zoom_meetings')
+      .delete()
+      .eq('id', meetingId);
+
+    if (error) throw error;
+    return true;
+  } catch (err) {
+    console.error('فشل حذف الحصة:', err);
+    return false;
   }
-  console.log("تمت مغادرة الغرفة بنجاح.");
-}
+};
 
-async function saveZoomMeeting(meetingData) {
-  const { data, error } = await supabase
-    .from('zoom_meetings')
-    .insert([meetingData])
-    .select();
+// إنشاء حصة جديدة: على عكس زوم، ما في داعي نتصل بأي API خارجي — بس نولّد اسم غرفة فريد ونحفظه
+export const createAgoraMeeting = async (topic, startTime, classId, teacherId) => {
+  try {
+    const channelName = `class_${classId}_${Date.now()}`;
 
-  if (error) throw error;
-  return data;
-}
+    const meetingData = {
+      class_id: classId,
+      teacher_id: teacherId,
+      channel_name: channelName,
+      start_time: startTime || new Date().toISOString()
+    };
 
-export async function getZoomMeetings(classId, teacherId) {
-  let query = supabase.from('zoom_meetings').select('*');
+    const saved = await saveAgoraMeeting(meetingData);
+    const savedId = saved && saved.length > 0 ? saved[0].id : null;
 
-  if (classId) query = query.eq('class_id', classId);
-  if (teacherId) query = query.eq('teacher_id', teacherId);
-
-  const { data, error } = await query.order('created_at', { ascending: false });
-  if (error) throw error;
-  return data || [];
-}
-
-export async function deleteZoomMeeting(meetingId) {
-  const { error } = await supabase
-    .from('zoom_meetings')
-    .delete()
-    .eq('id', meetingId);
-
-  return !error;
-}
-
-export async function createRealZoomMeeting(topic, startTime, duration = 60, classId, teacherId) {
-  const endpoint = import.meta.env.VITE_ZOOM_AUTH_ENDPOINT || 'https://zoom-backend-xcew.onrender.com';
-  const response = await fetch(`${endpoint}/api/create-meeting`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ topic, startTime, duration, classId, teacherId })
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || `Meeting creation failed (HTTP ${response.status})`);
+    return {
+      id: savedId,
+      channel_name: channelName,
+      topic: topic,
+      start_time: meetingData.start_time
+    };
+  } catch (err) {
+    console.error('❌ فشل إنشاء الحصة:', err);
+    throw err;
   }
-
-  const data = await response.json();
-  const meetingNumber = data.id || data.meeting_number;
-  const joinUrl = data.join_url || data.start_url;
-
-  if (!meetingNumber || !joinUrl) {
-    throw new Error('The meeting service returned incomplete data');
-  }
-
-  const saved = await saveZoomMeeting({
-    class_id: classId,
-    teacher_id: teacherId,
-    meeting_number: meetingNumber,
-    password: data.password || '',
-    join_url: joinUrl,
-    signature: data.signature || '',
-    start_time: data.start_time || startTime
-  });
-
-  return {
-    id: saved?.[0]?.id || null,
-    meeting_number: meetingNumber,
-    join_url: joinUrl,
-    password: data.password || '',
-    signature: data.signature || '',
-    topic: data.topic || topic,
-    start_time: data.start_time || startTime
-  };
-}
+};

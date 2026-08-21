@@ -17,7 +17,7 @@ import { useConfirm } from '../common/ConfirmContext';
 import { CountdownTimer, HomeworkTextCountdown } from '../common/CountdownTimer';
 import { AgoraMeetingModal } from '../common/AgoraMeetingModal';
 import { sanitizeInput, arabicToEnglishNumber, fetchClassNames } from '../../utils/helpers';
-import { getZoomMeetings } from '../../services/agora';
+import { getAgoraMeetings } from '../../services/agora';
 import { sendUrgentReminderMessage, sendContactTeacherMessage } from '../../utils/whatsapp';
 
 const StudentPanel = ({ user, onLogout }) => {
@@ -147,7 +147,7 @@ const StudentPanel = ({ user, onLogout }) => {
       if (!user?.classIds || user.classIds.length === 0) return;
       const allMeetings = [];
       for (const classId of user.classIds) {
-        const meetings = await getZoomMeetings(classId, null);
+        const meetings = await getAgoraMeetings(classId, null);
         allMeetings.push(...meetings);
       }
       setZoomMeetings(allMeetings);
@@ -408,14 +408,12 @@ const StudentPanel = ({ user, onLogout }) => {
   const nextLesson = getNextLessonTime();
 
   const handleJoinMeeting = (meeting) => {
-    if (!meeting.signature) {
-      toast.error('لا يوجد توقيع صالح لهذا الاجتماع.');
+    if (!meeting.meeting_number) {
+      toast.error('لا يوجد غرفة صالحة لهذه الحصة.');
       return;
     }
     setActiveMeeting({
-      meeting_number: meeting.meeting_number,
-      password: meeting.password || '',
-      signature: meeting.signature,
+      channel_name: meeting.meeting_number,
       topic: meeting.topic
     });
     setIsZoomOpen(true);
@@ -605,7 +603,7 @@ const StudentPanel = ({ user, onLogout }) => {
             return null;
           })()}
 
-          <ZoomMeetingModal
+          <AgoraMeetingModal
             isOpen={isZoomOpen}
             onClose={() => {
               setIsZoomOpen(false);
@@ -613,7 +611,6 @@ const StudentPanel = ({ user, onLogout }) => {
             }}
             meetingDetails={activeMeeting}
             userName={user.name || user.username || "طالب"}
-            userEmail={user.email || `${user.username}@readandrise.com`}
           />
         </div>
 
