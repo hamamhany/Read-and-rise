@@ -326,6 +326,10 @@ export const AgoraMeetingModal = ({
 
   // ---- دالة الانضمام الفعلية ----
   const handleJoin = async () => {
+  console.log('🔄 [handleJoin] تم استدعاء الدالة');
+  console.log('📋 قيمة VITE_AGORA_APP_ID من env =', import.meta.env.VITE_AGORA_APP_ID);
+}
+  const handleJoin = async () => {
     console.log('🔄 [handleJoin] تم استدعاء الدالة');
     if (isLoading) {
       console.log('⚠️ [handleJoin] جاري التحميل بالفعل، تم تجاهل الاستدعاء');
