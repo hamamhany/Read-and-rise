@@ -19,6 +19,7 @@ import {
   FaTimes,
   FaClock,
   FaForward,
+  FaRedo,
 } from 'react-icons/fa';
 import { getAgoraToken } from '../../services/agora';
 
@@ -36,6 +37,7 @@ const PreJoinScreen = ({
   isLoading,
   countdown,
   onSkipWait,
+  errorMessage,
 }) => {
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-gray-900 p-4">
@@ -95,7 +97,7 @@ const PreJoinScreen = ({
             </button>
           </div>
 
-          {/* زر تجاوز الانتظار (اختياري) */}
+          {/* زر تجاوز الانتظار */}
           <button
             onClick={onSkipWait}
             disabled={isLoading}
@@ -108,6 +110,16 @@ const PreJoinScreen = ({
             {isLoading ? <FaSpinner className="animate-spin" /> : <FaForward />}
             {isLoading ? 'جاري الانضمام...' : 'تجاوز الانتظار (انضم الآن)'}
           </button>
+
+          {/* عرض رسالة الخطأ إن وجدت */}
+          {errorMessage && (
+            <div className="bg-red-500/20 text-red-300 p-3 rounded-xl border border-red-500/30 text-sm flex items-center justify-between">
+              <span>{errorMessage}</span>
+              <button onClick={onSkipWait} className="text-yellow-400 hover:text-yellow-300 text-xs flex items-center gap-1">
+                <FaRedo /> إعادة المحاولة
+              </button>
+            </div>
+          )}
 
           <div className="text-center text-xs text-gray-500 mt-2">
             سيتم الانضمام تلقائياً خلال {countdown} ثانية
@@ -159,7 +171,6 @@ export const AgoraMeetingModal = ({
   const rtmClientRef = useRef(null);
   const rtmChannelRef = useRef(null);
   const countdownIntervalRef = useRef(null);
-  const joinTimeoutRef = useRef(null);
 
   // ---- دوال التحكم ----
   const toggleAudio = () => {
@@ -274,14 +285,9 @@ export const AgoraMeetingModal = ({
   };
 
   const leaveCall = async () => {
-    // إلغاء المؤقتات
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);
       countdownIntervalRef.current = null;
-    }
-    if (joinTimeoutRef.current) {
-      clearTimeout(joinTimeoutRef.current);
-      joinTimeoutRef.current = null;
     }
 
     try {
@@ -320,8 +326,11 @@ export const AgoraMeetingModal = ({
 
   // ---- دالة الانضمام الفعلية ----
   const handleJoin = async () => {
-    // منع الانضمام المتكرر
-    if (isLoading) return;
+    console.log('🔄 [handleJoin] تم استدعاء الدالة');
+    if (isLoading) {
+      console.log('⚠️ [handleJoin] جاري التحميل بالفعل، تم تجاهل الاستدعاء');
+      return;
+    }
 
     if (!userName.trim()) {
       setErrorMessage('يرجى إدخال اسمك.');
@@ -339,14 +348,10 @@ export const AgoraMeetingModal = ({
       return;
     }
 
-    // إلغاء المؤقتات
+    // إلغاء العداد إن كان يعمل
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);
       countdownIntervalRef.current = null;
-    }
-    if (joinTimeoutRef.current) {
-      clearTimeout(joinTimeoutRef.current);
-      joinTimeoutRef.current = null;
     }
 
     setIsLoading(true);
@@ -354,8 +359,9 @@ export const AgoraMeetingModal = ({
 
     try {
       console.log('🔄 جاري الانضمام إلى القناة:', channelName);
+      console.log('📱 App ID:', AGORA_APP_ID);
       const { token, appId, uid } = await getAgoraToken(channelName);
-      console.log('✅ تم استلام التوكن:', { token: token.slice(0, 20) + '...', appId, uid });
+      console.log('✅ تم استلام التوكن:', { token: token?.slice(0, 20) + '...', appId, uid });
 
       if (!token || !appId) throw new Error('لم يتم استلام توكن صالح من الخادم.');
 
@@ -497,56 +503,41 @@ export const AgoraMeetingModal = ({
     } catch (err) {
       console.error('❌ خطأ أثناء الانضمام:', err);
       setErrorMessage('فشل الانضمام: ' + (err.message || 'خطأ غير معروف'));
+      // إعادة تشغيل العداد بعد فشل الانضمام (اختياري)
+      setCountdown(30);
+      startCountdown();
     } finally {
       setIsLoading(false);
     }
   };
 
+  // ---- دالة بدء العد التنازلي ----
+  const startCountdown = () => {
+    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+    setCountdown(30);
+    countdownIntervalRef.current = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(countdownIntervalRef.current);
+          countdownIntervalRef.current = null;
+          // استدعاء الانضمام مباشرة
+          console.log('⏰ انتهى العداد، ننضم الآن...');
+          handleJoin();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
   // ---- بدء العد التنازلي عند فتح المودال ----
   useEffect(() => {
     if (isOpen && isPreJoin) {
-      // إعادة تعيين العداد
-      setCountdown(30);
-      // مسح أي مؤقتات سابقة
-      if (countdownIntervalRef.current) {
-        clearInterval(countdownIntervalRef.current);
-        countdownIntervalRef.current = null;
-      }
-      if (joinTimeoutRef.current) {
-        clearTimeout(joinTimeoutRef.current);
-        joinTimeoutRef.current = null;
-      }
-
-      // بدء العد التنازلي
-      countdownIntervalRef.current = setInterval(() => {
-        setCountdown((prev) => {
-          if (prev <= 1) {
-            // انتهى العداد – نقوم بالانضمام
-            clearInterval(countdownIntervalRef.current);
-            countdownIntervalRef.current = null;
-            // نستدعي handleJoin بعد انتهاء الكود الحالي (لتجنب تحديثات الحالة المتضاربة)
-            setTimeout(() => handleJoin(), 0);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-
-      // مؤقت أمان: إذا لم يعمل العد لسبب ما، ننضم بعد 32 ثانية
-      joinTimeoutRef.current = setTimeout(() => {
-        if (isPreJoin && !isLoading) {
-          handleJoin();
-        }
-      }, 32000);
-
+      startCountdown();
       return () => {
         if (countdownIntervalRef.current) {
           clearInterval(countdownIntervalRef.current);
           countdownIntervalRef.current = null;
-        }
-        if (joinTimeoutRef.current) {
-          clearTimeout(joinTimeoutRef.current);
-          joinTimeoutRef.current = null;
         }
       };
     }
@@ -558,10 +549,6 @@ export const AgoraMeetingModal = ({
       if (countdownIntervalRef.current) {
         clearInterval(countdownIntervalRef.current);
         countdownIntervalRef.current = null;
-      }
-      if (joinTimeoutRef.current) {
-        clearTimeout(joinTimeoutRef.current);
-        joinTimeoutRef.current = null;
       }
       setIsPreJoin(true);
       setIsLoading(false);
@@ -607,7 +594,11 @@ export const AgoraMeetingModal = ({
           onJoin={handleJoin}
           isLoading={isLoading}
           countdown={countdown}
-          onSkipWait={handleJoin}
+          onSkipWait={() => {
+            console.log('⏩ تجاوز الانتظار يدوياً');
+            handleJoin();
+          }}
+          errorMessage={errorMessage}
         />
       </div>,
       document.body
