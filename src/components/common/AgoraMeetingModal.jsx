@@ -17,11 +17,13 @@ import {
   FaCommentDots,
   FaHandPaper,
   FaTimes,
+  FaClock,
+  FaForward,
 } from 'react-icons/fa';
 import { getAgoraToken } from '../../services/agora';
 
 // ============================================================
-// 1. شاشة ما قبل الانضمام (Pre-Join) - بدون معاينة
+// 1. شاشة ما قبل الانضمام (مع عداد تلقائي)
 // ============================================================
 const PreJoinScreen = ({
   userName,
@@ -32,19 +34,28 @@ const PreJoinScreen = ({
   setIsMicOn,
   onJoin,
   isLoading,
+  countdown,
+  onSkipWait,
 }) => {
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-gray-900 p-4">
-      <div className="bg-gray-800 rounded-3xl p-8 max-w-md w-full border border-gray-700 shadow-2xl">
-        <h2 className="text-2xl font-bold text-white text-center mb-6">
+      <div className="bg-gray-800 rounded-3xl p-8 max-w-md w-full border border-gray-700 shadow-2xl relative">
+        {/* العداد التنازلي */}
+        <div className="absolute top-4 left-4 bg-purple-600/30 text-purple-300 px-4 py-2 rounded-full flex items-center gap-2 text-lg font-bold border border-purple-500/30">
+          <FaClock className="text-purple-400" />
+          <span>{countdown}</span>
+          <span className="text-sm font-normal text-gray-400">ثانية</span>
+        </div>
+
+        <h2 className="text-2xl font-bold text-white text-center mb-6 mt-2">
           🎥 الانضمام إلى الحصة
         </h2>
 
-        {/* أيقونة توضيحية بدلاً من المعاينة */}
+        {/* أيقونة توضيحية */}
         <div className="bg-black/60 rounded-xl overflow-hidden aspect-video mb-4 flex items-center justify-center border border-gray-600">
           <div className="text-center text-gray-400">
             <FaVideo className="text-6xl mx-auto mb-2 opacity-30" />
-            <p className="text-sm">سيتم تشغيل الكاميرا عند الانضمام</p>
+            <p className="text-sm">سيتم تشغيل الكاميرا عند انتهاء العداد</p>
           </div>
         </div>
 
@@ -63,7 +74,6 @@ const PreJoinScreen = ({
           </div>
 
           <div className="flex gap-4 justify-center flex-wrap">
-            {/* مفتاح الكاميرا (تبديل فقط، بدون طلب أذونات) */}
             <button
               onClick={() => setIsCameraOn(!isCameraOn)}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl transition ${
@@ -74,7 +84,6 @@ const PreJoinScreen = ({
               {isCameraOn ? 'الكاميرا مفعلة' : 'الكاميرا مطفأة'}
             </button>
 
-            {/* مفتاح الميكروفون (تبديل فقط) */}
             <button
               onClick={() => setIsMicOn(!isMicOn)}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl transition ${
@@ -86,18 +95,23 @@ const PreJoinScreen = ({
             </button>
           </div>
 
+          {/* زر تجاوز الانتظار (اختياري) */}
           <button
-            onClick={onJoin}
-            disabled={!userName.trim() || isLoading}
-            className={`w-full py-3 rounded-xl text-white font-bold transition ${
-              !userName.trim() || isLoading
+            onClick={onSkipWait}
+            disabled={isLoading}
+            className={`w-full py-3 rounded-xl text-white font-bold transition flex items-center justify-center gap-2 ${
+              isLoading
                 ? 'bg-gray-600 cursor-not-allowed'
-                : 'bg-purple-600 hover:bg-purple-700'
+                : 'bg-yellow-600 hover:bg-yellow-700'
             }`}
           >
-            {isLoading ? <FaSpinner className="animate-spin inline-block me-2" /> : null}
-            {isLoading ? 'جاري الانضمام...' : '🚀 انضم إلى الحصة'}
+            {isLoading ? <FaSpinner className="animate-spin" /> : <FaForward />}
+            {isLoading ? 'جاري الانضمام...' : 'تجاوز الانتظار (انضم الآن)'}
           </button>
+
+          <div className="text-center text-xs text-gray-500 mt-2">
+            سيتم الانضمام تلقائياً خلال {countdown} ثانية
+          </div>
         </div>
       </div>
     </div>
@@ -119,12 +133,13 @@ export const AgoraMeetingModal = ({
   // ---- حالات شاشة ما قبل الانضمام ----
   const [isPreJoin, setIsPreJoin] = useState(true);
   const [userName, setUserName] = useState(initialUserName || 'مستخدم');
-  const [isCameraOn, setIsCameraOn] = useState(true);  // الكاميرا مفعلة افتراضياً (لكن لن تطلب الأذونات إلا عند الانضمام)
+  const [isCameraOn, setIsCameraOn] = useState(true);
   const [isMicOn, setIsMicOn] = useState(true);
-
-  // ---- حالات الحصة ----
+  const [countdown, setCountdown] = useState(30);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  // ---- حالات الحصة ----
   const [isAudioMuted, setIsAudioMuted] = useState(false);
   const [isVideoMuted, setIsVideoMuted] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
@@ -141,10 +156,10 @@ export const AgoraMeetingModal = ({
   const clientRef = useRef(null);
   const localTracksRef = useRef({ audioTrack: null, videoTrack: null });
   const screenTrackRef = useRef(null);
-
-  // ---- Refs لـ RTM ----
   const rtmClientRef = useRef(null);
   const rtmChannelRef = useRef(null);
+  const countdownIntervalRef = useRef(null);
+  const joinTimeoutRef = useRef(null);
 
   // ---- دوال التحكم ----
   const toggleAudio = () => {
@@ -259,6 +274,16 @@ export const AgoraMeetingModal = ({
   };
 
   const leaveCall = async () => {
+    // إلغاء المؤقتات
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
+    if (joinTimeoutRef.current) {
+      clearTimeout(joinTimeoutRef.current);
+      joinTimeoutRef.current = null;
+    }
+
     try {
       if (rtmChannelRef.current) {
         await rtmChannelRef.current.leave();
@@ -293,8 +318,11 @@ export const AgoraMeetingModal = ({
     onClose();
   };
 
-  // ---- الانضمام للغرفة ----
+  // ---- دالة الانضمام الفعلية ----
   const handleJoin = async () => {
+    // منع الانضمام المتكرر
+    if (isLoading) return;
+
     if (!userName.trim()) {
       setErrorMessage('يرجى إدخال اسمك.');
       return;
@@ -311,19 +339,29 @@ export const AgoraMeetingModal = ({
       return;
     }
 
+    // إلغاء المؤقتات
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
+    if (joinTimeoutRef.current) {
+      clearTimeout(joinTimeoutRef.current);
+      joinTimeoutRef.current = null;
+    }
+
     setIsLoading(true);
     setErrorMessage('');
 
     try {
-      // 1. جلب التوكن من السيرفر الخلفي
+      console.log('🔄 جاري الانضمام إلى القناة:', channelName);
       const { token, appId, uid } = await getAgoraToken(channelName);
+      console.log('✅ تم استلام التوكن:', { token: token.slice(0, 20) + '...', appId, uid });
+
       if (!token || !appId) throw new Error('لم يتم استلام توكن صالح من الخادم.');
 
-      // 2. إنشاء عميل RTC
       const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
       clientRef.current = client;
 
-      // أحداث RTC
       client.on('user-published', async (remoteUser, mediaType) => {
         await client.subscribe(remoteUser, mediaType);
         setParticipants((prev) => {
@@ -390,14 +428,12 @@ export const AgoraMeetingModal = ({
         if (playerDiv) playerDiv.remove();
       });
 
-      // 3. الانضمام للقناة
       await client.join(appId, channelName, token, uid);
+      console.log('✅ تم الانضمام إلى القناة بنجاح');
 
-      // 4. إنشاء المسارات المحلية (هنا تطلب الأذونات)
       const [audioTrack, videoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
       localTracksRef.current = { audioTrack, videoTrack };
 
-      // تطبيق إعدادات ما قبل الانضمام (نطفئ المسارات إذا كانت الإعدادات تقتضي ذلك)
       if (!isMicOn) {
         audioTrack.setEnabled(false);
         setIsAudioMuted(true);
@@ -407,15 +443,14 @@ export const AgoraMeetingModal = ({
         setIsVideoMuted(true);
       }
 
-      // عرض الفيديو المحلي
       if (localVideoRef.current) {
         videoTrack.play(localVideoRef.current);
       }
 
-      // نشر المسارات
       await client.publish([audioTrack, videoTrack]);
+      console.log('✅ تم نشر المسارات المحلية');
 
-      // 5. إعداد RTM للدردشة
+      // RTM
       const rtmClient = AgoraRTM.createInstance(appId);
       rtmClientRef.current = rtmClient;
       await rtmClient.login({ uid: String(uid) });
@@ -424,7 +459,6 @@ export const AgoraMeetingModal = ({
       rtmChannelRef.current = rtmChannel;
       await rtmChannel.join();
 
-      // استقبال الرسائل
       rtmChannel.on('ChannelMessage', (message, memberId) => {
         const text = message.text;
         if (text.startsWith('🆔')) {
@@ -446,10 +480,8 @@ export const AgoraMeetingModal = ({
         ]);
       });
 
-      // إرسال رسالة تعريف بالاسم
       await rtmChannel.sendMessage({ text: `🆔 ${userName}` });
 
-      // إضافة المستخدم المحلي إلى قائمة المشاركين
       setParticipants([
         {
           id: String(uid),
@@ -463,22 +495,81 @@ export const AgoraMeetingModal = ({
 
       setIsPreJoin(false);
     } catch (err) {
-      console.error('خطأ أثناء الانضمام:', err);
+      console.error('❌ خطأ أثناء الانضمام:', err);
       setErrorMessage('فشل الانضمام: ' + (err.message || 'خطأ غير معروف'));
     } finally {
       setIsLoading(false);
     }
   };
 
+  // ---- بدء العد التنازلي عند فتح المودال ----
+  useEffect(() => {
+    if (isOpen && isPreJoin) {
+      // إعادة تعيين العداد
+      setCountdown(30);
+      // مسح أي مؤقتات سابقة
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
+      }
+      if (joinTimeoutRef.current) {
+        clearTimeout(joinTimeoutRef.current);
+        joinTimeoutRef.current = null;
+      }
+
+      // بدء العد التنازلي
+      countdownIntervalRef.current = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            // انتهى العداد – نقوم بالانضمام
+            clearInterval(countdownIntervalRef.current);
+            countdownIntervalRef.current = null;
+            // نستدعي handleJoin بعد انتهاء الكود الحالي (لتجنب تحديثات الحالة المتضاربة)
+            setTimeout(() => handleJoin(), 0);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      // مؤقت أمان: إذا لم يعمل العد لسبب ما، ننضم بعد 32 ثانية
+      joinTimeoutRef.current = setTimeout(() => {
+        if (isPreJoin && !isLoading) {
+          handleJoin();
+        }
+      }, 32000);
+
+      return () => {
+        if (countdownIntervalRef.current) {
+          clearInterval(countdownIntervalRef.current);
+          countdownIntervalRef.current = null;
+        }
+        if (joinTimeoutRef.current) {
+          clearTimeout(joinTimeoutRef.current);
+          joinTimeoutRef.current = null;
+        }
+      };
+    }
+  }, [isOpen, isPreJoin]);
+
   // ---- تنظيف عند إغلاق المودال ----
   useEffect(() => {
     if (!isOpen) {
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
+      }
+      if (joinTimeoutRef.current) {
+        clearTimeout(joinTimeoutRef.current);
+        joinTimeoutRef.current = null;
+      }
       setIsPreJoin(true);
       setIsLoading(false);
       setErrorMessage('');
       setChatMessages([]);
       setParticipants([]);
-      // تنظيف المسارات
+      setCountdown(30);
+
       const { audioTrack, videoTrack } = localTracksRef.current;
       try {
         audioTrack?.close();
@@ -515,13 +606,15 @@ export const AgoraMeetingModal = ({
           setIsMicOn={setIsMicOn}
           onJoin={handleJoin}
           isLoading={isLoading}
+          countdown={countdown}
+          onSkipWait={handleJoin}
         />
       </div>,
       document.body
     );
   }
 
-  // ---- واجهة الحصة الرئيسية ----
+  // ---- واجهة الحصة الرئيسية (نفس الكود السابق) ----
   return createPortal(
     <div className="zoom-meeting-modal" dir="rtl">
       {isLoading && (
