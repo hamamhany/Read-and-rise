@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import AgoraRTC from 'agora-rtc-sdk-ng';
-import AgoraRTM from 'agora-rtm-sdk'; // ✅ التعديل الرئيسي: استيراد المكتبة بشكل صحيح
+import { createClient as createRtmClient } from 'agora-rtm-sdk'; // ✅ الاستيراد الصحيح
 import {
   FaMicrophone,
   FaMicrophoneSlash,
@@ -425,7 +425,7 @@ const PollResults = ({ pollData, onClose }) => {
 };
 
 // ============================================================
-// 7. المكون الأساسي للاجتماع
+// 7. المكون الأساسي للاجتماع (مع جميع الميزات)
 // ============================================================
 export const AgoraMeetingModal = ({
   isOpen,
@@ -761,7 +761,6 @@ export const AgoraMeetingModal = ({
   // ---- تحسين جودة الفيديو التكيفية ----
   const enableAdaptiveBitrate = () => {
     if (clientRef.current) {
-      // تفعيل الإعدادات التكيفية
       clientRef.current.enableDualStream = () => {};
       console.log('Adaptive bitrate enabled');
     }
@@ -950,11 +949,10 @@ export const AgoraMeetingModal = ({
       console.log('✅ تم نشر المسارات المحلية');
 
       // ============================================================
-      // RTM (الدردشة والأوامر) - مع معالجة الأخطاء
+      // RTM (الدردشة والأوامر) - باستخدام createClient الصحيح
       // ============================================================
       try {
-        // استخدام AgoraRTM.createClient (الصيغة الصحيحة)
-        const rtmClient = AgoraRTM.createClient(appId);
+        const rtmClient = createRtmClient(appId); // ✅ الاستخدام الصحيح
         rtmClientRef.current = rtmClient;
         await rtmClient.login({ uid: String(uid) });
 
@@ -1064,7 +1062,6 @@ export const AgoraMeetingModal = ({
         console.log('✅ RTM initialized successfully');
       } catch (rtmError) {
         console.error('❌ فشل تهيئة RTM:', rtmError);
-        // نستمر بدون RTM، لكن نعرض رسالة للمستخدم
         setErrorMessage('تعذر تفعيل الدردشة واللوحة البيضاء، لكن الحصة مستمرة.');
         // نترك rtmChannelRef.current = null
       }
