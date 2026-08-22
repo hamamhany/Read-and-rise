@@ -1,6 +1,6 @@
 // src/components/common/AgoraMeetingModal.jsx
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import AgoraRTC from 'agora-rtc-sdk-ng';
 import { createClient as createRtmClient } from 'agora-rtm-sdk';
@@ -20,11 +20,56 @@ import {
   FaClock,
   FaForward,
   FaRedo,
+  FaChevronDown,
+  FaSmile,
+  FaThumbsUp,
+  FaHeart,
+  FaHandsClap,
+  FaReply,
+  FaUserPlus,
+  FaUserMinus,
+  FaVolumeMute,
+  FaVolumeUp,
 } from 'react-icons/fa';
 import { getAgoraToken } from '../../services/agora';
 
 // ============================================================
-// 1. شاشة ما قبل الانضمام (Pre-Join) - بدون معاينة
+// 1. شاشة غرفة الانتظار (Waiting Room)
+// ============================================================
+const WaitingRoomScreen = ({
+  userName,
+  onJoin,
+  isLoading,
+  errorMessage,
+  onCancel,
+}) => {
+  return (
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-gray-900 p-4">
+      <div className="bg-gray-800 rounded-3xl p-8 max-w-md w-full border border-gray-700 shadow-2xl text-center">
+        <div className="text-6xl mb-4">⏳</div>
+        <h2 className="text-2xl font-bold text-white mb-2">في غرفة الانتظار</h2>
+        <p className="text-gray-400 mb-6">
+          {userName ? `مرحباً ${userName}` : 'مرحباً'}، ينتظر المضيف قبولك.
+        </p>
+        {isLoading && <FaSpinner className="animate-spin text-3xl mx-auto text-purple-400" />}
+        {errorMessage && (
+          <div className="bg-red-500/20 text-red-300 p-3 rounded-xl border border-red-500/30 text-sm mb-4">
+            {errorMessage}
+          </div>
+        )}
+        <button
+          onClick={onCancel}
+          className="w-full py-3 rounded-xl bg-gray-600 hover:bg-gray-500 text-white font-bold transition"
+        >
+          إلغاء والعودة
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ============================================================
+// 2. شاشة ما قبل الانضمام (Pre-Join) - بدون معاينة
 // ============================================================
 const PreJoinScreen = ({
   userName,
@@ -42,7 +87,6 @@ const PreJoinScreen = ({
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-gray-900 p-4">
       <div className="bg-gray-800 rounded-3xl p-8 max-w-md w-full border border-gray-700 shadow-2xl relative">
-        {/* العداد التنازلي */}
         <div className="absolute top-4 left-4 bg-purple-600/30 text-purple-300 px-4 py-2 rounded-full flex items-center gap-2 text-lg font-bold border border-purple-500/30">
           <FaClock className="text-purple-400" />
           <span>{countdown}</span>
@@ -53,7 +97,6 @@ const PreJoinScreen = ({
           🎥 الانضمام إلى الحصة
         </h2>
 
-        {/* أيقونة توضيحية بدلاً من المعاينة */}
         <div className="bg-black/60 rounded-xl overflow-hidden aspect-video mb-4 flex items-center justify-center border border-gray-600">
           <div className="text-center text-gray-400">
             <FaVideo className="text-6xl mx-auto mb-2 opacity-30" />
@@ -61,7 +104,6 @@ const PreJoinScreen = ({
           </div>
         </div>
 
-        {/* حقول الإدخال */}
         <div className="space-y-4">
           <div>
             <label className="block text-sm text-gray-300 mb-1">اسمك الكامل</label>
@@ -76,7 +118,6 @@ const PreJoinScreen = ({
           </div>
 
           <div className="flex gap-4 justify-center flex-wrap">
-            {/* مفتاح الكاميرا (تبديل فقط، بدون طلب أذونات) */}
             <button
               onClick={() => setIsCameraOn(!isCameraOn)}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl transition ${
@@ -87,7 +128,6 @@ const PreJoinScreen = ({
               {isCameraOn ? 'الكاميرا مفعلة' : 'الكاميرا مطفأة'}
             </button>
 
-            {/* مفتاح الميكروفون (تبديل فقط) */}
             <button
               onClick={() => setIsMicOn(!isMicOn)}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl transition ${
@@ -99,7 +139,6 @@ const PreJoinScreen = ({
             </button>
           </div>
 
-          {/* زر تجاوز الانتظار */}
           <button
             onClick={onSkipWait}
             disabled={isLoading}
@@ -113,7 +152,6 @@ const PreJoinScreen = ({
             {isLoading ? 'جاري الانضمام...' : 'تجاوز الانتظار (انضم الآن)'}
           </button>
 
-          {/* عرض رسالة الخطأ إن وجدت */}
           {errorMessage && (
             <div className="bg-red-500/20 text-red-300 p-3 rounded-xl border border-red-500/30 text-sm flex items-center justify-between">
               <span>{errorMessage}</span>
@@ -133,7 +171,35 @@ const PreJoinScreen = ({
 };
 
 // ============================================================
-// 2. المكون الأساسي للاجتماع
+// 3. مكون التفاعل (Reaction) العائم
+// ============================================================
+const FloatingReaction = ({ emoji, onComplete }) => {
+  useEffect(() => {
+    const timer = setTimeout(onComplete, 3000);
+    return () => clearTimeout(timer);
+  }, [onComplete]);
+
+  return (
+    <div
+      className="floating-reaction"
+      style={{
+        position: 'fixed',
+        bottom: '50%',
+        left: '50%',
+        transform: 'translate(-50%, -50%) scale(1)',
+        fontSize: '6rem',
+        pointerEvents: 'none',
+        animation: 'floatUp 3s forwards',
+        zIndex: 9999,
+      }}
+    >
+      {emoji}
+    </div>
+  );
+};
+
+// ============================================================
+// 4. المكون الأساسي للاجتماع
 // ============================================================
 export const AgoraMeetingModal = ({
   isOpen,
@@ -144,7 +210,7 @@ export const AgoraMeetingModal = ({
 }) => {
   const AGORA_APP_ID = import.meta.env.VITE_AGORA_APP_ID;
 
-  // ---- حالات شاشة ما قبل الانضمام ----
+  // ---- حالات ما قبل الانضمام ----
   const [isPreJoin, setIsPreJoin] = useState(true);
   const [userName, setUserName] = useState(initialUserName || 'مستخدم');
   const [isCameraOn, setIsCameraOn] = useState(true);
@@ -153,16 +219,30 @@ export const AgoraMeetingModal = ({
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
+  // ---- حالات غرفة الانتظار ----
+  const [inWaitingRoom, setInWaitingRoom] = useState(false);
+
   // ---- حالات الحصة ----
   const [isAudioMuted, setIsAudioMuted] = useState(false);
   const [isVideoMuted, setIsVideoMuted] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
-  const [isGalleryView, setIsGalleryView] = useState(false);
+  const [isGalleryView, setIsGalleryView] = useState(true); // true = gallery, false = active speaker
   const [showParticipants, setShowParticipants] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [participants, setParticipants] = useState([]);
+  const [remoteUsers, setRemoteUsers] = useState([]); // حالة جديدة لإدارة الفيديوهات البعيدة
+  const [activeSpeakerId, setActiveSpeakerId] = useState(null);
+  const [reactions, setReactions] = useState([]);
+  const [showToolbar, setShowToolbar] = useState(true);
+  const [toolbarTimeout, setToolbarTimeout] = useState(null);
+  const [devices, setDevices] = useState({ audioInputs: [], videoInputs: [], audioOutputs: [] });
+  const [selectedAudioInput, setSelectedAudioInput] = useState(null);
+  const [selectedVideoInput, setSelectedVideoInput] = useState(null);
+  const [selectedAudioOutput, setSelectedAudioOutput] = useState(null);
+  const [showDeviceMenu, setShowDeviceMenu] = useState({ audio: false, video: false });
+  const [directMessageTarget, setDirectMessageTarget] = useState(null); // { id, name }
 
   // ---- Refs ----
   const localVideoRef = useRef(null);
@@ -173,24 +253,73 @@ export const AgoraMeetingModal = ({
   const rtmClientRef = useRef(null);
   const rtmChannelRef = useRef(null);
   const countdownIntervalRef = useRef(null);
+  const toolbarHideRef = useRef(null);
 
-  // ---- دوال التحكم ----
+  // ---- دوال التحكم في الأجهزة ----
+  const loadDevices = useCallback(async () => {
+    try {
+      const allDevices = await AgoraRTC.getDevices();
+      const audioInputs = allDevices.filter(d => d.kind === 'audioinput');
+      const videoInputs = allDevices.filter(d => d.kind === 'videoinput');
+      const audioOutputs = allDevices.filter(d => d.kind === 'audiooutput');
+      setDevices({ audioInputs, videoInputs, audioOutputs });
+      if (audioInputs.length && !selectedAudioInput) setSelectedAudioInput(audioInputs[0].deviceId);
+      if (videoInputs.length && !selectedVideoInput) setSelectedVideoInput(videoInputs[0].deviceId);
+      if (audioOutputs.length && !selectedAudioOutput) setSelectedAudioOutput(audioOutputs[0].deviceId);
+    } catch (e) {
+      console.warn('تعذر تحميل الأجهزة:', e);
+    }
+  }, [selectedAudioInput, selectedVideoInput, selectedAudioOutput]);
+
+  useEffect(() => {
+    if (isOpen && !isPreJoin) loadDevices();
+  }, [isOpen, isPreJoin, loadDevices]);
+
+  const switchAudioInput = async (deviceId) => {
+    if (!clientRef.current) return;
+    try {
+      const audioTrack = localTracksRef.current.audioTrack;
+      if (audioTrack) {
+        await audioTrack.setDevice(deviceId);
+        setSelectedAudioInput(deviceId);
+        setShowDeviceMenu(prev => ({ ...prev, audio: false }));
+      }
+    } catch (e) {
+      console.error('فشل تبديل الميكروفون:', e);
+    }
+  };
+
+  const switchVideoInput = async (deviceId) => {
+    if (!clientRef.current) return;
+    try {
+      const videoTrack = localTracksRef.current.videoTrack;
+      if (videoTrack) {
+        await videoTrack.setDevice(deviceId);
+        setSelectedVideoInput(deviceId);
+        setShowDeviceMenu(prev => ({ ...prev, video: false }));
+      }
+    } catch (e) {
+      console.error('فشل تبديل الكاميرا:', e);
+    }
+  };
+
+  // ---- دوال التحكم في الصوت والفيديو ----
   const toggleAudio = () => {
     const track = localTracksRef.current.audioTrack;
     if (!track) return;
     if (isAudioMuted) {
       track.setEnabled(true);
       setIsAudioMuted(false);
-      setParticipants((prev) =>
-        prev.map((p) =>
+      setParticipants(prev =>
+        prev.map(p =>
           p.id === String(clientRef.current?.uid) ? { ...p, isMuted: false } : p
         )
       );
     } else {
       track.setEnabled(false);
       setIsAudioMuted(true);
-      setParticipants((prev) =>
-        prev.map((p) =>
+      setParticipants(prev =>
+        prev.map(p =>
           p.id === String(clientRef.current?.uid) ? { ...p, isMuted: true } : p
         )
       );
@@ -203,22 +332,23 @@ export const AgoraMeetingModal = ({
     if (isVideoMuted) {
       track.setEnabled(true);
       setIsVideoMuted(false);
-      setParticipants((prev) =>
-        prev.map((p) =>
+      setParticipants(prev =>
+        prev.map(p =>
           p.id === String(clientRef.current?.uid) ? { ...p, isVideoOn: true } : p
         )
       );
     } else {
       track.setEnabled(false);
       setIsVideoMuted(true);
-      setParticipants((prev) =>
-        prev.map((p) =>
+      setParticipants(prev =>
+        prev.map(p =>
           p.id === String(clientRef.current?.uid) ? { ...p, isVideoOn: false } : p
         )
       );
     }
   };
 
+  // ---- مشاركة الشاشة ----
   const toggleScreenShare = async () => {
     if (isScreenSharing) {
       if (screenTrackRef.current) {
@@ -254,42 +384,92 @@ export const AgoraMeetingModal = ({
     }
   };
 
-  const sendChatMessage = async (text) => {
+  // ---- الدردشة ----
+  const sendChatMessage = async (text, targetId = null) => {
     if (!text.trim()) return;
     const message = text.trim();
     try {
       if (rtmChannelRef.current) {
-        await rtmChannelRef.current.sendMessage({ text: message });
+        let payload = { text: message };
+        if (targetId) {
+          payload.to = targetId; // خاص
+        }
+        await rtmChannelRef.current.sendMessage({ text: JSON.stringify(payload) });
       }
     } catch (err) {
       console.warn('فشل إرسال الرسالة عبر RTM:', err);
     }
-    setChatMessages((prev) => [
-      ...prev,
-      {
-        id: Date.now(),
-        user: userName,
-        text: message,
-        time: new Date(),
-        isLocal: true,
-      },
-    ]);
+    const msgObj = {
+      id: Date.now(),
+      user: userName,
+      text: message,
+      time: new Date(),
+      isLocal: true,
+      isPrivate: !!targetId,
+      targetId,
+    };
+    setChatMessages(prev => [...prev, msgObj]);
     setChatInput('');
+    setDirectMessageTarget(null);
   };
 
+  // ---- رفع اليد ----
   const toggleHandRaise = () => {
     const uid = String(clientRef.current?.uid);
-    setParticipants((prev) =>
-      prev.map((p) =>
+    setParticipants(prev =>
+      prev.map(p =>
         p.id === uid ? { ...p, handRaised: !p.handRaised } : p
       )
     );
+    // إرسال إشارة RTM لجميع المشاركين (اختياري)
+    if (rtmChannelRef.current) {
+      rtmChannelRef.current.sendMessage({ text: `✋ ${uid}` }).catch(console.warn);
+    }
   };
 
+  // ---- التفاعلات (Reactions) ----
+  const sendReaction = (emoji) => {
+    if (!rtmChannelRef.current) return;
+    rtmChannelRef.current.sendMessage({ text: `💥${emoji}` }).catch(console.warn);
+    // عرض محلي
+    setReactions(prev => [...prev, { id: Date.now(), emoji, userId: 'me' }]);
+    setTimeout(() => {
+      setReactions(prev => prev.filter(r => r.id !== Date.now()));
+    }, 3000);
+  };
+
+  // ---- أوامر المضيف عبر RTM ----
+  const hostMuteAll = async () => {
+    if (!isHost) return;
+    if (rtmChannelRef.current) {
+      await rtmChannelRef.current.sendMessage({ text: '🔇MUTE_ALL' });
+    }
+    // تطبيق محلياً على جميع المشاركين (سيستمعون للأمر)
+  };
+
+  const hostRemoveUser = async (uid) => {
+    if (!isHost) return;
+    if (rtmChannelRef.current) {
+      await rtmChannelRef.current.sendMessage({ text: `🚫REMOVE ${uid}` });
+    }
+  };
+
+  const hostAdmitUser = async (uid) => {
+    if (!isHost) return;
+    if (rtmChannelRef.current) {
+      await rtmChannelRef.current.sendMessage({ text: `✅ADMIT ${uid}` });
+    }
+  };
+
+  // ---- الخروج ----
   const leaveCall = async () => {
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);
       countdownIntervalRef.current = null;
+    }
+    if (toolbarHideRef.current) {
+      clearTimeout(toolbarHideRef.current);
+      toolbarHideRef.current = null;
     }
 
     try {
@@ -301,9 +481,7 @@ export const AgoraMeetingModal = ({
         await rtmClientRef.current.logout();
         rtmClientRef.current = null;
       }
-    } catch (e) {
-      console.warn('تنظيف RTM:', e);
-    }
+    } catch (e) { console.warn('تنظيف RTM:', e); }
 
     const { audioTrack, videoTrack } = localTracksRef.current;
     try {
@@ -320,37 +498,25 @@ export const AgoraMeetingModal = ({
         screenTrackRef.current.close();
       }
       await clientRef.current.leave();
-    } catch (e) {
-      console.warn('خطأ أثناء الخروج من RTC:', e);
-    }
+    } catch (e) { console.warn('خطأ أثناء الخروج من RTC:', e); }
     onClose();
   };
 
-  // ---- دالة الانضمام الفعلية ----
+  // ---- دالة الانضمام الفعلية (مع غرفة الانتظار) ----
   const handleJoin = async () => {
     console.log('🔄 [handleJoin] تم استدعاء الدالة');
-    console.log('📋 قيمة VITE_AGORA_APP_ID من env =', import.meta.env.VITE_AGORA_APP_ID);
-
-    if (isLoading) {
-      console.log('⚠️ [handleJoin] جاري التحميل بالفعل، تم تجاهل الاستدعاء');
-      return;
-    }
-
+    if (isLoading) return;
     if (!userName.trim()) {
       setErrorMessage('يرجى إدخال اسمك.');
       return;
     }
-
     const channelName = meetingDetails?.channel_name;
     if (!channelName) {
-      setErrorMessage('لا يوجد غرفة للانضمام. يرجى إنشاء حصة أولاً.');
+      setErrorMessage('لا يوجد غرفة للانضمام.');
       return;
     }
-
     if (!AGORA_APP_ID) {
-      const msg = 'App ID مفقود. يرجى تعيين VITE_AGORA_APP_ID في ملف .env وإعادة تشغيل الخادم.';
-      setErrorMessage(msg);
-      console.error('❌', msg);
+      setErrorMessage('App ID مفقود.');
       return;
     }
 
@@ -363,12 +529,8 @@ export const AgoraMeetingModal = ({
     setErrorMessage('');
 
     try {
-      console.log('🔄 جاري الانضمام إلى القناة:', channelName);
-      console.log('📱 App ID:', AGORA_APP_ID);
       const { token, appId, uid } = await getAgoraToken(channelName);
-      console.log('✅ تم استلام التوكن:', { token: token?.slice(0, 20) + '...', appId, uid });
-
-      if (!token || !appId) throw new Error('لم يتم استلام توكن صالح من الخادم.');
+      if (!token || !appId) throw new Error('لم يتم استلام توكن صالح.');
 
       const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
       clientRef.current = client;
@@ -376,49 +538,61 @@ export const AgoraMeetingModal = ({
       // ---- أحداث RTC ----
       client.on('user-published', async (remoteUser, mediaType) => {
         await client.subscribe(remoteUser, mediaType);
-        setParticipants((prev) => {
-          const existing = prev.find((p) => p.id === String(remoteUser.uid));
+        // تحديث حالة remoteUsers بدلاً من DOM مباشر
+        setRemoteUsers(prev => {
+          const exists = prev.find(u => u.uid === remoteUser.uid);
+          if (exists) {
+            return prev.map(u => {
+              if (u.uid === remoteUser.uid) {
+                if (mediaType === 'video') return { ...u, videoTrack: remoteUser.videoTrack };
+                if (mediaType === 'audio') return { ...u, audioTrack: remoteUser.audioTrack };
+              }
+              return u;
+            });
+          } else {
+            return [...prev, {
+              uid: remoteUser.uid,
+              videoTrack: mediaType === 'video' ? remoteUser.videoTrack : null,
+              audioTrack: mediaType === 'audio' ? remoteUser.audioTrack : null,
+            }];
+          }
+        });
+
+        // تحديث المشاركين
+        setParticipants(prev => {
+          const existing = prev.find(p => p.id === String(remoteUser.uid));
           if (existing) {
             let updated = { ...existing };
             if (mediaType === 'video') updated.isVideoOn = true;
             if (mediaType === 'audio') updated.isMuted = false;
-            return prev.map((p) => (p.id === String(remoteUser.uid) ? updated : p));
+            return prev.map(p => p.id === String(remoteUser.uid) ? updated : p);
           } else {
-            const newParticipant = {
+            return [...prev, {
               id: String(remoteUser.uid),
               name: `مشارك ${remoteUser.uid}`,
               isHost: false,
               isMuted: mediaType !== 'audio',
               isVideoOn: mediaType === 'video',
               handRaised: false,
-            };
-            return [...prev, newParticipant];
+            }];
           }
         });
 
-        if (mediaType === 'video' && remoteContainerRef.current) {
-          let playerDiv = document.getElementById(`agora-remote-${remoteUser.uid}`);
-          if (!playerDiv) {
-            playerDiv = document.createElement('div');
-            playerDiv.id = `agora-remote-${remoteUser.uid}`;
-            playerDiv.className = 'agora-remote-video';
-            playerDiv.style.width = '100%';
-            playerDiv.style.height = '100%';
-            playerDiv.style.background = '#111';
-            playerDiv.style.borderRadius = '12px';
-            playerDiv.style.overflow = 'hidden';
-            remoteContainerRef.current.appendChild(playerDiv);
-          }
-          remoteUser.videoTrack.play(playerDiv);
-        }
         if (mediaType === 'audio') {
           remoteUser.audioTrack.play();
         }
       });
 
       client.on('user-unpublished', (remoteUser, mediaType) => {
-        setParticipants((prev) =>
-          prev.map((p) => {
+        setRemoteUsers(prev => prev.map(u => {
+          if (u.uid === remoteUser.uid) {
+            if (mediaType === 'video') return { ...u, videoTrack: null };
+            if (mediaType === 'audio') return { ...u, audioTrack: null };
+          }
+          return u;
+        }));
+        setParticipants(prev =>
+          prev.map(p => {
             if (p.id === String(remoteUser.uid)) {
               let updated = { ...p };
               if (mediaType === 'video') updated.isVideoOn = false;
@@ -428,27 +602,30 @@ export const AgoraMeetingModal = ({
             return p;
           })
         );
-        if (mediaType === 'video') {
-          const playerDiv = document.getElementById(`agora-remote-${remoteUser.uid}`);
-          if (playerDiv) playerDiv.remove();
-        }
       });
 
       client.on('user-left', (remoteUser) => {
-        setParticipants((prev) => prev.filter((p) => p.id !== String(remoteUser.uid)));
-        const playerDiv = document.getElementById(`agora-remote-${remoteUser.uid}`);
-        if (playerDiv) playerDiv.remove();
+        setRemoteUsers(prev => prev.filter(u => u.uid !== remoteUser.uid));
+        setParticipants(prev => prev.filter(p => p.id !== String(remoteUser.uid)));
       });
 
-      // 3. الانضمام للقناة
-      await client.join(appId, channelName, token, uid);
-      console.log('✅ تم الانضمام إلى القناة بنجاح');
+      // متحدث نشط
+      client.on('active-speaker', (speakerUid) => {
+        setActiveSpeakerId(speakerUid);
+        if (!isGalleryView) {
+          // في وضع المتحدث النشط، نعيد ترتيب الفيديوهات بحيث يكون المتحدث أكبر
+          // لكننا نترك العرض للـ JSX
+        }
+      });
 
-      // 4. إنشاء المسارات المحلية (هنا تطلب الأذونات)
+      // الانضمام للقناة
+      await client.join(appId, channelName, token, uid);
+      console.log('✅ تم الانضمام للقناة');
+
+      // إنشاء المسارات المحلية
       const [audioTrack, videoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
       localTracksRef.current = { audioTrack, videoTrack };
 
-      // تطبيق إعدادات ما قبل الانضمام
       if (!isMicOn) {
         audioTrack.setEnabled(false);
         setIsAudioMuted(true);
@@ -466,7 +643,7 @@ export const AgoraMeetingModal = ({
       console.log('✅ تم نشر المسارات المحلية');
 
       // ============================================================
-      // 5. RTM (الدردشة) - مع try/catch لمنع تعطل الحصة
+      // RTM (الدردشة والأوامر)
       // ============================================================
       try {
         const rtmClient = createRtmClient(appId);
@@ -477,34 +654,104 @@ export const AgoraMeetingModal = ({
         rtmChannelRef.current = rtmChannel;
         await rtmChannel.join();
 
+        // استماع الرسائل
         rtmChannel.on('ChannelMessage', (message, memberId) => {
           const text = message.text;
+          // معالجة أوامر المضيف
+          if (text === '🔇MUTE_ALL') {
+            // كتم الصوت للجميع
+            const audioTrackLocal = localTracksRef.current.audioTrack;
+            if (audioTrackLocal && !isHost) {
+              audioTrackLocal.setEnabled(false);
+              setIsAudioMuted(true);
+              setParticipants(prev =>
+                prev.map(p => p.id === String(clientRef.current?.uid) ? { ...p, isMuted: true } : p)
+              );
+            }
+            return;
+          }
+          if (text.startsWith('🚫REMOVE')) {
+            const targetUid = text.split(' ')[1];
+            if (String(clientRef.current?.uid) === targetUid) {
+              // تم طرد المستخدم
+              leaveCall();
+              return;
+            }
+          }
+          if (text.startsWith('✅ADMIT')) {
+            // قبول مستخدم من غرفة الانتظار (محاكاة)
+            // يمكن تنفيذ منطق إضافي
+            return;
+          }
           if (text.startsWith('🆔')) {
             const name = text.replace('🆔 ', '');
-            setParticipants((prev) =>
-              prev.map((p) => (p.id === memberId ? { ...p, name: name } : p))
+            setParticipants(prev =>
+              prev.map(p => p.id === memberId ? { ...p, name: name } : p)
             );
             return;
           }
-          setChatMessages((prev) => [
-            ...prev,
-            {
+          if (text.startsWith('✋')) {
+            // رفع يد
+            const uidRaised = text.split(' ')[1];
+            setParticipants(prev =>
+              prev.map(p => p.id === uidRaised ? { ...p, handRaised: !p.handRaised } : p)
+            );
+            return;
+          }
+          if (text.startsWith('💥')) {
+            const emoji = text.substring(1);
+            setReactions(prev => [...prev, { id: Date.now() + Math.random(), emoji, userId: memberId }]);
+            setTimeout(() => {
+              setReactions(prev => prev.filter(r => r.id !== Date.now() + Math.random()));
+            }, 3000);
+            return;
+          }
+
+          // رسائل الدردشة (قد تكون عامة أو خاصة)
+          try {
+            const payload = JSON.parse(text);
+            if (payload.to) {
+              // رسالة خاصة
+              if (payload.to === String(clientRef.current?.uid) || payload.to === 'all') {
+                setChatMessages(prev => [...prev, {
+                  id: Date.now() + Math.random(),
+                  user: memberId,
+                  text: payload.text,
+                  time: new Date(),
+                  isLocal: false,
+                  isPrivate: true,
+                  targetId: payload.to,
+                }]);
+              }
+            } else {
+              // عامة
+              setChatMessages(prev => [...prev, {
+                id: Date.now() + Math.random(),
+                user: memberId,
+                text: payload.text || text,
+                time: new Date(),
+                isLocal: false,
+              }]);
+            }
+          } catch (e) {
+            // رسالة نصية بسيطة
+            setChatMessages(prev => [...prev, {
               id: Date.now() + Math.random(),
               user: memberId,
               text: text,
               time: new Date(),
               isLocal: false,
-            },
-          ]);
+            }]);
+          }
         });
 
+        // إرسال اسم المستخدم
         await rtmChannel.sendMessage({ text: `🆔 ${userName}` });
       } catch (rtmError) {
-        console.error('❌ فشل تهيئة RTM (الدردشة غير متاحة):', rtmError);
-        // نستمر بدون دردشة، لا نوقف الحصة
+        console.error('❌ فشل تهيئة RTM:', rtmError);
       }
 
-      // إضافة المستخدم المحلي إلى قائمة المشاركين
+      // إضافة المستخدم المحلي
       setParticipants([
         {
           id: String(uid),
@@ -516,11 +763,16 @@ export const AgoraMeetingModal = ({
         },
       ]);
 
+      // إذا كان المضيف، نقوم بقبول الجميع من غرفة الانتظار (محاكاة)
+      if (isHost) {
+        // يمكن إرسال أمر قبول للجميع
+      }
+
       setIsPreJoin(false);
+      setInWaitingRoom(false);
     } catch (err) {
       console.error('❌ خطأ أثناء الانضمام:', err);
       setErrorMessage('فشل الانضمام: ' + (err.message || 'خطأ غير معروف'));
-      // إعادة تشغيل العداد بعد فشل الانضمام
       setCountdown(30);
       startCountdown();
     } finally {
@@ -528,16 +780,15 @@ export const AgoraMeetingModal = ({
     }
   };
 
-  // ---- دالة بدء العد التنازلي ----
+  // ---- العد التنازلي ----
   const startCountdown = () => {
     if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
     setCountdown(30);
     countdownIntervalRef.current = setInterval(() => {
-      setCountdown((prev) => {
+      setCountdown(prev => {
         if (prev <= 1) {
           clearInterval(countdownIntervalRef.current);
           countdownIntervalRef.current = null;
-          console.log('⏰ انتهى العداد، ننضم الآن...');
           handleJoin();
           return 0;
         }
@@ -546,7 +797,7 @@ export const AgoraMeetingModal = ({
     }, 1000);
   };
 
-  // ---- تأثيرات (useEffects) ----
+  // ---- تأثيرات ----
   useEffect(() => {
     if (isOpen && isPreJoin) {
       startCountdown();
@@ -559,20 +810,21 @@ export const AgoraMeetingModal = ({
     }
   }, [isOpen, isPreJoin]);
 
-  // ---- تنظيف عند إغلاق المودال ----
+  // ---- تنظيف عند الإغلاق ----
   useEffect(() => {
     if (!isOpen) {
-      if (countdownIntervalRef.current) {
-        clearInterval(countdownIntervalRef.current);
-        countdownIntervalRef.current = null;
-      }
+      if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+      if (toolbarHideRef.current) clearTimeout(toolbarHideRef.current);
       setIsPreJoin(true);
       setIsLoading(false);
       setErrorMessage('');
       setChatMessages([]);
       setParticipants([]);
+      setRemoteUsers([]);
+      setReactions([]);
       setCountdown(30);
-
+      setActiveSpeakerId(null);
+      setDirectMessageTarget(null);
       const { audioTrack, videoTrack } = localTracksRef.current;
       try {
         audioTrack?.close();
@@ -594,6 +846,27 @@ export const AgoraMeetingModal = ({
     return () => { document.body.style.overflow = prev; };
   }, [isOpen]);
 
+  // ---- إخفاء الشريط تلقائياً ----
+  const handleMouseMove = useCallback(() => {
+    setShowToolbar(true);
+    if (toolbarHideRef.current) clearTimeout(toolbarHideRef.current);
+    toolbarHideRef.current = setTimeout(() => {
+      setShowToolbar(false);
+    }, 5000);
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen || isPreJoin) return;
+    window.addEventListener('mousemove', handleMouseMove);
+    // إظهار الشريط في البداية
+    setShowToolbar(true);
+    toolbarHideRef.current = setTimeout(() => setShowToolbar(false), 5000);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      if (toolbarHideRef.current) clearTimeout(toolbarHideRef.current);
+    };
+  }, [isOpen, isPreJoin, handleMouseMove]);
+
   if (!isOpen || typeof document === 'undefined') return null;
 
   // ---- التصيير ----
@@ -610,11 +883,23 @@ export const AgoraMeetingModal = ({
           onJoin={handleJoin}
           isLoading={isLoading}
           countdown={countdown}
-          onSkipWait={() => {
-            console.log('⏩ تجاوز الانتظار يدوياً');
-            handleJoin();
-          }}
+          onSkipWait={() => handleJoin()}
           errorMessage={errorMessage}
+        />
+      </div>,
+      document.body
+    );
+  }
+
+  if (inWaitingRoom) {
+    return createPortal(
+      <div className="zoom-meeting-modal" dir="rtl">
+        <WaitingRoomScreen
+          userName={userName}
+          onJoin={handleJoin}
+          isLoading={isLoading}
+          errorMessage={errorMessage}
+          onCancel={() => { setIsPreJoin(true); setInWaitingRoom(false); }}
         />
       </div>,
       document.body
@@ -623,7 +908,7 @@ export const AgoraMeetingModal = ({
 
   // ---- واجهة الحصة الرئيسية ----
   return createPortal(
-    <div className="zoom-meeting-modal" dir="rtl">
+    <div className="zoom-meeting-modal" dir="rtl" onMouseMove={handleMouseMove}>
       {isLoading && (
         <div className="zoom-loading-overlay">
           <div className="zoom-loading-card">
@@ -647,50 +932,82 @@ export const AgoraMeetingModal = ({
 
       {!isLoading && !errorMessage && (
         <>
-          <div className="zoom-meeting-stage">
+          <div className="zoom-meeting-stage" style={{ position: 'relative', width: '100%', height: '100vh', background: '#1a1a2e' }}>
+            {/* حاوية الفيديوهات البعيدة */}
             <div
-              className="agora-embed-root"
+              ref={remoteContainerRef}
+              className="agora-remote-container"
               style={{
-                display: 'flex',
-                flexDirection: 'column',
+                display: 'grid',
+                gridTemplateColumns: isGalleryView
+                  ? 'repeat(auto-fill, minmax(200px, 1fr))'
+                  : '1fr',
+                gap: '10px',
                 width: '100%',
                 height: '100%',
                 padding: '10px',
                 boxSizing: 'border-box',
-                gap: '10px',
               }}
             >
-              <div
-                ref={remoteContainerRef}
-                className="agora-remote-container"
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: isGalleryView ? 'repeat(auto-fill, minmax(200px, 1fr))' : '1fr',
-                  gap: '10px',
-                  flex: 1,
-                  minHeight: 0,
-                }}
-              />
-              <div
-                ref={localVideoRef}
-                className="agora-local-video"
-                style={{
-                  position: 'absolute',
-                  bottom: 90,
-                  right: 20,
-                  width: 220,
-                  height: 165,
-                  background: '#111',
-                  borderRadius: 12,
-                  overflow: 'hidden',
-                  border: '2px solid #4b5563',
-                  zIndex: 10,
-                  boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
-                }}
-              />
+              {remoteUsers.map(user => {
+                // في وضع المتحدث النشط، نضيف class للتكبير
+                const isActive = activeSpeakerId === user.uid && !isGalleryView;
+                return (
+                  <div
+                    key={user.uid}
+                    className={`remote-video-wrapper ${isActive ? 'active-speaker' : ''}`}
+                    style={{
+                      position: 'relative',
+                      background: '#111',
+                      borderRadius: '12px',
+                      overflow: 'hidden',
+                      gridColumn: isActive ? 'span 2' : 'span 1',
+                      gridRow: isActive ? 'span 2' : 'span 1',
+                      minHeight: '150px',
+                    }}
+                  >
+                    {user.videoTrack ? (
+                      <div id={`agora-remote-${user.uid}`} style={{ width: '100%', height: '100%' }} />
+                    ) : (
+                      <div className="no-video-placeholder" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#888' }}>
+                        <FaUserPlus size={40} />
+                      </div>
+                    )}
+                    <div style={{ position: 'absolute', bottom: '8px', left: '8px', background: 'rgba(0,0,0,0.6)', padding: '4px 10px', borderRadius: '20px', color: 'white', fontSize: '12px' }}>
+                      {participants.find(p => p.id === String(user.uid))?.name || `مستخدم ${user.uid}`}
+                      {activeSpeakerId === user.uid && !isGalleryView && ' 🗣️'}
+                    </div>
+                  </div>
+                );
+              })}
+              {/* إذا كان لا يوجد مستخدمين بعيدين نعرض رسالة */}
+              {remoteUsers.length === 0 && (
+                <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666', fontSize: '1.2rem' }}>
+                  لا يوجد مشاركون آخرون
+                </div>
+              )}
             </div>
 
-            {/* ===== شريط التحكم السفلي ===== */}
+            {/* الفيديو المحلي (نافذة عائمة) */}
+            <div
+              ref={localVideoRef}
+              className="agora-local-video"
+              style={{
+                position: 'absolute',
+                bottom: 90,
+                right: 20,
+                width: 220,
+                height: 165,
+                background: '#111',
+                borderRadius: 12,
+                overflow: 'hidden',
+                border: '2px solid #4b5563',
+                zIndex: 10,
+                boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+              }}
+            />
+
+            {/* ===== شريط التحكم السفلي (مع auto-hide) ===== */}
             <div
               style={{
                 position: 'absolute',
@@ -708,51 +1025,126 @@ export const AgoraMeetingModal = ({
                 flexWrap: 'wrap',
                 justifyContent: 'center',
                 border: '1px solid rgba(255,255,255,0.1)',
+                transition: 'opacity 0.3s ease',
+                opacity: showToolbar ? 1 : 0,
+                pointerEvents: showToolbar ? 'auto' : 'none',
               }}
             >
-              {/* ميكروفون */}
-              <button
-                onClick={toggleAudio}
-                className="control-btn"
-                style={{
-                  background: isAudioMuted ? '#ef4444' : '#4b5563',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '50%',
-                  width: 44,
-                  height: 44,
-                  fontSize: 18,
-                  cursor: 'pointer',
-                  transition: '0.2s',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                {isAudioMuted ? <FaMicrophoneSlash /> : <FaMicrophone />}
-              </button>
+              {/* ميكروفون مع قائمة منسدلة */}
+              <div style={{ position: 'relative' }}>
+                <button
+                  onClick={toggleAudio}
+                  className="control-btn"
+                  style={{
+                    background: isAudioMuted ? '#ef4444' : '#4b5563',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '50%',
+                    width: 44,
+                    height: 44,
+                    fontSize: 18,
+                    cursor: 'pointer',
+                    transition: '0.2s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  {isAudioMuted ? <FaMicrophoneSlash /> : <FaMicrophone />}
+                </button>
+                <button
+                  onClick={() => setShowDeviceMenu(prev => ({ ...prev, audio: !prev.audio }))}
+                  style={{
+                    position: 'absolute',
+                    bottom: -6,
+                    right: -6,
+                    background: '#333',
+                    border: 'none',
+                    borderRadius: '50%',
+                    width: 20,
+                    height: 20,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'white',
+                    fontSize: 10,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <FaChevronDown />
+                </button>
+                {showDeviceMenu.audio && (
+                  <div style={{ position: 'absolute', bottom: '50px', left: 0, background: '#1f2937', borderRadius: '8px', padding: '8px', minWidth: '160px', zIndex: 50 }}>
+                    {devices.audioInputs.map(d => (
+                      <button
+                        key={d.deviceId}
+                        onClick={() => switchAudioInput(d.deviceId)}
+                        style={{ display: 'block', width: '100%', padding: '6px 12px', background: 'transparent', border: 'none', color: 'white', textAlign: 'right', cursor: 'pointer', fontSize: '13px' }}
+                      >
+                        {d.label || d.deviceId}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
 
-              {/* كاميرا */}
-              <button
-                onClick={toggleVideo}
-                className="control-btn"
-                style={{
-                  background: isVideoMuted ? '#ef4444' : '#4b5563',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '50%',
-                  width: 44,
-                  height: 44,
-                  fontSize: 18,
-                  cursor: 'pointer',
-                  transition: '0.2s',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                {isVideoMuted ? <FaVideoSlash /> : <FaVideo />}
-              </button>
+              {/* كاميرا مع قائمة منسدلة */}
+              <div style={{ position: 'relative' }}>
+                <button
+                  onClick={toggleVideo}
+                  className="control-btn"
+                  style={{
+                    background: isVideoMuted ? '#ef4444' : '#4b5563',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '50%',
+                    width: 44,
+                    height: 44,
+                    fontSize: 18,
+                    cursor: 'pointer',
+                    transition: '0.2s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  {isVideoMuted ? <FaVideoSlash /> : <FaVideo />}
+                </button>
+                <button
+                  onClick={() => setShowDeviceMenu(prev => ({ ...prev, video: !prev.video }))}
+                  style={{
+                    position: 'absolute',
+                    bottom: -6,
+                    right: -6,
+                    background: '#333',
+                    border: 'none',
+                    borderRadius: '50%',
+                    width: 20,
+                    height: 20,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'white',
+                    fontSize: 10,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <FaChevronDown />
+                </button>
+                {showDeviceMenu.video && (
+                  <div style={{ position: 'absolute', bottom: '50px', left: 0, background: '#1f2937', borderRadius: '8px', padding: '8px', minWidth: '160px', zIndex: 50 }}>
+                    {devices.videoInputs.map(d => (
+                      <button
+                        key={d.deviceId}
+                        onClick={() => switchVideoInput(d.deviceId)}
+                        style={{ display: 'block', width: '100%', padding: '6px 12px', background: 'transparent', border: 'none', color: 'white', textAlign: 'right', cursor: 'pointer', fontSize: '13px' }}
+                      >
+                        {d.label || d.deviceId}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               {/* مشاركة الشاشة */}
               <button
@@ -776,7 +1168,7 @@ export const AgoraMeetingModal = ({
                 {isScreenSharing ? <FaStop /> : <FaShareAlt />}
               </button>
 
-              {/* تبديل العرض */}
+              {/* تبديل العرض (Gallery / Active Speaker) */}
               <button
                 onClick={() => setIsGalleryView(!isGalleryView)}
                 className="control-btn"
@@ -864,6 +1256,28 @@ export const AgoraMeetingModal = ({
                 <FaHandPaper />
               </button>
 
+              {/* التفاعلات (Reactions) */}
+              <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                <button
+                  onClick={() => sendReaction('👍')}
+                  style={{ background: 'transparent', border: 'none', fontSize: '1.5rem', cursor: 'pointer' }}
+                >
+                  👍
+                </button>
+                <button
+                  onClick={() => sendReaction('❤️')}
+                  style={{ background: 'transparent', border: 'none', fontSize: '1.5rem', cursor: 'pointer' }}
+                >
+                  ❤️
+                </button>
+                <button
+                  onClick={() => sendReaction('👏')}
+                  style={{ background: 'transparent', border: 'none', fontSize: '1.5rem', cursor: 'pointer' }}
+                >
+                  👏
+                </button>
+              </div>
+
               {/* خروج */}
               <button
                 onClick={leaveCall}
@@ -888,7 +1302,7 @@ export const AgoraMeetingModal = ({
             </div>
           </div>
 
-          {/* ===== اللوحة الجانبية: المشاركين ===== */}
+          {/* ===== لوحة المشاركين ===== */}
           {showParticipants && (
             <div
               className="side-panel"
@@ -920,11 +1334,7 @@ export const AgoraMeetingModal = ({
               </div>
               {isHost && (
                 <button
-                  onClick={() => {
-                    setParticipants((prev) =>
-                      prev.map((p) => ({ ...p, isMuted: true }))
-                    );
-                  }}
+                  onClick={hostMuteAll}
                   className="w-full bg-red-600 hover:bg-red-700 text-white py-2 rounded-xl mb-4 text-sm font-bold"
                 >
                   كتم صوت الجميع
@@ -964,34 +1374,37 @@ export const AgoraMeetingModal = ({
                     {isHost && !p.isHost && (
                       <div className="flex gap-1">
                         <button
-                          onClick={() =>
-                            setParticipants((prev) =>
-                              prev.map((pp) =>
-                                pp.id === p.id ? { ...pp, isMuted: !pp.isMuted } : pp
-                              )
-                            )
-                          }
+                          onClick={() => {
+                            // كتم فردي عبر RTM
+                            if (rtmChannelRef.current) {
+                              rtmChannelRef.current.sendMessage({ text: `🔇MUTE ${p.id}` }).catch(console.warn);
+                            }
+                          }}
                           className="text-xs bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded"
                         >
                           {p.isMuted ? 'فك كتم' : 'كتم'}
                         </button>
                         <button
-                          onClick={() =>
-                            setParticipants((prev) => prev.filter((pp) => pp.id !== p.id))
-                          }
+                          onClick={() => hostRemoveUser(p.id)}
                           className="text-xs bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded"
                         >
                           إزالة
                         </button>
                       </div>
                     )}
+                    <button
+                      onClick={() => setDirectMessageTarget({ id: p.id, name: p.name })}
+                      className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded"
+                    >
+                      <FaReply />
+                    </button>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* ===== اللوحة الجانبية: الدردشة ===== */}
+          {/* ===== لوحة الدردشة ===== */}
           {showChat && (
             <div
               className="side-panel"
@@ -1014,13 +1427,26 @@ export const AgoraMeetingModal = ({
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-xl font-bold text-white">
                   <FaCommentDots className="inline-block me-2" /> الدردشة
+                  {directMessageTarget && (
+                    <span className="text-sm text-blue-400 mr-2">→ {directMessageTarget.name}</span>
+                  )}
                 </h3>
-                <button
-                  onClick={() => setShowChat(false)}
-                  className="text-gray-400 hover:text-white text-2xl"
-                >
-                  <FaTimes />
-                </button>
+                <div>
+                  {directMessageTarget && (
+                    <button
+                      onClick={() => setDirectMessageTarget(null)}
+                      className="text-gray-400 hover:text-white text-sm mr-2"
+                    >
+                      إلغاء الخاص
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setShowChat(false)}
+                    className="text-gray-400 hover:text-white text-2xl"
+                  >
+                    <FaTimes />
+                  </button>
+                </div>
               </div>
               <div className="flex-1 overflow-y-auto space-y-2 mb-4">
                 {chatMessages.map((msg) => (
@@ -1030,10 +1456,13 @@ export const AgoraMeetingModal = ({
                       msg.isLocal
                         ? 'bg-purple-900/30 border-purple-500/30 mr-8'
                         : 'bg-gray-800 border-gray-700 ml-8'
-                    }`}
+                    } ${msg.isPrivate ? 'border-dashed border-blue-500/50' : ''}`}
                   >
                     <div className="flex justify-between text-xs text-gray-400">
-                      <span className="font-bold text-white">{msg.user}</span>
+                      <span className="font-bold text-white">
+                        {msg.user}
+                        {msg.isPrivate && ' 🔒'}
+                      </span>
                       <span>{msg.time.toLocaleTimeString('ar-EG')}</span>
                     </div>
                     <p className="text-white text-sm mt-1">{msg.text}</p>
@@ -1047,14 +1476,14 @@ export const AgoraMeetingModal = ({
                   onChange={(e) => setChatInput(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && chatInput.trim()) {
-                      sendChatMessage(chatInput);
+                      sendChatMessage(chatInput, directMessageTarget?.id);
                     }
                   }}
                   className="flex-1 bg-gray-700 text-white p-3 rounded-xl border border-gray-600 focus:border-purple-500"
-                  placeholder="اكتب رسالة..."
+                  placeholder={directMessageTarget ? `رسالة خاصة إلى ${directMessageTarget.name}` : "اكتب رسالة..."}
                 />
                 <button
-                  onClick={() => sendChatMessage(chatInput)}
+                  onClick={() => sendChatMessage(chatInput, directMessageTarget?.id)}
                   className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl"
                 >
                   إرسال
@@ -1062,8 +1491,34 @@ export const AgoraMeetingModal = ({
               </div>
             </div>
           )}
+
+          {/* ===== التفاعلات العائمة ===== */}
+          {reactions.map(r => (
+            <FloatingReaction
+              key={r.id}
+              emoji={r.emoji}
+              onComplete={() => setReactions(prev => prev.filter(item => item.id !== r.id))}
+            />
+          ))}
         </>
       )}
+
+      {/* إضافة CSS للتحريك */}
+      <style jsx>{`
+        @keyframes floatUp {
+          0% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+          100% { opacity: 0; transform: translate(-50%, -100%) scale(1.5); }
+        }
+        .floating-reaction {
+          animation: floatUp 3s forwards;
+        }
+        .active-speaker {
+          grid-column: span 2 !important;
+          grid-row: span 2 !important;
+          border: 3px solid #3b82f6;
+          box-shadow: 0 0 20px rgba(59,130,246,0.5);
+        }
+      `}</style>
     </div>,
     document.body
   );
