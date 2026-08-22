@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import AgoraRTC from 'agora-rtc-sdk-ng';
-import AgoraRTM from 'agora-rtm-sdk';
+import * as AgoraRTM from 'agora-rtm-sdk';
 import {
   FaMicrophone,
   FaMicrophoneSlash,
