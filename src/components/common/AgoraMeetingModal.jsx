@@ -1,9 +1,9 @@
 // src/components/common/AgoraMeetingModal.jsx
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import AgoraRTC from 'agora-rtc-sdk-ng';
-import { createClient as createRtmClient } from 'agora-rtm-sdk';
+import AgoraRTM from 'agora-rtm-sdk'; // ✅ التعديل الرئيسي: استيراد المكتبة بشكل صحيح
 import {
   FaMicrophone,
   FaMicrophoneSlash,
@@ -21,25 +21,20 @@ import {
   FaForward,
   FaRedo,
   FaChevronDown,
-  FaSmile,
   FaThumbsUp,
   FaHeart,
   FaHandsClap,
   FaReply,
   FaUserPlus,
-  FaUserMinus,
-  FaVolumeMute,
-  FaVolumeUp,
   FaChalkboard,
   FaDownload,
   FaPoll,
   FaDoorOpen,
-  FaDoorClosed,
 } from 'react-icons/fa';
 import { getAgoraToken } from '../../services/agora';
 
 // ============================================================
-// 1. شاشة غرفة الانتظار (Waiting Room) - بدون تغيير
+// 1. شاشة غرفة الانتظار (Waiting Room)
 // ============================================================
 const WaitingRoomScreen = ({ userName, onJoin, isLoading, errorMessage, onCancel }) => {
   return (
@@ -68,7 +63,7 @@ const WaitingRoomScreen = ({ userName, onJoin, isLoading, errorMessage, onCancel
 };
 
 // ============================================================
-// 2. شاشة ما قبل الانضمام (Pre-Join) - بدون تغيير
+// 2. شاشة ما قبل الانضمام (Pre-Join)
 // ============================================================
 const PreJoinScreen = ({
   userName,
@@ -170,7 +165,7 @@ const PreJoinScreen = ({
 };
 
 // ============================================================
-// 3. مكون التفاعل (Reaction) العائم - بدون تغيير
+// 3. مكون التفاعل (Reaction) العائم
 // ============================================================
 const FloatingReaction = ({ emoji, onComplete }) => {
   useEffect(() => {
@@ -206,37 +201,6 @@ const Whiteboard = ({ rtmChannel, isHost }) => {
   const isDrawing = useRef(false);
   const lastPos = useRef({ x: 0, y: 0 });
 
-  // رسم حدث محلي وإرساله عبر RTM
-  const handleMouseDown = (e) => {
-    if (!isHost) return;
-    const rect = canvasRef.current.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
-    isDrawing.current = true;
-    lastPos.current = { x, y };
-    // ارسال نقطة البداية
-    if (rtmChannel) {
-      rtmChannel.sendMessage({ text: `WB_START ${x} ${y}` }).catch(console.warn);
-    }
-  };
-
-  const handleMouseMove = (e) => {
-    if (!isDrawing.current || !isHost) return;
-    const rect = canvasRef.current.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
-    if (rtmChannel) {
-      rtmChannel.sendMessage({ text: `WB_DRAW ${x} ${y}` }).catch(console.warn);
-    }
-    // رسم محلياً
-    drawLine(lastPos.current.x, lastPos.current.y, x, y);
-    lastPos.current = { x, y };
-  };
-
-  const handleMouseUp = () => {
-    isDrawing.current = false;
-  };
-
   const drawLine = (x1, y1, x2, y2) => {
     const canvas = canvasRef.current;
     const ctx = ctxRef.current;
@@ -249,6 +213,33 @@ const Whiteboard = ({ rtmChannel, isHost }) => {
     ctx.strokeStyle = '#fff';
     ctx.lineWidth = 3;
     ctx.stroke();
+  };
+
+  const handleMouseDown = (e) => {
+    if (!isHost || !rtmChannel) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+    isDrawing.current = true;
+    lastPos.current = { x, y };
+    rtmChannel.sendMessage({ text: `WB_START ${x} ${y}` }).catch(console.warn);
+  };
+
+  const handleMouseMove = (e) => {
+    if (!isDrawing.current || !isHost || !rtmChannel) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+    rtmChannel.sendMessage({ text: `WB_DRAW ${x} ${y}` }).catch(console.warn);
+    drawLine(lastPos.current.x, lastPos.current.y, x, y);
+    lastPos.current = { x, y };
+  };
+
+  const handleMouseUp = () => {
+    isDrawing.current = false;
+    if (rtmChannel) {
+      rtmChannel.sendMessage({ text: 'WB_END' }).catch(console.warn);
+    }
   };
 
   // استقبال رسائل WB من RTM
@@ -391,7 +382,6 @@ const PollResults = ({ pollData, onClose }) => {
   const [total, setTotal] = useState(0);
 
   useEffect(() => {
-    // محاكاة استقبال الأصوات (يمكن ربطها بـ RTM)
     const initial = pollData.options.reduce((acc, opt) => ({ ...acc, [opt]: 0 }), {});
     setVotes(initial);
     setTotal(0);
@@ -435,7 +425,7 @@ const PollResults = ({ pollData, onClose }) => {
 };
 
 // ============================================================
-// 7. المكون الأساسي للاجتماع (مع جميع الميزات الجديدة)
+// 7. المكون الأساسي للاجتماع
 // ============================================================
 export const AgoraMeetingModal = ({
   isOpen,
@@ -476,7 +466,6 @@ export const AgoraMeetingModal = ({
   const [devices, setDevices] = useState({ audioInputs: [], videoInputs: [], audioOutputs: [] });
   const [selectedAudioInput, setSelectedAudioInput] = useState(null);
   const [selectedVideoInput, setSelectedVideoInput] = useState(null);
-  const [selectedAudioOutput, setSelectedAudioOutput] = useState(null);
   const [showDeviceMenu, setShowDeviceMenu] = useState({ audio: false, video: false });
   const [directMessageTarget, setDirectMessageTarget] = useState(null);
 
@@ -490,7 +479,7 @@ export const AgoraMeetingModal = ({
   const [showPollResults, setShowPollResults] = useState(false);
   const [breakoutRooms, setBreakoutRooms] = useState([]);
   const [showBreakoutManager, setShowBreakoutManager] = useState(false);
-  const [currentRoom, setCurrentRoom] = useState(null); // معرف الغرفة الحالية للمستخدم
+  const [currentRoom, setCurrentRoom] = useState(null);
 
   // ---- Refs ----
   const localVideoRef = useRef(null);
@@ -514,11 +503,10 @@ export const AgoraMeetingModal = ({
       setDevices({ audioInputs, videoInputs, audioOutputs });
       if (audioInputs.length && !selectedAudioInput) setSelectedAudioInput(audioInputs[0].deviceId);
       if (videoInputs.length && !selectedVideoInput) setSelectedVideoInput(videoInputs[0].deviceId);
-      if (audioOutputs.length && !selectedAudioOutput) setSelectedAudioOutput(audioOutputs[0].deviceId);
     } catch (e) {
       console.warn('تعذر تحميل الأجهزة:', e);
     }
-  }, [selectedAudioInput, selectedVideoInput, selectedAudioOutput]);
+  }, [selectedAudioInput, selectedVideoInput]);
 
   useEffect(() => {
     if (isOpen && !isPreJoin) loadDevices();
@@ -700,17 +688,9 @@ export const AgoraMeetingModal = ({
     }
   };
 
-  const hostAdmitUser = async (uid) => {
-    if (!isHost) return;
-    if (rtmChannelRef.current) {
-      await rtmChannelRef.current.sendMessage({ text: `✅ADMIT ${uid}` });
-    }
-  };
-
-  // ---- ميزة التسجيل (MediaRecorder) ----
+  // ---- التسجيل ----
   const startRecording = async () => {
     try {
-      // تسجيل شاشة الحصة (يمكن تسجيل عنصر الفيديو أو الشاشة)
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
       recordingStreamRef.current = stream;
       const recorder = new MediaRecorder(stream);
@@ -764,7 +744,7 @@ export const AgoraMeetingModal = ({
     setActivePoll(null);
   };
 
-  // ---- الغرف الفرعية (Breakout Rooms) ----
+  // ---- الغرف الفرعية ----
   const createBreakoutRooms = (count) => {
     const roomCount = count || 2;
     const rooms = Array.from({ length: roomCount }, (_, i) => ({
@@ -773,35 +753,16 @@ export const AgoraMeetingModal = ({
       members: [],
     }));
     setBreakoutRooms(rooms);
-    // إرسال أمر RTM لتوزيع المشاركين (محاكاة)
     if (rtmChannelRef.current) {
       rtmChannelRef.current.sendMessage({ text: `BREAKOUT ${JSON.stringify(rooms)}` }).catch(console.warn);
     }
-  };
-
-  const joinBreakoutRoom = (roomId) => {
-    setCurrentRoom(roomId);
-    // هنا يمكن إرسال رسالة لتغيير قناة الصوت/الفيديو (ميزة متقدمة)
-    // لكننا سنكتفي بمحاكاة الانضمام
-  };
-
-  const leaveBreakoutRoom = () => {
-    setCurrentRoom(null);
   };
 
   // ---- تحسين جودة الفيديو التكيفية ----
   const enableAdaptiveBitrate = () => {
     if (clientRef.current) {
       // تفعيل الإعدادات التكيفية
-      clientRef.current.setRemoteVideoStreamType = (uid, streamType) => {
-        // يمكن ضبط الجودة تلقائياً حسب حالة الشبكة
-        // نترك التنفيذ الافتراضي لـ Agora
-      };
-      // تقليل الجودة عند ضعف الشبكة
-      clientRef.current.enableDualStream = () => {
-        // تمكين دفقين (عالية ومنخفضة)
-        // يتم ضبطه تلقائياً في الإصدارات الحديثة
-      };
+      clientRef.current.enableDualStream = () => {};
       console.log('Adaptive bitrate enabled');
     }
   };
@@ -960,7 +921,6 @@ export const AgoraMeetingModal = ({
         setParticipants(prev => prev.filter(p => p.id !== String(remoteUser.uid)));
       });
 
-      // متحدث نشط
       client.on('active-speaker', (speakerUid) => {
         setActiveSpeakerId(speakerUid);
       });
@@ -990,10 +950,11 @@ export const AgoraMeetingModal = ({
       console.log('✅ تم نشر المسارات المحلية');
 
       // ============================================================
-      // RTM (الدردشة والأوامر)
+      // RTM (الدردشة والأوامر) - مع معالجة الأخطاء
       // ============================================================
       try {
-        const rtmClient = createRtmClient(appId);
+        // استخدام AgoraRTM.createClient (الصيغة الصحيحة)
+        const rtmClient = AgoraRTM.createClient(appId);
         rtmClientRef.current = rtmClient;
         await rtmClient.login({ uid: String(uid) });
 
@@ -1023,10 +984,6 @@ export const AgoraMeetingModal = ({
               return;
             }
           }
-          if (text.startsWith('✅ADMIT')) {
-            // قبول مستخدم
-            return;
-          }
           if (text.startsWith('🆔')) {
             const name = text.replace('🆔 ', '');
             setParticipants(prev =>
@@ -1047,11 +1004,6 @@ export const AgoraMeetingModal = ({
             setTimeout(() => {
               setReactions(prev => prev.filter(r => r.id !== Date.now() + Math.random()));
             }, 3000);
-            return;
-          }
-          // رسائل اللوحة البيضاء (WB)
-          if (text.startsWith('WB_')) {
-            // يتم معالجتها داخل مكون Whiteboard
             return;
           }
           // رسائل الاستطلاع
@@ -1109,8 +1061,12 @@ export const AgoraMeetingModal = ({
 
         // إرسال اسم المستخدم
         await rtmChannel.sendMessage({ text: `🆔 ${userName}` });
+        console.log('✅ RTM initialized successfully');
       } catch (rtmError) {
         console.error('❌ فشل تهيئة RTM:', rtmError);
+        // نستمر بدون RTM، لكن نعرض رسالة للمستخدم
+        setErrorMessage('تعذر تفعيل الدردشة واللوحة البيضاء، لكن الحصة مستمرة.');
+        // نترك rtmChannelRef.current = null
       }
 
       // إضافة المستخدم المحلي
@@ -1868,7 +1824,7 @@ export const AgoraMeetingModal = ({
         </>
       )}
 
-      <style jsx>{`
+      <style>{`
         @keyframes floatUp {
           0% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
           100% { opacity: 0; transform: translate(-50%, -100%) scale(1.5); }
