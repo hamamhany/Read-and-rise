@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import AgoraRTC from 'agora-rtc-sdk-ng';
-import * as AgoraRTM from 'agora-rtm-sdk';
+import { createClient as createRtmClient } from 'agora-rtm-sdk';
 import {
   FaMicrophone,
   FaMicrophoneSlash,
@@ -24,7 +24,7 @@ import {
 import { getAgoraToken } from '../../services/agora';
 
 // ============================================================
-// 1. شاشة ما قبل الانضمام (مع عداد تلقائي)
+// 1. شاشة ما قبل الانضمام (Pre-Join) - بدون معاينة
 // ============================================================
 const PreJoinScreen = ({
   userName,
@@ -53,11 +53,11 @@ const PreJoinScreen = ({
           🎥 الانضمام إلى الحصة
         </h2>
 
-        {/* أيقونة توضيحية */}
+        {/* أيقونة توضيحية بدلاً من المعاينة */}
         <div className="bg-black/60 rounded-xl overflow-hidden aspect-video mb-4 flex items-center justify-center border border-gray-600">
           <div className="text-center text-gray-400">
             <FaVideo className="text-6xl mx-auto mb-2 opacity-30" />
-            <p className="text-sm">سيتم تشغيل الكاميرا عند انتهاء العداد</p>
+            <p className="text-sm">سيتم تشغيل الكاميرا عند الانضمام</p>
           </div>
         </div>
 
@@ -76,6 +76,7 @@ const PreJoinScreen = ({
           </div>
 
           <div className="flex gap-4 justify-center flex-wrap">
+            {/* مفتاح الكاميرا (تبديل فقط، بدون طلب أذونات) */}
             <button
               onClick={() => setIsCameraOn(!isCameraOn)}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl transition ${
@@ -86,6 +87,7 @@ const PreJoinScreen = ({
               {isCameraOn ? 'الكاميرا مفعلة' : 'الكاميرا مطفأة'}
             </button>
 
+            {/* مفتاح الميكروفون (تبديل فقط) */}
             <button
               onClick={() => setIsMicOn(!isMicOn)}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl transition ${
@@ -326,10 +328,9 @@ export const AgoraMeetingModal = ({
 
   // ---- دالة الانضمام الفعلية ----
   const handleJoin = async () => {
-  console.log('🔄 [handleJoin] تم استدعاء الدالة');
-  console.log('📋 قيمة VITE_AGORA_APP_ID من env =', import.meta.env.VITE_AGORA_APP_ID);
-  
     console.log('🔄 [handleJoin] تم استدعاء الدالة');
+    console.log('📋 قيمة VITE_AGORA_APP_ID من env =', import.meta.env.VITE_AGORA_APP_ID);
+
     if (isLoading) {
       console.log('⚠️ [handleJoin] جاري التحميل بالفعل، تم تجاهل الاستدعاء');
       return;
@@ -347,11 +348,12 @@ export const AgoraMeetingModal = ({
     }
 
     if (!AGORA_APP_ID) {
-      setErrorMessage('App ID مفقود. يرجى تعيين VITE_AGORA_APP_ID في ملف .env');
+      const msg = 'App ID مفقود. يرجى تعيين VITE_AGORA_APP_ID في ملف .env وإعادة تشغيل الخادم.';
+      setErrorMessage(msg);
+      console.error('❌', msg);
       return;
     }
 
-    // إلغاء العداد إن كان يعمل
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);
       countdownIntervalRef.current = null;
@@ -371,6 +373,7 @@ export const AgoraMeetingModal = ({
       const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
       clientRef.current = client;
 
+      // ---- أحداث RTC ----
       client.on('user-published', async (remoteUser, mediaType) => {
         await client.subscribe(remoteUser, mediaType);
         setParticipants((prev) => {
@@ -437,12 +440,15 @@ export const AgoraMeetingModal = ({
         if (playerDiv) playerDiv.remove();
       });
 
+      // 3. الانضمام للقناة
       await client.join(appId, channelName, token, uid);
       console.log('✅ تم الانضمام إلى القناة بنجاح');
 
+      // 4. إنشاء المسارات المحلية (هنا تطلب الأذونات)
       const [audioTrack, videoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
       localTracksRef.current = { audioTrack, videoTrack };
 
+      // تطبيق إعدادات ما قبل الانضمام
       if (!isMicOn) {
         audioTrack.setEnabled(false);
         setIsAudioMuted(true);
@@ -459,38 +465,46 @@ export const AgoraMeetingModal = ({
       await client.publish([audioTrack, videoTrack]);
       console.log('✅ تم نشر المسارات المحلية');
 
-      // RTM
-      const rtmClient = AgoraRTM.createInstance(appId);
-      rtmClientRef.current = rtmClient;
-      await rtmClient.login({ uid: String(uid) });
+      // ============================================================
+      // 5. RTM (الدردشة) - مع try/catch لمنع تعطل الحصة
+      // ============================================================
+      try {
+        const rtmClient = createRtmClient(appId);
+        rtmClientRef.current = rtmClient;
+        await rtmClient.login({ uid: String(uid) });
 
-      const rtmChannel = rtmClient.createChannel(channelName);
-      rtmChannelRef.current = rtmChannel;
-      await rtmChannel.join();
+        const rtmChannel = rtmClient.createChannel(channelName);
+        rtmChannelRef.current = rtmChannel;
+        await rtmChannel.join();
 
-      rtmChannel.on('ChannelMessage', (message, memberId) => {
-        const text = message.text;
-        if (text.startsWith('🆔')) {
-          const name = text.replace('🆔 ', '');
-          setParticipants((prev) =>
-            prev.map((p) => (p.id === memberId ? { ...p, name: name } : p))
-          );
-          return;
-        }
-        setChatMessages((prev) => [
-          ...prev,
-          {
-            id: Date.now() + Math.random(),
-            user: memberId,
-            text: text,
-            time: new Date(),
-            isLocal: false,
-          },
-        ]);
-      });
+        rtmChannel.on('ChannelMessage', (message, memberId) => {
+          const text = message.text;
+          if (text.startsWith('🆔')) {
+            const name = text.replace('🆔 ', '');
+            setParticipants((prev) =>
+              prev.map((p) => (p.id === memberId ? { ...p, name: name } : p))
+            );
+            return;
+          }
+          setChatMessages((prev) => [
+            ...prev,
+            {
+              id: Date.now() + Math.random(),
+              user: memberId,
+              text: text,
+              time: new Date(),
+              isLocal: false,
+            },
+          ]);
+        });
 
-      await rtmChannel.sendMessage({ text: `🆔 ${userName}` });
+        await rtmChannel.sendMessage({ text: `🆔 ${userName}` });
+      } catch (rtmError) {
+        console.error('❌ فشل تهيئة RTM (الدردشة غير متاحة):', rtmError);
+        // نستمر بدون دردشة، لا نوقف الحصة
+      }
 
+      // إضافة المستخدم المحلي إلى قائمة المشاركين
       setParticipants([
         {
           id: String(uid),
@@ -506,7 +520,7 @@ export const AgoraMeetingModal = ({
     } catch (err) {
       console.error('❌ خطأ أثناء الانضمام:', err);
       setErrorMessage('فشل الانضمام: ' + (err.message || 'خطأ غير معروف'));
-      // إعادة تشغيل العداد بعد فشل الانضمام (اختياري)
+      // إعادة تشغيل العداد بعد فشل الانضمام
       setCountdown(30);
       startCountdown();
     } finally {
@@ -523,7 +537,6 @@ export const AgoraMeetingModal = ({
         if (prev <= 1) {
           clearInterval(countdownIntervalRef.current);
           countdownIntervalRef.current = null;
-          // استدعاء الانضمام مباشرة
           console.log('⏰ انتهى العداد، ننضم الآن...');
           handleJoin();
           return 0;
@@ -533,7 +546,7 @@ export const AgoraMeetingModal = ({
     }, 1000);
   };
 
-  // ---- بدء العد التنازلي عند فتح المودال ----
+  // ---- تأثيرات (useEffects) ----
   useEffect(() => {
     if (isOpen && isPreJoin) {
       startCountdown();
@@ -608,7 +621,7 @@ export const AgoraMeetingModal = ({
     );
   }
 
-  // ---- واجهة الحصة الرئيسية (نفس الكود السابق) ----
+  // ---- واجهة الحصة الرئيسية ----
   return createPortal(
     <div className="zoom-meeting-modal" dir="rtl">
       {isLoading && (
@@ -677,7 +690,7 @@ export const AgoraMeetingModal = ({
               />
             </div>
 
-            {/* شريط التحكم */}
+            {/* ===== شريط التحكم السفلي ===== */}
             <div
               style={{
                 position: 'absolute',
@@ -697,63 +710,277 @@ export const AgoraMeetingModal = ({
                 border: '1px solid rgba(255,255,255,0.1)',
               }}
             >
-              <button onClick={toggleAudio} style={{ background: isAudioMuted ? '#ef4444' : '#4b5563', color: '#fff', border: 'none', borderRadius: '50%', width: 44, height: 44, fontSize: 18, cursor: 'pointer' }}>
+              {/* ميكروفون */}
+              <button
+                onClick={toggleAudio}
+                className="control-btn"
+                style={{
+                  background: isAudioMuted ? '#ef4444' : '#4b5563',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: 44,
+                  height: 44,
+                  fontSize: 18,
+                  cursor: 'pointer',
+                  transition: '0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
                 {isAudioMuted ? <FaMicrophoneSlash /> : <FaMicrophone />}
               </button>
-              <button onClick={toggleVideo} style={{ background: isVideoMuted ? '#ef4444' : '#4b5563', color: '#fff', border: 'none', borderRadius: '50%', width: 44, height: 44, fontSize: 18, cursor: 'pointer' }}>
+
+              {/* كاميرا */}
+              <button
+                onClick={toggleVideo}
+                className="control-btn"
+                style={{
+                  background: isVideoMuted ? '#ef4444' : '#4b5563',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: 44,
+                  height: 44,
+                  fontSize: 18,
+                  cursor: 'pointer',
+                  transition: '0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
                 {isVideoMuted ? <FaVideoSlash /> : <FaVideo />}
               </button>
-              <button onClick={toggleScreenShare} style={{ background: isScreenSharing ? '#3b82f6' : '#4b5563', color: '#fff', border: 'none', borderRadius: '50%', width: 44, height: 44, fontSize: 18, cursor: 'pointer' }}>
+
+              {/* مشاركة الشاشة */}
+              <button
+                onClick={toggleScreenShare}
+                className="control-btn"
+                style={{
+                  background: isScreenSharing ? '#3b82f6' : '#4b5563',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: 44,
+                  height: 44,
+                  fontSize: 18,
+                  cursor: 'pointer',
+                  transition: '0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
                 {isScreenSharing ? <FaStop /> : <FaShareAlt />}
               </button>
-              <button onClick={() => setIsGalleryView(!isGalleryView)} style={{ background: '#4b5563', color: '#fff', border: 'none', borderRadius: '50%', width: 44, height: 44, fontSize: 18, cursor: 'pointer' }}>
+
+              {/* تبديل العرض */}
+              <button
+                onClick={() => setIsGalleryView(!isGalleryView)}
+                className="control-btn"
+                style={{
+                  background: '#4b5563',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: 44,
+                  height: 44,
+                  fontSize: 18,
+                  cursor: 'pointer',
+                  transition: '0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
                 {isGalleryView ? '⊞' : '⊟'}
               </button>
-              <button onClick={() => setShowParticipants(!showParticipants)} style={{ background: showParticipants ? '#3b82f6' : '#4b5563', color: '#fff', border: 'none', borderRadius: '50%', width: 44, height: 44, fontSize: 18, cursor: 'pointer' }}>
+
+              {/* المشاركين */}
+              <button
+                onClick={() => setShowParticipants(!showParticipants)}
+                className="control-btn"
+                style={{
+                  background: showParticipants ? '#3b82f6' : '#4b5563',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: 44,
+                  height: 44,
+                  fontSize: 18,
+                  cursor: 'pointer',
+                  transition: '0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
                 <FaUsers />
               </button>
-              <button onClick={() => setShowChat(!showChat)} style={{ background: showChat ? '#3b82f6' : '#4b5563', color: '#fff', border: 'none', borderRadius: '50%', width: 44, height: 44, fontSize: 18, cursor: 'pointer' }}>
+
+              {/* الدردشة */}
+              <button
+                onClick={() => setShowChat(!showChat)}
+                className="control-btn"
+                style={{
+                  background: showChat ? '#3b82f6' : '#4b5563',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: 44,
+                  height: 44,
+                  fontSize: 18,
+                  cursor: 'pointer',
+                  transition: '0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
                 <FaCommentDots />
               </button>
-              <button onClick={toggleHandRaise} style={{ background: '#4b5563', color: '#fff', border: 'none', borderRadius: '50%', width: 44, height: 44, fontSize: 18, cursor: 'pointer' }}>
+
+              {/* رفع اليد */}
+              <button
+                onClick={toggleHandRaise}
+                className="control-btn"
+                style={{
+                  background: '#4b5563',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: 44,
+                  height: 44,
+                  fontSize: 18,
+                  cursor: 'pointer',
+                  transition: '0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
                 <FaHandPaper />
               </button>
-              <button onClick={leaveCall} style={{ background: '#dc2626', color: '#fff', border: 'none', borderRadius: '50%', width: 44, height: 44, fontSize: 18, cursor: 'pointer' }}>
+
+              {/* خروج */}
+              <button
+                onClick={leaveCall}
+                className="control-btn"
+                style={{
+                  background: '#dc2626',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: 44,
+                  height: 44,
+                  fontSize: 18,
+                  cursor: 'pointer',
+                  transition: '0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
                 <FaPhoneSlash />
               </button>
             </div>
           </div>
 
-          {/* لوحة المشاركين */}
+          {/* ===== اللوحة الجانبية: المشاركين ===== */}
           {showParticipants && (
-            <div style={{ position: 'absolute', top: 0, right: 0, width: 320, height: '100%', background: 'rgba(17,24,39,0.95)', backdropFilter: 'blur(12px)', borderRight: '1px solid rgba(255,255,255,0.1)', zIndex: 40, padding: '20px', overflowY: 'auto', direction: 'rtl' }}>
+            <div
+              className="side-panel"
+              style={{
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                width: 320,
+                height: '100%',
+                background: 'rgba(17,24,39,0.95)',
+                backdropFilter: 'blur(12px)',
+                borderRight: '1px solid rgba(255,255,255,0.1)',
+                zIndex: 40,
+                padding: '20px',
+                overflowY: 'auto',
+                direction: 'rtl',
+              }}
+            >
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xl font-bold text-white"><FaUsers className="inline-block me-2" /> المشاركين ({participants.length})</h3>
-                <button onClick={() => setShowParticipants(false)} className="text-gray-400 hover:text-white text-2xl"><FaTimes /></button>
+                <h3 className="text-xl font-bold text-white">
+                  <FaUsers className="inline-block me-2" /> المشاركين ({participants.length})
+                </h3>
+                <button
+                  onClick={() => setShowParticipants(false)}
+                  className="text-gray-400 hover:text-white text-2xl"
+                >
+                  <FaTimes />
+                </button>
               </div>
               {isHost && (
-                <button onClick={() => setParticipants(prev => prev.map(p => ({ ...p, isMuted: true })))} className="w-full bg-red-600 hover:bg-red-700 text-white py-2 rounded-xl mb-4 text-sm font-bold">
+                <button
+                  onClick={() => {
+                    setParticipants((prev) =>
+                      prev.map((p) => ({ ...p, isMuted: true }))
+                    );
+                  }}
+                  className="w-full bg-red-600 hover:bg-red-700 text-white py-2 rounded-xl mb-4 text-sm font-bold"
+                >
                   كتم صوت الجميع
                 </button>
               )}
               <div className="space-y-2">
                 {participants.map((p) => (
-                  <div key={p.id} className="bg-gray-800/60 p-3 rounded-xl border border-gray-700 flex justify-between items-center">
+                  <div
+                    key={p.id}
+                    className="bg-gray-800/60 p-3 rounded-xl border border-gray-700 flex justify-between items-center"
+                  >
                     <div>
                       <span className="text-white text-sm">{p.name}</span>
-                      {p.isHost && <span className="text-xs text-purple-400 bg-purple-950/40 px-2 py-0.5 rounded mr-2">👑 مضيف</span>}
-                      {p.handRaised && <span className="text-xs text-yellow-400 bg-yellow-950/40 px-2 py-0.5 rounded mr-2">✋ يد مرفوعة</span>}
+                      {p.isHost && (
+                        <span className="text-xs text-purple-400 bg-purple-950/40 px-2 py-0.5 rounded mr-2">
+                          👑 مضيف
+                        </span>
+                      )}
+                      {p.handRaised && (
+                        <span className="text-xs text-yellow-400 bg-yellow-950/40 px-2 py-0.5 rounded mr-2">
+                          ✋ يد مرفوعة
+                        </span>
+                      )}
                       <div className="flex gap-1 mt-1">
-                        {p.isMuted ? <FaMicrophoneSlash className="text-red-400 text-xs" /> : <FaMicrophone className="text-green-400 text-xs" />}
-                        {p.isVideoOn ? <FaVideo className="text-green-400 text-xs" /> : <FaVideoSlash className="text-red-400 text-xs" />}
+                        {p.isMuted ? (
+                          <FaMicrophoneSlash className="text-red-400 text-xs" />
+                        ) : (
+                          <FaMicrophone className="text-green-400 text-xs" />
+                        )}
+                        {p.isVideoOn ? (
+                          <FaVideo className="text-green-400 text-xs" />
+                        ) : (
+                          <FaVideoSlash className="text-red-400 text-xs" />
+                        )}
                       </div>
                     </div>
                     {isHost && !p.isHost && (
                       <div className="flex gap-1">
-                        <button onClick={() => setParticipants(prev => prev.map(pp => pp.id === p.id ? { ...pp, isMuted: !pp.isMuted } : pp))} className="text-xs bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded">
+                        <button
+                          onClick={() =>
+                            setParticipants((prev) =>
+                              prev.map((pp) =>
+                                pp.id === p.id ? { ...pp, isMuted: !pp.isMuted } : pp
+                              )
+                            )
+                          }
+                          className="text-xs bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded"
+                        >
                           {p.isMuted ? 'فك كتم' : 'كتم'}
                         </button>
-                        <button onClick={() => setParticipants(prev => prev.filter(pp => pp.id !== p.id))} className="text-xs bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded">
+                        <button
+                          onClick={() =>
+                            setParticipants((prev) => prev.filter((pp) => pp.id !== p.id))
+                          }
+                          className="text-xs bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded"
+                        >
                           إزالة
                         </button>
                       </div>
@@ -764,16 +991,47 @@ export const AgoraMeetingModal = ({
             </div>
           )}
 
-          {/* لوحة الدردشة */}
+          {/* ===== اللوحة الجانبية: الدردشة ===== */}
           {showChat && (
-            <div style={{ position: 'absolute', top: 0, left: 0, width: 320, height: '100%', background: 'rgba(17,24,39,0.95)', backdropFilter: 'blur(12px)', borderLeft: '1px solid rgba(255,255,255,0.1)', zIndex: 40, padding: '20px', display: 'flex', flexDirection: 'column', direction: 'rtl' }}>
+            <div
+              className="side-panel"
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: 320,
+                height: '100%',
+                background: 'rgba(17,24,39,0.95)',
+                backdropFilter: 'blur(12px)',
+                borderLeft: '1px solid rgba(255,255,255,0.1)',
+                zIndex: 40,
+                padding: '20px',
+                display: 'flex',
+                flexDirection: 'column',
+                direction: 'rtl',
+              }}
+            >
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xl font-bold text-white"><FaCommentDots className="inline-block me-2" /> الدردشة</h3>
-                <button onClick={() => setShowChat(false)} className="text-gray-400 hover:text-white text-2xl"><FaTimes /></button>
+                <h3 className="text-xl font-bold text-white">
+                  <FaCommentDots className="inline-block me-2" /> الدردشة
+                </h3>
+                <button
+                  onClick={() => setShowChat(false)}
+                  className="text-gray-400 hover:text-white text-2xl"
+                >
+                  <FaTimes />
+                </button>
               </div>
               <div className="flex-1 overflow-y-auto space-y-2 mb-4">
                 {chatMessages.map((msg) => (
-                  <div key={msg.id} className={`p-3 rounded-xl border ${msg.isLocal ? 'bg-purple-900/30 border-purple-500/30 mr-8' : 'bg-gray-800 border-gray-700 ml-8'}`}>
+                  <div
+                    key={msg.id}
+                    className={`p-3 rounded-xl border ${
+                      msg.isLocal
+                        ? 'bg-purple-900/30 border-purple-500/30 mr-8'
+                        : 'bg-gray-800 border-gray-700 ml-8'
+                    }`}
+                  >
                     <div className="flex justify-between text-xs text-gray-400">
                       <span className="font-bold text-white">{msg.user}</span>
                       <span>{msg.time.toLocaleTimeString('ar-EG')}</span>
@@ -783,8 +1041,24 @@ export const AgoraMeetingModal = ({
                 ))}
               </div>
               <div className="flex gap-2">
-                <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') sendChatMessage(chatInput); }} className="flex-1 bg-gray-700 text-white p-3 rounded-xl border border-gray-600 focus:border-purple-500" placeholder="اكتب رسالة..." />
-                <button onClick={() => sendChatMessage(chatInput)} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl">إرسال</button>
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && chatInput.trim()) {
+                      sendChatMessage(chatInput);
+                    }
+                  }}
+                  className="flex-1 bg-gray-700 text-white p-3 rounded-xl border border-gray-600 focus:border-purple-500"
+                  placeholder="اكتب رسالة..."
+                />
+                <button
+                  onClick={() => sendChatMessage(chatInput)}
+                  className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl"
+                >
+                  إرسال
+                </button>
               </div>
             </div>
           )}
