@@ -224,35 +224,36 @@ export const AgoraMeetingModal = ({
   const toggleAudio = () => {
     const track = localTracksRef.current.audioTrack;
     if (!track) return;
-    const nextState = !isAudioMuted;
-    track.setEnabled(nextState);
-    setIsAudioMuted(!nextState);
-
-    // تحديث حالة المستخدم المحلي داخل القائمة
-    setParticipants(prev =>
-      prev.map(p =>
-        p.id === String(clientRef.current?.uid)
-          ? { ...p, isMuted: !nextState }
-          : p
-      )
-    );
+    setIsAudioMuted(prev => {
+      const newMuted = !prev;
+      track.setEnabled(!newMuted); // إذا كان مكتوماً، فعّل الصوت (true) والعكس
+      // تحديث حالة المستخدم المحلي داخل القائمة
+      setParticipants(prevParticipants =>
+        prevParticipants.map(p =>
+          p.id === String(clientRef.current?.uid)
+            ? { ...p, isMuted: newMuted }
+            : p
+        )
+      );
+      return newMuted;
+    });
   };
 
   const toggleVideo = () => {
     const track = localTracksRef.current.videoTrack;
     if (!track) return;
-    const nextState = !isVideoMuted;
-    track.setEnabled(nextState);
-    setIsVideoMuted(!nextState);
-
-    // تحديث حالة المستخدم المحلي داخل القائمة
-    setParticipants(prev =>
-      prev.map(p =>
-        p.id === String(clientRef.current?.uid)
-          ? { ...p, isVideoOn: nextState }
-          : p
-      )
-    );
+    setIsVideoMuted(prev => {
+      const newMuted = !prev;
+      track.setEnabled(!newMuted); // إذا كانت الكاميرا مطفأة، شغلها (true) والعكس
+      setParticipants(prevParticipants =>
+        prevParticipants.map(p =>
+          p.id === String(clientRef.current?.uid)
+            ? { ...p, isVideoOn: !newMuted }
+            : p
+        )
+      );
+      return newMuted;
+    });
   };
 
   // ---- مشاركة الشاشة ----
