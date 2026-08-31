@@ -220,29 +220,39 @@ export const AgoraMeetingModal = ({
     }
   };
 
-  // ---- دوال التحكم في الصوت والفيديو ----
+  // ---- دوال التحكم في الصوت والفيديو مع مزامنة المشاركين ----
   const toggleAudio = () => {
     const track = localTracksRef.current.audioTrack;
     if (!track) return;
-    if (isAudioMuted) {
-      track.setEnabled(true);
-      setIsAudioMuted(false);
-    } else {
-      track.setEnabled(false);
-      setIsAudioMuted(true);
-    }
+    const nextState = !isAudioMuted;
+    track.setEnabled(nextState);
+    setIsAudioMuted(!nextState);
+
+    // تحديث حالة المستخدم المحلي داخل القائمة
+    setParticipants(prev =>
+      prev.map(p =>
+        p.id === String(clientRef.current?.uid)
+          ? { ...p, isMuted: !nextState }
+          : p
+      )
+    );
   };
 
   const toggleVideo = () => {
     const track = localTracksRef.current.videoTrack;
     if (!track) return;
-    if (isVideoMuted) {
-      track.setEnabled(true);
-      setIsVideoMuted(false);
-    } else {
-      track.setEnabled(false);
-      setIsVideoMuted(true);
-    }
+    const nextState = !isVideoMuted;
+    track.setEnabled(nextState);
+    setIsVideoMuted(!nextState);
+
+    // تحديث حالة المستخدم المحلي داخل القائمة
+    setParticipants(prev =>
+      prev.map(p =>
+        p.id === String(clientRef.current?.uid)
+          ? { ...p, isVideoOn: nextState }
+          : p
+      )
+    );
   };
 
   // ---- مشاركة الشاشة ----
