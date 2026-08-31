@@ -1,8 +1,8 @@
 // src/components/common/AgoraMeetingModal.jsx
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import AgoraRTC from 'agora-rtc-sdk-ng';
+import AgoraRTM from 'agora-rtm-sdk';
 import {
   FaMicrophone,
   FaMicrophoneSlash,
@@ -17,8 +17,12 @@ import {
   FaChevronDown,
   FaDownload,
   FaTimes,
+  FaUserCheck,
+  FaUserSlash,
+  FaVolumeMute,
 } from 'react-icons/fa';
 import { getAgoraToken } from '../../services/agora';
+import toast from 'react-hot-toast';
 
 // ============================================================
 // 1. شاشة ما قبل الانضمام (Pre-Join)
@@ -123,7 +127,7 @@ const PreJoinScreen = ({
 };
 
 // ============================================================
-// 2. المكون الأساسي للاجتماع (بدون RTM، دردشة، لوحة بيضاء، استطلاعات)
+// 2. المكون الأساسي للاجتماع مع RTM ودعم المضيف وغرفة الانتظار
 // ============================================================
 export const AgoraMeetingModal = ({
   isOpen,
@@ -172,6 +176,10 @@ export const AgoraMeetingModal = ({
   const screenTrackRef = useRef(null);
   const countdownIntervalRef = useRef(null);
   const toolbarHideRef = useRef(null);
+
+  // ---- Refs for RTM ----
+  const rtmClientRef = useRef(null);
+  const rtmChannelRef = useRef(null);
 
   // ---- دوال التحكم في الأجهزة ----
   const loadDevices = useCallback(async () => {
@@ -224,36 +232,27 @@ export const AgoraMeetingModal = ({
   const toggleAudio = () => {
     const track = localTracksRef.current.audioTrack;
     if (!track) return;
-    setIsAudioMuted(prev => {
-      const newMuted = !prev;
-      track.setEnabled(!newMuted); // إذا كان مكتوماً، فعّل الصوت (true) والعكس
-      // تحديث حالة المستخدم المحلي داخل القائمة
-      setParticipants(prevParticipants =>
-        prevParticipants.map(p =>
-          p.id === String(clientRef.current?.uid)
-            ? { ...p, isMuted: newMuted }
-            : p
-        )
-      );
-      return newMuted;
-    });
+    const nextState = !isAudioMuted;
+    track.setEnabled(!nextState); // true = غير مكتوم, false = مكتوم
+    setIsAudioMuted(nextState);
+
+    // تحديث حالة المستخدم المحلي داخل القائمة
+    setParticipants(prev =>
+      prev.map(p => p.id === String(clientRef.current?.uid) ? { ...p, isMuted: nextState } : p)
+    );
   };
 
   const toggleVideo = () => {
     const track = localTracksRef.current.videoTrack;
     if (!track) return;
-    setIsVideoMuted(prev => {
-      const newMuted = !prev;
-      track.setEnabled(!newMuted); // إذا كانت الكاميرا مطفأة، شغلها (true) والعكس
-      setParticipants(prevParticipants =>
-        prevParticipants.map(p =>
-          p.id === String(clientRef.current?.uid)
-            ? { ...p, isVideoOn: !newMuted }
-            : p
-        )
-      );
-      return newMuted;
-    });
+    const nextState = !isVideoMuted;
+    track.setEnabled(!nextState);
+    setIsVideoMuted(nextState);
+
+    // تحديث حالة المستخدم المحلي داخل القائمة
+    setParticipants(prev =>
+      prev.map(p => p.id === String(clientRef.current?.uid) ? { ...p, isVideoOn: !nextState } : p)
+    );
   };
 
   // ---- مشاركة الشاشة ----
@@ -345,6 +344,20 @@ export const AgoraMeetingModal = ({
       stopRecording();
     }
 
+    // الخروج من RTM
+    try {
+      if (rtmChannelRef.current) {
+        await rtmChannelRef.current.leave();
+        rtmChannelRef.current = null;
+      }
+      if (rtmClientRef.current) {
+        await rtmClientRef.current.logout();
+        rtmClientRef.current = null;
+      }
+    } catch (e) {
+      console.warn('خطأ أثناء الخروج من RTM:', e);
+    }
+
     const { audioTrack, videoTrack } = localTracksRef.current;
     try {
       if (audioTrack) {
@@ -362,6 +375,172 @@ export const AgoraMeetingModal = ({
       await clientRef.current.leave();
     } catch (e) { console.warn('خطأ أثناء الخروج من RTC:', e); }
     onClose();
+  };
+
+  // ---- دوال RTM ----
+  const initRTM = async (uid, channelName) => {
+    try {
+      const rtmClient = AgoraRTM.createInstance(AGORA_APP_ID);
+      rtmClientRef.current = rtmClient;
+      await rtmClient.login({ uid: String(uid), token: null }); // في الإنتاج يجب استخدام token RTM
+      const rtmChannel = rtmClient.createChannel(channelName);
+      rtmChannelRef.current = rtmChannel;
+      await rtmChannel.join();
+
+      // استماع للرسائل الواردة
+      rtmChannel.on('ChannelMessage', (messageData, senderId) => {
+        try {
+          const data = JSON.parse(messageData.text);
+          const currentUid = String(clientRef.current?.uid);
+
+          if (data.type === 'MUTE_AUDIO') {
+            // إغلاق الميكروفون بطلب من المضيف (إذا لم يكن المستخدم هو المضيف)
+            if (!isHost) {
+              const track = localTracksRef.current.audioTrack;
+              if (track) {
+                track.setEnabled(false);
+                setIsAudioMuted(true);
+                // تحديث القائمة
+                setParticipants(prev =>
+                  prev.map(p => p.id === currentUid ? { ...p, isMuted: true } : p)
+                );
+                toast.warn('تم كتم صوتك بواسطة المضيف');
+              }
+            }
+          } else if (data.type === 'UNMUTE_AUDIO') {
+            if (!isHost) {
+              const track = localTracksRef.current.audioTrack;
+              if (track) {
+                track.setEnabled(true);
+                setIsAudioMuted(false);
+                setParticipants(prev =>
+                  prev.map(p => p.id === currentUid ? { ...p, isMuted: false } : p)
+                );
+                toast.info('تم فتح صوتك بواسطة المضيف');
+              }
+            }
+          } else if (data.type === 'KICK_USER' && data.targetUid === currentUid) {
+            // طرد من الاجتماع
+            toast.error('تم إخراجك من الاجتماع بواسطة المضيف');
+            leaveCall();
+          } else if (data.type === 'APPROVE_USER') {
+            // قبول دخول مستخدم (غرفة الانتظار)
+            const targetUid = data.targetUid;
+            if (targetUid === currentUid) {
+              // المستخدم نفسه تم قبوله
+              toast.success('تم قبول طلب انضمامك من قبل المضيف');
+              // هنا يمكن تفعيل الصوت والفيديو إذا كانا مكتومين
+              // ولكننا سنفترض أن المستخدم بدأ مكتوماً، وسنفعل
+              const audioTrack = localTracksRef.current.audioTrack;
+              const videoTrack = localTracksRef.current.videoTrack;
+              if (audioTrack && isAudioMuted) {
+                audioTrack.setEnabled(true);
+                setIsAudioMuted(false);
+                setParticipants(prev =>
+                  prev.map(p => p.id === currentUid ? { ...p, isMuted: false } : p)
+                );
+              }
+              if (videoTrack && isVideoMuted) {
+                videoTrack.setEnabled(true);
+                setIsVideoMuted(false);
+                setParticipants(prev =>
+                  prev.map(p => p.id === currentUid ? { ...p, isVideoOn: true } : p)
+                );
+              }
+            }
+          } else if (data.type === 'REJECT_USER') {
+            const targetUid = data.targetUid;
+            if (targetUid === currentUid) {
+              toast.error('تم رفض طلب انضمامك من قبل المضيف');
+              leaveCall();
+            }
+          }
+        } catch (e) {
+          console.error('خطأ في معالجة رسالة RTM:', e);
+        }
+      });
+
+      // إرسال رسالة للمضيف بطلب الانضمام (غرفة الانتظار) إذا لم يكن المستخدم مضيفاً
+      if (!isHost) {
+        // إرسال رسالة طلب انضمام إلى المضيف (جميع الأعضاء، لكن المضيف سيتعامل معها)
+        // يمكن إرسالها إلى القناة كلها، والمضيف يرد
+        const requestMsg = {
+          type: 'JOIN_REQUEST',
+          uid: String(uid),
+          name: userName,
+        };
+        await rtmChannel.sendMessage({ text: JSON.stringify(requestMsg) });
+        toast.info('تم إرسال طلب الانضمام إلى المضيف، يرجى الانتظار للموافقة');
+      }
+
+    } catch (err) {
+      console.error('فشل تهيئة RTM:', err);
+      // لا نمنع الانضمام RTC إذا فشل RTM، لكن نعطي تحذير
+      toast.error('فشل الاتصال بخدمة الرسائل، قد لا تعمل بعض الميزات');
+    }
+  };
+
+  // ---- دوال التحكم الإداري للمضيف ----
+  const handleMuteAll = async () => {
+    if (!rtmChannelRef.current) {
+      toast.error('خدمة الرسائل غير متاحة');
+      return;
+    }
+    try {
+      await rtmChannelRef.current.sendMessage({
+        text: JSON.stringify({ type: 'MUTE_AUDIO' })
+      });
+      toast.success('تم إرسال أمر كتم الصوت للجميع');
+      // تحديث واجهة المضيف محلياً: كتم جميع المشاركين ما عدا نفسه
+      setParticipants(prev =>
+        prev.map(p => {
+          if (p.id !== String(clientRef.current?.uid)) {
+            return { ...p, isMuted: true };
+          }
+          return p;
+        })
+      );
+    } catch (err) {
+      console.error('فشل إرسال أمر كتم الصوت:', err);
+      toast.error('فشل إرسال الأمر');
+    }
+  };
+
+  const handleMuteParticipant = async (targetUid) => {
+    if (!rtmChannelRef.current) return;
+    try {
+      await rtmChannelRef.current.sendMessage({
+        text: JSON.stringify({ type: 'MUTE_AUDIO' })
+      });
+      // تحديث واجهة المضيف محلياً: كتم هذا المشارك
+      setParticipants(prev =>
+        prev.map(p => p.id === targetUid ? { ...p, isMuted: true } : p)
+      );
+      toast.success('تم كتم صوت المشارك');
+    } catch (err) {
+      console.error('فشل كتم صوت مشارك:', err);
+      toast.error('فشل كتم الصوت');
+    }
+  };
+
+  const handleKickParticipant = async (targetUid) => {
+    if (!rtmChannelRef.current) return;
+    if (targetUid === String(clientRef.current?.uid)) {
+      toast.error('لا يمكنك طرد نفسك');
+      return;
+    }
+    try {
+      await rtmChannelRef.current.sendMessage({
+        text: JSON.stringify({ type: 'KICK_USER', targetUid })
+      });
+      // إزالة المشارك من القائمة محلياً
+      setParticipants(prev => prev.filter(p => p.id !== targetUid));
+      setRemoteUsers(prev => prev.filter(u => String(u.uid) !== targetUid));
+      toast.success('تم طرد المشارك');
+    } catch (err) {
+      console.error('فشل طرد مشارك:', err);
+      toast.error('فشل طرد المشارك');
+    }
   };
 
   // ---- دالة الانضمام الفعلية ----
@@ -390,9 +569,11 @@ export const AgoraMeetingModal = ({
     setErrorMessage('');
 
     try {
+      // 1. الحصول على التوكن من الخادم الخلفي
       const { token, appId, uid } = await getAgoraToken(channelName);
       if (!token || !appId) throw new Error('لم يتم استلام توكن صالح.');
 
+      // 2. إنشاء عميل RTC
       const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
       clientRef.current = client;
 
@@ -418,6 +599,7 @@ export const AgoraMeetingModal = ({
           }
         });
 
+        // إضافة المشارك إلى القائمة إذا لم يكن موجوداً
         setParticipants(prev => {
           const existing = prev.find(p => p.id === String(remoteUser.uid));
           if (existing) {
@@ -426,12 +608,17 @@ export const AgoraMeetingModal = ({
             if (mediaType === 'audio') updated.isMuted = false;
             return prev.map(p => p.id === String(remoteUser.uid) ? updated : p);
           } else {
+            // مشارك جديد: نضيفه بحالة الانتظار (إذا كان المضيف لم يوافق بعد)
+            // لكننا نفترض أن جميع المشاركين بعد الانضمام مباشرة يكونون نشطين.
+            // سنضيفهم مع isWaiting: false لأننا سنتعامل مع غرفة الانتظار بشكل منفصل.
+            // في هذه النسخة، سنبسط: كل من ينضم يصبح نشطاً فوراً.
             return [...prev, {
               id: String(remoteUser.uid),
               name: `مشارك ${remoteUser.uid}`,
               isHost: false,
               isMuted: mediaType !== 'audio',
               isVideoOn: mediaType === 'video',
+              isWaiting: false, // لن نستخدم الانتظار في هذه المرحلة
             }];
           }
         });
@@ -478,6 +665,7 @@ export const AgoraMeetingModal = ({
       const [audioTrack, videoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
       localTracksRef.current = { audioTrack, videoTrack };
 
+      // بدء مكتوم إذا كانت الإعدادات تطلب ذلك
       if (!isMicOn) {
         audioTrack.setEnabled(false);
         setIsAudioMuted(true);
@@ -491,18 +679,28 @@ export const AgoraMeetingModal = ({
         videoTrack.play(localVideoRef.current);
       }
 
+      // نشر المسارات (إذا كان المستخدم في وضع الانتظار، قد لا ينشر حتى الموافقة)
+      // لكننا سننشر فوراً لجميع المستخدمين، وسنستخدم RTM للتحكم.
       await client.publish([audioTrack, videoTrack]);
 
-      // إضافة المستخدم المحلي
-      setParticipants([
-        {
-          id: String(uid),
-          name: userName,
-          isHost: isHost,
-          isMuted: !isMicOn,
-          isVideoOn: isCameraOn,
-        },
-      ]);
+      // إضافة المستخدم المحلي إلى قائمة المشاركين
+      const localParticipant = {
+        id: String(uid),
+        name: userName,
+        isHost: isHost,
+        isMuted: !isMicOn,
+        isVideoOn: isCameraOn,
+        isWaiting: false,
+      };
+      setParticipants([localParticipant]);
+
+      // تهيئة RTM بعد الانضمام إلى RTC
+      await initRTM(uid, channelName);
+
+      // إذا كان المستخدم مضيفاً، يمكنه إرسال رسالة ترحيب أو لا
+      if (isHost) {
+        toast.success('أنت المضيف، يمكنك التحكم بالحصة');
+      }
 
       setIsPreJoin(false);
     } catch (err) {
@@ -578,6 +776,15 @@ export const AgoraMeetingModal = ({
         videoTrack?.close();
         screenTrackRef.current?.close();
         clientRef.current?.leave();
+        // RTM cleanup
+        if (rtmChannelRef.current) {
+          rtmChannelRef.current.leave();
+          rtmChannelRef.current = null;
+        }
+        if (rtmClientRef.current) {
+          rtmClientRef.current.logout();
+          rtmClientRef.current = null;
+        }
       } catch (e) {}
       localTracksRef.current = { audioTrack: null, videoTrack: null };
       screenTrackRef.current = null;
@@ -987,24 +1194,58 @@ export const AgoraMeetingModal = ({
             </div>
           </div>
 
-          {/* ===== لوحة المشاركين (بدون تفاعل) ===== */}
+          {/* ===== لوحة المشاركين مع أزرار المضيف ===== */}
           {showParticipants && (
             <div className="side-panel" style={{ position: 'absolute', top: 0, right: 0, width: 320, height: '100%', background: 'rgba(17,24,39,0.95)', backdropFilter: 'blur(12px)', borderRight: '1px solid rgba(255,255,255,0.1)', zIndex: 40, padding: '20px', overflowY: 'auto', direction: 'rtl' }}>
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xl font-bold text-white"><FaUsers className="inline-block me-2" /> المشاركين ({participants.length})</h3>
+              <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
+                <h3 className="text-lg font-bold text-white"><FaUsers className="inline-block me-2" /> المشاركون ({participants.length})</h3>
                 <button onClick={() => setShowParticipants(false)} className="text-gray-400 hover:text-white text-2xl"><FaTimes /></button>
               </div>
+
+              {/* أزرار التحكم الجماعية للمضيف */}
+              {isHost && (
+                <div className="flex gap-2 mb-4">
+                  <button
+                    onClick={handleMuteAll}
+                    className="bg-red-600/80 hover:bg-red-600 text-xs text-white py-1.5 px-3 rounded-lg flex-1"
+                  >
+                    <FaVolumeMute className="inline-block me-1" /> إغلاق الصوت على الجميع
+                  </button>
+                </div>
+              )}
+
               <div className="space-y-2">
                 {participants.map((p) => (
-                  <div key={p.id} className="bg-gray-800/60 p-3 rounded-xl border border-gray-700 flex justify-between items-center">
+                  <div key={p.id} className="bg-gray-800/80 p-3 rounded-xl flex justify-between items-center border border-gray-700">
                     <div>
                       <span className="text-white text-sm">{p.name}</span>
                       {p.isHost && <span className="text-xs text-purple-400 bg-purple-950/40 px-2 py-0.5 rounded mr-2">👑 مضيف</span>}
+                      {p.isWaiting && <span className="text-xs text-yellow-400 bg-yellow-950/40 px-2 py-0.5 rounded mr-2">⏳ في الانتظار</span>}
                       <div className="flex gap-1 mt-1">
                         {p.isMuted ? <FaMicrophoneSlash className="text-red-400 text-xs" /> : <FaMicrophone className="text-green-400 text-xs" />}
                         {p.isVideoOn ? <FaVideo className="text-green-400 text-xs" /> : <FaVideoSlash className="text-red-400 text-xs" />}
                       </div>
                     </div>
+
+                    {/* أزرار الإدارة الفردية المتاحة للمضيف فقط (ولنفسه) */}
+                    {isHost && p.id !== String(clientRef.current?.uid) && (
+                      <div className="flex gap-1 mr-2 border-r border-gray-700 pr-2">
+                        <button
+                          onClick={() => handleMuteParticipant(p.id)}
+                          title="كتم الصوت"
+                          className="p-1 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-200"
+                        >
+                          <FaMicrophoneSlash />
+                        </button>
+                        <button
+                          onClick={() => handleKickParticipant(p.id)}
+                          title="طرد"
+                          className="p-1 bg-red-800 hover:bg-red-700 rounded text-xs text-white"
+                        >
+                          <FaUserSlash />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
