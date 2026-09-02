@@ -1,3 +1,4 @@
+// src/components/panels/TeacherPanel.jsx
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { 
@@ -131,7 +132,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ✅ الدالة المعدلة لإنشاء الغرفة
   const handleCreateMeeting = async (topic, startTime, classId) => {
     try {
       toast.loading('جاري إنشاء الغرفة...', { id: 'zoom-create' });
@@ -141,7 +141,6 @@ const TeacherPanel = ({ user, onLogout }) => {
       toast.dismiss('zoom-create');
       
       if (result && result.channel_name) {
-        // نفتح الحصة مباشرة داخل المنصة، ما في داعي لاختيار طريقة الفتح
         setActiveMeeting({
           id: result.id,
           channel_name: result.channel_name,
@@ -180,7 +179,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ✅ الدالة المعدلة لتفعيل الإشعارات (باستخدام VAPID من البيئة)
   const requestNotificationPermission = async () => {
     if (!auth.currentUser) {
       toast.error('يرجى تسجيل الدخول أولاً.');
@@ -1601,7 +1599,7 @@ const TeacherPanel = ({ user, onLogout }) => {
           )}
         </div>
 
-        {/* Agora Meeting Modal */}
+        {/* Agora Meeting Modal - مع تمرير isHost={true} */}
         <AgoraMeetingModal
           isOpen={isZoomOpen}
           onClose={() => {
@@ -1610,9 +1608,11 @@ const TeacherPanel = ({ user, onLogout }) => {
           }}
           meetingDetails={activeMeeting}
           userName={user.name || user.username || "معلم"}
+          isHost={true}
         />
       </div>
 
+      {/* باقي المودالات (غير معدلة) */}
       {/* Supervisors add modal */}
       {showSupervisorModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowSupervisorModal(false)}>

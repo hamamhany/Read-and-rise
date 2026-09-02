@@ -1,3 +1,4 @@
+// src/components/panels/StudentPanel.jsx
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { 
@@ -603,6 +604,7 @@ const StudentPanel = ({ user, onLogout }) => {
             return null;
           })()}
 
+          {/* AgoraMeetingModal للطلاب - بدون isHost (أو false) */}
           <AgoraMeetingModal
             isOpen={isZoomOpen}
             onClose={() => {
@@ -611,6 +613,7 @@ const StudentPanel = ({ user, onLogout }) => {
             }}
             meetingDetails={activeMeeting}
             userName={user.name || user.username || "طالب"}
+            // لا نمرر isHost أو نمرر false
           />
         </div>
 
