@@ -383,7 +383,7 @@ export const AgoraMeetingModal = ({
   // ---- دوال RTM ----
   const initRTM = async (uid, channelName) => {
     try {
-      const rtmClient = AgoraRTM.createInstance(AGORA_APP_ID);
+      const AGORA_APP_ID = import.meta.env.VITE_AGORA_APP_ID;
       rtmClientRef.current = rtmClient;
       await rtmClient.login({ uid: String(uid), token: null }); // في الإنتاج استخدم توكن RTM
       const rtmChannel = rtmClient.createChannel(channelName);
