@@ -1,25 +1,38 @@
 import React, { useState, useEffect } from 'react';
 
+const parseDate = (val) => {
+  if (!val) return null;
+  try {
+    if (typeof val === 'object' && typeof val.toDate === 'function') {
+      return val.toDate();
+    }
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? null : d;
+  } catch {
+    return null;
+  }
+};
+
 export const CountdownTimer = ({ targetDate }) => {
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+  const [isEnded, setIsEnded] = useState(true);
 
   useEffect(() => {
     const calculateTime = () => {
-      if (!targetDate) {
+      const target = parseDate(targetDate);
+      if (!target) {
         setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+        setIsEnded(true);
         return true;
       }
-      const target = new Date(targetDate).getTime();
-      if (isNaN(target)) {
-        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
-        return true;
-      }
-      const now = new Date().getTime();
-      const distance = target - now;
+      const now = Date.now();
+      const distance = target.getTime() - now;
       if (distance <= 0) {
         setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+        setIsEnded(true);
         return true;
       }
+      setIsEnded(false);
       setTimeLeft({
         days: Math.floor(distance / (1000 * 60 * 60 * 24)),
         hours: Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
@@ -29,15 +42,28 @@ export const CountdownTimer = ({ targetDate }) => {
       return false;
     };
 
-    calculateTime();
+    const ended = calculateTime();
+    if (ended) return;
+
     const interval = setInterval(() => {
-      const ended = calculateTime();
-      if (ended) clearInterval(interval);
+      const done = calculateTime();
+      if (done) clearInterval(interval);
     }, 1000);
+
     return () => clearInterval(interval);
   }, [targetDate]);
 
   const labels = { days: 'أيام', hours: 'ساعات', minutes: 'دقائق', seconds: 'ثواني' };
+
+  if (isEnded) {
+    return (
+      <div className="text-center py-3">
+        <span className="inline-block px-4 py-2 bg-gray-800/60 rounded-xl text-gray-400 text-sm border border-gray-700">
+          ⏳ لا توجد حصة قادمة حالياً
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="flex gap-4 text-center flex-wrap justify-center">
@@ -57,9 +83,13 @@ export const HomeworkTextCountdown = ({ targetDate }) => {
 
   useEffect(() => {
     const calculate = () => {
-      const target = new Date(targetDate).getTime();
-      const now = new Date().getTime();
-      const distance = target - now;
+      const target = parseDate(targetDate);
+      if (!target) {
+        setIsPast(true);
+        return true;
+      }
+      const now = Date.now();
+      const distance = target.getTime() - now;
       if (distance <= 0) {
         setIsPast(true);
         return true;

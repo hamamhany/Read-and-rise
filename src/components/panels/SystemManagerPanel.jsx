@@ -2,21 +2,28 @@ import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { 
   FaSignOutAlt, FaUserShield, FaExclamationTriangle, FaWhatsapp, 
-  FaTimesCircle, FaUsers, FaTrashAlt 
+  FaTimesCircle, FaUsers, FaTrashAlt, FaBell, FaPrint, FaClock
 } from 'react-icons/fa';
 import { db } from '../../firebase';
 import { 
   collection, query, onSnapshot, doc, deleteDoc, 
-  serverTimestamp, orderBy, where, updateDoc 
+  serverTimestamp, orderBy, where, updateDoc, getDoc, arrayUnion
 } from 'firebase/firestore';
 import { createSupervisorAccount } from '../../services/supervisor';
-import { sendWarningMessage } from '../../utils/whatsapp';
+import { requestNotificationPermission, setupOnMessageListener } from '../../utils/pushNotifications';
+import { messaging } from '../../firebase';
 
 const SystemManagerPanel = ({ user, onLogout }) => {
   const [reports, setReports] = useState([]);
   const [supervisors, setSupervisors] = useState([]);
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showNotificationsModal, setShowNotificationsModal] = useState(false);
+  const [notificationsActive, setNotificationsActive] = useState(
+    typeof Notification !== 'undefined' && Notification.permission === 'granted' && !!messaging
+  );
   
   const [showSupervisorModal, setShowSupervisorModal] = useState(false);
   const [newSupervisorName, setNewSupervisorName] = useState('');
@@ -24,6 +31,18 @@ const SystemManagerPanel = ({ user, onLogout }) => {
   const [newSupervisorAge, setNewSupervisorAge] = useState('');
   const [newSupervisorPhone, setNewSupervisorPhone] = useState('');
   const [supervisorLoading, setSupervisorLoading] = useState(false);
+
+  useEffect(() => {
+    const unsub = setupOnMessageListener((payload) => {
+      toast.custom(() => (
+        <div className="bg-gray-800 text-white p-4 rounded-xl border border-amber-500 shadow-xl max-w-sm mx-auto">
+          <strong className="block text-lg">{payload.notification?.title}</strong>
+          <p className="text-sm text-gray-200">{payload.notification?.body}</p>
+        </div>
+      ), { duration: 5000 });
+    });
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     const qReports = query(collection(db, 'reports'), orderBy('createdAt', 'desc'));
@@ -42,8 +61,22 @@ const SystemManagerPanel = ({ user, onLogout }) => {
       setLoading(false);
     });
 
-    return () => { unsubReports(); unsubSupervisors(); unsubStudents(); };
-  }, []);
+    const notifRef = collection(db, 'notifications', user.id, 'userNotifications');
+    const qNotif = query(notifRef, orderBy('createdAt', 'desc'));
+    const unsubNotif = onSnapshot(qNotif, (snapshot) => {
+      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setNotifications(list);
+      setUnreadCount(list.filter(n => !n.read).length);
+    });
+
+    return () => { unsubReports(); unsubSupervisors(); unsubStudents(); unsubNotif(); };
+  }, [user.id]);
+
+  const handleOpenNotifications = async () => {
+    const ok = await requestNotificationPermission(user.id);
+    setNotificationsActive(ok);
+    setShowNotificationsModal(true);
+  };
 
   const handleAddSupervisor = async (e) => {
     e.preventDefault();
@@ -123,9 +156,68 @@ const SystemManagerPanel = ({ user, onLogout }) => {
             </h2>
             <p className="text-gray-400 text-sm mt-1">مرحباً بك: {user.name || user.username}</p>
           </div>
-          <button onClick={onLogout} className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-full text-2xl transition shadow-lg" title="تسجيل الخروج">
-            <FaSignOutAlt />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleOpenNotifications}
+              className="relative bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-full text-2xl transition shadow-lg"
+              title={notificationsActive ? 'الإشعارات مفعلة' : 'تفعيل الإشعارات'}
+            >
+              <FaBell />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                  {unreadCount}
+                </span>
+              )}
+              {notificationsActive && (
+                <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-400 rounded-full border-2 border-gray-900 animate-pulse" />
+              )}
+            </button>
+            <button onClick={onLogout} className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-full text-2xl transition shadow-lg" title="تسجيل الخروج">
+              <FaSignOutAlt />
+            </button>
+          </div>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="relative overflow-hidden bg-gradient-to-br from-red-900/50 to-red-900/20 p-6 rounded-2xl border border-red-500/30 shadow-xl">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center shadow-lg">
+                <FaExclamationTriangle className="text-white text-xl" />
+              </div>
+              <div>
+                <p className="text-xs text-red-300 uppercase tracking-widest font-semibold">البلاغات</p>
+                <h3 className="text-sm font-bold text-red-100">قيد المراجعة</h3>
+              </div>
+            </div>
+            <p className="text-4xl font-black text-white">{reports.length}</p>
+          </div>
+
+          <div className="relative overflow-hidden bg-gradient-to-br from-indigo-900/50 to-indigo-900/20 p-6 rounded-2xl border border-indigo-500/30 shadow-xl">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-lg">
+                <FaUserShield className="text-white text-xl" />
+              </div>
+              <div>
+                <p className="text-xs text-indigo-300 uppercase tracking-widest font-semibold">المشرفين</p>
+                <h3 className="text-sm font-bold text-indigo-100">الحسابات النشطة</h3>
+              </div>
+            </div>
+            <p className="text-4xl font-black text-white">{supervisors.length}</p>
+          </div>
+
+          <div className="relative overflow-hidden bg-gradient-to-br from-emerald-900/50 to-emerald-900/20 p-6 rounded-2xl border border-emerald-500/30 shadow-xl">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center shadow-lg">
+                <FaUsers className="text-white text-xl" />
+              </div>
+              <div>
+                <p className="text-xs text-emerald-300 uppercase tracking-widest font-semibold">الطلاب</p>
+                <h3 className="text-sm font-bold text-emerald-100">إجمالي المسجلين</h3>
+              </div>
+            </div>
+            <p className="text-4xl font-black text-white">{students.length}</p>
+          </div>
         </div>
 
         {/* Reports Section */}
@@ -188,7 +280,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* Students Management Section */}
+        {/* Students Section */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700">
           <h3 className="text-xl font-semibold text-blue-300 mb-4 flex items-center gap-2">
             <FaUsers /> إدارة الطلاب
@@ -214,6 +306,42 @@ const SystemManagerPanel = ({ user, onLogout }) => {
             ))}
           </div>
         </div>
+
+        {/* Notifications Modal */}
+        {showNotificationsModal && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowNotificationsModal(false)}>
+            <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full max-h-[70vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-semibold text-amber-300">
+                  <FaBell className="inline-block me-2" /> الإشعارات
+                </h3>
+                <button onClick={() => setShowNotificationsModal(false)} className="text-gray-400 hover:text-white text-2xl">✕</button>
+              </div>
+              {!notificationsActive && (
+                <div className="mb-4 p-3 bg-yellow-500/10 rounded-xl border border-yellow-500/20 text-yellow-200 text-sm">
+                  ⚠️ الإشعارات غير مفعلة. اضغط على زر الجرس لتفعيلها.
+                </div>
+              )}
+              {notifications.length === 0 ? (
+                <p className="text-gray-400 text-center py-4">لا توجد إشعارات</p>
+              ) : (
+                <div className="space-y-3">
+                  {notifications.map((n) => (
+                    <div key={n.id} className={`p-3 rounded-xl border ${n.read ? 'bg-gray-800/30 border-gray-600' : 'bg-gray-800/60 border-blue-500/40'}`}>
+                      <div className="flex justify-between items-start">
+                        <h4 className="text-white font-medium">{n.title}</h4>
+                        <span className="text-xs text-gray-400">
+                          {n.createdAt?.toDate?.() ? new Date(n.createdAt.toDate()).toLocaleString('ar-EG') : ''}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-300 mt-1">{n.body}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Add Supervisor Modal */}
         {showSupervisorModal && (
