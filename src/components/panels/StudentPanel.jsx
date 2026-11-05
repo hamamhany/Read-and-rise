@@ -1,4 +1,3 @@
-// src/components/panels/StudentPanel.jsx
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { 
@@ -10,15 +9,12 @@ import { db, messaging } from '../../firebase';
 import { auth } from '../../services/firebaseAuth';
 import { 
   doc, getDoc, updateDoc, collection, query, where, getDocs, 
-  onSnapshot, orderBy, serverTimestamp, writeBatch, deleteDoc,
-  arrayUnion
+  onSnapshot, orderBy, serverTimestamp, writeBatch, arrayUnion
 } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import { useConfirm } from '../common/ConfirmContext';
 import { CountdownTimer, HomeworkTextCountdown } from '../common/CountdownTimer';
-import { AgoraMeetingModal } from '../common/AgoraMeetingModal';
 import { sanitizeInput, arabicToEnglishNumber, fetchClassNames } from '../../utils/helpers';
-import { getAgoraMeetings } from '../../services/agora';
 import { sendUrgentReminderMessage, sendContactTeacherMessage } from '../../utils/whatsapp';
 
 const StudentPanel = ({ user, onLogout }) => {
@@ -50,12 +46,6 @@ const StudentPanel = ({ user, onLogout }) => {
 
   const [classStudentCount, setClassStudentCount] = useState({});
 
-  // Zoom states
-  const [zoomMeetings, setZoomMeetings] = useState([]);
-  const [isZoomOpen, setIsZoomOpen] = useState(false);
-  const [activeMeeting, setActiveMeeting] = useState(null);
-
-  // Request notification permission
   const requestNotificationPermission = async () => {
     if (!auth.currentUser) {
       toast.error('يرجى تسجيل الدخول أولاً.');
@@ -65,9 +55,7 @@ const StudentPanel = ({ user, onLogout }) => {
       try {
         const token = await getToken(messaging, { vapidKey: 'BMuOctGyoxHcX03mppaXioqagujweclql9d9dpeLRTsZAIQpcgdcBveP-DGzaVctK7nIF1liaeo6vvfxg-uIAbI' });
         if (token) {
-          await updateDoc(doc(db, 'profiles', user.id), {
-            fcmTokens: arrayUnion(token)
-          });
+          await updateDoc(doc(db, 'profiles', user.id), { fcmTokens: arrayUnion(token) });
         }
       } catch (err) {
         console.error('FCM token error:', err);
@@ -84,9 +72,7 @@ const StudentPanel = ({ user, onLogout }) => {
       try {
         const token = await getToken(messaging, { vapidKey: 'BMuOctGyoxHcX03mppaXioqagujweclql9d9dpeLRTsZAIQpcgdcBveP-DGzaVctK7nIF1liaeo6vvfxg-uIAbI' });
         if (token) {
-          await updateDoc(doc(db, 'profiles', user.id), {
-            fcmTokens: arrayUnion(token)
-          });
+          await updateDoc(doc(db, 'profiles', user.id), { fcmTokens: arrayUnion(token) });
           toast.success('تم تفعيل الإشعارات بنجاح');
         }
       } catch (err) {
@@ -107,7 +93,6 @@ const StudentPanel = ({ user, onLogout }) => {
     return () => unsubscribe();
   }, []);
 
-  // Fetch student count per class
   useEffect(() => {
     const studentsQuery = query(collection(db, 'profiles'), where('role', '==', 'student'));
     const unsubscribe = onSnapshot(studentsQuery, (snapshot) => {
@@ -123,7 +108,6 @@ const StudentPanel = ({ user, onLogout }) => {
     return () => unsubscribe();
   }, []);
 
-  // Fetch announcements
   useEffect(() => {
     const q = query(collection(db, 'announcements'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -141,20 +125,6 @@ const StudentPanel = ({ user, onLogout }) => {
     });
     return () => unsubscribe();
   }, []);
-
-  // Fetch Zoom meetings from Supabase
-  useEffect(() => {
-    const fetchZoomMeetings = async () => {
-      if (!user?.classIds || user.classIds.length === 0) return;
-      const allMeetings = [];
-      for (const classId of user.classIds) {
-        const meetings = await getAgoraMeetings(classId, null);
-        allMeetings.push(...meetings);
-      }
-      setZoomMeetings(allMeetings);
-    };
-    fetchZoomMeetings();
-  }, [user?.classIds]);
 
   const cleanOldNotifications = async () => {
     if (!user) return;
@@ -408,18 +378,6 @@ const StudentPanel = ({ user, onLogout }) => {
 
   const nextLesson = getNextLessonTime();
 
-  const handleJoinMeeting = (meeting) => {
-    if (!meeting.meeting_number) {
-      toast.error('لا يوجد غرفة صالحة لهذه الحصة.');
-      return;
-    }
-    setActiveMeeting({
-      channel_name: meeting.meeting_number,
-      topic: meeting.topic
-    });
-    setIsZoomOpen(true);
-  };
-
   const openProfileModal = () => {
     if (hasPendingRequest) {
       setShowPendingRequestModal(true);
@@ -572,49 +530,16 @@ const StudentPanel = ({ user, onLogout }) => {
             </div>
           )}
 
-          {/* Join meeting button */}
-          {zoomMeetings.length > 0 && (() => {
-            const now = new Date();
-            let nearestMeeting = null;
-            let nearestDiff = Infinity;
-            for (const meeting of zoomMeetings) {
-              const meetingTime = new Date(meeting.start_time);
-              const diffMinutes = (meetingTime - now) / (1000 * 60);
-              if (diffMinutes >= -5 && diffMinutes <= 10 && diffMinutes < nearestDiff) {
-                nearestDiff = diffMinutes;
-                nearestMeeting = meeting;
-              }
-            }
-            if (nearestMeeting) {
-              return (
-                <div className="mt-4 flex flex-col items-center gap-2 w-full">
-                  <button
-                    onClick={() => handleJoinMeeting(nearestMeeting)}
-                    className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl text-lg font-bold shadow-lg transition-all duration-300 transform hover:scale-105 w-full text-center block animate-pulse"
-                  >
-                    <FaVideo className="inline-block me-2" />
-                    🎯 انضم إلى غرفة الصف الآن (داخل المنصة)
-                  </button>
-                  <span className="text-xs text-gray-400">
-                    الاجتماع يبدأ {nearestDiff >= 0 ? `خلال ${Math.round(nearestDiff)} دقيقة` : `منذ ${Math.round(-nearestDiff)} دقيقة`}
-                  </span>
-                </div>
-              );
-            }
-            return null;
-          })()}
-
-          {/* AgoraMeetingModal للطلاب - بدون isHost (أو false) */}
-          <AgoraMeetingModal
-            isOpen={isZoomOpen}
-            onClose={() => {
-              setIsZoomOpen(false);
-              setActiveMeeting(null);
-            }}
-            meetingDetails={activeMeeting}
-            userName={user.name || user.username || "طالب"}
-            // لا نمرر isHost أو نمرر false
-          />
+          {/* Join meeting button - Updated as requested */}
+          <div className="mt-4 flex flex-col items-center gap-2 w-full">
+            <button
+              onClick={() => toast.success('🎥 تم تسجيل دخولك حالياً (نظام المكالمات قيد التطوير).')}
+              className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl text-lg font-bold shadow-lg transition-all duration-300 transform hover:scale-105 w-full text-center block animate-pulse"
+            >
+              <FaVideo className="inline-block me-2" />
+              🎯 انضم إلى غرفة الصف الآن
+            </button>
+          </div>
         </div>
 
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700 space-y-3">
@@ -758,27 +683,17 @@ const StudentPanel = ({ user, onLogout }) => {
                   if (!sentAccelerate) {
                     handleContactTeacher();
                   } else {
-                    toast('تم إرسال رسالة الاستعجال مسبقاً.', {
-                      duration: 3000,
-                      style: { background: '#333', color: '#fff' }
-                    });
+                    toast('تم إرسال رسالة الاستعجال مسبقاً.', { duration: 3000, style: { background: '#333', color: '#fff' } });
                   }
                 }}
                 disabled={sentAccelerate}
                 className={`btn-primary w-full py-3 rounded-md text-white ${
-                  sentAccelerate
-                    ? 'bg-gray-600 cursor-not-allowed opacity-60'
-                    : 'bg-blue-600 hover:bg-blue-700'
+                  sentAccelerate ? 'bg-gray-600 cursor-not-allowed opacity-60' : 'bg-blue-600 hover:bg-blue-700'
                 }`}
               >
                 {sentAccelerate ? '✅ تم إرسال الطلب للمعلم' : <><FaEnvelope className="inline-block me-2" /> إرسال رسالة لتسريع الطلب</>}
               </button>
-              <button
-                onClick={() => setShowPendingRequestModal(false)}
-                className="btn-primary bg-gray-600 hover:bg-gray-700 w-full py-3 rounded-md text-white"
-              >
-                إغلاق
-              </button>
+              <button onClick={() => setShowPendingRequestModal(false)} className="btn-primary bg-gray-600 hover:bg-gray-700 w-full py-3 rounded-md text-white">إغلاق</button>
             </div>
           </div>
         </div>
@@ -795,16 +710,10 @@ const StudentPanel = ({ user, onLogout }) => {
               تم ارسال طلب تعديل المعلومات سيتم مراجعة البيانات خلال 48 ساعة والتأكد من صحتها وتعديلها.
             </p>
             <div className="flex flex-col gap-3">
-              <button
-                onClick={() => sendContactTeacherMessage(profile, 'update')}
-                className="btn-primary bg-blue-600 hover:bg-blue-700 w-full py-3 rounded-md text-white"
-              >
+              <button onClick={() => sendContactTeacherMessage(profile, 'update')} className="btn-primary bg-blue-600 hover:bg-blue-700 w-full py-3 rounded-md text-white">
                 <FaComment className="inline-block me-2" /> تواصل مع المعلم لتسريع معالجة طلبك
               </button>
-              <button
-                onClick={() => setShowConfirmModal(false)}
-                className="btn-primary bg-red-600 hover:bg-red-700 w-full py-3 rounded-md text-white"
-              >
+              <button onClick={() => setShowConfirmModal(false)} className="btn-primary bg-red-600 hover:bg-red-700 w-full py-3 rounded-md text-white">
                 <FaClock className="inline-block me-2" /> انتظار
               </button>
             </div>
@@ -848,12 +757,7 @@ const StudentPanel = ({ user, onLogout }) => {
                 </div>
               </div>
             </div>
-            <button
-              onClick={() => setShowReviewResultModal(false)}
-              className="mt-4 btn-primary bg-gray-600 hover:bg-gray-700 w-full py-3 rounded-md text-white"
-            >
-              إغلاق
-            </button>
+            <button onClick={() => setShowReviewResultModal(false)} className="mt-4 btn-primary bg-gray-600 hover:bg-gray-700 w-full py-3 rounded-md text-white">إغلاق</button>
           </div>
         </div>
       )}

@@ -50,3 +50,23 @@ export const cleanPhoneNumber = (phone) => {
   if (!phone) return '';
   return phone.replace(/^0+/, '').replace(/[^0-9]/g, '');
 };
+
+// دالة ترتيب الطلاب أبجدياً (عربي ثم إنجليزي)
+export const sortStudentsAlphabetically = (students) => {
+  return [...students].sort((a, b) => {
+    const nameA = a.name || '';
+    const nameB = b.name || '';
+    
+    const isArabicA = /[\u0600-\u06FF]/.test(nameA);
+    const isArabicB = /[\u0600-\u06FF]/.test(nameB);
+    if (isArabicA && !isArabicB) return -1;
+    if (!isArabicA && isArabicB) return 1;
+    
+    const isEnglishA = /[a-zA-Z]/.test(nameA);
+    const isEnglishB = /[a-zA-Z]/.test(nameB);
+    if (isEnglishA && !isEnglishB) return -1;
+    if (!isEnglishA && isEnglishB) return 1;
+    
+    return nameA.localeCompare(nameB, 'ar');
+  });
+};

@@ -13,6 +13,7 @@ import FrozenAccount from './components/common/FrozenAccount';
 import SupervisorPanel from './components/panels/SupervisorPanel';
 import TeacherPanel from './components/panels/TeacherPanel';
 import StudentPanel from './components/panels/StudentPanel';
+import SystemManagerPanel from './components/panels/SystemManagerPanel'; // ملف جديد
 
 const App = () => {
   const [user, setUser] = useState(null);
@@ -126,7 +127,7 @@ const App = () => {
         return;
       }
 
-      if (profile.role === 'supervisor') {
+      if (profile.role === 'supervisor' || profile.role === 'system_manager') {
         if (!profile.isProfileComplete) {
           setPendingUserForComplete({
             id: docId,
@@ -231,6 +232,10 @@ const App = () => {
         onCompleteProfile={handleCompleteProfile}
       />
     );
+  }
+
+  if (user.role === 'system_manager') {
+    return <SystemManagerPanel user={user} onLogout={handleLogout} />;
   }
 
   if (user.role === 'supervisor') {

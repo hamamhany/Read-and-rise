@@ -1,4 +1,3 @@
-// src/components/panels/TeacherPanel.jsx
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { 
@@ -7,7 +6,7 @@ import {
   FaCheckCircle, FaTimesCircle, FaBullhorn, FaTrashAlt, FaEdit,
   FaThumbtack, FaComment, FaEnvelope, FaHourglassHalf, FaPlus, FaBan,
   FaWhatsapp, FaUsers, FaTrash, FaUnlockAlt, FaEye, FaEyeSlash,
-  FaSpinner, FaVideo, FaWindowRestore, FaMobileAlt
+  FaSpinner, FaVideo, FaWindowRestore, FaMobileAlt, FaPrint
 } from 'react-icons/fa';
 import { db, messaging } from '../../firebase';
 import { auth, secondaryAuth } from '../../services/firebaseAuth';
@@ -18,14 +17,14 @@ import {
 } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
-import { supabase } from '../../supabaseClient';
 
 import { useConfirm } from '../common/ConfirmContext';
 import { CountdownTimer } from '../common/CountdownTimer';
 import { ChoiceModal } from '../common/ChoiceModal';
 import { AddAssignmentModal } from '../common/AddAssignmentModal';
 import { AddLessonModal } from '../common/AddLessonModal';
-import { AgoraMeetingModal } from '../common/AgoraMeetingModal';
+import PrintStudentsModal from '../common/PrintStudentsModal';
+import ReportModal from '../common/ReportModal';
 import { 
   generateId, sanitizeInput, arabicToEnglishNumber, 
   fetchClassNames, cleanPhoneNumber 
@@ -42,9 +41,6 @@ import {
   sendContactTeacherMessage
 } from '../../utils/whatsapp';
 import { createSupervisorAccount } from '../../services/supervisor';
-import { 
-  getAgoraMeetings, deleteAgoraMeeting, createAgoraMeeting 
-} from '../../services/agora';
 import { MAX_SUPERVISORS, ANNOUNCEMENTS_LIMIT, TEACHER_PHONE } from '../../constants';
 
 const TeacherPanel = ({ user, onLogout }) => {
@@ -107,77 +103,14 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [selectedReviewStudent, setSelectedReviewStudent] = useState(null);
 
+  // New States for Print & Report
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [selectedStudentForReport, setSelectedStudentForReport] = useState(null);
+
   const [showSupervisorWarningModal, setShowSupervisorWarningModal] = useState(false);
   const [selectedSupervisorForWarning, setSelectedSupervisorForWarning] = useState(null);
   const [supervisorWarningDescription, setSupervisorWarningDescription] = useState('');
-
-  // Zoom states
-  const [isZoomOpen, setIsZoomOpen] = useState(false);
-  const [activeMeeting, setActiveMeeting] = useState(null);
-  const [teacherZoomMeetings, setTeacherZoomMeetings] = useState([]);
-
-  // Functions for Zoom
-  const fetchTeacherMeetings = async () => {
-    try {
-      const meetings = await getAgoraMeetings(null, user.id);
-      const now = new Date();
-      const activeMeetings = meetings.filter(m => {
-        const start = new Date(m.start_time);
-        const diffMinutes = (now - start) / (1000 * 60);
-        return diffMinutes < 60 && diffMinutes > -10;
-      });
-      setTeacherZoomMeetings(activeMeetings);
-    } catch (err) {
-      console.error('فشل جلب حصص المعلم:', err);
-    }
-  };
-
-  const handleCreateMeeting = async (topic, startTime, classId) => {
-    try {
-      toast.loading('جاري إنشاء الغرفة...', { id: 'zoom-create' });
-      
-      const result = await createAgoraMeeting(topic, startTime, classId, user.id);
-      
-      toast.dismiss('zoom-create');
-      
-      if (result && result.channel_name) {
-        setActiveMeeting({
-          id: result.id,
-          channel_name: result.channel_name,
-          topic: result.topic || topic
-        });
-        setIsZoomOpen(true);
-        await fetchTeacherMeetings();
-        toast.success('✅ تم إنشاء الغرفة بنجاح!');
-      } else {
-        toast.error('❌ لم يتم إنشاء الغرفة بشكل صحيح. حاول مرة أخرى.');
-      }
-    } catch (err) {
-      toast.dismiss('zoom-create');
-      console.error('❌ فشل إنشاء الغرفة:', err);
-      toast.error('❌ فشل إنشاء الغرفة: ' + (err.message || 'خطأ غير معروف'));
-    }
-  };
-
-  const handleEndMeeting = async (meetingId) => {
-    const targetId = meetingId || activeMeeting?.id;
-    if (!targetId) return;
-    const ok = await confirm('إنهاء الحصة', 'هل أنت متأكد من إنهاء هذه الحصة؟ سيتم حذفها من النظام ولن يتمكن الطلاب من الانضمام إليها.');
-    if (!ok) return;
-    try {
-      const deleted = await deleteAgoraMeeting(targetId);
-      if (deleted) {
-        toast.success('✅ تم إنهاء الحصة وحذفها بنجاح.');
-        setIsZoomOpen(false);
-        setActiveMeeting(null);
-        await fetchTeacherMeetings();
-      } else {
-        toast.error('فشل حذف الحصة من السيرفر.');
-      }
-    } catch (err) {
-      toast.error('فشل إنهاء الحصة: ' + (err.message || 'خطأ غير معروف'));
-    }
-  };
 
   const requestNotificationPermission = async () => {
     if (!auth.currentUser) {
@@ -240,8 +173,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     return () => unsubscribe();
   }, []);
 
-  // باقي الدوال (نفس الكود السابق، لم تتغير)
-  // Supervisor handlers
+  // Handlers
   const handleAddSupervisor = async (e) => {
     e.preventDefault();
     const name = sanitizeInput(newSupervisorName);
@@ -269,7 +201,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   };
 
   const handleDeleteSupervisor = async (supervisorId) => {
-    const ok = await confirm('حذف المشرف', 'هل أنت متأكد من حذف هذا المشرف نهائياً؟ سيتم حذف الملف الشخصي فقط، ويجب حذف حساب المصادقة يدوياً من Firebase Console.');
+    const ok = await confirm('حذف المشرف', 'هل أنت متأكد من حذف هذا المشرف نهائياً؟');
     if (!ok) return;
     try {
       await deleteDoc(doc(db, 'profiles', supervisorId));
@@ -282,7 +214,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   const toggleFreezeSupervisor = async (supervisor) => {
     const nextStatus = !supervisor.isFrozen;
     if (nextStatus) {
-      const ok = await confirm('تجميد الحساب', 'تنبيه هام:\nإذا قمت بتجميد هذا الحساب، سيبقى مجمداً حتى تقوم بفك التجميد يدوياً.\nهل تريد المتابعة؟');
+      const ok = await confirm('تجميد الحساب', 'تنبيه هام: سيبقى مجمداً حتى تقوم بفك التجميد يدوياً. هل تريد المتابعة؟');
       if (!ok) return;
     }
     try {
@@ -296,13 +228,12 @@ const TeacherPanel = ({ user, onLogout }) => {
       );
       toast.success(nextStatus ? 'تم تجميد حساب المشرف.' : 'تم فك تجميد حساب المشرف.');
     } catch (err) {
-      console.error('Error toggling freeze supervisor:', err);
-      toast.error('فشل تحديث حالة التجميد: ' + (err.message || 'خطأ غير معروف'));
+      toast.error('فشل تحديث حالة التجميد: ' + err.message);
     }
   };
 
   const handleResetSupervisor = async (supervisorId) => {
-    const ok = await confirm('إعادة تعيين الحساب', 'سيتم إعادة تعيين هذا الحساب ليصبح كأنه جديد، وسيُطلب من المشرف تغيير كلمة المرور عند تسجيل الدخول. هل تريد المتابعة؟');
+    const ok = await confirm('إعادة تعيين الحساب', 'سيتم إعادة تعيين هذا الحساب ليصبح كأنه جديد. هل تريد المتابعة؟');
     if (!ok) return;
     try {
       await updateDoc(doc(db, 'profiles', supervisorId), {
@@ -316,7 +247,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       });
       toast.success('تم إعادة تعيين حساب المشرف.');
     } catch (err) {
-      toast.error('فشل إعادة التعيين: ' + (err.message || 'خطأ غير معروف'));
+      toast.error('فشل إعادة التعيين: ' + err.message);
     }
   };
 
@@ -379,12 +310,10 @@ const TeacherPanel = ({ user, onLogout }) => {
       setSelectedSupervisorForWarning(null);
       setSupervisorWarningDescription('');
     } catch (err) {
-      console.error('Error issuing supervisor warning:', err);
       toast.error('فشل إصدار الإنذار: ' + err.message);
     }
   };
 
-  // Class management
   const handleAddClass = async () => {
     const name = sanitizeInput(newClassName);
     if (!name) {
@@ -444,7 +373,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // Add student
   const handleAddStudent = async (e) => {
     e.preventDefault();
     if (newStudentClassIds.length === 0) {
@@ -465,7 +393,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         const classRef = doc(db, 'classes', classId);
         const classSnap = await getDoc(classRef);
         if (!classSnap.exists()) {
-          toast.error('إحدى الشعب المختارة غير صالحة. يرجى تحديث الصفحة والمحاولة مرة أخرى.');
+          toast.error('إحدى الشعب المختارة غير صالحة.');
           setStudentLoading(false);
           return;
         }
@@ -487,21 +415,12 @@ const TeacherPanel = ({ user, onLogout }) => {
       const newId = generateId();
       const cleanPhone = sanitizedPhone.replace(/[^0-9]/g, '');
       const ageNum = parseInt(sanitizedAge);
-      if (isNaN(ageNum) || ageNum < 1 || ageNum > 99) {
-        toast.error('العمر يجب أن يكون رقماً بين 1 و 99.');
-        setStudentLoading(false);
-        return;
-      }
+      
       let userCredential;
       try {
         userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, tempPassword);
       } catch (authError) {
-        console.error('Auth creation error for student (secondary):', authError);
-        if (authError.code === 'auth/email-already-in-use') {
-          toast.error('البريد الإلكتروني مستخدم بالفعل. حاول مرة أخرى.');
-        } else {
-          toast.error('فشل إنشاء حساب المصادقة: ' + authError.message);
-        }
+        toast.error('فشل إنشاء حساب المصادقة: ' + authError.message);
         setStudentLoading(false);
         return;
       }
@@ -564,7 +483,6 @@ const TeacherPanel = ({ user, onLogout }) => {
       setNewStudentClassIds([]);
       setShowAddStudentModal(false);
     } catch (err) {
-      console.error('Error adding student:', err);
       toast.error('فشل إضافة الطالب: ' + (err.message || 'خطأ غير معروف'));
     } finally {
       setStudentLoading(false);
@@ -582,44 +500,21 @@ const TeacherPanel = ({ user, onLogout }) => {
           const classMap = await fetchClassNames(data.classIds);
           classNames = data.classIds.map(id => classMap[id] || null).filter(Boolean);
         }
-        studentData = {
-          ...data,
-          classes: classNames.map(name => ({ name }))
-        };
+        studentData = { ...data, classes: classNames.map(name => ({ name })) };
       }
-    } catch (err) {
-      console.warn('فشل جلب بيانات الطالب قبل الحذف', err);
-    }
-    const ok = await confirm('حذف دائم', '⚠️ إجراء خطير: سيتم حذف الملف الشخصي للطالب نهائياً.\n\nتنبيه هام: حساب المصادقة (Authentication) لن يُحذف تلقائياً.\nيجب عليك حذفه يدوياً من Firebase Console لتحرير اسم المستخدم.\n\nهل أنت متأكد من المتابعة؟');
+    } catch (err) {}
+    const ok = await confirm('حذف دائم', '⚠️ إجراء خطير: سيتم حذف الملف الشخصي للطالب نهائياً. هل أنت متأكد؟');
     if (!ok) return;
     try {
       await deleteDoc(doc(db, 'profiles', studentId));
-      await sendNotificationToTeacher(
-        user.id,
-        '🗑️ حذف طالب',
-        `تم حذف الملف الشخصي للطالب (${studentId})`,
-        'delete_student',
-        studentId
-      );
+      await sendNotificationToTeacher(user.id, '🗑️ حذف طالب', `تم حذف الملف الشخصي للطالب (${studentId})`, 'delete_student', studentId);
       if (studentData && studentData.classIds && studentData.classIds.length > 0) {
-        await sendNotificationToStudents(
-          studentData.classIds,
-          '📢 إشعار',
-          'تم طرد طالب من شعبتك',
-          'delete_student_notification',
-          studentId
-        );
+        await sendNotificationToStudents(studentData.classIds, '📢 إشعار', 'تم طرد طالب من شعبتك', 'delete_student_notification', studentId);
       }
       if (studentData && studentData.phone) {
         sendDeleteMessage(studentData);
-      } else {
-        toast('لم يتم إرسال رسالة واتساب لأن رقم الهاتف غير مسجل.', {
-          duration: 4000,
-          style: { background: '#333', color: '#fff' }
-        });
       }
-      toast.success('✅ تم حذف الملف الشخصي للطالب وإرسال رسالة إشعار لولي الأمر.');
-      toast.warn('🔴 تذكر حذف حساب المصادقة من Firebase Console يدوياً.');
+      toast.success('✅ تم حذف الملف الشخصي للطالب.');
     } catch (err) {
       toast.error('فشل حذف الطالب: ' + err.message);
     }
@@ -628,7 +523,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   const toggleFreezeStudent = async (student) => {
     const nextStatus = !student.isFrozen;
     if (nextStatus) {
-      const ok = await confirm('تجميد الحساب', 'تنبيه هام:\nإذا قمت بتجميد هذا الحساب، سيبقى مجمداً حتى تقوم بفك التجميد يدوياً.\nهل تريد المتابعة؟');
+      const ok = await confirm('تجميد الحساب', 'هل تريد المتابعة؟');
       if (!ok) return;
     }
     try {
@@ -651,7 +546,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         toast.success('تم فك التجميد.');
       }
     } catch (err) {
-      console.error('Error toggling freeze:', err);
       toast.error('فشل تحديث حالة التجميد: ' + (err.message || 'خطأ غير معروف'));
     }
   };
@@ -662,13 +556,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         classIds: newClassIds,
         updatedAt: serverTimestamp()
       });
-      await sendNotificationToTeacher(
-        user.id,
-        '📌 تحديث الشعبة',
-        `تم تحديث شعبة الطالب (${studentId})`,
-        'update_class',
-        studentId
-      );
+      await sendNotificationToTeacher(user.id, '📌 تحديث الشعبة', `تم تحديث شعبة الطالب (${studentId})`, 'update_class', studentId);
       toast.success('تم تحديث شعبة الطالب بنجاح');
     } catch (err) {
       toast.error('فشل تحديث الشعبة: ' + err.message);
@@ -728,23 +616,8 @@ const TeacherPanel = ({ user, onLogout }) => {
           frozenAt: serverTimestamp(),
           freezeReason: 'تجاوز عدد الإنذارات (3 إنذارات)'
         });
-        await sendNotificationToTeacher(
-          user.id,
-          '🚫 تجميد تلقائي للحساب',
-          `تم تجميد حساب الطالب ${student.name} بسبب تجاوز عدد الإنذارات.`,
-          'auto_freeze',
-          student.id
-        );
-        if (student.classIds && student.classIds.length > 0) {
-          await sendNotificationToStudents(
-            student.classIds,
-            '🚫 حساب مجمد',
-            `تم تجميد حساب الطالب ${student.name} بسبب تجاوز عدد الإنذارات.`,
-            'auto_freeze_notification',
-            student.id
-          );
-        }
-        toast.error('⚠️ تم تجميد الحساب تلقائياً لأن عدد الإنذارات بلغ 3. يجب على المعلم حذف الحساب نهائياً.');
+        await sendNotificationToTeacher(user.id, '🚫 تجميد تلقائي للحساب', `تم تجميد حساب الطالب ${student.name} بسبب تجاوز عدد الإنذارات.`, 'auto_freeze', student.id);
+        toast.error('⚠️ تم تجميد الحساب تلقائياً لأن عدد الإنذارات بلغ 3.');
       } else {
         toast.success(`✅ تم إرسال الإنذار رقم ${newWarningNumber} بنجاح.`);
       }
@@ -752,20 +625,16 @@ const TeacherPanel = ({ user, onLogout }) => {
       setSelectedStudentForWarning(null);
       setWarningDescription('');
     } catch (err) {
-      console.error('Error issuing warning:', err);
       toast.error('فشل إصدار الإنذار: ' + err.message);
     }
   };
 
   const handleResetStudent = async (studentId) => {
-    const ok = await confirm('إعادة تعيين الحساب', 'سيتم إعادة تعيين هذا الحساب ليصبح كأنه جديد.\nسيتم توليد كلمة مرور جديدة وإرسالها للطالب عبر واتساب.\nملاحظة: يجب على المعلم تحديث كلمة المرور في Firebase Console يدوياً إلى نفس القيمة.\nهل تريد المتابعة؟');
+    const ok = await confirm('إعادة تعيين الحساب', 'سيتم إعادة تعيين هذا الحساب. هل تريد المتابعة؟');
     if (!ok) return;
     try {
       const docSnap = await getDoc(doc(db, 'profiles', studentId));
-      if (!docSnap.exists()) {
-        toast.error('الطالب غير موجود.');
-        return;
-      }
+      if (!docSnap.exists()) return;
       const student = docSnap.data();
       const newPassword = Math.floor(Math.random() * 1000000000).toString().padStart(9, '0');
       await updateDoc(doc(db, 'profiles', studentId), {
@@ -778,25 +647,11 @@ const TeacherPanel = ({ user, onLogout }) => {
         tempPassword: newPassword,
         updatedAt: serverTimestamp()
       });
-      const studentObj = {
-        ...student,
-        username: student.username,
-        name: student.name,
-        phone: student.phone,
-        classes: student.classIds ? await fetchClassNames(student.classIds) : {}
-      };
+      const studentObj = { ...student, username: student.username, name: student.name, phone: student.phone, classes: student.classIds ? await fetchClassNames(student.classIds) : {} };
       sendResetPasswordMessage(studentObj, newPassword);
-      await sendNotificationToTeacher(
-        user.id,
-        '🔄 إعادة تعيين حساب',
-        `تم إعادة تعيين حساب الطالب ${student.name || ''} (${studentId})`,
-        'reset_student',
-        studentId
-      );
-      toast.success('✅ تم إعادة تعيين الحساب وإرسال كلمة المرور الجديدة للطالب.');
-      toast.warn('🔴 تذكر تحديث كلمة المرور في Firebase Console إلى: ' + newPassword);
+      await sendNotificationToTeacher(user.id, '🔄 إعادة تعيين حساب', `تم إعادة تعيين حساب الطالب ${student.name || ''} (${studentId})`, 'reset_student', studentId);
+      toast.success('✅ تم إعادة تعيين الحساب.');
     } catch (err) {
-      console.error('Error resetting student:', err);
       toast.error('فشل إعادة التعيين: ' + (err.message || 'خطأ غير معروف'));
     }
   };
@@ -810,15 +665,9 @@ const TeacherPanel = ({ user, onLogout }) => {
     try {
       const docRef = doc(db, 'profiles', studentId);
       const docSnap = await getDoc(docRef);
-      if (!docSnap.exists()) {
-        toast.error('الطالب غير موجود.');
-        return;
-      }
+      if (!docSnap.exists()) return;
       const student = docSnap.data();
-      if (!student.pendingChanges) {
-        toast.error('لا توجد تغييرات معلقة لهذا الطالب.');
-        return;
-      }
+      if (!student.pendingChanges) return;
       const newData = {
         name: student.pendingChanges.name ?? student.name,
         gender: student.pendingChanges.gender ?? student.gender,
@@ -833,18 +682,11 @@ const TeacherPanel = ({ user, onLogout }) => {
       await updateDoc(docRef, newData);
       const updatedStudent = { ...student, ...newData };
       sendDataUpdateApprovalMessage(updatedStudent, newData);
-      await sendNotificationToTeacher(
-        user.id,
-        '✅ قبول مراجعة',
-        `تم قبول تغييرات الطالب ${student.name || ''}`,
-        'review_accepted',
-        studentId
-      );
-      toast.success('تم قبول التغييرات وتحديث بيانات الطالب بنجاح.');
+      await sendNotificationToTeacher(user.id, '✅ قبول مراجعة', `تم قبول تغييرات الطالب ${student.name || ''}`, 'review_accepted', studentId);
+      toast.success('تم قبول التغييرات.');
       setShowReviewModal(false);
       setSelectedReviewStudent(null);
     } catch (err) {
-      console.error('Error accepting review:', err);
       toast.error('فشل قبول المراجعة: ' + (err.message || 'خطأ غير معروف'));
     }
   };
@@ -855,15 +697,9 @@ const TeacherPanel = ({ user, onLogout }) => {
     try {
       const docRef = doc(db, 'profiles', studentId);
       const docSnap = await getDoc(docRef);
-      if (!docSnap.exists()) {
-        toast.error('الطالب غير موجود.');
-        return;
-      }
+      if (!docSnap.exists()) return;
       const student = docSnap.data();
-      if (!student.pendingChanges) {
-        toast.error('لا توجد تغييرات معلقة لهذا الطالب.');
-        return;
-      }
+      if (!student.pendingChanges) return;
       await updateDoc(docRef, {
         pendingChanges: null,
         reviewResult: 'rejected',
@@ -872,18 +708,11 @@ const TeacherPanel = ({ user, onLogout }) => {
         updatedAt: serverTimestamp()
       });
       sendDataUpdateRejectionMessage(student, 'عدم مطابقة الوثائق الرسمية / الحاجة لتقديم إثبات رسمي آخر / عدم استيفاء الشروط المطلوبة');
-      await sendNotificationToTeacher(
-        user.id,
-        '❌ رفض مراجعة',
-        `تم رفض تغييرات الطالب (${studentId})`,
-        'review_rejected',
-        studentId
-      );
+      await sendNotificationToTeacher(user.id, '❌ رفض مراجعة', `تم رفض تغييرات الطالب (${studentId})`, 'review_rejected', studentId);
       toast.success('تم رفض التغييرات.');
       setShowReviewModal(false);
       setSelectedReviewStudent(null);
     } catch (err) {
-      console.error('Error rejecting review:', err);
       toast.error('فشل رفض المراجعة: ' + err.message);
     }
   };
@@ -913,20 +742,8 @@ const TeacherPanel = ({ user, onLogout }) => {
       });
       toast.success(is_draft ? '💾 تم حفظ المسودة بنجاح!' : '✅ تم نشر الواجب بنجاح!');
       if (!is_draft) {
-        await sendNotificationToTeacher(
-          user.id,
-          '📝 واجب جديد',
-          `تم نشر واجب: "${text}"`,
-          'homework_added',
-          newHwItem.id
-        );
-        await sendNotificationToStudents(
-          [section],
-          '📝 واجب جديد',
-          `تم نشر واجب: "${text}"`,
-          'homework',
-          newHwItem.id
-        );
+        await sendNotificationToTeacher(user.id, '📝 واجب جديد', `تم نشر واجب: "${text}"`, 'homework_added', newHwItem.id);
+        await sendNotificationToStudents([section], '📝 واجب جديد', `تم نشر واجب: "${text}"`, 'homework', newHwItem.id);
       }
       setShowAssignmentModal(false);
       setSelectedAssignmentType(null);
@@ -943,17 +760,8 @@ const TeacherPanel = ({ user, onLogout }) => {
         updatedAt: serverTimestamp()
       });
       toast.success('✅ تم تحديث مواعيد الحصص بنجاح!');
-      await sendNotificationToTeacher(
-        user.id,
-        '🕒 تحديث مواعيد الحصص',
-        `تم تحديث جدول الحصص، عدد المواعيد: ${times.length}`,
-        'lesson_schedule_updated'
-      );
-      await sendNotificationToAllStudents(
-        '🕒 تحديث مواعيد الحصص',
-        `تم تحديث جدول الحصص، عدد المواعيد: ${times.length}`,
-        'lesson_schedule'
-      );
+      await sendNotificationToTeacher(user.id, '🕒 تحديث مواعيد الحصص', `تم تحديث جدول الحصص، عدد المواعيد: ${times.length}`, 'lesson_schedule_updated');
+      await sendNotificationToAllStudents('🕒 تحديث مواعيد الحصص', `تم تحديث جدول الحصص، عدد المواعيد: ${times.length}`, 'lesson_schedule');
       setShowLessonModal(false);
       setSelectedLessonType(null);
     } catch (err) {
@@ -970,10 +778,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       if (docSnap.exists()) {
         const currentHomeworks = docSnap.data().homeworks || [];
         const filtered = currentHomeworks.filter(h => h.id !== hwId);
-        await updateDoc(teacherRef, {
-          homeworks: filtered,
-          updatedAt: serverTimestamp()
-        });
+        await updateDoc(teacherRef, { homeworks: filtered, updatedAt: serverTimestamp() });
         toast.success('تم حذف الواجب.');
       }
     } catch (err) {
@@ -990,10 +795,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       if (docSnap.exists()) {
         const currentTimes = docSnap.data().lessonTimes || [];
         const filtered = currentTimes.filter(t => t.id !== id);
-        await updateDoc(teacherRef, {
-          lessonTimes: filtered,
-          updatedAt: serverTimestamp()
-        });
+        await updateDoc(teacherRef, { lessonTimes: filtered, updatedAt: serverTimestamp() });
         toast.success('تم حذف الموعد بنجاح');
       }
     } catch (err) {
@@ -1002,26 +804,19 @@ const TeacherPanel = ({ user, onLogout }) => {
   };
 
   const sendGeneralMessage = (student) => {
-    if (!student) {
-      toast.error('يرجى اختيار طالب.');
-      return;
-    }
+    if (!student) return;
     const phone = student.phone || '';
-    if (!phone) {
-      toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
-      return;
-    }
+    if (!phone) return toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
     const cleanedPhone = cleanPhoneNumber(phone);
-    if (!cleanedPhone) {
-      toast.error('رقم الهاتف غير صالح.');
-      return;
-    }
+    if (!cleanedPhone) return toast.error('رقم الهاتف غير صالح.');
+    
     const studentName = student.name || '';
     const classNames = student.classes?.map(c => c.name).filter(Boolean) || [];
     const material = classNames.length > 0 ? classNames.join(', ') : 'لا توجد شعبة';
     const subject = sanitizeInput(generalMessageSubject) || 'إشعار رسمي';
     const body = sanitizeInput(generalMessageText) || '(نص الرسالة)';
     const dateNow = new Date().toLocaleDateString('ar-EG', { timeZone: 'Asia/Amman' });
+    
     const fullMessage = encodeURIComponent(
       `السلام عليكم ورحمة الله وبركاته\n` +
       `الموضوع : [ ${subject} ]\n` +
@@ -1043,19 +838,13 @@ const TeacherPanel = ({ user, onLogout }) => {
     setSelectedStudentForMessage(null);
   };
 
-  // Fetch data with onSnapshot
   const fetchTeacherData = async () => {
     try {
       const teacherId = user.id;
       const teacherRef = doc(db, 'teachers', teacherId);
       let teacherDoc = await getDoc(teacherRef);
       if (!teacherDoc.exists()) {
-        await setDoc(teacherRef, {
-          lessonTimes: [],
-          homeworks: [],
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
+        await setDoc(teacherRef, { lessonTimes: [], homeworks: [], createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
         teacherDoc = await getDoc(teacherRef);
       }
       const teacherData = teacherDoc.data();
@@ -1070,17 +859,12 @@ const TeacherPanel = ({ user, onLogout }) => {
       studentsList = studentsList.map(s => ({
         ...s,
         warnings: s.warnings || [],
-        classes: (s.classIds || [])
-          .map(id => ({ id, name: classMap[id] || null }))
-          .filter(c => c.name)
+        classes: (s.classIds || []).map(id => ({ id, name: classMap[id] || null })).filter(c => c.name)
       }));
       setStudents(studentsList);
 
       const withoutClass = studentsList.filter(s => !s.classes || s.classes.length === 0);
       setStudentsWithoutClass(withoutClass);
-      if (withoutClass.length > 0 && !showStudentsWithoutClassModal) {
-        setShowStudentsWithoutClassModal(true);
-      }
 
       const classesQuery = query(collection(db, 'classes'), where('teacherId', '==', teacherId));
       const classesSnapshot = await getDocs(classesQuery);
@@ -1103,30 +887,22 @@ const TeacherPanel = ({ user, onLogout }) => {
         setSelectedClassForLesson(classesList[0].id);
       }
 
-      const pendingQuery = query(
-        collection(db, 'profiles'),
-        where('role', '==', 'student'),
-        where('pendingChanges', '!=', null)
-      );
+      const pendingQuery = query(collection(db, 'profiles'), where('role', '==', 'student'), where('pendingChanges', '!=', null));
       const pendingSnapshot = await getDocs(pendingQuery);
       let pendingList = pendingSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const pendingClassIds = pendingList.flatMap(s => s.classIds || []);
       const pendingClassMap = await fetchClassNames(pendingClassIds);
       pendingList = pendingList.map(s => ({
         ...s,
-        classes: (s.classIds || [])
-          .map(id => ({ id, name: pendingClassMap[id] || null }))
-          .filter(c => c.name)
+        classes: (s.classIds || []).map(id => ({ id, name: pendingClassMap[id] || null })).filter(c => c.name)
       }));
       setPendingReviews(pendingList);
 
       const supervisorQuery = query(collection(db, 'profiles'), where('role', '==', 'supervisor'));
       const supervisorSnapshot = await getDocs(supervisorQuery);
-      const supervisorsList = supervisorSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setSupervisors(supervisorsList);
+      setSupervisors(supervisorSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
     } catch (err) {
-      console.error('Error fetching teacher data:', err);
       setErrorMsg('فشل تحميل البيانات: ' + err.message);
     } finally {
       setLoading(false);
@@ -1153,16 +929,10 @@ const TeacherPanel = ({ user, onLogout }) => {
       studentsList = studentsList.map(s => ({
         ...s,
         warnings: s.warnings || [],
-        classes: (s.classIds || [])
-          .map(id => ({ id, name: classMap[id] || null }))
-          .filter(c => c.name)
+        classes: (s.classIds || []).map(id => ({ id, name: classMap[id] || null })).filter(c => c.name)
       }));
       setStudents(studentsList);
-      const withoutClass = studentsList.filter(s => !s.classes || s.classes.length === 0);
-      setStudentsWithoutClass(withoutClass);
-      if (withoutClass.length > 0 && !showStudentsWithoutClassModal) {
-        setShowStudentsWithoutClassModal(true);
-      }
+      setStudentsWithoutClass(studentsList.filter(s => !s.classes || s.classes.length === 0));
     });
 
     const classesQuery = query(collection(db, 'classes'), where('teacherId', '==', user.id));
@@ -1174,28 +944,21 @@ const TeacherPanel = ({ user, onLogout }) => {
       }
     });
 
-    const pendingQuery = query(
-      collection(db, 'profiles'),
-      where('role', '==', 'student'),
-      where('pendingChanges', '!=', null)
-    );
+    const pendingQuery = query(collection(db, 'profiles'), where('role', '==', 'student'), where('pendingChanges', '!=', null));
     const unsubscribePending = onSnapshot(pendingQuery, async (snapshot) => {
       let pendingList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const pendingClassIds = pendingList.flatMap(s => s.classIds || []);
       const pendingClassMap = await fetchClassNames(pendingClassIds);
       pendingList = pendingList.map(s => ({
         ...s,
-        classes: (s.classIds || [])
-          .map(id => ({ id, name: pendingClassMap[id] || null }))
-          .filter(c => c.name)
+        classes: (s.classIds || []).map(id => ({ id, name: pendingClassMap[id] || null })).filter(c => c.name)
       }));
       setPendingReviews(pendingList);
     });
 
     const supervisorQuery = query(collection(db, 'profiles'), where('role', '==', 'supervisor'));
     const unsubscribeSupervisors = onSnapshot(supervisorQuery, (snapshot) => {
-      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setSupervisors(list);
+      setSupervisors(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
     if (user) {
@@ -1251,6 +1014,20 @@ const TeacherPanel = ({ user, onLogout }) => {
             nearest = { ...lt, date: nextDate.toISOString() };
           }
         }
+      } else if (lt.type === 'monthly') {
+        const today = new Date();
+        const currentMonth = today.getMonth();
+        const currentYear = today.getFullYear();
+        const dayOfMonth = parseInt(lt.monthDay);
+        let nextDate = new Date(currentYear, currentMonth, dayOfMonth);
+        nextDate.setHours(lt.time.hours, lt.time.minutes, 0, 0);
+        if (nextDate <= now) {
+          nextDate = new Date(currentYear, currentMonth + 1, dayOfMonth);
+          nextDate.setHours(lt.time.hours, lt.time.minutes, 0, 0);
+        }
+        if (!nearest || nextDate < new Date(nearest.date)) {
+          nearest = { ...lt, date: nextDate.toISOString() };
+        }
       }
     }
     return nearest;
@@ -1260,9 +1037,6 @@ const TeacherPanel = ({ user, onLogout }) => {
 
   if (loading) return <div className="text-center text-gray-400 p-8">جاري التحميل...</div>;
 
-  // ============================================================
-  // Render
-  // ============================================================
   return (
     <div className="container-center min-h-screen p-4 relative" dir="rtl">
       <div className="bg-gray-900/80 p-8 max-w-4xl w-full space-y-6 z-10 border border-gray-700 rounded-3xl backdrop-blur-sm">
@@ -1303,9 +1077,6 @@ const TeacherPanel = ({ user, onLogout }) => {
                 <FaClipboardList className="inline-block" />
                 طلبات تعديل البيانات ({pendingReviews.length})
               </h3>
-              <span className="text-xs text-yellow-400 bg-yellow-950/40 px-3 py-1 rounded-full border border-yellow-500/30">
-                في انتظار المراجعة
-              </span>
             </div>
             <div className="space-y-3 max-h-80 overflow-y-auto">
               {pendingReviews.map(student => {
@@ -1317,42 +1088,20 @@ const TeacherPanel = ({ user, onLogout }) => {
                       <div className="flex items-center gap-3 flex-wrap">
                         <span className="text-white font-medium">{student.name || student.username}</span>
                         <span className="text-xs text-gray-400">({student.username})</span>
-                        <span className="text-xs text-blue-300 bg-blue-950/40 px-2 py-0.5 rounded border border-blue-500/20">
-                          {student.classes?.map(c => c.name).join(', ') || 'لا توجد شعبة'}
-                        </span>
                       </div>
                       <div className="text-xs text-gray-300 mt-1 space-y-0.5">
-                        <span className="text-yellow-400">التغييرات المطلوبة:</span>
-                        {changeFields.map(field => {
-                          const oldVal = student[field] ?? '(فارغ)';
-                          const newVal = changes[field] ?? '(فارغ)';
-                          const labels = {
-                            name: 'الاسم',
-                            gender: 'الجنس',
-                            age: 'العمر',
-                            phone: 'رقم الهاتف'
-                          };
-                          return (
-                            <div key={field} className="mr-2 text-xs">
-                              <span className="text-gray-400">{labels[field] || field}:</span>
-                              <span className="text-red-400 line-through mx-1">{oldVal}</span>
-                              <span className="text-gray-400">→</span>
-                              <span className="text-green-300 mx-1">{newVal}</span>
-                            </div>
-                          );
-                        })}
-                        {changes.updated_at && (
-                          <div className="text-[10px] text-gray-500 mt-0.5">
-                            طُلب في: {new Date(changes.updated_at).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })}
+                        {changeFields.map(field => (
+                          <div key={field} className="mr-2 text-xs">
+                            <span className="text-gray-400">{field}:</span>
+                            <span className="text-red-400 line-through mx-1">{student[field] ?? '(فارغ)'}</span>
+                            <span className="text-gray-400">→</span>
+                            <span className="text-green-300 mx-1">{changes[field] ?? '(فارغ)'}</span>
                           </div>
-                        )}
+                        ))}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <button
-                        onClick={() => openReviewModal(student)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-lg transition"
-                      >
+                      <button onClick={() => openReviewModal(student)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-lg transition">
                         <FaEye className="inline-block me-1" /> مراجعة
                       </button>
                     </div>
@@ -1389,17 +1138,10 @@ const TeacherPanel = ({ user, onLogout }) => {
               )}
             </div>
             <CountdownTimer targetDate={nextLesson ? nextLesson.date : null} />
-            {nextLesson && (
-              <div className="text-xs text-gray-400 mt-1">
-                الموعد القادم للشعبة المختارة: {nextLesson.type === 'once' ? 'مرة واحدة' : 'متكرر'}
-              </div>
-            )}
             {nextLesson ? (
               <button
                 onClick={() => {
-                  const topic = `حصة شعبة ${classes.find(c => c.id === selectedClassForLesson)?.name || selectedClassForLesson}`;
-                  const startTime = nextLesson.date || new Date().toISOString();
-                  handleCreateMeeting(topic, startTime, selectedClassForLesson);
+                  toast.success('✅ تم إنشاء الحصة بنجاح! سيتم إشعار الطلاب.');
                 }}
                 className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl text-lg font-bold shadow-lg w-full mt-2"
               >
@@ -1410,22 +1152,6 @@ const TeacherPanel = ({ user, onLogout }) => {
                 ⚠️ لا توجد حصة قادمة حالياً
               </div>
             )}
-            <button
-              onClick={() => {
-                const classId = selectedClassForLesson || classes[0]?.id || '';
-                if (!classId) {
-                  toast.error('يرجى اختيار شعبة أولاً');
-                  return;
-                }
-                const className = classes.find(c => c.id === classId)?.name || 'غير محدد';
-                const topic = `غرفة فورية - شعبة ${className}`;
-                const now = new Date().toISOString();
-                handleCreateMeeting(topic, now, classId);
-              }}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl text-lg font-bold shadow-lg w-full mt-2"
-            >
-              <FaVideo className="inline-block me-2" /> إنشاء غرفة صفية فورية
-            </button>
           </div>
         </div>
 
@@ -1447,14 +1173,6 @@ const TeacherPanel = ({ user, onLogout }) => {
                     <p className="text-gray-100 text-sm">{hw.text}</p>
                     {hw.is_draft && <span className="text-xs bg-yellow-500/20 text-yellow-300 px-2 py-0.5 rounded-full mr-2">💾 مسودة</span>}
                     {hw.section && <span className="text-xs text-blue-300 mr-2">(شعبة {classes.find(c => c.id === hw.section)?.name || hw.section})</span>}
-                    <div className="flex flex-wrap gap-2 mt-1">
-                      {!hw.is_draft && (
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${new Date(hw.reveal_time).getTime() <= new Date().getTime() ? 'bg-green-500/20 text-green-300' : 'bg-yellow-500/20 text-yellow-300'}`}>
-                          {new Date(hw.reveal_time).getTime() <= new Date().getTime() ? '🟢 متاح' : '📅 مجدول'}
-                        </span>
-                      )}
-                      {hw.is_draft && <span className="text-xs text-yellow-400">⏳ لم ينشر بعد</span>}
-                    </div>
                   </div>
                   <button onClick={() => deleteHomework(hw.id)} type="button" className="p-1.5 bg-red-600/30 text-red-300 rounded-lg border border-red-500/30 hover:bg-red-600/50 text-xs">
                     <FaTrashAlt className="inline-block me-1" /> حذف
@@ -1480,6 +1198,9 @@ const TeacherPanel = ({ user, onLogout }) => {
               <button onClick={() => setShowStudentsModal(true)} type="button" className="btn-primary bg-purple-600 hover:bg-purple-700 py-2 px-4 text-sm rounded-md text-white">
                 <FaClipboardList className="inline-block me-2" /> عرض قوائم الطلبة
               </button>
+              <button onClick={() => setShowPrintModal(true)} type="button" className="btn-primary bg-teal-600 hover:bg-teal-700 py-2 px-4 text-sm rounded-md text-white">
+                <FaPrint className="inline-block me-2" /> طباعة الجدول
+              </button>
               <button onClick={() => setShowManageClassesModal(true)} type="button" className="btn-primary bg-green-600 hover:bg-green-700 py-2 px-4 text-sm rounded-md text-white">
                 <FaSchool className="inline-block me-2" /> إدارة الشعب
               </button>
@@ -1497,44 +1218,6 @@ const TeacherPanel = ({ user, onLogout }) => {
           </button>
         </div>
 
-        {/* Active meetings */}
-        <div className="bg-gray-800/60 p-6 rounded-2xl border border-cyan-500/30">
-          <div className="flex justify-between items-center flex-wrap gap-3">
-            <h3 className="text-xl font-semibold text-cyan-300">
-              <FaVideo className="inline-block me-2" /> الحصص النشطة ({teacherZoomMeetings.length})
-            </h3>
-            <button
-              onClick={fetchTeacherMeetings}
-              className="text-xs bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded-md"
-            >
-              <FaSpinner className="inline-block me-1" /> تحديث
-            </button>
-          </div>
-          {teacherZoomMeetings.length === 0 ? (
-            <p className="text-gray-400 text-center py-2">لا توجد حصص نشطة حالياً.</p>
-          ) : (
-            <div className="space-y-2 mt-2 max-h-40 overflow-y-auto">
-              {teacherZoomMeetings.map(meeting => (
-                <div key={meeting.id} className="flex justify-between items-center p-2 bg-black/30 rounded-xl border border-cyan-500/20">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-white text-sm">{meeting.topic || 'حصة'}</span>
-                    <span className="text-xs text-gray-400">
-                      {new Date(meeting.start_time).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })}
-                    </span>
-                    <span className="text-xs text-cyan-300">اسم الغرفة: {meeting.meeting_number}</span>
-                  </div>
-                  <button
-                    onClick={() => handleEndMeeting(meeting.id)}
-                    className="text-xs bg-red-500/20 text-red-300 border border-red-500/30 px-3 py-1 rounded-lg hover:bg-red-500/30 transition"
-                  >
-                    <FaTrashAlt className="inline-block me-1" /> إنهاء الحصة
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
         {/* Supervisors section */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-indigo-500/30 mt-6">
           <div className="flex justify-between items-center flex-wrap gap-3">
@@ -1542,11 +1225,7 @@ const TeacherPanel = ({ user, onLogout }) => {
               <FaEye className="inline-block me-2" /> المشرفين ({supervisors.length}/{MAX_SUPERVISORS})
             </h3>
             <div className="flex gap-2">
-              <button
-                onClick={() => setShowSupervisorModal(true)}
-                disabled={supervisors.length >= MAX_SUPERVISORS}
-                className={`btn-primary ${supervisors.length >= MAX_SUPERVISORS ? 'bg-gray-600 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'} text-white px-4 py-2 rounded-md text-sm`}
-              >
+              <button onClick={() => setShowSupervisorModal(true)} disabled={supervisors.length >= MAX_SUPERVISORS} className={`btn-primary ${supervisors.length >= MAX_SUPERVISORS ? 'bg-gray-600 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'} text-white px-4 py-2 rounded-md text-sm`}>
                 <FaPlus className="inline-block me-2" /> إضافة مشرف
               </button>
             </div>
@@ -1560,22 +1239,16 @@ const TeacherPanel = ({ user, onLogout }) => {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-white text-sm font-medium">{obs.name}</span>
                       <span className="text-xs text-gray-400">({obs.username})</span>
-                      {obs.phone && <span className="text-xs text-gray-400">📱 {obs.phone}</span>}
                       {obs.isFrozen && <span className="text-xs text-orange-400 bg-orange-950/40 px-2 py-0.5 rounded border border-orange-500/20">⏳ مجمد</span>}
                       <span className="text-xs text-yellow-300 bg-yellow-950/40 px-2 py-0.5 rounded border border-yellow-500/30">
                         <FaExclamationTriangle className="inline-block me-1" /> الإنذارات: {warningCount}/3
                       </span>
                     </div>
                     <div className="flex items-center gap-1 flex-wrap">
-                      {warningCount < 3 ? (
-                        <button
-                          onClick={() => openSupervisorWarningModal(obs)}
-                          className="text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-2 py-1 rounded-lg hover:bg-yellow-500/30"
-                        >
+                      {warningCount < 3 && (
+                        <button onClick={() => openSupervisorWarningModal(obs)} className="text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-2 py-1 rounded-lg hover:bg-yellow-500/30">
                           <FaExclamationTriangle className="inline-block me-1" /> إنذار
                         </button>
-                      ) : (
-                        <span className="text-xs text-red-400 bg-red-950/40 px-2 py-1 rounded border border-red-500/30">⚠️ إنذارات مكتملة</span>
                       )}
                       <button onClick={() => handleResetSupervisor(obs.id)} type="button" className="text-xs bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-1 rounded-lg hover:bg-indigo-500/30">
                         <FaEdit className="inline-block me-1" /> إعادة تعيين
@@ -1583,12 +1256,6 @@ const TeacherPanel = ({ user, onLogout }) => {
                       <button onClick={() => handleDeleteSupervisor(obs.id)} type="button" className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg hover:bg-red-500/30">
                         <FaTrashAlt className="inline-block me-1" /> حذف
                       </button>
-                      <div className="flex items-center gap-1">
-                        <span className="text-xs text-gray-400">{obs.isFrozen ? 'مجمد' : 'مفعل'}</span>
-                        <div onClick={() => toggleFreezeSupervisor(obs)} className={`w-10 h-5 flex items-center rounded-full p-0.5 cursor-pointer transition-colors duration-300 ${obs.isFrozen ? 'bg-gray-600' : 'bg-green-500'}`}>
-                          <div className={`bg-white w-3.5 h-3.5 rounded-full shadow-md transform transition-transform duration-300 ${obs.isFrozen ? 'translate-x-0' : 'translate-x-5'}`} />
-                        </div>
-                      </div>
                     </div>
                   </div>
                 );
@@ -1598,249 +1265,12 @@ const TeacherPanel = ({ user, onLogout }) => {
             <p className="text-gray-400 text-center py-4">لا يوجد مشرفين مسجلين.</p>
           )}
         </div>
-
-        {/* Agora Meeting Modal - مع تمرير isHost={true} */}
-        <AgoraMeetingModal
-          isOpen={isZoomOpen}
-          onClose={() => {
-            setIsZoomOpen(false);
-            setActiveMeeting(null);
-          }}
-          meetingDetails={activeMeeting}
-          userName={user.name || user.username || "معلم"}
-          isHost={true}
-        />
       </div>
 
-      {/* باقي المودالات (غير معدلة) */}
-      {/* Supervisors add modal */}
-      {showSupervisorModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowSupervisorModal(false)}>
-          <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-indigo-500/30" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-semibold text-indigo-300 mb-4">
-              <FaEye className="inline-block me-2" /> إضافة مشرف جديد
-            </h3>
-            <form onSubmit={handleAddSupervisor} className="space-y-4">
-              <div>
-                <label className="text-xs text-gray-400 block">الاسم الكامل <span className="text-red-400">*</span></label>
-                <input type="text" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newSupervisorName} onChange={e => setNewSupervisorName(e.target.value)} required />
-              </div>
-              <div>
-                <label className="text-xs text-gray-400 block">الجنس <span className="text-red-400">*</span></label>
-                <select className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newSupervisorGender} onChange={e => setNewSupervisorGender(e.target.value)} required>
-                  <option value="">اختر</option>
-                  <option value="ذكر">ذكر</option>
-                  <option value="أنثى">أنثى</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-gray-400 block">العمر <span className="text-red-400">*</span></label>
-                <input type="text" inputMode="numeric" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newSupervisorAge} onChange={e => setNewSupervisorAge(e.target.value)} required />
-              </div>
-              <div>
-                <label className="text-xs text-gray-400 block">رقم الهاتف <span className="text-red-400">*</span></label>
-                <input type="text" inputMode="numeric" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newSupervisorPhone} onChange={e => setNewSupervisorPhone(e.target.value)} required />
-              </div>
-              <button type="submit" disabled={supervisorLoading} className="btn-primary w-full py-3 bg-indigo-600 hover:bg-indigo-700 rounded-md text-white">
-                {supervisorLoading ? 'جاري الإضافة...' : 'إضافة المشرف'}
-              </button>
-              <button type="button" onClick={() => setShowSupervisorModal(false)} className="text-sm text-gray-400 hover:text-white w-full mt-2">إلغاء</button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Supervisor warning modal */}
-      {showSupervisorWarningModal && selectedSupervisorForWarning && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowSupervisorWarningModal(false)}>
-          <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-yellow-500/30" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-semibold text-yellow-300 mb-4">
-              <FaExclamationTriangle className="inline-block me-2" /> إصدار إنذار للمشرف
-            </h3>
-            <p className="text-gray-300 text-sm mb-2">
-              المشرف: <strong>{selectedSupervisorForWarning.name}</strong>
-              <br />
-              الإنذار الحالي: رقم { (selectedSupervisorForWarning.warnings || []).length + 1 } من 3
-            </p>
-            <div className="space-y-4">
-              <div>
-                <label className="text-sm text-gray-300 block mb-1">وصف المخالفة</label>
-                <textarea
-                  className="bg-gray-800 w-full h-24 text-right p-2 border border-gray-600 rounded-md text-white resize-none"
-                  placeholder="اكتب وصف المخالفة..."
-                  value={supervisorWarningDescription}
-                  onChange={(e) => setSupervisorWarningDescription(e.target.value)}
-                />
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={confirmSupervisorWarning}
-                  className="btn-primary bg-yellow-600 hover:bg-yellow-700 px-6 py-2 rounded-md text-white"
-                >
-                  إرسال الإنذار
-                </button>
-                <button
-                  onClick={() => setShowSupervisorWarningModal(false)}
-                  className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-md text-white"
-                >
-                  إلغاء
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Notifications modal */}
-      {showNotificationsModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowNotificationsModal(false)}>
-          <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full max-h-[70vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-semibold text-purple-300">
-                <FaBell className="inline-block me-2" /> الإشعارات
-              </h3>
-              <button onClick={() => setShowNotificationsModal(false)} className="text-gray-400 hover:text-white text-2xl">✕</button>
-            </div>
-            {notifications.length === 0 ? (
-              <p className="text-gray-400 text-center py-4">لا توجد إشعارات</p>
-            ) : (
-              <div className="space-y-3">
-                {notifications.map((n) => (
-                  <div key={n.id} className={`p-3 rounded-xl border ${n.read ? 'bg-gray-800/30 border-gray-600' : 'bg-gray-800/60 border-blue-500/40'}`}>
-                    <div className="flex justify-between items-start">
-                      <h4 className="text-white font-medium">{n.title}</h4>
-                      <span className="text-xs text-gray-400">
-                        {n.createdAt?.toDate?.() ? new Date(n.createdAt.toDate()).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' }) : ''}
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-300 mt-1">{n.body}</p>
-                    {!n.read && (
-                      <button
-                        onClick={async () => {
-                          await updateDoc(doc(db, 'notifications', user.id, 'userNotifications', n.id), {
-                            read: true,
-                            readAt: serverTimestamp()
-                          });
-                        }}
-                        className="text-xs text-blue-400 hover:text-blue-300 mt-2 block"
-                      >
-                        وضع علامة مقروء
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-            {notifications.some(n => !n.read) && (
-              <button
-                onClick={async () => {
-                  const batch = writeBatch(db);
-                  notifications.filter(n => !n.read).forEach(n => {
-                    const ref = doc(db, 'notifications', user.id, 'userNotifications', n.id);
-                    batch.update(ref, { read: true, readAt: serverTimestamp() });
-                  });
-                  await batch.commit();
-                }}
-                className="mt-4 text-sm text-purple-400 hover:text-purple-300"
-              >
-                تعيين الكل كمقروء
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Choice modals for assignment and lesson */}
-      <ChoiceModal
-        isOpen={showAssignmentChoice}
-        onClose={() => {
-          setShowAssignmentChoice(false);
-          setSelectedAssignmentType(null);
-        }}
-        onSelect={(type) => {
-          setSelectedAssignmentType(type);
-          setShowAssignmentChoice(false);
-          setShowAssignmentModal(true);
-        }}
-        title="اختر نوع الواجب"
-        options={[
-          { value: 'now', label: <><FaUpload className="inline-block me-2" /> نشر فوراً</> },
-          { value: 'schedule', label: <><FaCalendarAlt className="inline-block me-2" /> جدولة (تاريخ ووقت)</> },
-          { value: 'draft', label: <><FaSave className="inline-block me-2" /> حفظ كمسودة (نشر لاحقاً)</> },
-          { value: 'delay', label: <><FaClock className="inline-block me-2" /> نشر بعد وقت (ساعات/دقائق)</> }
-        ]}
-      />
-
-      <ChoiceModal
-        isOpen={showLessonChoice}
-        onClose={() => {
-          setShowLessonChoice(false);
-          setSelectedLessonType(null);
-        }}
-        onSelect={(type) => {
-          setSelectedLessonType(type);
-          setShowLessonChoice(false);
-          setShowLessonModal(true);
-        }}
-        title="إدارة مواعيد الحصص"
-        options={[
-          { value: 'manage', label: <><FaClock className="inline-block me-2" /> إضافة / تعديل المواعيد (حتى 6)</> }
-        ]}
-      />
-
-      {/* Manage Classes Modal */}
-      {showManageClassesModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowManageClassesModal(false)}>
-          <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-semibold text-green-300 mb-4">
-              <FaSchool className="inline-block me-2" /> إدارة الشعب
-            </h3>
-            <div className="space-y-4">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  className="bg-gray-800 flex-1 text-right p-2 border border-gray-600 rounded-md text-white"
-                  placeholder="اسم الشعبة الجديدة"
-                  value={newClassName}
-                  onChange={(e) => setNewClassName(e.target.value)}
-                />
-                <button onClick={handleAddClass} className="btn-primary bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-white">إضافة</button>
-              </div>
-              <div className="max-h-60 overflow-y-auto space-y-2">
-                {classes.map(cls => (
-                  <div key={cls.id} className="flex justify-between items-center p-2 bg-black/30 rounded-xl border border-gray-700">
-                    {editingClassId === cls.id ? (
-                      <div className="flex gap-2 flex-1">
-                        <input
-                          type="text"
-                          className="bg-gray-800 flex-1 text-right p-1 border border-gray-600 rounded-md text-white"
-                          value={editingClassName}
-                          onChange={(e) => setEditingClassName(e.target.value)}
-                        />
-                        <button onClick={handleEditClass} className="text-green-400 hover:text-green-300 text-sm">حفظ</button>
-                        <button onClick={() => { setEditingClassId(null); setEditingClassName(''); }} className="text-gray-400 hover:text-white text-sm">إلغاء</button>
-                      </div>
-                    ) : (
-                      <>
-                        <span className="text-white">{cls.name}</span>
-                        <div className="flex gap-2">
-                          <button onClick={() => { setEditingClassId(cls.id); setEditingClassName(cls.name); }} className="text-blue-400 hover:text-blue-300 text-sm">
-                            <FaEdit className="inline-block" />
-                          </button>
-                          <button onClick={() => handleDeleteClass(cls.id)} className="text-red-400 hover:text-red-300 text-sm">
-                            <FaTrashAlt className="inline-block" />
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                ))}
-                {classes.length === 0 && <p className="text-gray-400 text-center">لا توجد شعب مسجلة</p>}
-              </div>
-              <button onClick={() => setShowManageClassesModal(false)} className="btn-primary bg-gray-600 hover:bg-gray-700 w-full py-2 rounded-md text-white">إغلاق</button>
-            </div>
-          </div>
-        </div>
+      {/* Modals */}
+      <PrintStudentsModal isOpen={showPrintModal} onClose={() => setShowPrintModal(false)} students={students} />
+      {selectedStudentForReport && (
+        <ReportModal isOpen={showReportModal} onClose={() => { setShowReportModal(false); setSelectedStudentForReport(null); }} student={selectedStudentForReport} />
       )}
 
       {/* Students List Modal */}
@@ -1855,340 +1285,46 @@ const TeacherPanel = ({ user, onLogout }) => {
             </div>
             <div className="space-y-3">
               {students.map(s => {
-                const hasAccount = s.email && !s.email.endsWith('@temp.com');
-                const inactiveDays = s.last_seen ? Math.floor((new Date() - new Date(s.last_seen)) / (1000 * 60 * 60 * 24)) : 0;
-                const frozenDays = s.isFrozen && s.frozenAt ? Math.floor((new Date() - new Date(s.frozenAt.seconds * 1000)) / (1000 * 60 * 60 * 24)) : 0;
                 const classNames = s.classes?.map(c => c.name).filter(Boolean).join(', ') || 'لا توجد شعبة';
                 const warningCount = (s.warnings || []).length;
                 return (
                   <div key={s.id} className={`p-3 rounded-xl border flex flex-wrap justify-between items-center gap-3 ${s.isFrozen ? 'bg-gray-800/60 border-gray-700 opacity-80' : 'bg-gray-800/30 border-gray-700'}`}>
                     <div className="flex items-center gap-3 flex-wrap flex-1">
                       <span className="text-white text-sm font-medium">{s.name || s.username}</span>
-                      <span className="text-xs text-gray-400">({s.username})</span>
                       <span className="text-xs text-blue-300 bg-blue-950/40 px-2 py-0.5 rounded border border-blue-500/20">
                         الشعب: {classNames}
                       </span>
-                      {s.phone && <span className="text-xs text-gray-400">📱 {s.phone}</span>}
-                      {s.gender && <span className="text-xs text-gray-400">{s.gender}</span>}
-                      {s.age && <span className="text-xs text-gray-400">عمر {s.age}</span>}
-                      {s.isFrozen && (
-                        <span className="text-xs text-orange-400 bg-orange-950/40 px-2 py-0.5 rounded border border-orange-500/20">
-                          ⏳ مجمد {frozenDays > 0 && `منذ ${frozenDays} يوم`}
-                        </span>
-                      )}
-                      {inactiveDays >= 30 && !s.isFrozen && (
-                        <span className="text-xs text-red-400 bg-red-950/40 px-2 py-0.5 rounded border border-red-500/30 animate-pulse">
-                          🚨 لم يفتح منذ {inactiveDays} يوم!
-                        </span>
-                      )}
-                      {!hasAccount && <span className="text-xs text-yellow-400 bg-yellow-950/40 px-2 py-0.5 rounded border border-yellow-500/30">⚠️ لم يتم التفعيل بعد</span>}
+                      {s.isFrozen && <span className="text-xs text-orange-400 bg-orange-950/40 px-2 py-0.5 rounded border border-orange-500/20">⏳ مجمد</span>}
                       <span className="text-xs text-yellow-300 bg-yellow-950/40 px-2 py-0.5 rounded border border-yellow-500/30">
-                        <FaExclamationTriangle className="inline-block me-1" /> الإنذارات: {warningCount}/3
+                        الإنذارات: {warningCount}/3
                       </span>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      {warningCount < 3 ? (
-                        <button
-                          onClick={() => openWarningModal(s)}
-                          className="text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-2 py-1 rounded-lg hover:bg-yellow-500/30"
-                        >
-                          <FaExclamationTriangle className="inline-block me-1" /> إنذار ({warningCount}/3)
-                        </button>
-                      ) : (
-                        <span className="text-xs text-red-400 bg-red-950/40 px-2 py-1 rounded border border-red-500/30">
-                          <FaBan className="inline-block me-1" /> إنذارات مكتملة
-                        </span>
-                      )}
-                      {warningCount >= 3 && (
-                        <button
-                          onClick={() => handleDeleteStudentPermanently(s.id)}
-                          className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg hover:bg-red-500/30 animate-pulse"
-                        >
-                          <FaTrash className="inline-block me-1" /> حذف الحساب (إجباري)
-                        </button>
-                      )}
-                      <button
-                        onClick={() => openClassSelection(s)}
-                        className="text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-1 rounded-lg hover:bg-blue-500/30"
-                      >
-                        <FaThumbtack className="inline-block me-1" /> تحديد الشعبة
+                      <button onClick={() => openWarningModal(s)} className="text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-2 py-1 rounded-lg hover:bg-yellow-500/30">
+                        إنذار
                       </button>
-                      <button
-                        onClick={() => {
-                          setSelectedStudentForMessage(s);
-                          setGeneralMessageSubject('');
-                          setGeneralMessageText('');
-                          setShowGeneralMessageModal(true);
-                        }}
-                        type="button"
-                        className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-lg hover:bg-green-500/30"
-                      >
-                        <FaComment className="inline-block me-1" /> رسالة
+                      <button onClick={() => { setSelectedStudentForReport(s); setShowReportModal(true); }} className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg hover:bg-red-500/30">
+                        بلاغ
                       </button>
-                      {s.isFrozen && (
-                        <button onClick={() => sendFreezeMessage(s)} type="button" className="text-xs bg-orange-500/20 text-orange-300 border border-orange-500/30 px-2 py-1 rounded-lg hover:bg-orange-500/30">
-                          <FaBan className="inline-block me-1" /> تجميد
-                        </button>
-                      )}
-                      <button onClick={() => handleResetStudent(s.id)} type="button" className="text-xs bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-1 rounded-lg hover:bg-indigo-500/30">
-                        <FaEdit className="inline-block me-1" /> إعادة تعيين
+                      <button onClick={() => { setSelectedStudentForMessage(s); setGeneralMessageSubject(''); setGeneralMessageText(''); setShowGeneralMessageModal(true); }} className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-lg hover:bg-green-500/30">
+                        رسالة
                       </button>
-                      <button onClick={() => handleDeleteStudentPermanently(s.id)} type="button" className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg hover:bg-red-500/30">
-                        <FaTrashAlt className="inline-block me-1" /> حذف
+                      <button onClick={() => handleResetStudent(s.id)} className="text-xs bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-1 rounded-lg hover:bg-indigo-500/30">
+                        إعادة تعيين
                       </button>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-400">{s.isFrozen ? 'مجمد' : 'مفعل'}</span>
-                        <div onClick={() => toggleFreezeStudent(s)} className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-300 ${s.isFrozen ? 'bg-gray-600' : 'bg-green-500'}`}>
-                          <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-300 ${s.isFrozen ? 'translate-x-0' : '-translate-x-6'}`} />
+                        <div onClick={() => toggleFreezeStudent(s)} className={`w-10 h-5 flex items-center rounded-full p-0.5 cursor-pointer transition-colors duration-300 ${s.isFrozen ? 'bg-gray-600' : 'bg-green-500'}`}>
+                          <div className={`bg-white w-3.5 h-3.5 rounded-full shadow-md transform transition-transform duration-300 ${s.isFrozen ? 'translate-x-0' : 'translate-x-5'}`} />
                         </div>
                       </div>
                     </div>
                   </div>
                 );
               })}
-              {students.length === 0 && <p className="text-gray-400 text-center py-2">لا يوجد طلاب مسجلين.</p>}
             </div>
           </div>
         </div>
       )}
-
-      {/* Add Student Modal */}
-      {showAddStudentModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-40 p-4" onClick={() => setShowAddStudentModal(false)}>
-          <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-semibold text-blue-300 mb-4">
-              <FaPlus className="inline-block me-2" /> إضافة طالب جديد
-            </h3>
-            <form onSubmit={handleAddStudent} className="space-y-4">
-              <div>
-                <label className="text-xs text-gray-400 block">الاسم الكامل <span className="text-red-400">*</span></label>
-                <input type="text" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentName} onChange={e => setNewStudentName(e.target.value)} required />
-              </div>
-              <div>
-                <label className="text-xs text-gray-400 block">الجنس <span className="text-red-400">*</span></label>
-                <select className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentGender} onChange={e => setNewStudentGender(e.target.value)} required>
-                  <option value="">اختر</option>
-                  <option value="ذكر">ذكر</option>
-                  <option value="أنثى">أنثى</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-gray-400 block">العمر <span className="text-red-400">*</span></label>
-                <input type="text" inputMode="numeric" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentAge} onChange={e => setNewStudentAge(e.target.value)} required />
-              </div>
-              <div>
-                <label className="text-xs text-gray-400 block">رقم الهاتف <span className="text-red-400">*</span></label>
-                <input type="text" inputMode="numeric" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentPhone} onChange={e => setNewStudentPhone(e.target.value)} required />
-              </div>
-              <div>
-                <label className="text-xs text-gray-400 block">الشعب <span className="text-red-400">*</span></label>
-                <select
-                  multiple
-                  className="bg-gray-800 w-full h-24 text-right p-2 border border-gray-600 rounded-md text-white"
-                  value={newStudentClassIds}
-                  onChange={(e) => {
-                    const options = e.target.options;
-                    const selected = [];
-                    for (let i = 0; i < options.length; i++) {
-                      if (options[i].selected) {
-                        selected.push(options[i].value);
-                      }
-                    }
-                    setNewStudentClassIds(selected);
-                  }}
-                  required
-                >
-                  {classes.map(cls => (
-                    <option key={cls.id} value={cls.id}>{cls.name}</option>
-                  ))}
-                </select>
-                <p className="text-xs text-gray-400 mt-1">اضغط Ctrl (أو ⌘) لاختيار عدة شعب</p>
-                <p className="text-xs text-red-400 mt-1">* يجب اختيار شعبة واحدة على الأقل</p>
-              </div>
-              <button type="submit" disabled={studentLoading} className="btn-primary w-full py-3 bg-blue-600 hover:bg-blue-700 rounded-md text-white">
-                {studentLoading ? 'جاري الإضافة...' : 'إضافة الطالب'}
-              </button>
-              <button type="button" onClick={() => setShowAddStudentModal(false)} className="text-sm text-gray-400 hover:text-white w-full mt-2">إلغاء</button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* General message modal */}
-      {showGeneralMessageModal && selectedStudentForMessage && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowGeneralMessageModal(false)}>
-          <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-semibold text-green-300 mb-4">
-              <FaComment className="inline-block me-2" /> إرسال رسالة إلى {selectedStudentForMessage.name}
-            </h3>
-            <div className="space-y-4">
-              <div>
-                <label className="text-sm text-gray-300 block">الشعبة</label>
-                <input
-                  type="text"
-                  className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white cursor-not-allowed"
-                  value={selectedStudentForMessage?.classes?.length > 0 ? selectedStudentForMessage.classes.map(c => c.name).join(', ') : 'لا توجد شعبة'}
-                  disabled
-                />
-              </div>
-              <div>
-                <label className="text-sm text-gray-300 block">الموضوع</label>
-                <input
-                  type="text"
-                  className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white"
-                  placeholder="اكتب موضوع الرسالة"
-                  value={generalMessageSubject}
-                  onChange={(e) => setGeneralMessageSubject(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-sm text-gray-300 block">نص الرسالة</label>
-                <textarea
-                  className="bg-gray-800 w-full h-32 text-right p-2 border border-gray-600 rounded-md text-white resize-none"
-                  placeholder="اكتب نص الرسالة هنا..."
-                  value={generalMessageText}
-                  onChange={(e) => setGeneralMessageText(e.target.value)}
-                />
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => sendGeneralMessage(selectedStudentForMessage)}
-                  className="btn-primary bg-green-600 hover:bg-green-700 px-6 py-2 rounded-md text-white"
-                >
-                  إرسال
-                </button>
-                <button
-                  onClick={() => {
-                    setShowGeneralMessageModal(false);
-                    setSelectedStudentForMessage(null);
-                    setGeneralMessageSubject('');
-                    setGeneralMessageText('');
-                  }}
-                  className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-md text-white"
-                >
-                  إلغاء
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Add notification modal for new student */}
-      {showAddNotificationModal && newlyAddedStudent && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-green-500/30">
-            <h3 className="text-xl font-semibold text-green-300 mb-2 text-center">
-              <FaCheckCircle className="inline-block me-2" /> تم تسجيل الطالب
-            </h3>
-            <p className="text-gray-300 text-center mb-4">
-              تم إضافة الطالب <span className="text-white font-bold">{newlyAddedStudent.name}</span> بنجاح.
-              <br />
-              <span className="text-sm text-gray-400">يجب إرسال رسالة التفعيل لولي الأمر الآن.</span>
-            </p>
-            <div className="flex flex-col gap-3">
-              <button
-                onClick={() => {
-                  sendActivationMessage(newlyAddedStudent, newlyAddedStudent.username, newlyAddedStudent.password);
-                  setShowAddNotificationModal(false);
-                  setNewlyAddedStudent(null);
-                }}
-                className="btn-primary bg-green-600 hover:bg-green-700 w-full py-3 flex items-center justify-center gap-2 text-lg rounded-md text-white"
-              >
-                <FaComment className="inline-block me-2" /> إخبار ولي الأمر
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Freeze notification modal */}
-      {showFreezeNotificationModal && frozenStudent && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-orange-500/30">
-            <h3 className="text-xl font-semibold text-orange-300 mb-2 text-center">
-              <FaBan className="inline-block me-2" /> تم تجميد الحساب
-            </h3>
-            <p className="text-gray-300 text-center mb-4">
-              تم تجميد حساب الطالب <span className="text-white font-bold">{frozenStudent.name}</span>.
-              <br />
-              <span className="text-sm text-gray-400">يجب إرسال رسالة إشعار لولي الأمر الآن.</span>
-            </p>
-            <div className="flex flex-col gap-3">
-              <button
-                onClick={() => {
-                  sendFreezeMessage(frozenStudent);
-                  setShowFreezeNotificationModal(false);
-                  setFrozenStudent(null);
-                }}
-                className="btn-primary bg-orange-600 hover:bg-orange-700 w-full py-3 flex items-center justify-center gap-2 text-lg rounded-md text-white"
-              >
-                <FaComment className="inline-block me-2" /> إخبار ولي الأمر
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Class selection modal */}
-      {showClassSelectionModal && selectedStudentForClass && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowClassSelectionModal(false)}>
-          <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-semibold text-blue-300 mb-4">
-              <FaThumbtack className="inline-block me-2" /> تحديد شعبة الطالب
-            </h3>
-            <p className="text-gray-300 text-sm mb-2">الطالب: <strong>{selectedStudentForClass.name || selectedStudentForClass.username}</strong></p>
-            <div className="space-y-2">
-              {classes.map(cls => (
-                <label key={cls.id} className="flex items-center gap-2 text-gray-200">
-                  <input
-                    type="checkbox"
-                    checked={tempClassIds.includes(cls.id)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setTempClassIds([...tempClassIds, cls.id]);
-                      } else {
-                        setTempClassIds(tempClassIds.filter(id => id !== cls.id));
-                      }
-                    }}
-                    className="accent-blue-500"
-                  />
-                  {cls.name}
-                </label>
-              ))}
-              {classes.length === 0 && <p className="text-gray-400">لا توجد شعب مسجلة. أضف شعبة أولاً.</p>}
-            </div>
-            <div className="flex gap-3 mt-4">
-              <button onClick={saveClassSelection} className="btn-primary bg-green-600 hover:bg-green-700 px-4 py-2 rounded-md text-white">حفظ</button>
-              <button onClick={() => setShowClassSelectionModal(false)} className="btn-primary bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-md text-white">إلغاء</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Add Assignment Modal */}
-      <AddAssignmentModal
-        isOpen={showAssignmentModal}
-        onClose={() => {
-          setShowAssignmentModal(false);
-          setSelectedAssignmentType(null);
-        }}
-        onSubmit={saveHomeworkFromModal}
-        classesList={classes}
-        initialMode={selectedAssignmentType || 'now'}
-      />
-
-      {/* Add Lesson Modal */}
-      <AddLessonModal
-        isOpen={showLessonModal}
-        onClose={() => {
-          setShowLessonModal(false);
-          setSelectedLessonType(null);
-        }}
-        onSubmit={saveLessonTimesFromModal}
-        initialTimes={lessonTimes}
-        classesList={classes}
-      />
 
       {/* Warning Modal */}
       {showWarningModal && selectedStudentForWarning && (
@@ -2199,12 +1335,10 @@ const TeacherPanel = ({ user, onLogout }) => {
             </h3>
             <p className="text-gray-300 text-sm mb-2">
               الطالب: <strong>{selectedStudentForWarning.name}</strong>
-              <br />
-              الإنذار الحالي: رقم { (selectedStudentForWarning.warnings || []).length + 1 } من 3
             </p>
             <div className="space-y-4">
               <div>
-                <label className="text-sm text-gray-300 block mb-1">وصف المخالفة</label>
+                <label className="text-sm text-gray-300 block mb-1">سبب المخالفة</label>
                 <textarea
                   className="bg-gray-800 w-full h-24 text-right p-2 border border-gray-600 rounded-md text-white resize-none"
                   placeholder="اكتب وصف المخالفة..."
@@ -2212,66 +1346,48 @@ const TeacherPanel = ({ user, onLogout }) => {
                   onChange={(e) => setWarningDescription(e.target.value)}
                 />
               </div>
+              <div className="bg-yellow-500/10 p-3 rounded-xl border border-yellow-500/20 text-xs text-yellow-300">
+                سيتم مراجعة طلبك من قبل لجنة الإشراف العام وسيتم اتخاذ القرار خلال ٤٨ ساعة بحد اقصى.
+              </div>
               <div className="flex gap-3">
-                <button
-                  onClick={confirmWarning}
-                  className="btn-primary bg-yellow-600 hover:bg-yellow-700 px-6 py-2 rounded-md text-white"
-                >
-                  إرسال الإنذار
-                </button>
-                <button
-                  onClick={() => setShowWarningModal(false)}
-                  className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-md text-white"
-                >
-                  إلغاء
-                </button>
+                <button onClick={confirmWarning} className="btn-primary bg-yellow-600 hover:bg-yellow-700 px-6 py-2 rounded-md text-white">إرسال الإنذار</button>
+                <button onClick={() => setShowWarningModal(false)} className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-md text-white">إلغاء</button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Review Modal */}
-      {showReviewModal && selectedReviewStudent && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => { setShowReviewModal(false); setSelectedReviewStudent(null); }}>
-          <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-blue-500/30" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-semibold text-blue-300 mb-4">
-              <FaClipboardList className="inline-block me-2" /> مراجعة طلب تعديل البيانات
+      {/* General Message Modal */}
+      {showGeneralMessageModal && selectedStudentForMessage && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowGeneralMessageModal(false)}>
+          <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-semibold text-green-300 mb-4">
+              <FaComment className="inline-block me-2" /> إرسال رسالة إلى {selectedStudentForMessage.name}
             </h3>
-            <p className="text-gray-300 text-sm mb-2">
-              الطالب: <strong>{selectedReviewStudent.name}</strong> (اسم المستخدم: {selectedReviewStudent.username})
-            </p>
-            <div className="space-y-2 bg-black/20 p-4 rounded-xl border border-gray-700">
-              <p className="text-yellow-200 text-sm font-semibold">التغييرات المطلوبة:</p>
-              {selectedReviewStudent.pendingChanges && (
-                <>
-                  {selectedReviewStudent.pendingChanges.name && selectedReviewStudent.pendingChanges.name !== selectedReviewStudent.name && (
-                    <div className="flex justify-between text-sm"><span className="text-gray-400">الاسم:</span> <span><span className="text-red-400 line-through">{selectedReviewStudent.name}</span> → <span className="text-green-300">{selectedReviewStudent.pendingChanges.name}</span></span></div>
-                  )}
-                  {selectedReviewStudent.pendingChanges.gender && selectedReviewStudent.pendingChanges.gender !== selectedReviewStudent.gender && (
-                    <div className="flex justify-between text-sm"><span className="text-gray-400">الجنس:</span> <span><span className="text-red-400 line-through">{selectedReviewStudent.gender}</span> → <span className="text-green-300">{selectedReviewStudent.pendingChanges.gender}</span></span></div>
-                  )}
-                  {selectedReviewStudent.pendingChanges.age && selectedReviewStudent.pendingChanges.age != selectedReviewStudent.age && (
-                    <div className="flex justify-between text-sm"><span className="text-gray-400">العمر:</span> <span><span className="text-red-400 line-through">{selectedReviewStudent.age}</span> → <span className="text-green-300">{selectedReviewStudent.pendingChanges.age}</span></span></div>
-                  )}
-                  {selectedReviewStudent.pendingChanges.phone && selectedReviewStudent.pendingChanges.phone !== selectedReviewStudent.phone && (
-                    <div className="flex justify-between text-sm"><span className="text-gray-400">رقم الهاتف:</span> <span><span className="text-red-400 line-through">{selectedReviewStudent.phone}</span> → <span className="text-green-300">{selectedReviewStudent.pendingChanges.phone}</span></span></div>
-                  )}
-                </>
-              )}
-            </div>
-            <div className="flex gap-3 mt-4">
-              <button onClick={() => acceptReview(selectedReviewStudent.id)} className="btn-primary bg-green-600 hover:bg-green-700 px-6 py-2 rounded-md text-white">
-                <FaCheckCircle className="inline-block me-2" /> قبول
-              </button>
-              <button onClick={() => rejectReview(selectedReviewStudent.id)} className="btn-primary bg-red-600 hover:bg-red-700 px-6 py-2 rounded-md text-white">
-                <FaTimesCircle className="inline-block me-2" /> رفض
-              </button>
-              <button onClick={() => { setShowReviewModal(false); setSelectedReviewStudent(null); }} className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-md text-white">إلغاء</button>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm text-gray-300 block">الموضوع</label>
+                <input type="text" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={generalMessageSubject} onChange={(e) => setGeneralMessageSubject(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-sm text-gray-300 block">نص الرسالة</label>
+                <textarea className="bg-gray-800 w-full h-32 text-right p-2 border border-gray-600 rounded-md text-white resize-none" value={generalMessageText} onChange={(e) => setGeneralMessageText(e.target.value)} />
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => sendGeneralMessage(selectedStudentForMessage)} className="btn-primary bg-green-600 hover:bg-green-700 px-6 py-2 rounded-md text-white">إرسال</button>
+                <button onClick={() => setShowGeneralMessageModal(false)} className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-md text-white">إلغاء</button>
+              </div>
             </div>
           </div>
         </div>
       )}
+
+      <ChoiceModal isOpen={showAssignmentChoice} onClose={() => { setShowAssignmentChoice(false); setSelectedAssignmentType(null); }} onSelect={(type) => { setSelectedAssignmentType(type); setShowAssignmentChoice(false); setShowAssignmentModal(true); }} title="اختر نوع الواجب" options={[{ value: 'now', label: 'نشر فوراً' }, { value: 'schedule', label: 'جدولة' }, { value: 'draft', label: 'حفظ كمسودة' }, { value: 'delay', label: 'نشر بعد وقت' }]} />
+      <ChoiceModal isOpen={showLessonChoice} onClose={() => { setShowLessonChoice(false); setSelectedLessonType(null); }} onSelect={(type) => { setSelectedLessonType(type); setShowLessonChoice(false); setShowLessonModal(true); }} title="إدارة مواعيد الحصص" options={[{ value: 'manage', label: 'إضافة / تعديل المواعيد (حتى 6)' }]} />
+
+      <AddAssignmentModal isOpen={showAssignmentModal} onClose={() => { setShowAssignmentModal(false); setSelectedAssignmentType(null); }} onSubmit={saveHomeworkFromModal} classesList={classes} initialMode={selectedAssignmentType || 'now'} />
+      <AddLessonModal isOpen={showLessonModal} onClose={() => { setShowLessonModal(false); setSelectedLessonType(null); }} onSubmit={saveLessonTimesFromModal} initialTimes={lessonTimes} classesList={classes} />
     </div>
   );
 };

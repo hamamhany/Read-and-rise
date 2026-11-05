@@ -73,6 +73,21 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
         return;
       }
 
+      // Handle System Manager
+      if (profile.role === 'system_manager') {
+        onLogin({
+          id: docId,
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          role: profile.role,
+          username: profile.username,
+          name: profile.name,
+          isProfileComplete: true
+        });
+        setLoading(false);
+        return;
+      }
+
       if (profile.role === 'supervisor') {
         if (!profile.isProfileComplete) {
           onCompleteProfile({
