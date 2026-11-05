@@ -5,9 +5,8 @@ import {
   FaSpinner, FaUpload, FaClock, FaEye 
 } from 'react-icons/fa';
 import { db, messaging } from '../../firebase';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, serverTimestamp, writeBatch, deleteDoc, getDocs, where, setDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, serverTimestamp, writeBatch, deleteDoc, getDocs, where, setDoc, arrayUnion } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
-import { updateDoc as updateFirestoreDoc, arrayUnion } from 'firebase/firestore';
 import { createGeneralAnnouncement, updateAnnouncement, deleteAnnouncement } from '../../services/announcements';
 import { sendNotificationToAllStudents, sendNotificationToTeacher } from '../../utils/notifications';
 import { auth } from '../../services/firebaseAuth';
@@ -35,43 +34,67 @@ const SupervisorPanel = ({ user, onLogout }) => {
   const [delayError, setDelayError] = useState('');
   const [editingAnnouncementId, setEditingAnnouncementId] = useState(null);
 
+  // ✅ النسخة الجديدة من requestNotificationPermission (لا تعلق أبداً)
   const requestNotificationPermission = async () => {
-    if (!auth.currentUser) {
-      toast.error('يرجى تسجيل الدخول أولاً.');
-      return;
-    }
-    if (Notification.permission === 'granted') {
+    try {
+      if (!('Notification' in window)) {
+        console.warn('Notification API not supported');
+        return false;
+      }
+
+      // تسجيل Service Worker
+      if ('serviceWorker' in navigator) {
+        try {
+          await Promise.race([
+            navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/' }),
+            new Promise((_, rej) => setTimeout(() => rej(new Error('SW timeout')), 5000))
+          ]);
+        } catch (e) { console.warn('SW register skipped:', e.message); }
+      }
+
+      // طلب الإذن
+      let permission = Notification.permission;
+      if (permission === 'denied') {
+        toast.error('الإشعارات محظورة من إعدادات المتصفح');
+        return false;
+      }
+      if (permission === 'default') {
+        permission = await Notification.requestPermission();
+      }
+      if (permission !== 'granted') {
+        return false;
+      }
+
+      // محاولة جلب التوكن (اختياري - له مهلة 10 ثواني)
+      if (!messaging) return true;
+      const vapidKey = import.meta.env.VITE_VAPID_KEY;
+      if (!vapidKey) {
+        console.warn('VAPID key missing');
+        return true;
+      }
+
+      let token = null;
       try {
-        const token = await getToken(messaging, { vapidKey: 'BMuOctGyoxHcX03mppaXioqagujweclql9d9dpeLRTsZAIQpcgdcBveP-DGzaVctK7nIF1liaeo6vvfxg-uIAbI' });
-        if (token) {
-          await updateFirestoreDoc(doc(db, 'profiles', user.id), {
+        token = await Promise.race([
+          getToken(messaging, { vapidKey }),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('getToken timeout')), 10000))
+        ]);
+      } catch (e) {
+        console.warn('FCM token fetch failed:', e.message);
+        return true; // الإذن ممنوح، لا نمنع المودال
+      }
+
+      if (token) {
+        try {
+          await updateDoc(doc(db, 'profiles', user.id), {
             fcmTokens: arrayUnion(token)
           });
-          toast.success('تم تفعيل الإشعارات');
-        }
-      } catch (err) {
-        console.error('FCM token error:', err);
-        toast.error('فشل جلب توكن الإشعارات: ' + err.message);
+        } catch (e) { console.warn('Save token failed:', e.message); }
       }
-      return;
-    }
-    if (Notification.permission === 'denied') {
-      toast.error('تم رفض الإذن، يرجى تفعيله من إعدادات المتصفح');
-      return;
-    }
-    const permission = await Notification.requestPermission();
-    if (permission === 'granted') {
-      try {
-        const token = await getToken(messaging, { vapidKey: 'BMuOctGyoxHcX03mppaXioqagujweclql9d9dpeLRTsZAIQpcgdcBveP-DGzaVctK7nIF1liaeo6vvfxg-uIAbI' });
-        if (token) {
-          await updateFirestoreDoc(doc(db, 'profiles', user.id), {
-            fcmTokens: arrayUnion(token)
-          });
-          toast.success('تم تفعيل الإشعارات بنجاح');
-        }
-      } catch (err) {
-        toast.error('فشل تفعيل الإشعارات: ' + err.message);
-      }
+      return true;
+    } catch (err) {
+      console.error('Notification error:', err);
+      return false;
     }
   };
 
@@ -246,9 +269,14 @@ const SupervisorPanel = ({ user, onLogout }) => {
     setShowDetailsModal(true);
   };
 
-  const handleOpenNotifications = async () => {
-    await requestNotificationPermission();
+  // ✅ النسخة الجديدة: تفتح المودال فوراً ثم تطلب الإذن في الخلفية (بدون async/await)
+  const handleOpenNotifications = () => {
     setShowNotificationsModal(true);
+    if (typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+      requestNotificationPermission().catch(err =>
+        console.warn('Notification request failed:', err)
+      );
+    }
   };
 
   if (loading) return <div className="text-center text-gray-400 p-8">جاري التحميل...</div>;
@@ -524,7 +552,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
                     {!n.read && (
                       <button
                         onClick={async () => {
-                          await updateFirestoreDoc(doc(db, 'notifications', user.id, 'userNotifications', n.id), {
+                          await updateDoc(doc(db, 'notifications', user.id, 'userNotifications', n.id), {
                             read: true,
                             readAt: serverTimestamp()
                           });

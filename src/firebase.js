@@ -39,7 +39,6 @@ export const secondaryAuth = secondaryAuthInstance;
 
 export const firebaseApp = app;
 
-// ✅ إصلاح خطأ BloomFilter: استخدام الذاكرة بدل التخزين الدائم
 let dbInstance;
 try {
   dbInstance = initializeFirestore(app, { localCache: memoryLocalCache() });
@@ -48,7 +47,7 @@ try {
 }
 export const db = dbInstance;
 
-// ✅ تهيئة الإشعارات بشكل متزامن لتعمل فوراً
+// ✅ messaging متزامن - يعمل فوراً عند الاستيراد
 export let messaging = null;
 try {
   if (typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window) {
@@ -56,7 +55,6 @@ try {
   }
 } catch (err) {
   console.warn("Firebase Messaging not supported:", err);
-  messaging = null;
 }
 
 let analytics = null;

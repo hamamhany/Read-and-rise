@@ -5,12 +5,13 @@ import {
   FaExclamationTriangle, FaCheckCircle, FaTimesCircle, FaEdit, FaComment,
   FaPlus, FaEye, FaVideo, FaUsers, FaTrashAlt, FaPrint, FaPaperPlane
 } from 'react-icons/fa';
-import { db } from '../../firebase';
+import { db, messaging } from '../../firebase';
 import { auth, secondaryAuth } from '../../services/firebaseAuth';
 import { 
   doc, getDoc, setDoc, updateDoc, deleteDoc, collection, query,
   where, getDocs, onSnapshot, serverTimestamp, arrayUnion, orderBy
 } from 'firebase/firestore';
+import { getToken } from 'firebase/messaging';
 import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 
 import { useConfirm } from '../common/ConfirmContext';
@@ -33,8 +34,7 @@ import {
   sendDeleteMessage, sendResetPasswordMessage, sendDataUpdateApprovalMessage,
   sendDataUpdateRejectionMessage
 } from '../../utils/whatsapp';
-import { requestNotificationPermission, setupOnMessageListener } from '../../utils/pushNotifications';
-import { messaging } from '../../firebase';
+import { setupOnMessageListener } from '../../utils/pushNotifications';
 
 const TeacherPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -88,6 +88,70 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [showReportModal, setShowReportModal] = useState(false);
   const [selectedStudentForReport, setSelectedStudentForReport] = useState(null);
 
+  // ✅ النسخة الجديدة من requestNotificationPermission (لا تعلق أبداً)
+  const requestNotificationPermission = async () => {
+    try {
+      if (!('Notification' in window)) {
+        console.warn('Notification API not supported');
+        return false;
+      }
+
+      // تسجيل Service Worker
+      if ('serviceWorker' in navigator) {
+        try {
+          await Promise.race([
+            navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/' }),
+            new Promise((_, rej) => setTimeout(() => rej(new Error('SW timeout')), 5000))
+          ]);
+        } catch (e) { console.warn('SW register skipped:', e.message); }
+      }
+
+      // طلب الإذن
+      let permission = Notification.permission;
+      if (permission === 'denied') {
+        toast.error('الإشعارات محظورة من إعدادات المتصفح');
+        return false;
+      }
+      if (permission === 'default') {
+        permission = await Notification.requestPermission();
+      }
+      if (permission !== 'granted') {
+        return false;
+      }
+
+      // محاولة جلب التوكن (اختياري - له مهلة 10 ثواني)
+      if (!messaging) return true;
+      const vapidKey = import.meta.env.VITE_VAPID_KEY;
+      if (!vapidKey) {
+        console.warn('VAPID key missing');
+        return true;
+      }
+
+      let token = null;
+      try {
+        token = await Promise.race([
+          getToken(messaging, { vapidKey }),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('getToken timeout')), 10000))
+        ]);
+      } catch (e) {
+        console.warn('FCM token fetch failed:', e.message);
+        return true; // الإذن ممنوح، لا نمنع المودال
+      }
+
+      if (token) {
+        try {
+          await updateDoc(doc(db, 'profiles', user.id), {
+            fcmTokens: arrayUnion(token)
+          });
+        } catch (e) { console.warn('Save token failed:', e.message); }
+      }
+      return true;
+    } catch (err) {
+      console.error('Notification error:', err);
+      return false;
+    }
+  };
+
   useEffect(() => {
     const unsub = setupOnMessageListener((payload) => {
       toast.custom(() => (
@@ -100,10 +164,14 @@ const TeacherPanel = ({ user, onLogout }) => {
     return () => unsub();
   }, []);
 
-  const handleOpenNotifications = async () => {
-    const ok = await requestNotificationPermission(user.id);
-    setNotificationsActive(ok);
+  // ✅ النسخة الجديدة: تفتح المودال فوراً ثم تطلب الإذن في الخلفية (بدون async/await)
+  const handleOpenNotifications = () => {
     setShowNotificationsModal(true);
+    if (typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+      requestNotificationPermission()
+        .then(ok => setNotificationsActive(ok))
+        .catch(err => console.warn('Notification request failed:', err));
+    }
   };
 
   const handleAddStudent = async (e) => {
@@ -598,7 +666,7 @@ const TeacherPanel = ({ user, onLogout }) => {
           ) : <p className="text-gray-400 text-center py-4">لا توجد واجبات.</p>}
         </div>
 
-        {/* Students Management (بدون إدارة الشعب، بدون إضافة مشرف) */}
+        {/* Students Management */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700">
           <div className="flex flex-wrap justify-between items-center gap-3">
             <h3 className="text-xl font-semibold text-blue-300"><FaUser className="inline-block me-2" /> إدارة الطلاب</h3>

@@ -5,18 +5,18 @@ import {
   FaUpload, FaClock, FaCheckCircle, FaTimesCircle, FaEnvelope, 
   FaComment
 } from 'react-icons/fa';
-import { db } from '../../firebase';
+import { db, messaging } from '../../firebase';
 import { auth } from '../../services/firebaseAuth';
 import { 
   doc, getDoc, updateDoc, collection, query, where, getDocs, 
-  onSnapshot, orderBy, serverTimestamp, writeBatch
+  onSnapshot, orderBy, serverTimestamp, writeBatch, arrayUnion
 } from 'firebase/firestore';
+import { getToken } from 'firebase/messaging';
 import { useConfirm } from '../common/ConfirmContext';
 import { CountdownTimer, HomeworkTextCountdown } from '../common/CountdownTimer';
 import { sanitizeInput, arabicToEnglishNumber, fetchClassNames } from '../../utils/helpers';
 import { sendUrgentReminderMessage, sendContactTeacherMessage } from '../../utils/whatsapp';
-import { requestNotificationPermission, setupOnMessageListener } from '../../utils/pushNotifications';
-import { messaging } from '../../firebase';
+import { setupOnMessageListener } from '../../utils/pushNotifications';
 
 const StudentPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -49,6 +49,70 @@ const StudentPanel = ({ user, onLogout }) => {
   const [timeRemaining, setTimeRemaining] = useState({ hours: 0, minutes: 0, seconds: 0 });
 
   const [classStudentCount, setClassStudentCount] = useState({});
+
+  // ✅ النسخة الجديدة من requestNotificationPermission (لا تعلق أبداً)
+  const requestNotificationPermission = async () => {
+    try {
+      if (!('Notification' in window)) {
+        console.warn('Notification API not supported');
+        return false;
+      }
+
+      // تسجيل Service Worker
+      if ('serviceWorker' in navigator) {
+        try {
+          await Promise.race([
+            navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/' }),
+            new Promise((_, rej) => setTimeout(() => rej(new Error('SW timeout')), 5000))
+          ]);
+        } catch (e) { console.warn('SW register skipped:', e.message); }
+      }
+
+      // طلب الإذن
+      let permission = Notification.permission;
+      if (permission === 'denied') {
+        toast.error('الإشعارات محظورة من إعدادات المتصفح');
+        return false;
+      }
+      if (permission === 'default') {
+        permission = await Notification.requestPermission();
+      }
+      if (permission !== 'granted') {
+        return false;
+      }
+
+      // محاولة جلب التوكن (اختياري - له مهلة 10 ثواني)
+      if (!messaging) return true;
+      const vapidKey = import.meta.env.VITE_VAPID_KEY;
+      if (!vapidKey) {
+        console.warn('VAPID key missing');
+        return true;
+      }
+
+      let token = null;
+      try {
+        token = await Promise.race([
+          getToken(messaging, { vapidKey }),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('getToken timeout')), 10000))
+        ]);
+      } catch (e) {
+        console.warn('FCM token fetch failed:', e.message);
+        return true; // الإذن ممنوح، لا نمنع المودال
+      }
+
+      if (token) {
+        try {
+          await updateDoc(doc(db, 'profiles', user.id), {
+            fcmTokens: arrayUnion(token)
+          });
+        } catch (e) { console.warn('Save token failed:', e.message); }
+      }
+      return true;
+    } catch (err) {
+      console.error('Notification error:', err);
+      return false;
+    }
+  };
 
   useEffect(() => {
     const unsub = setupOnMessageListener((payload) => {
@@ -95,10 +159,14 @@ const StudentPanel = ({ user, onLogout }) => {
     return () => unsubscribe();
   }, []);
 
-  const handleOpenNotifications = async () => {
-    const ok = await requestNotificationPermission(user.id);
-    setNotificationsActive(ok);
+  // ✅ النسخة الجديدة: تفتح المودال فوراً ثم تطلب الإذن في الخلفية (بدون async/await)
+  const handleOpenNotifications = () => {
     setShowNotificationsModal(true);
+    if (typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+      requestNotificationPermission()
+        .then(ok => setNotificationsActive(ok))
+        .catch(err => console.warn('Notification request failed:', err));
+    }
   };
 
   const fetchTeacherInfo = async () => {
