@@ -11,12 +11,11 @@ import {
   doc, getDoc, updateDoc, collection, query, where, getDocs, 
   onSnapshot, orderBy, serverTimestamp, writeBatch, arrayUnion
 } from 'firebase/firestore';
-import { getToken } from 'firebase/messaging';
+import { getToken, onMessage } from 'firebase/messaging';
 import { useConfirm } from '../common/ConfirmContext';
 import { CountdownTimer, HomeworkTextCountdown } from '../common/CountdownTimer';
 import { sanitizeInput, arabicToEnglishNumber, fetchClassNames } from '../../utils/helpers';
 import { sendUrgentReminderMessage, sendContactTeacherMessage } from '../../utils/whatsapp';
-import { setupOnMessageListener } from '../../utils/pushNotifications';
 
 const StudentPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -114,16 +113,22 @@ const StudentPanel = ({ user, onLogout }) => {
     }
   };
 
+  // ✅ استخدام onMessage مباشرة (بدون ملف pushNotifications)
   useEffect(() => {
-    const unsub = setupOnMessageListener((payload) => {
-      toast.custom(() => (
-        <div className="bg-gray-800 text-white p-4 rounded-xl border border-purple-500 shadow-xl max-w-sm mx-auto">
-          <strong className="block text-lg">{payload.notification?.title}</strong>
-          <p className="text-sm text-gray-200">{payload.notification?.body}</p>
-        </div>
-      ), { duration: 5000 });
-    });
-    return () => unsub();
+    if (!messaging) return;
+    try {
+      const unsub = onMessage(messaging, (payload) => {
+        toast.custom(() => (
+          <div className="bg-gray-800 text-white p-4 rounded-xl border border-purple-500 shadow-xl max-w-sm mx-auto">
+            <strong className="block text-lg">{payload.notification?.title}</strong>
+            <p className="text-sm text-gray-200">{payload.notification?.body}</p>
+          </div>
+        ), { duration: 5000 });
+      });
+      return () => unsub();
+    } catch (err) {
+      console.warn('onMessage setup failed:', err);
+    }
   }, []);
 
   useEffect(() => {
@@ -348,7 +353,6 @@ const StudentPanel = ({ user, onLogout }) => {
         const currentDay = now.getDay();
         let diff = dayIndex - currentDay;
         if (diff < 0) diff += 7;
-        // إذا كان نفس اليوم والوقت فات، انتقل للأسبوع القادم
         if (diff === 0) {
           const todayLessonTime = new Date(now);
           todayLessonTime.setHours(lt.time.hours, lt.time.minutes, 0, 0);

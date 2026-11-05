@@ -11,7 +11,7 @@ import {
   doc, getDoc, setDoc, updateDoc, deleteDoc, collection, query,
   where, getDocs, onSnapshot, serverTimestamp, arrayUnion, orderBy
 } from 'firebase/firestore';
-import { getToken } from 'firebase/messaging';
+import { getToken, onMessage } from 'firebase/messaging';
 import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 
 import { useConfirm } from '../common/ConfirmContext';
@@ -34,7 +34,6 @@ import {
   sendDeleteMessage, sendResetPasswordMessage, sendDataUpdateApprovalMessage,
   sendDataUpdateRejectionMessage
 } from '../../utils/whatsapp';
-import { setupOnMessageListener } from '../../utils/pushNotifications';
 
 const TeacherPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -152,16 +151,22 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
+  // ✅ استخدام onMessage مباشرة (بدون ملف pushNotifications)
   useEffect(() => {
-    const unsub = setupOnMessageListener((payload) => {
-      toast.custom(() => (
-        <div className="bg-gray-800 text-white p-4 rounded-xl border border-purple-500 shadow-xl max-w-sm mx-auto">
-          <strong className="block text-lg">{payload.notification?.title}</strong>
-          <p className="text-sm text-gray-200">{payload.notification?.body}</p>
-        </div>
-      ), { duration: 5000 });
-    });
-    return () => unsub();
+    if (!messaging) return;
+    try {
+      const unsub = onMessage(messaging, (payload) => {
+        toast.custom(() => (
+          <div className="bg-gray-800 text-white p-4 rounded-xl border border-purple-500 shadow-xl max-w-sm mx-auto">
+            <strong className="block text-lg">{payload.notification?.title}</strong>
+            <p className="text-sm text-gray-200">{payload.notification?.body}</p>
+          </div>
+        ), { duration: 5000 });
+      });
+      return () => unsub();
+    } catch (err) {
+      console.warn('onMessage setup failed:', err);
+    }
   }, []);
 
   // ✅ النسخة الجديدة: تفتح المودال فوراً ثم تطلب الإذن في الخلفية (بدون async/await)

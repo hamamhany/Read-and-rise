@@ -98,16 +98,22 @@ const SupervisorPanel = ({ user, onLogout }) => {
     }
   };
 
+  // ✅ onMessage مع حماية من messaging قد يكون null
   useEffect(() => {
-    const unsubscribe = onMessage(messaging, (payload) => {
-      toast.custom((t) => (
-        <div className="bg-gray-800 text-white p-4 rounded-xl border border-purple-500 shadow-xl max-w-sm mx-auto">
-          <strong className="block text-lg">{payload.notification?.title}</strong>
-          <p className="text-sm text-gray-200">{payload.notification?.body}</p>
-        </div>
-      ), { duration: 5000 });
-    });
-    return () => unsubscribe();
+    if (!messaging) return;
+    try {
+      const unsubscribe = onMessage(messaging, (payload) => {
+        toast.custom((t) => (
+          <div className="bg-gray-800 text-white p-4 rounded-xl border border-purple-500 shadow-xl max-w-sm mx-auto">
+            <strong className="block text-lg">{payload.notification?.title}</strong>
+            <p className="text-sm text-gray-200">{payload.notification?.body}</p>
+          </div>
+        ), { duration: 5000 });
+      });
+      return () => unsubscribe();
+    } catch (err) {
+      console.warn('onMessage setup failed:', err);
+    }
   }, []);
 
   useEffect(() => {
