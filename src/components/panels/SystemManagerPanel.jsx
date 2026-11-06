@@ -2,19 +2,37 @@ import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { 
   FaSignOutAlt, FaUserShield, FaExclamationTriangle, FaWhatsapp, 
-  FaTimesCircle, FaUsers, FaTrashAlt, FaBell, FaPrint, FaClock
+  FaTimesCircle, FaUsers, FaTrashAlt, FaBell, FaPaperPlane, FaCheckCircle
 } from 'react-icons/fa';
 import { db } from '../../firebase';
 import { 
   collection, query, onSnapshot, doc, deleteDoc, 
-  serverTimestamp, orderBy, where, updateDoc, getDoc, arrayUnion
+  serverTimestamp, orderBy, where, updateDoc
 } from 'firebase/firestore';
 import { createSupervisorAccount } from '../../services/supervisor';
 import { requestNotificationPermission, setupOnMessageListener } from '../../utils/pushNotifications';
 import { messaging } from '../../firebase';
+import {
+  MESSAGE_REQUEST_TYPE_LABELS,
+  MESSAGE_REQUEST_STATUS
+} from '../../constants';
+import {
+  updateMessageRequestStatus,
+  deleteMessageRequest
+} from '../../services/messageRequests';
+import {
+  sendWarningMessage,
+  sendActivationMessage,
+  sendFreezeMessage,
+  sendResetPasswordMessage,
+  sendDataUpdateApprovalMessage,
+  sendDataUpdateRejectionMessage,
+  sendGeneralMessageToStudent,
+  sendReportMessage
+} from '../../utils/whatsapp';
 
 const SystemManagerPanel = ({ user, onLogout }) => {
-  const [reports, setReports] = useState([]);
+  const [messageRequests, setMessageRequests] = useState([]);
   const [supervisors, setSupervisors] = useState([]);
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -24,6 +42,8 @@ const SystemManagerPanel = ({ user, onLogout }) => {
   const [notificationsActive, setNotificationsActive] = useState(
     typeof Notification !== 'undefined' && Notification.permission === 'granted' && !!messaging
   );
+
+  const [requestFilter, setRequestFilter] = useState('pending'); // all | pending | approved | rejected
   
   const [showSupervisorModal, setShowSupervisorModal] = useState(false);
   const [newSupervisorName, setNewSupervisorName] = useState('');
@@ -45,9 +65,12 @@ const SystemManagerPanel = ({ user, onLogout }) => {
   }, []);
 
   useEffect(() => {
-    const qReports = query(collection(db, 'reports'), orderBy('createdAt', 'desc'));
-    const unsubReports = onSnapshot(qReports, (snapshot) => {
-      setReports(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    const qRequests = query(
+      collection(db, 'messageRequests'),
+      orderBy('createdAt', 'desc')
+    );
+    const unsubRequests = onSnapshot(qRequests, (snapshot) => {
+      setMessageRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
     const qSupervisors = query(collection(db, 'profiles'), where('role', '==', 'supervisor'));
@@ -69,7 +92,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
       setUnreadCount(list.filter(n => !n.read).length);
     });
 
-    return () => { unsubReports(); unsubSupervisors(); unsubStudents(); unsubNotif(); };
+    return () => { unsubRequests(); unsubSupervisors(); unsubStudents(); unsubNotif(); };
   }, [user.id]);
 
   const handleOpenNotifications = async () => {
@@ -100,26 +123,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     }
   };
 
-  const handleDeleteReport = async (reportId) => {
-    if (!window.confirm('هل أنت متأكد من حذف هذا البلاغ؟')) return;
-    try {
-      await deleteDoc(doc(db, 'reports', reportId));
-      toast.success('تم حذف البلاغ.');
-    } catch (err) {
-      toast.error('فشل حذف البلاغ: ' + err.message);
-    }
-  };
-
-  const handleSendReportWhatsApp = (report) => {
-    const student = students.find(s => s.id === report.studentId);
-    if (!student || !student.phone) {
-      toast.error('رقم هاتف الطالب غير مسجل.');
-      return;
-    }
-    const message = `الموضوع: بلاغ ضد الطالب ${report.studentName}\n\nالسبب: ${report.reason}\nالشعبة: ${report.studentClass}\n\nيرجى التواصل مع الإدارة.`;
-    window.open(`https://wa.me/${student.phone.replace(/^0+/, '')}?text=${encodeURIComponent(message)}`, '_blank');
-  };
-
   const handleDeleteStudent = async (studentId) => {
     if (!window.confirm('هل أنت متأكد من حذف الطالب نهائياً؟')) return;
     try {
@@ -143,6 +146,87 @@ const SystemManagerPanel = ({ user, onLogout }) => {
       toast.error('فشل تحديث الحالة: ' + err.message);
     }
   };
+
+  // ✅ إرسال الطلب عبر واتساب (خاص بمدير النظام فقط)
+  const handleSendRequest = async (request) => {
+    try {
+      const studentObj = {
+        name: request.targetName || '',
+        phone: request.targetPhone || '',
+        classes: request.targetClass
+          ? request.targetClass.split(', ').map(n => ({ name: n }))
+          : [],
+        age: request.payload?.age,
+        gender: request.payload?.gender,
+        username: request.payload?.username || ''
+      };
+
+      switch (request.type) {
+        case 'warning':
+          sendWarningMessage(studentObj, request.payload.warningNumber, request.payload.description);
+          break;
+        case 'general':
+          sendGeneralMessageToStudent(studentObj, request.payload.subject, request.payload.body);
+          break;
+        case 'report':
+          sendReportMessage(studentObj, request.payload.reason, request.targetClass);
+          break;
+        case 'freeze':
+          sendFreezeMessage(studentObj);
+          break;
+        case 'reset_password':
+          sendResetPasswordMessage(studentObj, request.payload.newPassword);
+          break;
+        case 'activation':
+          sendActivationMessage(studentObj, request.payload.username, request.payload.password);
+          break;
+        case 'data_update_approval':
+          sendDataUpdateApprovalMessage(studentObj, {});
+          break;
+        case 'data_update_rejection':
+          sendDataUpdateRejectionMessage(studentObj, request.payload?.reason);
+          break;
+        case 'delete':
+          // في حال تفعيلها مستقبلاً
+          break;
+        default:
+          toast.error('نوع طلب غير معروف.');
+          return;
+      }
+
+      await updateMessageRequestStatus(request.id, MESSAGE_REQUEST_STATUS.APPROVED, user.id);
+      toast.success('✅ تم الإرسال واعتماد الطلب.');
+    } catch (err) {
+      toast.error('فشل إرسال الطلب: ' + err.message);
+    }
+  };
+
+  const handleRejectRequest = async (requestId) => {
+    const reason = window.prompt('سبب الرفض (اختياري):', '') || '';
+    try {
+      await updateMessageRequestStatus(requestId, MESSAGE_REQUEST_STATUS.REJECTED, user.id, reason);
+      toast.success('تم رفض الطلب.');
+    } catch (err) {
+      toast.error('فشل الرفض: ' + err.message);
+    }
+  };
+
+  const handleDeleteRequest = async (requestId) => {
+    if (!window.confirm('هل أنت متأكد من حذف هذا الطلب نهائياً؟')) return;
+    try {
+      await deleteMessageRequest(requestId);
+      toast.success('تم حذف الطلب.');
+    } catch (err) {
+      toast.error('فشل الحذف: ' + err.message);
+    }
+  };
+
+  const filteredRequests = messageRequests.filter(r => {
+    if (requestFilter === 'all') return true;
+    return r.status === requestFilter;
+  });
+
+  const pendingCount = messageRequests.filter(r => r.status === 'pending').length;
 
   if (loading) return <div className="text-center text-gray-400 p-8">جاري التحميل...</div>;
 
@@ -186,11 +270,11 @@ const SystemManagerPanel = ({ user, onLogout }) => {
                 <FaExclamationTriangle className="text-white text-xl" />
               </div>
               <div>
-                <p className="text-xs text-red-300 uppercase tracking-widest font-semibold">البلاغات</p>
+                <p className="text-xs text-red-300 uppercase tracking-widest font-semibold">طلبات معلّقة</p>
                 <h3 className="text-sm font-bold text-red-100">قيد المراجعة</h3>
               </div>
             </div>
-            <p className="text-4xl font-black text-white">{reports.length}</p>
+            <p className="text-4xl font-black text-white">{pendingCount}</p>
           </div>
 
           <div className="relative overflow-hidden bg-gradient-to-br from-indigo-900/50 to-indigo-900/20 p-6 rounded-2xl border border-indigo-500/30 shadow-xl">
@@ -220,34 +304,107 @@ const SystemManagerPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* Reports Section */}
-        <div className="bg-gray-800/60 p-6 rounded-2xl border border-red-500/20">
-          <h3 className="text-xl font-semibold text-red-300 mb-4 flex items-center gap-2">
-            <FaExclamationTriangle /> البلاغات والإنذارات ({reports.length})
-          </h3>
-          {reports.length === 0 ? (
-            <p className="text-gray-400">لا توجد بلاغات حالياً.</p>
+        {/* ✨ قسم طلبات الرسائل والتواصل مع الطلاب */}
+        <div className="bg-gray-800/60 p-6 rounded-2xl border border-amber-500/30">
+          <div className="flex justify-between items-center flex-wrap gap-3 mb-4">
+            <h3 className="text-xl font-semibold text-amber-300 flex items-center gap-2">
+              <FaPaperPlane /> طلبات الرسائل والتواصل مع الطلاب ({messageRequests.length})
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => setRequestFilter('pending')} className={`px-3 py-1 rounded-lg text-xs ${requestFilter === 'pending' ? 'bg-amber-600 text-white' : 'bg-gray-700 text-gray-300'}`}>قيد المراجعة ({pendingCount})</button>
+              <button onClick={() => setRequestFilter('approved')} className={`px-3 py-1 rounded-lg text-xs ${requestFilter === 'approved' ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-300'}`}>تم الإرسال</button>
+              <button onClick={() => setRequestFilter('rejected')} className={`px-3 py-1 rounded-lg text-xs ${requestFilter === 'rejected' ? 'bg-red-600 text-white' : 'bg-gray-700 text-gray-300'}`}>مرفوضة</button>
+              <button onClick={() => setRequestFilter('all')} className={`px-3 py-1 rounded-lg text-xs ${requestFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300'}`}>الكل</button>
+            </div>
+          </div>
+
+          {filteredRequests.length === 0 ? (
+            <p className="text-gray-400 text-center py-6">لا توجد طلبات في هذا التصنيف.</p>
           ) : (
-            <div className="space-y-3 max-h-[400px] overflow-y-auto">
-              {reports.map(report => (
-                <div key={report.id} className="p-4 bg-black/30 rounded-xl border border-gray-700 flex flex-wrap justify-between items-start gap-3">
-                  <div>
-                    <p className="text-white font-medium">{report.studentName} <span className="text-xs text-gray-400">({report.studentClass})</span></p>
-                    <p className="text-sm text-red-300 mt-1">السبب: {report.reason}</p>
-                    <p className="text-xs text-gray-400 mt-1">
-                      {report.createdAt?.toDate?.() ? new Date(report.createdAt.toDate()).toLocaleString('ar-EG') : ''}
-                    </p>
+            <div className="space-y-3 max-h-[600px] overflow-y-auto">
+              {filteredRequests.map(request => {
+                const isPending = request.status === 'pending';
+                const isApproved = request.status === 'approved';
+                const isRejected = request.status === 'rejected';
+                const statusBadge = isPending ? (
+                  <span className="text-xs bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full">⏳ قيد المراجعة</span>
+                ) : isApproved ? (
+                  <span className="text-xs bg-green-500/20 text-green-300 px-2 py-0.5 rounded-full">✅ تم الإرسال</span>
+                ) : (
+                  <span className="text-xs bg-red-500/20 text-red-300 px-2 py-0.5 rounded-full">❌ مرفوض</span>
+                );
+
+                return (
+                  <div key={request.id} className="p-4 bg-black/30 rounded-xl border border-gray-700 space-y-2">
+                    <div className="flex flex-wrap justify-between items-start gap-2">
+                      <div className="flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-amber-300 font-bold text-sm">{MESSAGE_REQUEST_TYPE_LABELS[request.type] || request.type}</span>
+                          {statusBadge}
+                        </div>
+                        <p className="text-white text-sm mt-1">
+                          <strong>{request.targetName}</strong>
+                          {request.targetClass && <span className="text-gray-400 text-xs mr-2">({request.targetClass})</span>}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-0.5">مقدم من: {request.requestedByName || 'معلم'}</p>
+
+                        {request.type === 'warning' && (
+                          <p className="text-xs text-yellow-200 mt-1">إنذار رقم {request.payload?.warningNumber} — {request.payload?.description}</p>
+                        )}
+                        {request.type === 'general' && (
+                          <div className="mt-1 text-xs text-gray-300">
+                            <p><strong>الموضوع:</strong> {request.payload?.subject}</p>
+                            <p className="line-clamp-2"><strong>النص:</strong> {request.payload?.body}</p>
+                          </div>
+                        )}
+                        {request.type === 'report' && (
+                          <p className="text-xs text-red-200 mt-1">السبب: {request.payload?.reason}</p>
+                        )}
+                        {request.type === 'activation' && (
+                          <p className="text-xs text-green-200 mt-1">اسم المستخدم: {request.payload?.username}</p>
+                        )}
+                        {request.type === 'reset_password' && (
+                          <p className="text-xs text-indigo-200 mt-1">اسم المستخدم: {request.payload?.username}</p>
+                        )}
+                        {request.type === 'data_update_rejection' && request.payload?.reason && (
+                          <p className="text-xs text-red-200 mt-1">سبب الرفض: {request.payload.reason}</p>
+                        )}
+
+                        {request.rejectionReason && (
+                          <p className="text-xs text-red-300 mt-1">سبب الرفض (من المدير): {request.rejectionReason}</p>
+                        )}
+                        <p className="text-[10px] text-gray-500 mt-1">
+                          {request.createdAt?.toDate?.() ? new Date(request.createdAt.toDate()).toLocaleString('ar-EG') : ''}
+                        </p>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        {isPending && (
+                          <>
+                            <button
+                              onClick={() => handleSendRequest(request)}
+                              className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-1"
+                            >
+                              <FaWhatsapp /> إرسال واتساب
+                            </button>
+                            <button
+                              onClick={() => handleRejectRequest(request.id)}
+                              className="text-xs bg-orange-600 hover:bg-orange-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-1"
+                            >
+                              <FaTimesCircle /> رفض
+                            </button>
+                          </>
+                        )}
+                        <button
+                          onClick={() => handleDeleteRequest(request.id)}
+                          className="text-xs bg-gray-600 hover:bg-gray-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-1"
+                        >
+                          <FaTrashAlt /> حذف
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => handleSendReportWhatsApp(report)} className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-lg flex items-center gap-1">
-                      <FaWhatsapp /> إرسال واتساب
-                    </button>
-                    <button onClick={() => handleDeleteReport(report.id)} className="text-xs bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded-lg">
-                      <FaTimesCircle /> حذف
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

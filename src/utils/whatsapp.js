@@ -319,6 +319,48 @@ export const sendDataUpdateRejectionMessage = (student, reason = 'عدم مطا�
   window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
 };
 
+export const sendGeneralMessageToStudent = (student, subject, body) => {
+  const phone = student.phone || '';
+  if (!phone) {
+    toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
+    return;
+  }
+  const cleanedPhone = cleanPhoneNumber(phone);
+  if (!cleanedPhone) {
+    toast.error('رقم الهاتف غير صالح.');
+    return;
+  }
+  const studentName = student.name || '';
+  const fullMessage = encodeURIComponent(
+    `الموضوع: [ ${subject || 'إشعار رسمي'} ]\n\n` +
+    `عزيزي الطالب/ة ${studentName}،\n${body || '(نص الرسالة)'}\n\n` +
+    `للتواصل: +962 7 8611 7388\n\n` +
+    `مع التقدير،\nهمام هاني محمد علي`
+  );
+  window.open(`https://wa.me/${cleanedPhone}?text=${fullMessage}`, '_blank');
+};
+
+export const sendReportMessage = (student, reason, studentClass) => {
+  const phone = student.phone || '';
+  if (!phone) {
+    toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
+    return;
+  }
+  const cleanedPhone = cleanPhoneNumber(phone);
+  if (!cleanedPhone) {
+    toast.error('رقم الهاتف غير صالح.');
+    return;
+  }
+  const studentName = student.name || '';
+  const message = encodeURIComponent(
+    `الموضوع: بلاغ ضد الطالب ${studentName}\n\n` +
+    `السبب: ${reason}\n` +
+    `الشعبة: ${studentClass || 'غير محدد'}\n\n` +
+    `يرجى التواصل مع الإدارة.`
+  );
+  window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
+};
+
 export const sendUrgentReminderMessage = (student) => {
   if (!student) {
     toast.error('لا توجد بيانات الطالب.');

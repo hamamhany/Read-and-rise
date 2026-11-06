@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import toast from 'react-hot-toast';
 import { FaExclamationTriangle } from 'react-icons/fa';
-import { db } from '../../firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { createMessageRequest } from '../../services/messageRequests';
+import { MESSAGE_REQUEST_TYPES } from '../../constants';
 
-const ReportModal = ({ isOpen, onClose, student }) => {
+const ReportModal = ({ isOpen, onClose, student, requesterId, requesterName }) => {
   const [reason, setReason] = useState('');
   const [otherReason, setOtherReason] = useState('');
   const [loading, setLoading] = useState(false);
@@ -29,18 +29,29 @@ const ReportModal = ({ isOpen, onClose, student }) => {
 
     setLoading(true);
     try {
-      await addDoc(collection(db, 'reports'), {
-        studentId: student.id,
-        studentName: student.name,
-        studentClass: student.classes?.map(c => c.name).join(', ') || 'غير محدد',
-        reason: reason === 'أخرى' ? otherReason : reason,
-        createdAt: serverTimestamp(),
-        status: 'pending'
-      });
-      toast.success('تم إرسال البلاغ بنجاح إلى مدير النظام');
+      const finalReason = reason === 'أخرى' ? otherReason.trim() : reason;
+      await createMessageRequest(
+        {
+          type: MESSAGE_REQUEST_TYPES.REPORT,
+          targetType: 'student',
+          targetId: student.id,
+          targetName: student.name,
+          targetPhone: student.phone || '',
+          targetClass: student.classes?.map(c => c.name).join(', ') || 'غير محدد',
+          requestedBy: requesterId || '',
+          requestedByName: requesterName || 'معلم',
+          payload: {
+            reason: finalReason
+          }
+        },
+        requesterName || 'معلم'
+      );
+      toast.success('✅ تم حفظ البلاغ. سيتم إرساله بعد تدقيق مدير النظام.');
+      setReason('');
+      setOtherReason('');
       onClose();
     } catch (err) {
-      toast.error('فشل إرسال البلاغ: ' + err.message);
+      toast.error('فشل حفظ البلاغ: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -84,9 +95,12 @@ const ReportModal = ({ isOpen, onClose, student }) => {
           <div className="bg-red-500/10 p-3 rounded-xl border border-red-500/20 text-xs text-red-300 leading-relaxed">
             ⚠️ تنبيه هام: البلاغ قد يتسبب في إغلاق الحساب أو حظر الرقم نهائياً أو تقديم إنذار للطالب أو يتم اتخاذ عقوبة أشد في حال استلزم الأمر. إذا كنت ترى أن الحل الأمثل هو تقديم بلاغ فلا تتردد.
           </div>
+          <div className="bg-amber-500/10 p-3 rounded-xl border border-amber-500/30 text-xs text-amber-200">
+            📨 سيُحفظ البلاغ كطلب معلّق، ولن يُرسل لولي الأمر إلا بعد مراجعة مدير النظام.
+          </div>
           <div className="flex gap-3 pt-2">
             <button onClick={handleSubmit} disabled={loading} className="flex-1 py-2 px-4 bg-red-600 hover:bg-red-700 rounded-xl text-white text-sm font-semibold transition">
-              {loading ? 'جاري الإرسال...' : 'إرسال البلاغ'}
+              {loading ? 'جاري الحفظ...' : 'حفظ البلاغ'}
             </button>
             <button onClick={onClose} className="flex-1 py-2 px-4 bg-gray-700 hover:bg-gray-600 rounded-xl text-white text-sm transition">إلغاء</button>
           </div>

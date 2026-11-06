@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { 
-  FaPen, FaSave, FaClock, FaClipboardList, FaUser, FaBell, FaSignOutAlt,
-  FaExclamationTriangle, FaCheckCircle, FaTimesCircle, FaEdit, FaComment,
-  FaPlus, FaEye, FaVideo, FaUsers, FaTrashAlt, FaPrint, FaPaperPlane
+  FaPen, FaClock, FaClipboardList, FaUser, FaBell, FaSignOutAlt,
+  FaExclamationTriangle, FaCheckCircle, FaTimesCircle, FaEye,
+  FaPlus, FaVideo, FaUsers, FaTrashAlt, FaPrint, FaPaperPlane
 } from 'react-icons/fa';
 import { db, messaging } from '../../firebase';
 import { auth, secondaryAuth } from '../../services/firebaseAuth';
@@ -23,17 +23,13 @@ import PrintStudentsModal from '../common/PrintStudentsModal';
 import ReportModal from '../common/ReportModal';
 import { 
   generateId, sanitizeInput, arabicToEnglishNumber, 
-  fetchClassNames, cleanPhoneNumber 
+  fetchClassNames 
 } from '../../utils/helpers';
-import { 
-  sendNotificationToStudents, sendNotificationToAllStudents, 
-  sendNotificationToTeacher 
-} from '../../utils/notifications';
+import { createMessageRequest } from '../../services/messageRequests';
 import {
-  sendWarningMessage, sendActivationMessage, sendFreezeMessage,
-  sendDeleteMessage, sendResetPasswordMessage, sendDataUpdateApprovalMessage,
-  sendDataUpdateRejectionMessage
-} from '../../utils/whatsapp';
+  MESSAGE_REQUEST_TYPES,
+  MESSAGE_REQUEST_TYPE_LABELS
+} from '../../constants';
 
 const TeacherPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -87,15 +83,10 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [showReportModal, setShowReportModal] = useState(false);
   const [selectedStudentForReport, setSelectedStudentForReport] = useState(null);
 
-  // ✅ النسخة الجديدة من requestNotificationPermission (لا تعلق أبداً)
+  // ✅ طلب إذن الإشعارات
   const requestNotificationPermission = async () => {
     try {
-      if (!('Notification' in window)) {
-        console.warn('Notification API not supported');
-        return false;
-      }
-
-      // تسجيل Service Worker
+      if (!('Notification' in window)) return false;
       if ('serviceWorker' in navigator) {
         try {
           await Promise.race([
@@ -104,8 +95,6 @@ const TeacherPanel = ({ user, onLogout }) => {
           ]);
         } catch (e) { console.warn('SW register skipped:', e.message); }
       }
-
-      // طلب الإذن
       let permission = Notification.permission;
       if (permission === 'denied') {
         toast.error('الإشعارات محظورة من إعدادات المتصفح');
@@ -114,18 +103,10 @@ const TeacherPanel = ({ user, onLogout }) => {
       if (permission === 'default') {
         permission = await Notification.requestPermission();
       }
-      if (permission !== 'granted') {
-        return false;
-      }
-
-      // محاولة جلب التوكن (اختياري - له مهلة 10 ثواني)
+      if (permission !== 'granted') return false;
       if (!messaging) return true;
       const vapidKey = import.meta.env.VITE_VAPID_KEY;
-      if (!vapidKey) {
-        console.warn('VAPID key missing');
-        return true;
-      }
-
+      if (!vapidKey) return true;
       let token = null;
       try {
         token = await Promise.race([
@@ -134,9 +115,8 @@ const TeacherPanel = ({ user, onLogout }) => {
         ]);
       } catch (e) {
         console.warn('FCM token fetch failed:', e.message);
-        return true; // الإذن ممنوح، لا نمنع المودال
+        return true;
       }
-
       if (token) {
         try {
           await updateDoc(doc(db, 'profiles', user.id), {
@@ -151,7 +131,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ✅ استخدام onMessage مباشرة (بدون ملف pushNotifications)
   useEffect(() => {
     if (!messaging) return;
     try {
@@ -169,7 +148,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   }, []);
 
-  // ✅ النسخة الجديدة: تفتح المودال فوراً ثم تطلب الإذن في الخلفية (بدون async/await)
   const handleOpenNotifications = () => {
     setShowNotificationsModal(true);
     if (typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
@@ -225,8 +203,10 @@ const TeacherPanel = ({ user, onLogout }) => {
       const classMap = await fetchClassNames(newStudentClassIds);
       const classNames = newStudentClassIds.map(id => classMap[id] || null).filter(Boolean);
       setNewlyAddedStudent({
+        id: newId,
         name: sanitizedName, gender: sanitizedGender, age: ageNum, phone: cleanPhone,
-        classIds: newStudentClassIds, classes: classNames.map(n => ({ name: n })),
+        classIds: newStudentClassIds,
+        classes: classNames.map(n => ({ name: n })),
         username: newUsername, password: tempPassword
       });
       setShowAddNotificationModal(true);
@@ -249,22 +229,52 @@ const TeacherPanel = ({ user, onLogout }) => {
     const currentWarnings = student.warnings || [];
     const newWarningNumber = currentWarnings.length + 1;
     if (newWarningNumber > 3) return toast.error('تم تجاوز عدد الإنذارات المسموح به.');
-    sendWarningMessage(student, newWarningNumber, desc.trim());
+
     try {
+      // حفظ طلب الإنذار (لا يُرسل مباشرة)
+      await createMessageRequest(
+        {
+          type: MESSAGE_REQUEST_TYPES.WARNING,
+          targetType: 'student',
+          targetId: student.id,
+          targetName: student.name,
+          targetPhone: student.phone || '',
+          targetClass: student.classes?.map(c => c.name).join(', ') || 'غير محدد',
+          requestedBy: user.id,
+          requestedByName: user.name || user.username || 'معلم',
+          payload: {
+            warningNumber: newWarningNumber,
+            description: desc.trim()
+          }
+        },
+        user.name || user.username || 'معلم'
+      );
+
+      // تسجيل الإنذار في ملف الطالب
       const studentRef = doc(db, 'profiles', student.id);
       await updateDoc(studentRef, {
-        warnings: arrayUnion({ id: generateId(), issuedAt: new Date().toISOString(), type: newWarningNumber, description: desc.trim() }),
+        warnings: arrayUnion({
+          id: generateId(),
+          issuedAt: new Date().toISOString(),
+          type: newWarningNumber,
+          description: desc.trim()
+        }),
         updatedAt: serverTimestamp()
       });
       if (newWarningNumber === 3) {
-        await updateDoc(studentRef, { isFrozen: true, frozenAt: serverTimestamp(), freezeReason: 'تجاوز عدد الإنذارات' });
-        toast.error('⚠️ تم تجميد الحساب تلقائياً (3 إنذارات).');
-      } else {
-        toast.success(`✅ تم إرسال الإنذار رقم ${newWarningNumber}.`);
+        await updateDoc(studentRef, {
+          isFrozen: true,
+          frozenAt: serverTimestamp(),
+          freezeReason: 'تجاوز عدد الإنذارات'
+        });
       }
+
+      toast.success(`✅ تم حفظ طلب الإنذار رقم ${newWarningNumber}. سيتم إرساله بعد تدقيق مدير النظام.`);
       setShowWarningModal(false);
       setSelectedStudentForWarning(null);
-    } catch (err) { toast.error('فشل إصدار الإنذار: ' + err.message); }
+    } catch (err) {
+      toast.error('فشل حفظ طلب الإنذار: ' + err.message);
+    }
   };
 
   const handleResetStudent = async (studentId) => {
@@ -280,9 +290,32 @@ const TeacherPanel = ({ user, onLogout }) => {
         pendingChanges: null, reviewResult: null, reviewExpiry: null,
         tempPassword: newPassword, updatedAt: serverTimestamp()
       });
-      sendResetPasswordMessage({ ...student, classes: student.classIds ? await fetchClassNames(student.classIds) : {} }, newPassword);
-      toast.success('✅ تم إعادة تعيين الحساب.');
-    } catch (err) { toast.error('فشل إعادة التعيين: ' + err.message); }
+
+      // حفظ طلب رسالة إعادة التعيين
+      const classMap = student.classIds ? await fetchClassNames(student.classIds) : {};
+      const classNames = (student.classIds || []).map(id => classMap[id]).filter(Boolean).join(', ');
+      await createMessageRequest(
+        {
+          type: MESSAGE_REQUEST_TYPES.RESET_PASSWORD,
+          targetType: 'student',
+          targetId: studentId,
+          targetName: student.name || '',
+          targetPhone: student.phone || '',
+          targetClass: classNames || 'غير محدد',
+          requestedBy: user.id,
+          requestedByName: user.name || user.username || 'معلم',
+          payload: {
+            username: student.username || '',
+            newPassword: newPassword
+          }
+        },
+        user.name || user.username || 'معلم'
+      );
+
+      toast.success('✅ تم إعادة تعيين الحساب وحفظ طلب إرسال البيانات. سيتم الإرسال بعد تدقيق مدير النظام.');
+    } catch (err) {
+      toast.error('فشل إعادة التعيين: ' + err.message);
+    }
   };
 
   const handleDeleteStudentPermanently = async (studentId) => {
@@ -303,8 +336,22 @@ const TeacherPanel = ({ user, onLogout }) => {
         updatedAt: serverTimestamp()
       });
       if (nextStatus) {
-        setFrozenStudent(student);
-        setShowFreezeNotificationModal(true);
+        // حفظ طلب إشعار التجميد
+        await createMessageRequest(
+          {
+            type: MESSAGE_REQUEST_TYPES.FREEZE,
+            targetType: 'student',
+            targetId: student.id,
+            targetName: student.name || '',
+            targetPhone: student.phone || '',
+            targetClass: student.classes?.map(c => c.name).join(', ') || 'غير محدد',
+            requestedBy: user.id,
+            requestedByName: user.name || user.username || 'معلم',
+            payload: {}
+          },
+          user.name || user.username || 'معلم'
+        );
+        toast.success('⏳ تم تجميد الطالب وحفظ طلب إشعار ولي الأمر. سيُرسل بعد تدقيق مدير النظام.');
       } else {
         toast.success('تم فك التجميد.');
       }
@@ -340,8 +387,24 @@ const TeacherPanel = ({ user, onLogout }) => {
         updatedAt: serverTimestamp()
       };
       await updateDoc(docRef, newData);
-      sendDataUpdateApprovalMessage({ ...student, ...newData }, newData);
-      toast.success('تم قبول التغييرات.');
+
+      // حفظ طلب إشعار الموافقة
+      await createMessageRequest(
+        {
+          type: MESSAGE_REQUEST_TYPES.DATA_UPDATE_APPROVAL,
+          targetType: 'student',
+          targetId: studentId,
+          targetName: newData.name || student.name || '',
+          targetPhone: newData.phone || student.phone || '',
+          targetClass: student.classes?.map(c => c.name).join(', ') || 'غير محدد',
+          requestedBy: user.id,
+          requestedByName: user.name || user.username || 'معلم',
+          payload: {}
+        },
+        user.name || user.username || 'معلم'
+      );
+
+      toast.success('✅ تم قبول التغييرات وحفظ طلب إشعار الموافقة. سيُرسل بعد تدقيق مدير النظام.');
       setShowReviewModal(false);
     } catch (err) { toast.error('فشل القبول: ' + err.message); }
   };
@@ -359,8 +422,26 @@ const TeacherPanel = ({ user, onLogout }) => {
         reviewExpiry: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
         infoVerified: true, updatedAt: serverTimestamp()
       });
-      sendDataUpdateRejectionMessage(student);
-      toast.success('تم رفض التغييرات.');
+
+      // حفظ طلب إشعار الرفض
+      await createMessageRequest(
+        {
+          type: MESSAGE_REQUEST_TYPES.DATA_UPDATE_REJECTION,
+          targetType: 'student',
+          targetId: studentId,
+          targetName: student.name || '',
+          targetPhone: student.phone || '',
+          targetClass: student.classes?.map(c => c.name).join(', ') || 'غير محدد',
+          requestedBy: user.id,
+          requestedByName: user.name || user.username || 'معلم',
+          payload: {
+            reason: 'عدم مطابقة الوثائق الرسمية / الحاجة لتقديم إثبات رسمي آخر / عدم استيفاء الشروط المطلوبة'
+          }
+        },
+        user.name || user.username || 'معلم'
+      );
+
+      toast.success('✅ تم رفض التغييرات وحفظ طلب إشعار الرفض. سيُرسل بعد تدقيق مدير النظام.');
       setShowReviewModal(false);
     } catch (err) { toast.error('فشل الرفض: ' + err.message); }
   };
@@ -414,25 +495,70 @@ const TeacherPanel = ({ user, onLogout }) => {
     } catch (err) { toast.error('فشل: ' + err.message); }
   };
 
-  const sendGeneralMessage = (student) => {
-    if (!student) return;
-    const phone = student.phone || '';
-    if (!phone) return toast.error('رقم الهاتف غير مسجل.');
-    const cleanedPhone = cleanPhoneNumber(phone);
-    if (!cleanedPhone) return toast.error('رقم غير صالح.');
-    const studentName = student.name || '';
-    const classNames = student.classes?.map(c => c.name).filter(Boolean) || [];
-    const subject = sanitizeInput(generalMessageSubject) || 'إشعار رسمي';
-    const body = sanitizeInput(generalMessageText) || '(نص الرسالة)';
-    const fullMessage = encodeURIComponent(
-      `الموضوع: [ ${subject} ]\n\n` +
-      `عزيزي الطالب/ة ${studentName}،\n${body}\n\n` +
-      `للتواصل: +962 7 8611 7388\n\n` +
-      `مع التقدير،\nهمام هاني محمد علي`
-    );
-    window.open(`https://wa.me/${cleanedPhone}?text=${fullMessage}`, '_blank');
-    setShowGeneralMessageModal(false);
-    setGeneralMessageSubject(''); setGeneralMessageText(''); setSelectedStudentForMessage(null);
+  // ✅ تحويل إرسال الرسالة العامة إلى طلب معلّق
+  const handleSaveGeneralMessage = async () => {
+    if (!selectedStudentForMessage) return;
+    if (!generalMessageText.trim()) {
+      toast.error('يرجى كتابة نص الرسالة.');
+      return;
+    }
+    try {
+      await createMessageRequest(
+        {
+          type: MESSAGE_REQUEST_TYPES.GENERAL,
+          targetType: 'student',
+          targetId: selectedStudentForMessage.id,
+          targetName: selectedStudentForMessage.name || '',
+          targetPhone: selectedStudentForMessage.phone || '',
+          targetClass: selectedStudentForMessage.classes?.map(c => c.name).join(', ') || 'غير محدد',
+          requestedBy: user.id,
+          requestedByName: user.name || user.username || 'معلم',
+          payload: {
+            subject: sanitizeInput(generalMessageSubject) || 'إشعار رسمي',
+            body: sanitizeInput(generalMessageText)
+          }
+        },
+        user.name || user.username || 'معلم'
+      );
+      toast.success('✅ تم حفظ الرسالة كطلب معلّق. سيتم إرسالها بعد تدقيق مدير النظام.');
+      setShowGeneralMessageModal(false);
+      setGeneralMessageSubject('');
+      setGeneralMessageText('');
+      setSelectedStudentForMessage(null);
+    } catch (err) {
+      toast.error('فشل حفظ الرسالة: ' + err.message);
+    }
+  };
+
+  // ✅ حفظ طلب تفعيل الحساب
+  const handleSaveActivationRequest = async () => {
+    if (!newlyAddedStudent) return;
+    try {
+      await createMessageRequest(
+        {
+          type: MESSAGE_REQUEST_TYPES.ACTIVATION,
+          targetType: 'student',
+          targetId: newlyAddedStudent.id || '',
+          targetName: newlyAddedStudent.name,
+          targetPhone: newlyAddedStudent.phone,
+          targetClass: newlyAddedStudent.classes?.map(c => c.name).join(', ') || 'غير محدد',
+          requestedBy: user.id,
+          requestedByName: user.name || user.username || 'معلم',
+          payload: {
+            username: newlyAddedStudent.username,
+            password: newlyAddedStudent.password,
+            age: newlyAddedStudent.age,
+            gender: newlyAddedStudent.gender
+          }
+        },
+        user.name || user.username || 'معلم'
+      );
+      toast.success('✅ تم حفظ طلب إرسال بيانات التفعيل. سيُرسل بعد تدقيق مدير النظام.');
+      setShowAddNotificationModal(false);
+      setNewlyAddedStudent(null);
+    } catch (err) {
+      toast.error('فشل حفظ الطلب: ' + err.message);
+    }
   };
 
   useEffect(() => {
@@ -584,6 +710,12 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
+        {/* تنبيه عام للمعلم */}
+        <div className="bg-blue-900/30 p-3 rounded-xl border border-blue-500/30 text-sm text-blue-200 flex items-center gap-2">
+          <FaPaperPlane className="shrink-0" />
+          <span>جميع الرسائل والإنذارات والبلاغات تُحفظ كطلبات معلّقة، ولا تُرسل إلا بعد تدقيق <strong>مدير النظام</strong>.</span>
+        </div>
+
         {errorMsg && <p className="text-red-400 text-sm bg-red-500/10 p-3 rounded-xl border border-red-500/20">{errorMsg}</p>}
 
         {pendingReviews.length > 0 && (
@@ -605,7 +737,6 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
         )}
 
-        {/* 🎨 Counter + Next Lesson */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="relative overflow-hidden bg-gradient-to-br from-indigo-900/60 via-purple-900/40 to-purple-900/20 p-6 rounded-2xl border border-purple-500/30 shadow-xl group hover:shadow-purple-500/20 hover:border-purple-400/50 transition-all duration-300">
             <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-purple-500/20 transition" />
@@ -650,7 +781,6 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* Homeworks */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700 space-y-4">
           <div className="flex justify-between items-center">
             <h3 className="text-xl font-semibold text-pink-300"><FaPen className="inline-block me-2" /> إدارة الواجبات</h3>
@@ -671,7 +801,6 @@ const TeacherPanel = ({ user, onLogout }) => {
           ) : <p className="text-gray-400 text-center py-4">لا توجد واجبات.</p>}
         </div>
 
-        {/* Students Management */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700">
           <div className="flex flex-wrap justify-between items-center gap-3">
             <h3 className="text-xl font-semibold text-blue-300"><FaUser className="inline-block me-2" /> إدارة الطلاب</h3>
@@ -683,18 +812,23 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* Schedule */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700 space-y-4">
           <h3 className="text-xl font-semibold text-purple-200"><FaClock className="inline-block me-2" /> جدولة المواعيد</h3>
           <button onClick={() => setShowLessonChoice(true)} className="btn-primary bg-gradient-to-r from-indigo-500 to-blue-600 py-3 px-6 rounded-md text-white"><FaClock className="inline-block me-2" /> إدارة المواعيد (حتى 6)</button>
         </div>
       </div>
 
-      {/* Modals */}
       <PrintStudentsModal isOpen={showPrintModal} onClose={() => setShowPrintModal(false)} students={students} />
-      {selectedStudentForReport && <ReportModal isOpen={showReportModal} onClose={() => { setShowReportModal(false); setSelectedStudentForReport(null); }} student={selectedStudentForReport} />}
+      {selectedStudentForReport && (
+        <ReportModal
+          isOpen={showReportModal}
+          onClose={() => { setShowReportModal(false); setSelectedStudentForReport(null); }}
+          student={selectedStudentForReport}
+          requesterId={user.id}
+          requesterName={user.name || user.username || 'معلم'}
+        />
+      )}
 
-      {/* Students List */}
       {showStudentsModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-40 p-4" onClick={() => setShowStudentsModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-4xl w-full max-h-[80vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
@@ -735,7 +869,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* Warning Modal */}
       {showWarningModal && selectedStudentForWarning && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowWarningModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-yellow-500/30" onClick={(e) => e.stopPropagation()}>
@@ -744,10 +877,10 @@ const TeacherPanel = ({ user, onLogout }) => {
             <div className="space-y-4">
               <textarea className="bg-gray-800 w-full h-24 text-right p-2 border border-gray-600 rounded-md text-white resize-none" placeholder="اكتب وصف المخالفة..." value={warningDescription} onChange={(e) => setWarningDescription(e.target.value)} />
               <div className="bg-yellow-500/10 p-3 rounded-xl border border-yellow-500/20 text-xs text-yellow-300">
-                سيتم مراجعة طلبك من قبل لجنة الإشراف العام وسيتم اتخاذ القرار خلال ٤٨ ساعة بحد اقصى.
+                سيتم حفظ طلب الإنذار وإرساله رسمياً إلى ولي الأمر بعد مراجعة واعتماد <strong>مدير النظام</strong>.
               </div>
               <div className="flex gap-3">
-                <button onClick={confirmWarning} className="btn-primary bg-yellow-600 hover:bg-yellow-700 px-6 py-2 rounded-md text-white">إرسال</button>
+                <button onClick={confirmWarning} className="btn-primary bg-yellow-600 hover:bg-yellow-700 px-6 py-2 rounded-md text-white">حفظ الطلب</button>
                 <button onClick={() => setShowWarningModal(false)} className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-md text-white">إلغاء</button>
               </div>
             </div>
@@ -755,7 +888,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* Add Student Modal */}
       {showAddStudentModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-40 p-4" onClick={() => setShowAddStudentModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
@@ -781,16 +913,18 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* General Message Modal */}
       {showGeneralMessageModal && selectedStudentForMessage && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowGeneralMessageModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-semibold text-green-300 mb-4"><FaComment className="inline-block me-2" /> إرسال رسالة إلى {selectedStudentForMessage.name}</h3>
+            <h3 className="text-xl font-semibold text-green-300 mb-4"><FaPaperPlane className="inline-block me-2" /> رسالة إلى {selectedStudentForMessage.name}</h3>
             <div className="space-y-3">
               <input type="text" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" placeholder="الموضوع" value={generalMessageSubject} onChange={(e) => setGeneralMessageSubject(e.target.value)} />
               <textarea className="bg-gray-800 w-full h-32 text-right p-2 border border-gray-600 rounded-md text-white resize-none" placeholder="نص الرسالة..." value={generalMessageText} onChange={(e) => setGeneralMessageText(e.target.value)} />
+              <div className="bg-blue-500/10 p-3 rounded-xl border border-blue-500/20 text-xs text-blue-200">
+                📨 سيتم حفظ الرسالة كطلب معلّق، ولن تُرسل إلى ولي الأمر إلا بعد اعتماد <strong>مدير النظام</strong>.
+              </div>
               <div className="flex gap-3">
-                <button onClick={() => sendGeneralMessage(selectedStudentForMessage)} className="btn-primary bg-green-600 hover:bg-green-700 px-6 py-2 rounded-md text-white"><FaPaperPlane className="inline-block me-2" /> إرسال</button>
+                <button onClick={handleSaveGeneralMessage} className="btn-primary bg-green-600 hover:bg-green-700 px-6 py-2 rounded-md text-white"><FaPaperPlane className="inline-block me-2" /> حفظ الطلب</button>
                 <button onClick={() => setShowGeneralMessageModal(false)} className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-md text-white">إلغاء</button>
               </div>
             </div>
@@ -798,7 +932,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* Class Selection */}
       {showClassSelectionModal && selectedStudentForClass && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowClassSelectionModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
@@ -821,12 +954,14 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* Review Modal */}
       {showReviewModal && selectedReviewStudent && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowReviewModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-blue-500/30" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-xl font-semibold text-blue-300 mb-4"><FaClipboardList className="inline-block me-2" /> مراجعة طلب التعديل</h3>
             <p className="text-gray-300 text-sm mb-3">الطالب: <strong>{selectedReviewStudent.name}</strong></p>
+            <div className="bg-amber-500/10 p-3 rounded-xl border border-amber-500/30 text-xs text-amber-200 mb-3">
+              ⚠️ إشعار الموافقة/الرفض سيُرسل لولي الأمر بعد اعتماد <strong>مدير النظام</strong>.
+            </div>
             <div className="flex gap-3 mt-4">
               <button onClick={() => acceptReview(selectedReviewStudent.id)} className="btn-primary bg-green-600 px-6 py-2 rounded-md text-white"><FaCheckCircle className="inline-block me-2" /> قبول</button>
               <button onClick={() => rejectReview(selectedReviewStudent.id)} className="btn-primary bg-red-600 px-6 py-2 rounded-md text-white"><FaTimesCircle className="inline-block me-2" /> رفض</button>
@@ -836,33 +971,21 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* Add Notification Modal */}
       {showAddNotificationModal && newlyAddedStudent && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-green-500/30">
             <h3 className="text-xl font-semibold text-green-300 mb-2 text-center"><FaCheckCircle className="inline-block me-2" /> تم تسجيل الطالب</h3>
             <p className="text-gray-300 text-center mb-4">تم إضافة {newlyAddedStudent.name} بنجاح.</p>
-            <button onClick={() => { sendActivationMessage(newlyAddedStudent, newlyAddedStudent.username, newlyAddedStudent.password); setShowAddNotificationModal(false); setNewlyAddedStudent(null); }} className="btn-primary bg-green-600 hover:bg-green-700 w-full py-3 rounded-md text-white">
-              إخبار ولي الأمر عبر واتساب
+            <div className="bg-amber-500/10 p-3 rounded-xl border border-amber-500/30 text-xs text-amber-200 mb-3">
+              📨 سيتم حفظ طلب إرسال بيانات التفعيل لولي الأمر، ولن يُرسل إلا بعد اعتماد <strong>مدير النظام</strong>.
+            </div>
+            <button onClick={handleSaveActivationRequest} className="btn-primary bg-green-600 hover:bg-green-700 w-full py-3 rounded-md text-white">
+              <FaPaperPlane className="inline-block me-2" /> حفظ طلب إرسال بيانات التفعيل
             </button>
           </div>
         </div>
       )}
 
-      {/* Freeze Notification Modal */}
-      {showFreezeNotificationModal && frozenStudent && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-orange-500/30">
-            <h3 className="text-xl font-semibold text-orange-300 mb-2 text-center">تم تجميد الحساب</h3>
-            <p className="text-gray-300 text-center mb-4">هل تريد إخبار ولي الأمر؟</p>
-            <button onClick={() => { sendFreezeMessage(frozenStudent); setShowFreezeNotificationModal(false); setFrozenStudent(null); }} className="btn-primary bg-orange-600 hover:bg-orange-700 w-full py-3 rounded-md text-white">
-              إخبار ولي الأمر
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Choice Modals */}
       <ChoiceModal isOpen={showAssignmentChoice} onClose={() => { setShowAssignmentChoice(false); setSelectedAssignmentType(null); }} onSelect={(type) => { setSelectedAssignmentType(type); setShowAssignmentChoice(false); setShowAssignmentModal(true); }} title="نوع الواجب" options={[{ value: 'now', label: 'نشر فوراً' }, { value: 'schedule', label: 'جدولة' }, { value: 'draft', label: 'حفظ كمسودة' }, { value: 'delay', label: 'نشر بعد وقت' }]} />
       <ChoiceModal isOpen={showLessonChoice} onClose={() => { setShowLessonChoice(false); setSelectedLessonType(null); }} onSelect={(type) => { setSelectedLessonType(type); setShowLessonChoice(false); setShowLessonModal(true); }} title="إدارة المواعيد" options={[{ value: 'manage', label: 'إضافة / تعديل المواعيد (حتى 6)' }]} />
 
