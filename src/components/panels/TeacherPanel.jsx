@@ -754,51 +754,56 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
         )}
 
+        {/* ✅ التعديل هنا: عمودين، العمود الأول يحتوي على بطاقتين فوق بعض (طلاب + شعب) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* ✅ البطاقة المحدثة: تقسيم النص إلى طلاب وشعب + تصغير الحجم */}
-          <div className="relative overflow-hidden bg-gradient-to-br from-indigo-900/60 via-purple-900/40 to-purple-900/20 p-4 md:p-5 rounded-2xl border border-purple-500/30 shadow-xl group hover:shadow-purple-500/20 hover:border-purple-400/50 transition-all duration-300">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-purple-500/20 transition" />
+          
+          {/* العمود الأيسر: بطاقة الطلاب (أعلى) + بطاقة الشعب (أسفل) */}
+          <div className="flex flex-col gap-4">
             
-            <div className="relative z-10 flex items-center justify-between divide-x divide-purple-500/30 w-full">
-              
-              {/* نصف الطلاب */}
-              <div className="flex-1 flex flex-col items-center justify-center px-2">
-                <div className="flex items-center gap-2 mb-1">
+            {/* بطاقة الطلاب - تم تصغير حجمها للنصف */}
+            <div className="flex-1 relative overflow-hidden bg-gradient-to-br from-indigo-900/60 via-purple-900/40 to-purple-900/20 p-4 rounded-2xl border border-purple-500/30 shadow-xl group hover:shadow-purple-500/20 hover:border-purple-400/50 transition-all duration-300">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-purple-500/20 transition" />
+              <div className="relative z-10 flex items-center justify-between">
+                <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-purple-500/30">
                     <FaUsers className="text-white text-lg" />
                   </div>
                   <div>
-                    <p className="text-xs text-purple-300 font-semibold">الطلاب</p>
-                    <p className="text-[10px] text-purple-400">المسجلين</p>
+                    <p className="text-xs text-purple-300 uppercase tracking-widest font-semibold">الإجمالي</p>
+                    <h3 className="text-sm font-bold text-purple-100">عدد الطلاب</h3>
                   </div>
                 </div>
-                <div className="flex items-baseline gap-1 mt-1">
-                  <p className="text-3xl font-black bg-gradient-to-r from-white via-purple-100 to-purple-200 bg-clip-text text-transparent">{students.length}</p>
-                  <span className="text-purple-300 text-[10px] font-medium">طالب</span>
+                <div className="flex items-baseline gap-2">
+                  <p className="text-4xl font-black bg-gradient-to-r from-white via-purple-100 to-purple-200 bg-clip-text text-transparent">{students.length}</p>
+                  <span className="text-purple-300 text-sm font-medium">طالب</span>
                 </div>
               </div>
+            </div>
 
-              {/* نصف الشعب */}
-              <div className="flex-1 flex flex-col items-center justify-center px-2">
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-fuchsia-500 to-pink-600 flex items-center justify-center shadow-lg shadow-fuchsia-500/30">
+            {/* بطاقة الشعب الدراسية - جديدة أسفل الطلاب */}
+            <div className="flex-1 relative overflow-hidden bg-gradient-to-br from-pink-900/60 via-fuchsia-900/40 to-fuchsia-900/20 p-4 rounded-2xl border border-pink-500/30 shadow-xl group hover:shadow-pink-500/20 hover:border-pink-400/50 transition-all duration-300">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-pink-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-pink-500/20 transition" />
+              <div className="relative z-10 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-fuchsia-600 flex items-center justify-center shadow-lg shadow-pink-500/30">
                     <FaClipboardList className="text-white text-lg" />
                   </div>
                   <div>
-                    <p className="text-xs text-purple-300 font-semibold">الشعب</p>
-                    <p className="text-[10px] text-purple-400">الدراسية</p>
+                    <p className="text-xs text-pink-300 uppercase tracking-widest font-semibold">الإجمالي</p>
+                    <h3 className="text-sm font-bold text-pink-100">الشعب الدراسية</h3>
                   </div>
                 </div>
-                <div className="flex items-baseline gap-1 mt-1">
-                  <p className="text-3xl font-black bg-gradient-to-r from-white via-purple-100 to-purple-200 bg-clip-text text-transparent">{classes.length}</p>
-                  <span className="text-purple-300 text-[10px] font-medium">شعبة</span>
+                <div className="flex items-baseline gap-2">
+                  <p className="text-4xl font-black bg-gradient-to-r from-white via-pink-100 to-pink-200 bg-clip-text text-transparent">{classes.length}</p>
+                  <span className="text-pink-300 text-sm font-medium">شعبة</span>
                 </div>
               </div>
-
             </div>
+
           </div>
 
-          <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700">
+          {/* العمود الأيمن: العد التنازلي */}
+          <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700 flex flex-col justify-center">
             <div className="flex justify-between items-center mb-2">
               <h3 className="text-lg font-semibold text-purple-200">الوقت المتبقي للحصة القادمة</h3>
               {classes.length > 0 && (
@@ -814,6 +819,7 @@ const TeacherPanel = ({ user, onLogout }) => {
               </button>
             )}
           </div>
+
         </div>
 
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700 space-y-4">
