@@ -754,34 +754,43 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
         )}
 
-        {/* ✅ التعديل هنا: عمودين، العمود الأول يحتوي على بطاقتين فوق بعض (طلاب + شعب) */}
+        {/* ✅ التعديل: عمودين، العمود الأول يحتوي على بطاقتين (طلاب + شعب) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           
           {/* العمود الأيسر: بطاقة الطلاب (أعلى) + بطاقة الشعب (أسفل) */}
           <div className="flex flex-col gap-4">
             
-            {/* بطاقة الطلاب - تم تصغير حجمها للنصف */}
+            {/* بطاقة الطلاب - تم إرجاع الشريط وإضافة مسافات متناسقة */}
             <div className="flex-1 relative overflow-hidden bg-gradient-to-br from-indigo-900/60 via-purple-900/40 to-purple-900/20 p-4 rounded-2xl border border-purple-500/30 shadow-xl group hover:shadow-purple-500/20 hover:border-purple-400/50 transition-all duration-300">
               <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-purple-500/20 transition" />
-              <div className="relative z-10 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-purple-500/30">
-                    <FaUsers className="text-white text-lg" />
+              <div className="relative z-10">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-purple-500/30">
+                      <FaUsers className="text-white text-lg" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-purple-300 uppercase tracking-widest font-semibold">الإجمالي</p>
+                      <h3 className="text-sm font-bold text-purple-100">عدد الطلاب</h3>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-xs text-purple-300 uppercase tracking-widest font-semibold">الإجمالي</p>
-                    <h3 className="text-sm font-bold text-purple-100">عدد الطلاب</h3>
+                  <div className="flex items-baseline gap-2">
+                    <p className="text-4xl font-black bg-gradient-to-r from-white via-purple-100 to-purple-200 bg-clip-text text-transparent">{students.length}</p>
+                    <span className="text-purple-300 text-sm font-medium">طالب</span>
                   </div>
                 </div>
-                <div className="flex items-baseline gap-2">
-                  <p className="text-4xl font-black bg-gradient-to-r from-white via-purple-100 to-purple-200 bg-clip-text text-transparent">{students.length}</p>
-                  <span className="text-purple-300 text-sm font-medium">طالب</span>
+                {/* ✅ الشريط الجميل عاد هنا */}
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-1.5 bg-purple-900/50 rounded-full overflow-hidden">
+                    <div className="h-full bg-gradient-to-r from-purple-500 to-indigo-400 rounded-full transition-all" style={{ width: `${Math.min(students.length * 5, 100)}%` }} />
+                  </div>
+                  <span className="text-xs text-purple-400">نشط</span>
                 </div>
               </div>
             </div>
 
             {/* بطاقة الشعب الدراسية - جديدة أسفل الطلاب */}
-            <div className="flex-1 relative overflow-hidden bg-gradient-to-br from-pink-900/60 via-fuchsia-900/40 to-fuchsia-900/20 p-4 rounded-2xl border border-pink-500/30 shadow-xl group hover:shadow-pink-500/20 hover:border-pink-400/50 transition-all duration-300">
+            <div className="flex-1 relative overflow-hidden bg-gradient-to-br from-pink-900/60 via-fuchsia-900/40 to-fuchsia-900/20 p-4 rounded-2xl border border-pink-500/30 shadow-xl group hover:shadow-pink-500/20 hover:border-pink-400/50 transition-all duration-300 flex flex-col justify-center">
               <div className="absolute top-0 right-0 w-32 h-32 bg-pink-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-pink-500/20 transition" />
               <div className="relative z-10 flex items-center justify-between">
                 <div className="flex items-center gap-3">
