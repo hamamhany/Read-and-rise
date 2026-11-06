@@ -19,7 +19,8 @@ import {
 } from '../../constants';
 import {
   updateMessageRequestStatus,
-  deleteMessageRequest
+  deleteMessageRequest,
+  cleanupOldApprovedRequests
 } from '../../services/messageRequests';
 import { CountdownTimer } from '../common/CountdownTimer';
 import {
@@ -202,6 +203,15 @@ const SystemManagerPanel = ({ user, onLogout }) => {
       unsubTeachers(); unsubLessonTimes(); unsubNotif();
     };
   }, [user.id]);
+
+  // ✅ تنظيف الطلبات المعتمدة القديمة دورياً (عند الدخول + كل 30 دقيقة)
+  useEffect(() => {
+    cleanupOldApprovedRequests();
+    const interval = setInterval(() => {
+      cleanupOldApprovedRequests();
+    }, 30 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   // حساب أول حصة قادمة + عدد المحاضرات النشطة
   useEffect(() => {
