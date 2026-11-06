@@ -53,12 +53,12 @@ export const requestNotificationPermission = async (userId) => {
     const existingTokens = profileSnap.data()?.fcmTokens || [];
 
     if (existingTokens.includes(token)) {
-      toast.success('الإشعارات مفعلة بالفعل ✓');
+      // ✅ تمت إزالة رسالة النجاح هنا
       return true;
     }
 
     await updateDoc(profileRef, { fcmTokens: arrayUnion(token) });
-    toast.success('تم تفعيل الإشعارات بنجاح ✓');
+    // ✅ تمت إزالة رسالة النجاح هنا
     return true;
   } catch (err) {
     console.error('Notification permission error:', err);
