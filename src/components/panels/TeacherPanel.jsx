@@ -9,7 +9,7 @@ import { db, messaging } from '../../firebase';
 import { auth, secondaryAuth } from '../../services/firebaseAuth';
 import { 
   doc, getDoc, setDoc, updateDoc, deleteDoc, collection, query,
-  where, getDocs, onSnapshot, serverTimestamp, arrayUnion, orderBy
+  where, getDocs, onSnapshot, serverTimestamp, arrayUnion, orderBy, writeBatch
 } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
@@ -27,8 +27,7 @@ import {
 } from '../../utils/helpers';
 import { createMessageRequest } from '../../services/messageRequests';
 import {
-  MESSAGE_REQUEST_TYPES,
-  MESSAGE_REQUEST_TYPE_LABELS
+  MESSAGE_REQUEST_TYPES
 } from '../../constants';
 
 const TeacherPanel = ({ user, onLogout }) => {
@@ -44,6 +43,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
+  const [notificationIdsAtOpen, setNotificationIdsAtOpen] = useState([]);
   const [notificationsActive, setNotificationsActive] = useState(
     typeof Notification !== 'undefined' && Notification.permission === 'granted' && !!messaging
   );
@@ -68,8 +68,6 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [studentLoading, setStudentLoading] = useState(false);
   const [showAddNotificationModal, setShowAddNotificationModal] = useState(false);
   const [newlyAddedStudent, setNewlyAddedStudent] = useState(null);
-  const [showFreezeNotificationModal, setShowFreezeNotificationModal] = useState(false);
-  const [frozenStudent, setFrozenStudent] = useState(null);
   const [showClassSelectionModal, setShowClassSelectionModal] = useState(false);
   const [selectedStudentForClass, setSelectedStudentForClass] = useState(null);
   const [tempClassIds, setTempClassIds] = useState([]);
@@ -83,7 +81,6 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [showReportModal, setShowReportModal] = useState(false);
   const [selectedStudentForReport, setSelectedStudentForReport] = useState(null);
 
-  // ✅ طلب إذن الإشعارات
   const requestNotificationPermission = async () => {
     try {
       if (!('Notification' in window)) return false;
@@ -149,12 +146,29 @@ const TeacherPanel = ({ user, onLogout }) => {
   }, []);
 
   const handleOpenNotifications = () => {
+    setNotificationIdsAtOpen(notifications.map(n => n.id));
     setShowNotificationsModal(true);
     if (typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
       requestNotificationPermission()
         .then(ok => setNotificationsActive(ok))
         .catch(err => console.warn('Notification request failed:', err));
     }
+  };
+
+  const handleCloseNotifications = async () => {
+    setShowNotificationsModal(false);
+    try {
+      if (notificationIdsAtOpen.length > 0) {
+        const batch = writeBatch(db);
+        notificationIdsAtOpen.forEach(id => {
+          batch.delete(doc(db, 'notifications', user.id, 'userNotifications', id));
+        });
+        await batch.commit();
+      }
+    } catch (err) {
+      console.warn('فشل حذف الإشعارات:', err);
+    }
+    setNotificationIdsAtOpen([]);
   };
 
   const handleAddStudent = async (e) => {
@@ -231,26 +245,21 @@ const TeacherPanel = ({ user, onLogout }) => {
     if (newWarningNumber > 3) return toast.error('تم تجاوز عدد الإنذارات المسموح به.');
 
     try {
-      // حفظ طلب الإنذار (لا يُرسل مباشرة)
-      await createMessageRequest(
-        {
-          type: MESSAGE_REQUEST_TYPES.WARNING,
-          targetType: 'student',
-          targetId: student.id,
-          targetName: student.name,
-          targetPhone: student.phone || '',
-          targetClass: student.classes?.map(c => c.name).join(', ') || 'غير محدد',
-          requestedBy: user.id,
-          requestedByName: user.name || user.username || 'معلم',
-          payload: {
-            warningNumber: newWarningNumber,
-            description: desc.trim()
-          }
-        },
-        user.name || user.username || 'معلم'
-      );
+      await createMessageRequest({
+        type: MESSAGE_REQUEST_TYPES.WARNING,
+        targetType: 'student',
+        targetId: student.id,
+        targetName: student.name,
+        targetPhone: student.phone || '',
+        targetClass: student.classes?.map(c => c.name).join(', ') || 'غير محدد',
+        requestedBy: user.id,
+        requestedByName: user.name || user.username || 'معلم',
+        payload: {
+          warningNumber: newWarningNumber,
+          description: desc.trim()
+        }
+      });
 
-      // تسجيل الإنذار في ملف الطالب
       const studentRef = doc(db, 'profiles', student.id);
       await updateDoc(studentRef, {
         warnings: arrayUnion({
@@ -291,26 +300,22 @@ const TeacherPanel = ({ user, onLogout }) => {
         tempPassword: newPassword, updatedAt: serverTimestamp()
       });
 
-      // حفظ طلب رسالة إعادة التعيين
       const classMap = student.classIds ? await fetchClassNames(student.classIds) : {};
       const classNames = (student.classIds || []).map(id => classMap[id]).filter(Boolean).join(', ');
-      await createMessageRequest(
-        {
-          type: MESSAGE_REQUEST_TYPES.RESET_PASSWORD,
-          targetType: 'student',
-          targetId: studentId,
-          targetName: student.name || '',
-          targetPhone: student.phone || '',
-          targetClass: classNames || 'غير محدد',
-          requestedBy: user.id,
-          requestedByName: user.name || user.username || 'معلم',
-          payload: {
-            username: student.username || '',
-            newPassword: newPassword
-          }
-        },
-        user.name || user.username || 'معلم'
-      );
+      await createMessageRequest({
+        type: MESSAGE_REQUEST_TYPES.RESET_PASSWORD,
+        targetType: 'student',
+        targetId: studentId,
+        targetName: student.name || '',
+        targetPhone: student.phone || '',
+        targetClass: classNames || 'غير محدد',
+        requestedBy: user.id,
+        requestedByName: user.name || user.username || 'معلم',
+        payload: {
+          username: student.username || '',
+          newPassword: newPassword
+        }
+      });
 
       toast.success('✅ تم إعادة تعيين الحساب وحفظ طلب إرسال البيانات. سيتم الإرسال بعد تدقيق مدير النظام.');
     } catch (err) {
@@ -318,15 +323,44 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  const handleDeleteStudentPermanently = async (studentId) => {
-    const ok = await confirm('حذف دائم', 'سيتم حذف الملف الشخصي للطالب نهائياً. متابعة؟');
+  // ✅ حذف الطالب مع إمكانية إخطار ولي الأمر
+  const handleDeleteStudentPermanently = async (student) => {
+    const ok = await confirm(
+      'حذف دائم',
+      `سيتم حذف الملف الشخصي للطالب "${student.name}" نهائياً من النظام. هل تريد المتابعة؟`
+    );
     if (!ok) return;
+
+    const notifyParent = await confirm(
+      'إخطار ولي الأمر بالحذف',
+      'هل تريد إرسال إشعار حذف الحساب لولي الأمر؟\n\n📨 سيُحفظ كطلب ويُرسل رسمياً بعد تدقيق مدير النظام.'
+    );
+
     try {
-      await deleteDoc(doc(db, 'profiles', studentId));
-      toast.success('✅ تم حذف الطالب.');
-    } catch (err) { toast.error('فشل الحذف: ' + err.message); }
+      if (notifyParent) {
+        await createMessageRequest({
+          type: MESSAGE_REQUEST_TYPES.DELETE,
+          targetType: 'student',
+          targetId: student.id,
+          targetName: student.name || '',
+          targetPhone: student.phone || '',
+          targetClass: student.classes?.map(c => c.name).join(', ') || 'غير محدد',
+          requestedBy: user.id,
+          requestedByName: user.name || user.username || 'معلم',
+          payload: {}
+        });
+      }
+
+      await deleteDoc(doc(db, 'profiles', student.id));
+      toast.success(notifyParent
+        ? '✅ تم حذف الطالب وحفظ طلب إشعار ولي الأمر.'
+        : '✅ تم حذف الطالب.');
+    } catch (err) {
+      toast.error('فشل الحذف: ' + err.message);
+    }
   };
 
+  // ✅ تجميد الطالب مع سؤال إخطار ولي الأمر
   const toggleFreezeStudent = async (student) => {
     const nextStatus = !student.isFrozen;
     try {
@@ -335,10 +369,14 @@ const TeacherPanel = ({ user, onLogout }) => {
         frozenAt: nextStatus ? serverTimestamp() : null,
         updatedAt: serverTimestamp()
       });
+
       if (nextStatus) {
-        // حفظ طلب إشعار التجميد
-        await createMessageRequest(
-          {
+        const notifyParent = await confirm(
+          'إخطار ولي الأمر بالتجميد',
+          `تم تجميد حساب الطالب "${student.name}".\n\nهل تريد إرسال إشعار تجميد لولي الأمر؟\n\n📨 سيُحفظ كطلب ويُرسل رسمياً بعد تدقيق مدير النظام.`
+        );
+        if (notifyParent) {
+          await createMessageRequest({
             type: MESSAGE_REQUEST_TYPES.FREEZE,
             targetType: 'student',
             targetId: student.id,
@@ -348,14 +386,17 @@ const TeacherPanel = ({ user, onLogout }) => {
             requestedBy: user.id,
             requestedByName: user.name || user.username || 'معلم',
             payload: {}
-          },
-          user.name || user.username || 'معلم'
-        );
-        toast.success('⏳ تم تجميد الطالب وحفظ طلب إشعار ولي الأمر. سيُرسل بعد تدقيق مدير النظام.');
+          });
+          toast.success('⏳ تم تجميد الطالب وحفظ طلب إشعار ولي الأمر.');
+        } else {
+          toast.success('تم تجميد الطالب.');
+        }
       } else {
         toast.success('تم فك التجميد.');
       }
-    } catch (err) { toast.error('فشل التحديث: ' + err.message); }
+    } catch (err) {
+      toast.error('فشل التحديث: ' + err.message);
+    }
   };
 
   const openClassSelection = (s) => { setSelectedStudentForClass(s); setTempClassIds(s.classIds || []); setShowClassSelectionModal(true); };
@@ -388,21 +429,17 @@ const TeacherPanel = ({ user, onLogout }) => {
       };
       await updateDoc(docRef, newData);
 
-      // حفظ طلب إشعار الموافقة
-      await createMessageRequest(
-        {
-          type: MESSAGE_REQUEST_TYPES.DATA_UPDATE_APPROVAL,
-          targetType: 'student',
-          targetId: studentId,
-          targetName: newData.name || student.name || '',
-          targetPhone: newData.phone || student.phone || '',
-          targetClass: student.classes?.map(c => c.name).join(', ') || 'غير محدد',
-          requestedBy: user.id,
-          requestedByName: user.name || user.username || 'معلم',
-          payload: {}
-        },
-        user.name || user.username || 'معلم'
-      );
+      await createMessageRequest({
+        type: MESSAGE_REQUEST_TYPES.DATA_UPDATE_APPROVAL,
+        targetType: 'student',
+        targetId: studentId,
+        targetName: newData.name || student.name || '',
+        targetPhone: newData.phone || student.phone || '',
+        targetClass: student.classes?.map(c => c.name).join(', ') || 'غير محدد',
+        requestedBy: user.id,
+        requestedByName: user.name || user.username || 'معلم',
+        payload: {}
+      });
 
       toast.success('✅ تم قبول التغييرات وحفظ طلب إشعار الموافقة. سيُرسل بعد تدقيق مدير النظام.');
       setShowReviewModal(false);
@@ -423,23 +460,19 @@ const TeacherPanel = ({ user, onLogout }) => {
         infoVerified: true, updatedAt: serverTimestamp()
       });
 
-      // حفظ طلب إشعار الرفض
-      await createMessageRequest(
-        {
-          type: MESSAGE_REQUEST_TYPES.DATA_UPDATE_REJECTION,
-          targetType: 'student',
-          targetId: studentId,
-          targetName: student.name || '',
-          targetPhone: student.phone || '',
-          targetClass: student.classes?.map(c => c.name).join(', ') || 'غير محدد',
-          requestedBy: user.id,
-          requestedByName: user.name || user.username || 'معلم',
-          payload: {
-            reason: 'عدم مطابقة الوثائق الرسمية / الحاجة لتقديم إثبات رسمي آخر / عدم استيفاء الشروط المطلوبة'
-          }
-        },
-        user.name || user.username || 'معلم'
-      );
+      await createMessageRequest({
+        type: MESSAGE_REQUEST_TYPES.DATA_UPDATE_REJECTION,
+        targetType: 'student',
+        targetId: studentId,
+        targetName: student.name || '',
+        targetPhone: student.phone || '',
+        targetClass: student.classes?.map(c => c.name).join(', ') || 'غير محدد',
+        requestedBy: user.id,
+        requestedByName: user.name || user.username || 'معلم',
+        payload: {
+          reason: 'عدم مطابقة الوثائق الرسمية / الحاجة لتقديم إثبات رسمي آخر / عدم استيفاء الشروط المطلوبة'
+        }
+      });
 
       toast.success('✅ تم رفض التغييرات وحفظ طلب إشعار الرفض. سيُرسل بعد تدقيق مدير النظام.');
       setShowReviewModal(false);
@@ -495,7 +528,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     } catch (err) { toast.error('فشل: ' + err.message); }
   };
 
-  // ✅ تحويل إرسال الرسالة العامة إلى طلب معلّق
   const handleSaveGeneralMessage = async () => {
     if (!selectedStudentForMessage) return;
     if (!generalMessageText.trim()) {
@@ -503,23 +535,20 @@ const TeacherPanel = ({ user, onLogout }) => {
       return;
     }
     try {
-      await createMessageRequest(
-        {
-          type: MESSAGE_REQUEST_TYPES.GENERAL,
-          targetType: 'student',
-          targetId: selectedStudentForMessage.id,
-          targetName: selectedStudentForMessage.name || '',
-          targetPhone: selectedStudentForMessage.phone || '',
-          targetClass: selectedStudentForMessage.classes?.map(c => c.name).join(', ') || 'غير محدد',
-          requestedBy: user.id,
-          requestedByName: user.name || user.username || 'معلم',
-          payload: {
-            subject: sanitizeInput(generalMessageSubject) || 'إشعار رسمي',
-            body: sanitizeInput(generalMessageText)
-          }
-        },
-        user.name || user.username || 'معلم'
-      );
+      await createMessageRequest({
+        type: MESSAGE_REQUEST_TYPES.GENERAL,
+        targetType: 'student',
+        targetId: selectedStudentForMessage.id,
+        targetName: selectedStudentForMessage.name || '',
+        targetPhone: selectedStudentForMessage.phone || '',
+        targetClass: selectedStudentForMessage.classes?.map(c => c.name).join(', ') || 'غير محدد',
+        requestedBy: user.id,
+        requestedByName: user.name || user.username || 'معلم',
+        payload: {
+          subject: sanitizeInput(generalMessageSubject) || 'إشعار رسمي',
+          body: sanitizeInput(generalMessageText)
+        }
+      });
       toast.success('✅ تم حفظ الرسالة كطلب معلّق. سيتم إرسالها بعد تدقيق مدير النظام.');
       setShowGeneralMessageModal(false);
       setGeneralMessageSubject('');
@@ -530,29 +559,25 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ✅ حفظ طلب تفعيل الحساب
   const handleSaveActivationRequest = async () => {
     if (!newlyAddedStudent) return;
     try {
-      await createMessageRequest(
-        {
-          type: MESSAGE_REQUEST_TYPES.ACTIVATION,
-          targetType: 'student',
-          targetId: newlyAddedStudent.id || '',
-          targetName: newlyAddedStudent.name,
-          targetPhone: newlyAddedStudent.phone,
-          targetClass: newlyAddedStudent.classes?.map(c => c.name).join(', ') || 'غير محدد',
-          requestedBy: user.id,
-          requestedByName: user.name || user.username || 'معلم',
-          payload: {
-            username: newlyAddedStudent.username,
-            password: newlyAddedStudent.password,
-            age: newlyAddedStudent.age,
-            gender: newlyAddedStudent.gender
-          }
-        },
-        user.name || user.username || 'معلم'
-      );
+      await createMessageRequest({
+        type: MESSAGE_REQUEST_TYPES.ACTIVATION,
+        targetType: 'student',
+        targetId: newlyAddedStudent.id || '',
+        targetName: newlyAddedStudent.name,
+        targetPhone: newlyAddedStudent.phone,
+        targetClass: newlyAddedStudent.classes?.map(c => c.name).join(', ') || 'غير محدد',
+        requestedBy: user.id,
+        requestedByName: user.name || user.username || 'معلم',
+        payload: {
+          username: newlyAddedStudent.username,
+          password: newlyAddedStudent.password,
+          age: newlyAddedStudent.age,
+          gender: newlyAddedStudent.gender
+        }
+      });
       toast.success('✅ تم حفظ طلب إرسال بيانات التفعيل. سيُرسل بعد تدقيق مدير النظام.');
       setShowAddNotificationModal(false);
       setNewlyAddedStudent(null);
@@ -710,7 +735,6 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* تنبيه عام للمعلم */}
         <div className="bg-blue-900/30 p-3 rounded-xl border border-blue-500/30 text-sm text-blue-200 flex items-center gap-2">
           <FaPaperPlane className="shrink-0" />
           <span>جميع الرسائل والإنذارات والبلاغات تُحفظ كطلبات معلّقة، ولا تُرسل إلا بعد تدقيق <strong>مدير النظام</strong>.</span>
@@ -854,6 +878,7 @@ const TeacherPanel = ({ user, onLogout }) => {
                       <button onClick={() => { setSelectedStudentForMessage(s); setShowGeneralMessageModal(true); }} className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-lg">رسالة</button>
                       <button onClick={() => openClassSelection(s)} className="text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-1 rounded-lg">الشعبة</button>
                       <button onClick={() => handleResetStudent(s.id)} className="text-xs bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-1 rounded-lg">إعادة تعيين</button>
+                      <button onClick={() => handleDeleteStudentPermanently(s)} className="text-xs bg-red-600/30 text-red-200 border border-red-500/40 px-2 py-1 rounded-lg">حذف</button>
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-gray-400">{s.isFrozen ? 'مجمد' : 'مفعل'}</span>
                         <div onClick={() => toggleFreezeStudent(s)} className={`w-10 h-5 flex items-center rounded-full p-0.5 cursor-pointer transition-colors ${s.isFrozen ? 'bg-gray-600' : 'bg-green-500'}`}>
@@ -982,6 +1007,40 @@ const TeacherPanel = ({ user, onLogout }) => {
             <button onClick={handleSaveActivationRequest} className="btn-primary bg-green-600 hover:bg-green-700 w-full py-3 rounded-md text-white">
               <FaPaperPlane className="inline-block me-2" /> حفظ طلب إرسال بيانات التفعيل
             </button>
+          </div>
+        </div>
+      )}
+
+      {showNotificationsModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={handleCloseNotifications}>
+          <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full max-h-[70vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold text-purple-300"><FaBell className="inline-block me-2" /> الإشعارات</h3>
+              <button onClick={handleCloseNotifications} className="text-gray-400 hover:text-white text-2xl">✕</button>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">📌 ستُحذف هذه الإشعارات تلقائياً عند إغلاق النافذة.</p>
+            {!notificationsActive && (
+              <div className="mb-4 p-3 bg-yellow-500/10 rounded-xl border border-yellow-500/20 text-yellow-200 text-sm">
+                ⚠️ الإشعارات غير مفعلة. اضغط على زر الجرس لتفعيلها.
+              </div>
+            )}
+            {notifications.length === 0 ? (
+              <p className="text-gray-400 text-center py-4">لا توجد إشعارات</p>
+            ) : (
+              <div className="space-y-3">
+                {notifications.map((n) => (
+                  <div key={n.id} className="p-3 rounded-xl border bg-gray-800/60 border-blue-500/40">
+                    <div className="flex justify-between items-start">
+                      <h4 className="text-white font-medium">{n.title}</h4>
+                      <span className="text-xs text-gray-400">
+                        {n.createdAt?.toDate?.() ? new Date(n.createdAt.toDate()).toLocaleString('ar-EG') : ''}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-300 mt-1">{n.body}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -1,19 +1,19 @@
 import { db } from '../firebase';
 import {
   collection, addDoc, doc, updateDoc, deleteDoc,
-  serverTimestamp, getDocs, query, where, setDoc
+  serverTimestamp, getDocs, query, where
 } from 'firebase/firestore';
 import {
   MESSAGE_REQUESTS_COLLECTION,
   MESSAGE_REQUEST_STATUS,
-  MESSAGE_REQUEST_TYPE_LABELS
+  MESSAGE_REQUEST_RETENTION_MS
 } from '../constants';
 
 /**
  * إنشاء طلب رسالة جديد (يُحفظ بحالة pending)
- * ويُرسل إشعاراً لجميع مديري النظام
+ * ⚠️ لا يُرسل أي إشعار لمدير النظام — الطلب يظهر مباشرة في لوحته
  */
-export const createMessageRequest = async (data, requesterName = 'معلم') => {
+export const createMessageRequest = async (data) => {
   try {
     const request = {
       ...data,
@@ -24,33 +24,6 @@ export const createMessageRequest = async (data, requesterName = 'معلم') => 
       rejectionReason: null
     };
     const docRef = await addDoc(collection(db, MESSAGE_REQUESTS_COLLECTION), request);
-
-    // إشعار جميع مديري النظام
-    try {
-      const smQuery = query(
-        collection(db, 'profiles'),
-        where('role', '==', 'system_manager')
-      );
-      const smSnap = await getDocs(smQuery);
-      const typeLabel = MESSAGE_REQUEST_TYPE_LABELS[data.type] || 'رسالة';
-      for (const smDoc of smSnap.docs) {
-        await setDoc(
-          doc(collection(db, 'notifications', smDoc.id, 'userNotifications')),
-          {
-            title: `📨 طلب ${typeLabel} جديد`,
-            body: `${requesterName} طلب إرسال ${typeLabel} للطالب ${data.targetName || ''}`,
-            type: 'message_request',
-            relatedId: docRef.id,
-            createdAt: serverTimestamp(),
-            read: false,
-            readAt: null
-          }
-        );
-      }
-    } catch (notifErr) {
-      console.warn('فشل إشعار مديري النظام:', notifErr);
-    }
-
     return docRef.id;
   } catch (err) {
     console.error('خطأ في إنشاء طلب الرسالة:', err);
@@ -81,7 +54,7 @@ export const updateMessageRequestStatus = async (
 };
 
 /**
- * حذف طلب
+ * حذف طلب واحد
  */
 export const deleteMessageRequest = async (id) => {
   try {
@@ -89,5 +62,47 @@ export const deleteMessageRequest = async (id) => {
   } catch (err) {
     console.error('خطأ في حذف الطلب:', err);
     throw err;
+  }
+};
+
+/**
+ * حذف الطلبات المعتمدة التي مضى عليها أكثر من 48 ساعة
+ * (يتم استدعاؤها دورياً من لوحة مدير النظام)
+ * @returns {Promise<number>} عدد الطلبات المحذوفة
+ */
+export const cleanupOldApprovedRequests = async () => {
+  try {
+    const q = query(
+      collection(db, MESSAGE_REQUESTS_COLLECTION),
+      where('status', '==', MESSAGE_REQUEST_STATUS.APPROVED)
+    );
+    const snapshot = await getDocs(q);
+    const now = Date.now();
+    let deletedCount = 0;
+
+    for (const docSnap of snapshot.docs) {
+      const data = docSnap.data();
+      if (!data.processedAt) continue;
+
+      const processedMs = data.processedAt.toDate
+        ? data.processedAt.toDate().getTime()
+        : (data.processedAt.seconds ? data.processedAt.seconds * 1000 : 0);
+
+      if (!processedMs) continue;
+
+      if (now - processedMs >= MESSAGE_REQUEST_RETENTION_MS) {
+        try {
+          await deleteDoc(doc(db, MESSAGE_REQUESTS_COLLECTION, docSnap.id));
+          deletedCount++;
+        } catch (delErr) {
+          console.warn('فشل حذف طلب قديم:', docSnap.id, delErr);
+        }
+      }
+    }
+
+    return deletedCount;
+  } catch (err) {
+    console.error('خطأ في تنظيف الطلبات القديمة:', err);
+    return 0;
   }
 };

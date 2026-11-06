@@ -22,6 +22,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
+  const [notificationIdsAtOpen, setNotificationIdsAtOpen] = useState([]);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
@@ -34,7 +35,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
   const [delayError, setDelayError] = useState('');
   const [editingAnnouncementId, setEditingAnnouncementId] = useState(null);
 
-  // ✅ النسخة الجديدة من requestNotificationPermission (لا تعلق أبداً)
   const requestNotificationPermission = async () => {
     try {
       if (!('Notification' in window)) {
@@ -42,7 +42,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
         return false;
       }
 
-      // تسجيل Service Worker
       if ('serviceWorker' in navigator) {
         try {
           await Promise.race([
@@ -52,7 +51,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
         } catch (e) { console.warn('SW register skipped:', e.message); }
       }
 
-      // طلب الإذن
       let permission = Notification.permission;
       if (permission === 'denied') {
         toast.error('الإشعارات محظورة من إعدادات المتصفح');
@@ -65,7 +63,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
         return false;
       }
 
-      // محاولة جلب التوكن (اختياري - له مهلة 10 ثواني)
       if (!messaging) return true;
       const vapidKey = import.meta.env.VITE_VAPID_KEY;
       if (!vapidKey) {
@@ -81,7 +78,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
         ]);
       } catch (e) {
         console.warn('FCM token fetch failed:', e.message);
-        return true; // الإذن ممنوح، لا نمنع المودال
+        return true;
       }
 
       if (token) {
@@ -98,7 +95,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ✅ onMessage مع حماية من messaging قد يكون null
   useEffect(() => {
     if (!messaging) return;
     try {
@@ -275,14 +271,32 @@ const SupervisorPanel = ({ user, onLogout }) => {
     setShowDetailsModal(true);
   };
 
-  // ✅ النسخة الجديدة: تفتح المودال فوراً ثم تطلب الإذن في الخلفية (بدون async/await)
+  // ✅ فتح الإشعارات: نحفظ IDs الحالية ثم نطلب الإذن
   const handleOpenNotifications = () => {
+    setNotificationIdsAtOpen(notifications.map(n => n.id));
     setShowNotificationsModal(true);
     if (typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
       requestNotificationPermission().catch(err =>
         console.warn('Notification request failed:', err)
       );
     }
+  };
+
+  // ✅ إغلاق الإشعارات: نحذف كل الإشعارات المعروضة من Firestore
+  const handleCloseNotifications = async () => {
+    setShowNotificationsModal(false);
+    try {
+      if (notificationIdsAtOpen.length > 0) {
+        const batch = writeBatch(db);
+        notificationIdsAtOpen.forEach(id => {
+          batch.delete(doc(db, 'notifications', user.id, 'userNotifications', id));
+        });
+        await batch.commit();
+      }
+    } catch (err) {
+      console.warn('فشل حذف الإشعارات:', err);
+    }
+    setNotificationIdsAtOpen([]);
   };
 
   if (loading) return <div className="text-center text-gray-400 p-8">جاري التحميل...</div>;
@@ -534,20 +548,21 @@ const SupervisorPanel = ({ user, onLogout }) => {
       )}
 
       {showNotificationsModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowNotificationsModal(false)}>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={handleCloseNotifications}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full max-h-[70vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-semibold text-purple-300">
                 <FaBell className="inline-block me-2" /> الإشعارات
               </h3>
-              <button onClick={() => setShowNotificationsModal(false)} className="text-gray-400 hover:text-white text-2xl">✕</button>
+              <button onClick={handleCloseNotifications} className="text-gray-400 hover:text-white text-2xl">✕</button>
             </div>
+            <p className="text-xs text-gray-500 mb-3">📌 ستُحذف هذه الإشعارات تلقائياً عند إغلاق النافذة.</p>
             {notifications.length === 0 ? (
               <p className="text-gray-400 text-center py-4">لا توجد إشعارات</p>
             ) : (
               <div className="space-y-3">
                 {notifications.map((n) => (
-                  <div key={n.id} className={`p-3 rounded-xl border ${n.read ? 'bg-gray-800/30 border-gray-600' : 'bg-gray-800/60 border-blue-500/40'}`}>
+                  <div key={n.id} className="p-3 rounded-xl border bg-gray-800/60 border-blue-500/40">
                     <div className="flex justify-between items-start">
                       <h4 className="text-white font-medium">{n.title}</h4>
                       <span className="text-xs text-gray-400">
@@ -555,37 +570,9 @@ const SupervisorPanel = ({ user, onLogout }) => {
                       </span>
                     </div>
                     <p className="text-sm text-gray-300 mt-1">{n.body}</p>
-                    {!n.read && (
-                      <button
-                        onClick={async () => {
-                          await updateDoc(doc(db, 'notifications', user.id, 'userNotifications', n.id), {
-                            read: true,
-                            readAt: serverTimestamp()
-                          });
-                        }}
-                        className="text-xs text-blue-400 hover:text-blue-300 mt-2 block"
-                      >
-                        وضع علامة مقروء
-                      </button>
-                    )}
                   </div>
                 ))}
               </div>
-            )}
-            {notifications.some(n => !n.read) && (
-              <button
-                onClick={async () => {
-                  const batch = writeBatch(db);
-                  notifications.filter(n => !n.read).forEach(n => {
-                    const ref = doc(db, 'notifications', user.id, 'userNotifications', n.id);
-                    batch.update(ref, { read: true, readAt: serverTimestamp() });
-                  });
-                  await batch.commit();
-                }}
-                className="mt-4 text-sm text-purple-400 hover:text-purple-300"
-              >
-                تعيين الكل كمقروء
-              </button>
             )}
           </div>
         </div>

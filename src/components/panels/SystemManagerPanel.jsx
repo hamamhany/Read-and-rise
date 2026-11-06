@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { 
   FaSignOutAlt, FaUserShield, FaExclamationTriangle, FaWhatsapp, 
-  FaTimesCircle, FaUsers, FaTrashAlt, FaBell, FaPaperPlane, FaCheckCircle
+  FaTimesCircle, FaUsers, FaTrashAlt, FaBell, FaPaperPlane, 
+  FaChalkboardTeacher, FaBroadcastTower, FaHourglassHalf
 } from 'react-icons/fa';
 import { db } from '../../firebase';
 import { 
   collection, query, onSnapshot, doc, deleteDoc, 
-  serverTimestamp, orderBy, where, updateDoc
+  serverTimestamp, orderBy, where, updateDoc, writeBatch
 } from 'firebase/firestore';
 import { createSupervisorAccount } from '../../services/supervisor';
 import { requestNotificationPermission, setupOnMessageListener } from '../../utils/pushNotifications';
@@ -20,10 +21,12 @@ import {
   updateMessageRequestStatus,
   deleteMessageRequest
 } from '../../services/messageRequests';
+import { CountdownTimer } from '../common/CountdownTimer';
 import {
   sendWarningMessage,
   sendActivationMessage,
   sendFreezeMessage,
+  sendDeleteMessage,
   sendResetPasswordMessage,
   sendDataUpdateApprovalMessage,
   sendDataUpdateRejectionMessage,
@@ -31,20 +34,108 @@ import {
   sendReportMessage
 } from '../../utils/whatsapp';
 
+// دالة مساعدة: أول حصة قادمة على مستوى النظام كله
+const computeNextGlobalLesson = (allTimes) => {
+  const now = new Date();
+  let nearest = null;
+  for (const lt of allTimes) {
+    if (!lt.time) continue;
+    let d = null;
+
+    if (lt.type === 'once') {
+      const dd = new Date(lt.date);
+      if (!isNaN(dd.getTime())) {
+        dd.setHours(lt.time.hours, lt.time.minutes, 0, 0);
+        if (dd > now) d = dd;
+      }
+    } else if (lt.type === 'recurring') {
+      const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+      const dayIndex = days.indexOf(lt.day);
+      if (dayIndex === -1) continue;
+      let diff = dayIndex - now.getDay();
+      if (diff < 0) diff += 7;
+      if (diff === 0) {
+        const t = new Date(now);
+        t.setHours(lt.time.hours, lt.time.minutes, 0, 0);
+        if (t <= now) diff = 7;
+      }
+      const dd = new Date(now);
+      dd.setDate(now.getDate() + diff);
+      dd.setHours(lt.time.hours, lt.time.minutes, 0, 0);
+      d = dd;
+    } else if (lt.type === 'monthly') {
+      const md = parseInt(lt.monthDay);
+      if (!md) continue;
+      let dd = new Date(now.getFullYear(), now.getMonth(), md);
+      dd.setHours(lt.time.hours, lt.time.minutes, 0, 0);
+      if (dd <= now) {
+        dd = new Date(now.getFullYear(), now.getMonth() + 1, md);
+        dd.setHours(lt.time.hours, lt.time.minutes, 0, 0);
+      }
+      d = dd;
+    }
+    if (d && (!nearest || d < nearest)) nearest = d;
+  }
+  return nearest;
+};
+
+// دالة مساعدة: عدد المحاضرات النشطة الآن (مدة كل محاضرة 60 دقيقة)
+const computeActiveLectures = (allTimes) => {
+  const now = new Date();
+  let count = 0;
+  for (const lt of allTimes) {
+    if (!lt.time) continue;
+    let start = null;
+
+    if (lt.type === 'once') {
+      const dd = new Date(lt.date);
+      if (!isNaN(dd.getTime())) {
+        dd.setHours(lt.time.hours, lt.time.minutes, 0, 0);
+        start = dd;
+      }
+    } else if (lt.type === 'recurring') {
+      const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+      const dayIndex = days.indexOf(lt.day);
+      if (dayIndex !== now.getDay()) continue;
+      const dd = new Date(now);
+      dd.setHours(lt.time.hours, lt.time.minutes, 0, 0);
+      start = dd;
+    } else if (lt.type === 'monthly') {
+      const md = parseInt(lt.monthDay);
+      if (md !== now.getDate()) continue;
+      const dd = new Date(now);
+      dd.setHours(lt.time.hours, lt.time.minutes, 0, 0);
+      start = dd;
+    }
+
+    if (start) {
+      const end = new Date(start.getTime() + 60 * 60 * 1000);
+      if (now >= start && now < end) count++;
+    }
+  }
+  return count;
+};
+
 const SystemManagerPanel = ({ user, onLogout }) => {
   const [messageRequests, setMessageRequests] = useState([]);
   const [supervisors, setSupervisors] = useState([]);
   const [students, setStudents] = useState([]);
+  const [teachers, setTeachers] = useState([]);
+  const [allLessonTimes, setAllLessonTimes] = useState([]);
+  const [nextGlobalLesson, setNextGlobalLesson] = useState(null);
+  const [activeLecturesCount, setActiveLecturesCount] = useState(0);
+
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
+  const [notificationIdsAtOpen, setNotificationIdsAtOpen] = useState([]);
   const [notificationsActive, setNotificationsActive] = useState(
     typeof Notification !== 'undefined' && Notification.permission === 'granted' && !!messaging
   );
 
-  const [requestFilter, setRequestFilter] = useState('pending'); // all | pending | approved | rejected
-  
+  const [requestFilter, setRequestFilter] = useState('pending');
+
   const [showSupervisorModal, setShowSupervisorModal] = useState(false);
   const [newSupervisorName, setNewSupervisorName] = useState('');
   const [newSupervisorGender, setNewSupervisorGender] = useState('');
@@ -84,6 +175,20 @@ const SystemManagerPanel = ({ user, onLogout }) => {
       setLoading(false);
     });
 
+    const qTeachers = query(collection(db, 'profiles'), where('role', '==', 'teacher'));
+    const unsubTeachers = onSnapshot(qTeachers, (snapshot) => {
+      setTeachers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    const unsubLessonTimes = onSnapshot(collection(db, 'teachers'), (snapshot) => {
+      const times = [];
+      snapshot.docs.forEach(docSnap => {
+        const data = docSnap.data();
+        (data.lessonTimes || []).forEach(t => times.push({ teacherId: docSnap.id, ...t }));
+      });
+      setAllLessonTimes(times);
+    });
+
     const notifRef = collection(db, 'notifications', user.id, 'userNotifications');
     const qNotif = query(notifRef, orderBy('createdAt', 'desc'));
     const unsubNotif = onSnapshot(qNotif, (snapshot) => {
@@ -92,13 +197,79 @@ const SystemManagerPanel = ({ user, onLogout }) => {
       setUnreadCount(list.filter(n => !n.read).length);
     });
 
-    return () => { unsubRequests(); unsubSupervisors(); unsubStudents(); unsubNotif(); };
+    return () => {
+      unsubRequests(); unsubSupervisors(); unsubStudents();
+      unsubTeachers(); unsubLessonTimes(); unsubNotif();
+    };
   }, [user.id]);
 
+  // حساب أول حصة قادمة + عدد المحاضرات النشطة
+  useEffect(() => {
+    if (allLessonTimes.length === 0) {
+      setNextGlobalLesson(null);
+      setActiveLecturesCount(0);
+      return;
+    }
+    const tick = () => {
+      setNextGlobalLesson(computeNextGlobalLesson(allLessonTimes));
+      setActiveLecturesCount(computeActiveLectures(allLessonTimes));
+    };
+    tick();
+    const interval = setInterval(tick, 30000);
+    return () => clearInterval(interval);
+  }, [allLessonTimes]);
+
+  // حذف الطلبات المعتمدة تلقائياً بعد 48 ساعة
+  useEffect(() => {
+    if (!messageRequests.length) return;
+    const now = Date.now();
+    const fortyEightHours = 48 * 60 * 60 * 1000;
+
+    const toDelete = messageRequests.filter(r => {
+      if (r.status !== 'approved') return false;
+      if (!r.processedAt) return false;
+      const ms = r.processedAt.toDate ? r.processedAt.toDate().getTime() : 0;
+      if (!ms) return false;
+      return (now - ms) > fortyEightHours;
+    });
+
+    if (toDelete.length > 0) {
+      (async () => {
+        try {
+          const batch = writeBatch(db);
+          toDelete.forEach(r => {
+            batch.delete(doc(db, 'messageRequests', r.id));
+          });
+          await batch.commit();
+        } catch (err) {
+          console.warn('فشل حذف الطلبات القديمة:', err);
+        }
+      })();
+    }
+  }, [messageRequests]);
+
   const handleOpenNotifications = async () => {
+    setNotificationIdsAtOpen(notifications.map(n => n.id));
+    setShowNotificationsModal(true);
     const ok = await requestNotificationPermission(user.id);
     setNotificationsActive(ok);
-    setShowNotificationsModal(true);
+  };
+
+  // حذف جميع الإشعارات عند إغلاق المودال
+  const handleCloseNotifications = async () => {
+    setShowNotificationsModal(false);
+    try {
+      if (notificationIdsAtOpen.length > 0) {
+        const batch = writeBatch(db);
+        notificationIdsAtOpen.forEach(id => {
+          batch.delete(doc(db, 'notifications', user.id, 'userNotifications', id));
+        });
+        await batch.commit();
+      }
+    } catch (err) {
+      console.warn('فشل حذف الإشعارات:', err);
+    }
+    setNotificationIdsAtOpen([]);
   };
 
   const handleAddSupervisor = async (e) => {
@@ -147,7 +318,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ✅ إرسال الطلب عبر واتساب (خاص بمدير النظام فقط)
   const handleSendRequest = async (request) => {
     try {
       const studentObj = {
@@ -174,6 +344,9 @@ const SystemManagerPanel = ({ user, onLogout }) => {
         case 'freeze':
           sendFreezeMessage(studentObj);
           break;
+        case 'delete':
+          sendDeleteMessage(studentObj);
+          break;
         case 'reset_password':
           sendResetPasswordMessage(studentObj, request.payload.newPassword);
           break;
@@ -185,9 +358,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
           break;
         case 'data_update_rejection':
           sendDataUpdateRejectionMessage(studentObj, request.payload?.reason);
-          break;
-        case 'delete':
-          // في حال تفعيلها مستقبلاً
           break;
         default:
           toast.error('نوع طلب غير معروف.');
@@ -262,8 +432,9 @@ const SystemManagerPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* Stats Cards */}
+        {/* Stats Cards — 6 بطاقات */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* البلاغات */}
           <div className="relative overflow-hidden bg-gradient-to-br from-red-900/50 to-red-900/20 p-6 rounded-2xl border border-red-500/30 shadow-xl">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center shadow-lg">
@@ -277,6 +448,21 @@ const SystemManagerPanel = ({ user, onLogout }) => {
             <p className="text-4xl font-black text-white">{pendingCount}</p>
           </div>
 
+          {/* الطلاب */}
+          <div className="relative overflow-hidden bg-gradient-to-br from-emerald-900/50 to-emerald-900/20 p-6 rounded-2xl border border-emerald-500/30 shadow-xl">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center shadow-lg">
+                <FaUsers className="text-white text-xl" />
+              </div>
+              <div>
+                <p className="text-xs text-emerald-300 uppercase tracking-widest font-semibold">الطلاب</p>
+                <h3 className="text-sm font-bold text-emerald-100">إجمالي المسجلين</h3>
+              </div>
+            </div>
+            <p className="text-4xl font-black text-white">{students.length}</p>
+          </div>
+
+          {/* المشرفين */}
           <div className="relative overflow-hidden bg-gradient-to-br from-indigo-900/50 to-indigo-900/20 p-6 rounded-2xl border border-indigo-500/30 shadow-xl">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-lg">
@@ -290,21 +476,70 @@ const SystemManagerPanel = ({ user, onLogout }) => {
             <p className="text-4xl font-black text-white">{supervisors.length}</p>
           </div>
 
-          <div className="relative overflow-hidden bg-gradient-to-br from-emerald-900/50 to-emerald-900/20 p-6 rounded-2xl border border-emerald-500/30 shadow-xl">
+          {/* المعلمين */}
+          <div className="relative overflow-hidden bg-gradient-to-br from-blue-900/50 to-blue-900/20 p-6 rounded-2xl border border-blue-500/30 shadow-xl">
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center shadow-lg">
-                <FaUsers className="text-white text-xl" />
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center shadow-lg">
+                <FaChalkboardTeacher className="text-white text-xl" />
               </div>
               <div>
-                <p className="text-xs text-emerald-300 uppercase tracking-widest font-semibold">الطلاب</p>
-                <h3 className="text-sm font-bold text-emerald-100">إجمالي المسجلين</h3>
+                <p className="text-xs text-blue-300 uppercase tracking-widest font-semibold">المعلمين</p>
+                <h3 className="text-sm font-bold text-blue-100">في النظام</h3>
               </div>
             </div>
-            <p className="text-4xl font-black text-white">{students.length}</p>
+            <p className="text-4xl font-black text-white">{teachers.length}</p>
+          </div>
+
+          {/* المحاضرات النشطة */}
+          <div className="relative overflow-hidden bg-gradient-to-br from-purple-900/50 to-purple-900/20 p-6 rounded-2xl border border-purple-500/30 shadow-xl">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-fuchsia-600 flex items-center justify-center shadow-lg">
+                <FaBroadcastTower className="text-white text-xl" />
+              </div>
+              <div>
+                <p className="text-xs text-purple-300 uppercase tracking-widest font-semibold">محاضرات</p>
+                <h3 className="text-sm font-bold text-purple-100">نشطة الآن (60 دقيقة)</h3>
+              </div>
+            </div>
+            <p className="text-4xl font-black text-white">{activeLecturesCount}</p>
+          </div>
+
+          {/* أول حصة قادمة */}
+          <div className="relative overflow-hidden bg-gradient-to-br from-amber-900/50 to-amber-900/20 p-6 rounded-2xl border border-amber-500/30 shadow-xl">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500 to-yellow-600 flex items-center justify-center shadow-lg">
+                <FaHourglassHalf className="text-white text-xl" />
+              </div>
+              <div>
+                <p className="text-xs text-amber-300 uppercase tracking-widest font-semibold">الحصة القادمة</p>
+                <h3 className="text-sm font-bold text-amber-100">العد التنازلي</h3>
+              </div>
+            </div>
+            {nextGlobalLesson ? (
+              <p className="text-sm font-bold text-white">
+                {nextGlobalLesson.toLocaleString('ar-EG', {
+                  timeZone: 'Asia/Amman',
+                  dateStyle: 'short',
+                  timeStyle: 'short'
+                })}
+              </p>
+            ) : (
+              <p className="text-sm text-gray-400">لا توجد حصة قادمة</p>
+            )}
           </div>
         </div>
 
-        {/* ✨ قسم طلبات الرسائل والتواصل مع الطلاب */}
+        {/* العد التنازلي لأول حصة */}
+        {nextGlobalLesson && (
+          <div className="bg-gray-800/60 p-6 rounded-2xl border border-amber-500/20">
+            <h3 className="text-lg font-semibold text-amber-200 mb-3 flex items-center gap-2">
+              <FaHourglassHalf /> الوقت المتبقي لأول حصة قادمة
+            </h3>
+            <CountdownTimer targetDate={nextGlobalLesson.toISOString()} />
+          </div>
+        )}
+
+        {/* قسم طلبات الرسائل */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-amber-500/30">
           <div className="flex justify-between items-center flex-wrap gap-3 mb-4">
             <h3 className="text-xl font-semibold text-amber-300 flex items-center gap-2">
@@ -318,6 +553,8 @@ const SystemManagerPanel = ({ user, onLogout }) => {
             </div>
           </div>
 
+          <p className="text-xs text-gray-500 mb-3">📌 الطلبات المُرسلة تُحذف تلقائياً بعد 48 ساعة لتوفير مساحة السحابة.</p>
+
           {filteredRequests.length === 0 ? (
             <p className="text-gray-400 text-center py-6">لا توجد طلبات في هذا التصنيف.</p>
           ) : (
@@ -325,7 +562,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
               {filteredRequests.map(request => {
                 const isPending = request.status === 'pending';
                 const isApproved = request.status === 'approved';
-                const isRejected = request.status === 'rejected';
                 const statusBadge = isPending ? (
                   <span className="text-xs bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full">⏳ قيد المراجعة</span>
                 ) : isApproved ? (
@@ -369,7 +605,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
                         {request.type === 'data_update_rejection' && request.payload?.reason && (
                           <p className="text-xs text-red-200 mt-1">سبب الرفض: {request.payload.reason}</p>
                         )}
-
                         {request.rejectionReason && (
                           <p className="text-xs text-red-300 mt-1">سبب الرفض (من المدير): {request.rejectionReason}</p>
                         )}
@@ -409,7 +644,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
           )}
         </div>
 
-        {/* Supervisors Section */}
+        {/* المشرفين */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-indigo-500/20">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-xl font-semibold text-indigo-300 flex items-center gap-2">
@@ -437,7 +672,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* Students Section */}
+        {/* الطلاب */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700">
           <h3 className="text-xl font-semibold text-blue-300 mb-4 flex items-center gap-2">
             <FaUsers /> إدارة الطلاب
@@ -466,14 +701,15 @@ const SystemManagerPanel = ({ user, onLogout }) => {
 
         {/* Notifications Modal */}
         {showNotificationsModal && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowNotificationsModal(false)}>
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={handleCloseNotifications}>
             <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full max-h-[70vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-xl font-semibold text-amber-300">
                   <FaBell className="inline-block me-2" /> الإشعارات
                 </h3>
-                <button onClick={() => setShowNotificationsModal(false)} className="text-gray-400 hover:text-white text-2xl">✕</button>
+                <button onClick={handleCloseNotifications} className="text-gray-400 hover:text-white text-2xl">✕</button>
               </div>
+              <p className="text-xs text-gray-500 mb-3">📌 ستُحذف هذه الإشعارات تلقائياً عند إغلاق النافذة.</p>
               {!notificationsActive && (
                 <div className="mb-4 p-3 bg-yellow-500/10 rounded-xl border border-yellow-500/20 text-yellow-200 text-sm">
                   ⚠️ الإشعارات غير مفعلة. اضغط على زر الجرس لتفعيلها.
@@ -484,7 +720,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
               ) : (
                 <div className="space-y-3">
                   {notifications.map((n) => (
-                    <div key={n.id} className={`p-3 rounded-xl border ${n.read ? 'bg-gray-800/30 border-gray-600' : 'bg-gray-800/60 border-blue-500/40'}`}>
+                    <div key={n.id} className="p-3 rounded-xl border bg-gray-800/60 border-blue-500/40">
                       <div className="flex justify-between items-start">
                         <h4 className="text-white font-medium">{n.title}</h4>
                         <span className="text-xs text-gray-400">

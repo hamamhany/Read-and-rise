@@ -7,6 +7,9 @@ export const ANNOUNCEMENTS_LIMIT = 6;
 // =========================================================
 export const MESSAGE_REQUESTS_COLLECTION = 'messageRequests';
 
+// مدة الاحتفاظ بالطلبات المعتمدة (بالمللي ثانية) = 48 ساعة
+export const MESSAGE_REQUEST_RETENTION_MS = 48 * 60 * 60 * 1000;
+
 export const MESSAGE_REQUEST_STATUS = {
   PENDING: 'pending',
   APPROVED: 'approved',
