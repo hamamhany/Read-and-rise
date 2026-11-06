@@ -22,7 +22,6 @@ import {
   deleteMessageRequest,
   cleanupOldApprovedRequests
 } from '../../services/messageRequests';
-import { CountdownTimer } from '../common/CountdownTimer';
 import {
   sendWarningMessage,
   sendActivationMessage,
@@ -125,6 +124,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
   const [allLessonTimes, setAllLessonTimes] = useState([]);
   const [nextGlobalLesson, setNextGlobalLesson] = useState(null);
   const [activeLecturesCount, setActiveLecturesCount] = useState(0);
+  const [liveCountdown, setLiveCountdown] = useState({ d: 0, h: 0, m: 0, s: 0 });
 
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState([]);
@@ -144,6 +144,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
   const [newSupervisorPhone, setNewSupervisorPhone] = useState('');
   const [supervisorLoading, setSupervisorLoading] = useState(false);
 
+  // ✅ onMessage listener
   useEffect(() => {
     const unsub = setupOnMessageListener((payload) => {
       toast.custom(() => (
@@ -156,6 +157,14 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     return () => unsub();
   }, []);
 
+  // ✅ تنظيف أولي عند الدخول (لأي طلبات قديمة من قبل)
+  useEffect(() => {
+    cleanupOldApprovedRequests().catch(err => 
+      console.warn('cleanup initial failed:', err)
+    );
+  }, []);
+
+  // ✅ الاشتراكات
   useEffect(() => {
     const qRequests = query(
       collection(db, 'messageRequests'),
@@ -204,32 +213,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     };
   }, [user.id]);
 
-  // ✅ تنظيف الطلبات المعتمدة القديمة دورياً (عند الدخول + كل 30 دقيقة)
-  useEffect(() => {
-    cleanupOldApprovedRequests();
-    const interval = setInterval(() => {
-      cleanupOldApprovedRequests();
-    }, 30 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // حساب أول حصة قادمة + عدد المحاضرات النشطة
-  useEffect(() => {
-    if (allLessonTimes.length === 0) {
-      setNextGlobalLesson(null);
-      setActiveLecturesCount(0);
-      return;
-    }
-    const tick = () => {
-      setNextGlobalLesson(computeNextGlobalLesson(allLessonTimes));
-      setActiveLecturesCount(computeActiveLectures(allLessonTimes));
-    };
-    tick();
-    const interval = setInterval(tick, 30000);
-    return () => clearInterval(interval);
-  }, [allLessonTimes]);
-
-  // حذف الطلبات المعتمدة تلقائياً بعد 48 ساعة
+  // ✅ حذف الطلبات المعتمدة تلقائياً بعد 48 ساعة (real-time)
   useEffect(() => {
     if (!messageRequests.length) return;
     const now = Date.now();
@@ -258,6 +242,46 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     }
   }, [messageRequests]);
 
+  // ✅ حساب أول حصة قادمة + عدد المحاضرات النشطة (كل 30 ثانية)
+  useEffect(() => {
+    if (allLessonTimes.length === 0) {
+      setNextGlobalLesson(null);
+      setActiveLecturesCount(0);
+      return;
+    }
+    const tick = () => {
+      setNextGlobalLesson(computeNextGlobalLesson(allLessonTimes));
+      setActiveLecturesCount(computeActiveLectures(allLessonTimes));
+    };
+    tick();
+    const interval = setInterval(tick, 30000);
+    return () => clearInterval(interval);
+  }, [allLessonTimes]);
+
+  // ✅ العد التنازلي اللحظي (كل ثانية) لأول حصة
+  useEffect(() => {
+    if (!nextGlobalLesson) {
+      setLiveCountdown({ d: 0, h: 0, m: 0, s: 0 });
+      return;
+    }
+    const tick = () => {
+      const diff = nextGlobalLesson.getTime() - Date.now();
+      if (diff <= 0) {
+        setLiveCountdown({ d: 0, h: 0, m: 0, s: 0 });
+        return;
+      }
+      setLiveCountdown({
+        d: Math.floor(diff / (1000 * 60 * 60 * 24)),
+        h: Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+        m: Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)),
+        s: Math.floor((diff % (1000 * 60)) / 1000)
+      });
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [nextGlobalLesson]);
+
   const handleOpenNotifications = async () => {
     setNotificationIdsAtOpen(notifications.map(n => n.id));
     setShowNotificationsModal(true);
@@ -265,7 +289,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     setNotificationsActive(ok);
   };
 
-  // حذف جميع الإشعارات عند إغلاق المودال
   const handleCloseNotifications = async () => {
     setShowNotificationsModal(false);
     try {
@@ -408,6 +431,9 @@ const SystemManagerPanel = ({ user, onLogout }) => {
 
   const pendingCount = messageRequests.filter(r => r.status === 'pending').length;
 
+  // ✅ تنسيق ثنائي الأرقام للعد التنازلي
+  const pad2 = (n) => String(n).padStart(2, '0');
+
   if (loading) return <div className="text-center text-gray-400 p-8">جاري التحميل...</div>;
 
   return (
@@ -444,7 +470,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
 
         {/* Stats Cards — 6 بطاقات */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* البلاغات */}
+          {/* البلاغات المعلقة */}
           <div className="relative overflow-hidden bg-gradient-to-br from-red-900/50 to-red-900/20 p-6 rounded-2xl border border-red-500/30 shadow-xl">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center shadow-lg">
@@ -514,7 +540,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
             <p className="text-4xl font-black text-white">{activeLecturesCount}</p>
           </div>
 
-          {/* أول حصة قادمة */}
+          {/* ✅ أول حصة قادمة — العد التنازلي المصغر */}
           <div className="relative overflow-hidden bg-gradient-to-br from-amber-900/50 to-amber-900/20 p-6 rounded-2xl border border-amber-500/30 shadow-xl">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500 to-yellow-600 flex items-center justify-center shadow-lg">
@@ -526,28 +552,25 @@ const SystemManagerPanel = ({ user, onLogout }) => {
               </div>
             </div>
             {nextGlobalLesson ? (
-              <p className="text-sm font-bold text-white">
-                {nextGlobalLesson.toLocaleString('ar-EG', {
-                  timeZone: 'Asia/Amman',
-                  dateStyle: 'short',
-                  timeStyle: 'short'
-                })}
-              </p>
+              <div className="text-center">
+                <p className="text-3xl md:text-4xl font-black text-white tabular-nums leading-tight" dir="ltr">
+                  {liveCountdown.d > 0 && (
+                    <span className="text-amber-200">
+                      {liveCountdown.d}
+                      <span className="text-xs font-bold text-amber-300 mx-1">يوم</span>
+                    </span>
+                  )}
+                  {pad2(liveCountdown.h)}:{pad2(liveCountdown.m)}:{pad2(liveCountdown.s)}
+                </p>
+                <p className="text-[10px] text-amber-300 mt-1 tracking-wider">
+                  {liveCountdown.d > 0 ? 'يوم : ساعة : دقيقة : ثانية' : 'ساعة : دقيقة : ثانية'}
+                </p>
+              </div>
             ) : (
-              <p className="text-sm text-gray-400">لا توجد حصة قادمة</p>
+              <p className="text-2xl font-black text-gray-500 text-center">—</p>
             )}
           </div>
         </div>
-
-        {/* العد التنازلي لأول حصة */}
-        {nextGlobalLesson && (
-          <div className="bg-gray-800/60 p-6 rounded-2xl border border-amber-500/20">
-            <h3 className="text-lg font-semibold text-amber-200 mb-3 flex items-center gap-2">
-              <FaHourglassHalf /> الوقت المتبقي لأول حصة قادمة
-            </h3>
-            <CountdownTimer targetDate={nextGlobalLesson.toISOString()} />
-          </div>
-        )}
 
         {/* قسم طلبات الرسائل */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-amber-500/30">
