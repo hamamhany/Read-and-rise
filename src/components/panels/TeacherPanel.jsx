@@ -798,7 +798,7 @@ const TeacherPanel = ({ user, onLogout }) => {
             </div>
             <CountdownTimer targetDate={nextLesson ? nextLesson.date : null} />
             {nextLesson && (
-              <button onClick={() => toast.success('✅ تم إنشاء الحصة!')} className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl text-lg font-bold shadow-lg w-full mt-2">
+              <button onClick={() => toast.success(' تم إنشاء الحصة!')} className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl text-lg font-bold shadow-lg w-full mt-2">
                 <FaVideo className="inline-block me-2" /> إنشاء غرفة للحصة
               </button>
             )}
