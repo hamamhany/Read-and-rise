@@ -323,7 +323,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ✅ حذف الطالب مع إمكانية إخطار ولي الأمر
   const handleDeleteStudentPermanently = async (student) => {
     const ok = await confirm(
       'حذف دائم',
@@ -360,7 +359,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ✅ تجميد الطالب مع سؤال إخطار ولي الأمر
   const toggleFreezeStudent = async (student) => {
     const nextStatus = !student.isFrozen;
     try {
@@ -733,11 +731,6 @@ const TeacherPanel = ({ user, onLogout }) => {
             </button>
             <button onClick={onLogout} className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-full text-2xl transition shadow-lg"><FaSignOutAlt /></button>
           </div>
-        </div>
-
-        <div className="bg-blue-900/30 p-3 rounded-xl border border-blue-500/30 text-sm text-blue-200 flex items-center gap-2">
-          <FaPaperPlane className="shrink-0" />
-          <span>جميع الرسائل والإنذارات والبلاغات تُحفظ كطلبات معلّقة، ولا تُرسل إلا بعد تدقيق <strong>مدير النظام</strong>.</span>
         </div>
 
         {errorMsg && <p className="text-red-400 text-sm bg-red-500/10 p-3 rounded-xl border border-red-500/20">{errorMsg}</p>}
