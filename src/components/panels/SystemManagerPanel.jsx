@@ -285,6 +285,11 @@ const SystemManagerPanel = ({ user, onLogout }) => {
   const handleOpenNotifications = async () => {
     setNotificationIdsAtOpen(notifications.map(n => n.id));
     setShowNotificationsModal(true);
+    // إذا كان الإذن ممنوحاً بالفعل — لا نستدعي طلب الإذن مرة أخرى (بدون رسالة)
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      setNotificationsActive(true);
+      return;
+    }
     const ok = await requestNotificationPermission(user.id);
     setNotificationsActive(ok);
   };
