@@ -12,7 +12,7 @@ import { createAccountClosureRequest } from '../../services/reviewRequests';
 import { issueWarning } from '../../services/warnings';
 import { getActiveWarnings } from '../../utils/helpers';
 
-const CLAIM_DURATION_MS = 10 * 60 * 1000; // 10 دقائق
+const CLAIM_DURATION_MS = 10 * 60 * 1000;
 
 const ReportsReviewSection = ({ user }) => {
   const [reports, setReports] = useState([]);
@@ -25,7 +25,6 @@ const ReportsReviewSection = ({ user }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [hasEverLoaded, setHasEverLoaded] = useState(false);
 
-  // ✅ نراقب فقط البلاغات المحجوزة من قِبلي
   useEffect(() => {
     const q = query(
       collection(db, 'messageRequests'),
@@ -39,7 +38,6 @@ const ReportsReviewSection = ({ user }) => {
     return () => unsub();
   }, [user.id]);
 
-  // ✅ حجز حتى 5 بلاغات بآلية قفل 10 دقائق
   const loadReports = async () => {
     setIsLoading(true);
     try {
@@ -81,12 +79,13 @@ const ReportsReviewSection = ({ user }) => {
             });
           });
           claimedCount++;
-        } catch (e) { /* تخطى */ }
+        } catch (e) { /* skip */ }
       }
 
       setHasEverLoaded(true);
       if (claimedCount === 0) {
-        toast.info('لا توجد بلاغات جديدة متاحة حالياً — قد يكون حجزها مشرف آخر.');
+        // ✅ تم إصلاح toast.info → toast()
+        toast('لا توجد بلاغات جديدة متاحة حالياً — قد يكون حجزها مشرف آخر.', { icon: 'ℹ️' });
       } else {
         toast.success(`تم تحميل ${claimedCount} بلاغ جديد.`);
       }
@@ -192,7 +191,6 @@ const ReportsReviewSection = ({ user }) => {
     ? getActiveWarnings(selected.targetActiveWarnings || [])
     : [];
 
-  // ✅ زر التحميل الأولي
   if (!hasEverLoaded && reports.length === 0) {
     return (
       <div className="bg-gray-800/60 p-6 rounded-2xl border border-red-500/20 text-center">
@@ -200,7 +198,7 @@ const ReportsReviewSection = ({ user }) => {
           <FaExclamationTriangle /> البلاغات المعلّقة
         </h3>
         <p className="text-gray-400 text-sm mb-4">
-           لا يتم تحميل البلاغات تلقائياً. اضغط الزر لتحميل حتى 5 بلاغات محجوزة لك (لن يستلمها مشرف آخر لمدة 10 دقائق).
+          لا يتم تحميل البلاغات تلقائياً. اضغط الزر لتحميل حتى 5 بلاغات محجوزة لك (لن يستلمها مشرف آخر لمدة 10 دقائق).
         </p>
         <button
           onClick={loadReports}
