@@ -2,15 +2,20 @@ import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { 
   FaBell, FaSignOutAlt, FaBullhorn, FaPlus, FaEdit, FaTrashAlt, 
-  FaSpinner, FaUpload, FaClock
+  FaSpinner, FaUpload, FaClock, FaUsers
 } from 'react-icons/fa';
-import { db, messaging } from '../../firebase';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, serverTimestamp, writeBatch, getDocs, where, setDoc, arrayUnion } from 'firebase/firestore';
+import { db, secondaryAuth, messaging } from '../../firebase';
+import { 
+  collection, query, orderBy, onSnapshot, doc, updateDoc, 
+  serverTimestamp, writeBatch, getDocs, where, setDoc, arrayUnion 
+} from 'firebase/firestore';
+import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
 import { createGeneralAnnouncement, updateAnnouncement, deleteAnnouncement } from '../../services/announcements';
 import { sendNotificationToAllStudents, sendNotificationToTeacher } from '../../utils/notifications';
-import { ANNOUNCEMENTS_LIMIT } from '../../constants';
-import { sanitizeInput, arabicToEnglishNumber } from '../../utils/helpers';
+import { createMessageRequest } from '../../services/messageRequests';
+import { ANNOUNCEMENTS_LIMIT, MESSAGE_REQUEST_TYPES } from '../../constants';
+import { sanitizeInput, arabicToEnglishNumber, generateId, fetchClassNames } from '../../utils/helpers';
 import ReportsReviewSection from './ReportsReviewSection';
 import ReviewVotingSection from './ReviewVotingSection';
 
@@ -35,6 +40,16 @@ const SupervisorPanel = ({ user, onLogout }) => {
   const [delayMinutes, setDelayMinutes] = useState('');
   const [delayError, setDelayError] = useState('');
   const [editingAnnouncementId, setEditingAnnouncementId] = useState(null);
+
+  // حالات إضافة طالب جديد
+  const [classes, setClasses] = useState([]);
+  const [showAddStudentModal, setShowAddStudentModal] = useState(false);
+  const [newStudentName, setNewStudentName] = useState('');
+  const [newStudentGender, setNewStudentGender] = useState('');
+  const [newStudentAge, setNewStudentAge] = useState('');
+  const [newStudentPhone, setNewStudentPhone] = useState('');
+  const [newStudentClassIds, setNewStudentClassIds] = useState([]);
+  const [studentLoading, setStudentLoading] = useState(false);
 
   const requestNotificationPermission = async () => {
     try {
@@ -101,6 +116,15 @@ const SupervisorPanel = ({ user, onLogout }) => {
       setLoading(false);
     });
     return () => unsubscribe();
+  }, []);
+
+  // جلب الشعب الدراسية لإتاحة اختيارها عند إضافة طالب
+  useEffect(() => {
+    const qClasses = query(collection(db, 'classes'));
+    const unsubClasses = onSnapshot(qClasses, (snapshot) => {
+      setClasses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+    return () => unsubClasses();
   }, []);
 
   useEffect(() => {
@@ -222,6 +246,96 @@ const SupervisorPanel = ({ user, onLogout }) => {
     setNotificationIdsAtOpen([]);
   };
 
+  // ✅ دالة إضافة طالب جديد (منقولة للمشرف)
+  const handleAddStudent = async (e) => {
+    e.preventDefault();
+    if (newStudentClassIds.length === 0) return toast.error('يرجى اختيار شعبة واحدة على الأقل.');
+    const sanitizedName = sanitizeInput(newStudentName);
+    const sanitizedGender = sanitizeInput(newStudentGender);
+    const sanitizedAge = sanitizeInput(arabicToEnglishNumber(newStudentAge));
+    const sanitizedPhone = sanitizeInput(arabicToEnglishNumber(newStudentPhone));
+    
+    if (!sanitizedName || !sanitizedGender || !sanitizedAge || !sanitizedPhone) return toast.error('جميع الحقول مطلوبة.');
+
+    const phoneDigits = sanitizedPhone.replace(/[^\d]/g, '');
+    const normalizedPhone = phoneDigits.startsWith('00') ? phoneDigits.substring(2) : phoneDigits;
+    if (normalizedPhone.startsWith('0')) {
+      return toast.error('يرجى إدخال رقم الهاتف مع رمز الدولة بدون صفر بادئ.\nمثال: 9627XXXXXXXX', { duration: 7000 });
+    }
+    if (normalizedPhone.length < 10 || normalizedPhone.length > 15) {
+      return toast.error('رقم الهاتف غير صالح. يرجى إدخال الرقم مع رمز الدولة (10 إلى 15 رقماً).', { duration: 7000 });
+    }
+
+    setStudentLoading(true);
+    try {
+      // 1. توليد اسم مستخدم فريد
+      let maxNum = 0;
+      const q = query(collection(db, 'profiles'), where('username', '>=', 'knight'), where('username', '<', 'knight\uF7FF'));
+      const querySnapshot = await getDocs(q);
+      querySnapshot.forEach(doc => {
+        const uname = doc.data().username;
+        if (uname && uname.startsWith('knight')) {
+          const num = parseInt(uname.substring(6), 10);
+          if (!isNaN(num) && num > maxNum) maxNum = num;
+        }
+      });
+      const newUsername = `knight${maxNum + 1}`;
+      const tempPassword = Math.floor(Math.random() * 1000000000).toString().padStart(9, '0');
+      const email = `${newUsername}@readandrise.com`;
+      const newId = generateId();
+      const ageNum = parseInt(sanitizedAge);
+
+      // 2. إنشاء حساب المصادقة
+      let userCredential;
+      try {
+        userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, tempPassword);
+      } catch (authError) {
+        return toast.error('فشل إنشاء حساب المصادقة: ' + authError.message);
+      }
+      const firebaseUser = userCredential.user;
+      await signOut(secondaryAuth);
+      
+      // 3. إنشاء الملف الشخصي
+      await setDoc(doc(db, 'profiles', newId), {
+        email, username: newUsername, name: sanitizedName, gender: sanitizedGender,
+        age: ageNum, phone: normalizedPhone, classIds: newStudentClassIds, role: 'student',
+        isFrozen: false, infoVerified: false, isProfileComplete: false,
+        pendingChanges: null, reviewResult: null, reviewExpiry: null,
+        warnings: [], createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+        uid: firebaseUser.uid
+      });
+
+      // 4. إرسال طلب تفعيل لمدير النظام لإرسال البيانات عبر الواتساب
+      const classMap = await fetchClassNames(newStudentClassIds);
+      const classNames = newStudentClassIds.map(id => classMap[id] || null).filter(Boolean);
+      
+      await createMessageRequest({
+        type: MESSAGE_REQUEST_TYPES.ACTIVATION,
+        targetType: 'student',
+        targetId: newId,
+        targetName: sanitizedName,
+        targetPhone: normalizedPhone,
+        targetClass: classNames.join(', ') || 'غير محدد',
+        requestedBy: user.id,
+        requestedByName: user.name || user.username || 'مشرف',
+        payload: {
+          username: newUsername,
+          password: tempPassword,
+          age: ageNum,
+          gender: sanitizedGender
+        }
+      });
+
+      toast.success('✅ تم إنشاء حساب الطالب بنجاح وحفظ طلب إرسال بيانات التفعيل لمدير النظام.');
+      setNewStudentName(''); setNewStudentGender(''); setNewStudentAge('');
+      setNewStudentPhone(''); setNewStudentClassIds([]); setShowAddStudentModal(false);
+    } catch (err) {
+      toast.error('فشل إضافة الطالب: ' + (err.message || 'خطأ غير معروف'));
+    } finally {
+      setStudentLoading(false);
+    }
+  };
+
   if (loading) return <div className="text-center text-gray-400 p-8">جاري التحميل...</div>;
 
   const visibleAnnouncements = announcements.slice(0, displayCount);
@@ -246,10 +360,26 @@ const SupervisorPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* ✅ قسم مراجعة البلاغات */}
+        {/* قسم إدارة الطلاب (جديد) */}
+        <div className="bg-gray-800/60 p-6 rounded-2xl border border-blue-500/20 flex justify-between items-center flex-wrap gap-4">
+          <div>
+            <h3 className="text-xl font-semibold text-blue-200 flex items-center gap-2">
+              <FaUsers /> إدارة الطلاب
+            </h3>
+            <p className="text-sm text-gray-400 mt-1">يمكنك إضافة حسابات الطلاب الجدد من هنا.</p>
+          </div>
+          <button 
+            onClick={() => setShowAddStudentModal(true)} 
+            className="btn-primary bg-blue-600 hover:bg-blue-700 py-2 px-6 rounded-md text-white font-bold"
+          >
+            <FaPlus className="inline-block me-2" /> إضافة طالب جديد
+          </button>
+        </div>
+
+        {/* قسم مراجعة البلاغات */}
         <ReportsReviewSection user={user} />
 
-        {/* ✅ قسم التصويت على طلبات الإغلاق */}
+        {/* قسم التصويت على طلبات الإغلاق */}
         <ReviewVotingSection user={user} />
 
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-blue-500/20">
@@ -300,6 +430,42 @@ const SupervisorPanel = ({ user, onLogout }) => {
         </div>
       </div>
 
+      {/* نافذة إضافة طالب جديد */}
+      {showAddStudentModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowAddStudentModal(false)}>
+          <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-blue-500/30" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-semibold text-blue-300 mb-4"><FaPlus className="inline-block me-2" /> إضافة طالب جديد</h3>
+            <form onSubmit={handleAddStudent} className="space-y-4">
+              <input type="text" placeholder="الاسم الكامل *" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentName} onChange={e => setNewStudentName(e.target.value)} required />
+              <select className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentGender} onChange={e => setNewStudentGender(e.target.value)} required>
+                <option value="">الجنس *</option>
+                <option value="ذكر">ذكر</option>
+                <option value="أنثى">أنثى</option>
+              </select>
+              <input type="text" inputMode="numeric" placeholder="العمر *" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentAge} onChange={e => setNewStudentAge(arabicToEnglishNumber(e.target.value))} required />
+              <input
+                type="text"
+                inputMode="numeric"
+                placeholder="رقم الهاتف * (مع رمز الدولة بدون +)"
+                className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white"
+                value={newStudentPhone}
+                onChange={e => setNewStudentPhone(arabicToEnglishNumber(e.target.value))}
+                required
+              />
+              <div>
+                <label className="text-xs text-gray-400 mb-1 block">الشعب الدراسية * (اضغط Ctrl لاختيار عدة شعب)</label>
+                <select multiple className="bg-gray-800 w-full h-24 text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentClassIds} onChange={(e) => setNewStudentClassIds(Array.from(e.target.selectedOptions).map(o => o.value))} required>
+                  {classes.map(cls => <option key={cls.id} value={cls.id}>{cls.name}</option>)}
+                </select>
+              </div>
+              <button type="submit" disabled={studentLoading} className="btn-primary w-full py-3 bg-blue-600 hover:bg-blue-700 rounded-md text-white">
+                {studentLoading ? 'جاري الإنشاء...' : 'إنشاء الحساب'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
       {showDetailsModal && selectedAnnouncement && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowDetailsModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-purple-500/30" onClick={(e) => e.stopPropagation()}>
@@ -308,12 +474,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
               <button onClick={() => setShowDetailsModal(false)} className="text-gray-400 hover:text-white text-2xl">✕</button>
             </div>
             <div className="text-gray-300 whitespace-pre-wrap break-words max-h-96 overflow-y-auto">{selectedAnnouncement.body}</div>
-            <div className="mt-4 text-xs text-gray-400">
-              {selectedAnnouncement.createdAt?.toDate?.() ? new Date(selectedAnnouncement.createdAt.toDate()).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' }) : ''}
-              {selectedAnnouncement.status === 'scheduled' && (
-                <span className="mr-2 text-yellow-400">(مجدول حتى {selectedAnnouncement.scheduledFor?.toDate?.() ? new Date(selectedAnnouncement.scheduledFor.toDate()).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' }) : ''})</span>
-              )}
-            </div>
           </div>
         </div>
       )}
