@@ -27,12 +27,7 @@ const ReviewVotingSection = ({ user }) => {
     if (!selected) return;
     setIsVoting(true);
     try {
-      const result = await voteOnReview(
-        selected.id,
-        user.id,
-        user.name || user.username || 'مشرف',
-        vote
-      );
+      const result = await voteOnReview(selected.id, user.id, user.name || user.username || 'مشرف', vote);
       toast.success(
         result.newStatus === REVIEW_REQUEST_STATUS.APPROVED_BY_SUPERVISORS
           ? '✅ تم تسجيل تصويتك — اكتملت الأصوات بالموافقة'
@@ -46,16 +41,8 @@ const ReviewVotingSection = ({ user }) => {
     finally { setIsVoting(false); }
   };
 
-  if (requests.length === 0) {
-    return (
-      <div className="bg-gray-800/60 p-6 rounded-2xl border border-purple-500/20">
-        <h3 className="text-xl font-semibold text-purple-300 flex items-center gap-2 mb-3">
-          <FaVoteYea /> طلبات التصويت ({requests.length})
-        </h3>
-        <p className="text-gray-400 text-sm text-center py-3">لا توجد طلبات تصويت حالياً.</p>
-      </div>
-    );
-  }
+  // ✅ إخفاء القسم بالكامل عند عدم وجود طلبات تصويت
+  if (requests.length === 0) return null;
 
   return (
     <div className="bg-gray-800/60 p-6 rounded-2xl border border-purple-500/20">
@@ -71,8 +58,7 @@ const ReviewVotingSection = ({ user }) => {
               <p className="text-xs text-gray-400 mt-0.5">مقدم من: {r.createdByName}</p>
               <p className="text-xs text-purple-300 mt-0.5">عدد الأصوات: {(r.votes || []).length}/4</p>
             </div>
-            <button onClick={() => openModal(r)}
-              className="text-xs bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg">
+            <button onClick={() => openModal(r)} className="text-xs bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg">
               عرض وتصويت
             </button>
           </div>
@@ -80,10 +66,8 @@ const ReviewVotingSection = ({ user }) => {
       </div>
 
       {showModal && selected && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-             onClick={() => setShowModal(false)}>
-          <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-purple-500/30"
-               onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowModal(false)}>
+          <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-purple-500/30" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-3">
               <h3 className="text-lg font-bold text-purple-300">طلب إغلاق حساب</h3>
               <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-white text-2xl"><FaTimes /></button>

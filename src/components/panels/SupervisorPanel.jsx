@@ -8,7 +8,7 @@ import { db, secondaryAuth, messaging } from '../../firebase';
 import { 
   collection, query, orderBy, onSnapshot, doc, updateDoc, 
   serverTimestamp, writeBatch, getDocs, where, setDoc, arrayUnion,
-  runTransaction // <-- تمت إضافة هذا الاستيراد
+  runTransaction
 } from 'firebase/firestore';
 import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
@@ -42,7 +42,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
   const [delayError, setDelayError] = useState('');
   const [editingAnnouncementId, setEditingAnnouncementId] = useState(null);
 
-  // حالات إضافة طالب جديد
   const [classes, setClasses] = useState([]);
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
   const [newStudentName, setNewStudentName] = useState('');
@@ -162,12 +161,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
 
     try {
       if (editingAnnouncementId) {
-        const updates = {
-          title, body,
-          scheduledFor: scheduledFor || null,
-          status: scheduledFor ? 'scheduled' : 'active',
-          updatedAt: serverTimestamp()
-        };
+        const updates = { title, body, scheduledFor: scheduledFor || null, status: scheduledFor ? 'scheduled' : 'active', updatedAt: serverTimestamp() };
         await updateAnnouncement(editingAnnouncementId, updates);
         toast.success('تم تحديث الإشعار بنجاح.');
       } else {
@@ -246,7 +240,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
     setNotificationIdsAtOpen([]);
   };
 
-  // ✅ دالة ذكية لتوليد رقم مستخدم تسلسلي بسرعة فائقة (حتى مع ملايين المستخدمين)
   const generateNextUsernameNumber = async () => {
     const counterRef = doc(db, 'settings', 'userCounter');
     try {
@@ -269,7 +262,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ✅ دالة إضافة طالب جديد (محسنة للسرعة القصوى)
   const handleAddStudent = async (e) => {
     e.preventDefault();
     if (newStudentClassIds.length === 0) return toast.error('يرجى اختيار شعبة واحدة على الأقل.');
@@ -294,16 +286,12 @@ const SupervisorPanel = ({ user, onLogout }) => {
 
     setStudentLoading(true);
     try {
-      // 1. جلب الرقم التسلسلي الجديد من العداد الذكي
       const startNumber = await generateNextUsernameNumber();
       let currentNum = startNumber;
-      
       let newUsername = `knight${currentNum}`;
       let tempPassword = Math.floor(Math.random() * 1000000000).toString().padStart(9, '0');
       let email = `${newUsername}@readandrise.com`;
       let userCredential = null;
-      
-      // 2. محاولة إنشاء الحساب
       let attempts = 0;
       const maxAttempts = 10;
 
@@ -323,14 +311,10 @@ const SupervisorPanel = ({ user, onLogout }) => {
         }
       }
 
-      if (!userCredential) {
-        throw new Error('تعذر إيجاد اسم مستخدم فريد. يرجى المحاولة مرة أخرى.');
-      }
+      if (!userCredential) throw new Error('تعذر إيجاد اسم مستخدم فريد. يرجى المحاولة مرة أخرى.');
 
       const firebaseUser = userCredential.user;
       await signOut(secondaryAuth);
-      
-      // 3. إنشاء الملف الشخصي في Firestore
       const newId = generateId();
       const ageNum = parseInt(sanitizedAge);
 
@@ -343,7 +327,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
         uid: firebaseUser.uid
       });
 
-      // 4. إرسال طلب تفعيل لمدير النظام
       const classMap = await fetchClassNames(newStudentClassIds);
       const classNames = newStudentClassIds.map(id => classMap[id] || null).filter(Boolean);
       
@@ -356,12 +339,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
         targetClass: classNames.join(', ') || 'غير محدد',
         requestedBy: user.id,
         requestedByName: user.name || user.username || 'مشرف',
-        payload: {
-          username: newUsername,
-          password: tempPassword,
-          age: ageNum,
-          gender: sanitizedGender
-        }
+        payload: { username: newUsername, password: tempPassword, age: ageNum, gender: sanitizedGender }
       });
 
       toast.success(`✅ تم إنشاء حساب الطالب بنجاح باسم المستخدم: ${newUsername}`);
@@ -378,6 +356,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
 
   const visibleAnnouncements = announcements.slice(0, displayCount);
   const hasMore = displayCount < announcements.length;
+  const canPublish = user.canPublishAnnouncements !== false;
 
   return (
     <div className="container-center min-h-screen p-4 relative" dir="rtl">
@@ -398,7 +377,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* قسم إدارة الطلاب */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-blue-500/20 flex justify-between items-center flex-wrap gap-4">
           <div>
             <h3 className="text-xl font-semibold text-blue-200 flex items-center gap-2">
@@ -417,52 +395,54 @@ const SupervisorPanel = ({ user, onLogout }) => {
         <ReportsReviewSection user={user} />
         <ReviewVotingSection user={user} />
 
-        <div className="bg-gray-800/60 p-6 rounded-2xl border border-blue-500/20">
-          <div className="flex justify-between items-center flex-wrap gap-3 mb-4">
-            <h3 className="text-xl font-semibold text-blue-200">
-              <FaBullhorn className="inline-block me-2" /> الإشعارات العامة
-            </h3>
-            <button
-              onClick={() => {
-                setEditingAnnouncementId(null); setAnnouncementTitle(''); setAnnouncementBody('');
-                setCharCount(0); setPublishType('now'); setDelayHours(''); setDelayMinutes('');
-                setDelayError(''); setShowAnnouncementModal(true);
-              }}
-              className="btn-primary bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-md text-sm"
-            >
-              <FaPlus className="inline-block me-2" /> إشعار جديد
-            </button>
-          </div>
-          {announcements.length === 0 ? (
-            <p className="text-gray-400 text-center py-4">لا توجد إشعارات حالياً.</p>
-          ) : (
-            <div className="space-y-3 max-h-[500px] overflow-y-auto">
-              {visibleAnnouncements.map((item) => (
-                <div key={item.id} className="p-4 bg-black/30 rounded-xl border border-gray-700 cursor-pointer hover:bg-gray-700/40 transition flex justify-between items-start" onClick={() => handleAnnouncementClick(item)}>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-white font-medium">{item.title}</span>
-                      {item.status === 'scheduled' && <span className="text-xs text-yellow-400 bg-yellow-950/40 px-2 py-0.5 rounded-full">📅 مجدول</span>}
-                      {item.status === 'active' && <span className="text-xs text-green-400 bg-green-950/40 px-2 py-0.5 rounded-full">✅ منشور</span>}
-                    </div>
-                    <div className="text-xs text-gray-400 mt-1">
-                      {item.createdAt?.toDate?.() ? new Date(item.createdAt.toDate()).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' }) : ''}
-                    </div>
-                  </div>
-                  <div className="flex gap-1 mr-2">
-                    <button onClick={(e) => { e.stopPropagation(); handleEditAnnouncement(item); }} className="text-blue-400 hover:text-blue-300 text-sm px-2 py-1"><FaEdit /></button>
-                    <button onClick={(e) => { e.stopPropagation(); handleDeleteAnnouncement(item.id); }} className="text-red-400 hover:text-red-300 text-sm px-2 py-1"><FaTrashAlt /></button>
-                  </div>
-                </div>
-              ))}
-              {hasMore && (
-                <button onClick={handleLoadMore} disabled={isLoadingMore} className="w-full py-2 text-blue-400 hover:text-blue-300 transition flex items-center justify-center gap-2">
-                  {isLoadingMore ? <><FaSpinner className="animate-spin" /> جاري التحميل...</> : 'تحميل المزيد'}
-                </button>
-              )}
+        {canPublish && (
+          <div className="bg-gray-800/60 p-6 rounded-2xl border border-blue-500/20">
+            <div className="flex justify-between items-center flex-wrap gap-3 mb-4">
+              <h3 className="text-xl font-semibold text-blue-200">
+                <FaBullhorn className="inline-block me-2" /> الإشعارات العامة
+              </h3>
+              <button
+                onClick={() => {
+                  setEditingAnnouncementId(null); setAnnouncementTitle(''); setAnnouncementBody('');
+                  setCharCount(0); setPublishType('now'); setDelayHours(''); setDelayMinutes('');
+                  setDelayError(''); setShowAnnouncementModal(true);
+                }}
+                className="btn-primary bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-md text-sm"
+              >
+                <FaPlus className="inline-block me-2" /> إشعار جديد
+              </button>
             </div>
-          )}
-        </div>
+            {announcements.length === 0 ? (
+              <p className="text-gray-400 text-center py-4">لا توجد إشعارات حالياً.</p>
+            ) : (
+              <div className="space-y-3 max-h-[500px] overflow-y-auto">
+                {visibleAnnouncements.map((item) => (
+                  <div key={item.id} className="p-4 bg-black/30 rounded-xl border border-gray-700 cursor-pointer hover:bg-gray-700/40 transition flex justify-between items-start" onClick={() => handleAnnouncementClick(item)}>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-white font-medium">{item.title}</span>
+                        {item.status === 'scheduled' && <span className="text-xs text-yellow-400 bg-yellow-950/40 px-2 py-0.5 rounded-full">📅 مجدول</span>}
+                        {item.status === 'active' && <span className="text-xs text-green-400 bg-green-950/40 px-2 py-0.5 rounded-full">✅ منشور</span>}
+                      </div>
+                      <div className="text-xs text-gray-400 mt-1">
+                        {item.createdAt?.toDate?.() ? new Date(item.createdAt.toDate()).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' }) : ''}
+                      </div>
+                    </div>
+                    <div className="flex gap-1 mr-2">
+                      <button onClick={(e) => { e.stopPropagation(); handleEditAnnouncement(item); }} className="text-blue-400 hover:text-blue-300 text-sm px-2 py-1"><FaEdit /></button>
+                      <button onClick={(e) => { e.stopPropagation(); handleDeleteAnnouncement(item.id); }} className="text-red-400 hover:text-red-300 text-sm px-2 py-1"><FaTrashAlt /></button>
+                    </div>
+                  </div>
+                ))}
+                {hasMore && (
+                  <button onClick={handleLoadMore} disabled={isLoadingMore} className="w-full py-2 text-blue-400 hover:text-blue-300 transition flex items-center justify-center gap-2">
+                    {isLoadingMore ? <><FaSpinner className="animate-spin" /> جاري التحميل...</> : 'تحميل المزيد'}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {showAddStudentModal && (

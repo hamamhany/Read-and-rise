@@ -82,7 +82,8 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
           role: profile.role,
           username: profile.username,
           name: profile.name,
-          isProfileComplete: true
+          isProfileComplete: true,
+          canPublishAnnouncements: profile.canPublishAnnouncements !== false
         });
         setLoading(false);
         return;
@@ -111,7 +112,8 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
           age: profile.age,
           phone: profile.phone,
           classIds: [],
-          isProfileComplete: true
+          isProfileComplete: true,
+          canPublishAnnouncements: profile.canPublishAnnouncements !== false
         });
         setLoading(false);
         return;
@@ -172,7 +174,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
       return;
     }
 
-    // ✅ التحقق من صحة رقم الهاتف (الكل مع رمز الدولة بدون +)
     const phoneDigits = rawPhone.replace(/[^\d]/g, '');
     const phone = phoneDigits.startsWith('00') ? phoneDigits.substring(2) : phoneDigits;
     if (phone.startsWith('0')) {
@@ -303,14 +304,8 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
       </div>
 
       {showResetModal && (
-        <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-          onClick={() => setShowResetModal(false)}
-        >
-          <div
-            className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-purple-500/30 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowResetModal(false)}>
+          <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-purple-500/30 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-2xl font-bold text-center text-purple-300 mb-2">
               <FaUnlockAlt className="inline-block me-2" /> استعادة كلمة المرور
             </h3>
@@ -321,22 +316,11 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm text-gray-300 mb-1">الاسم الكامل <span className="text-red-400">*</span></label>
-                <input
-                  type="text"
-                  className="w-full bg-gray-800 text-right p-2 border border-gray-600 rounded-md text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition"
-                  value={resetName}
-                  onChange={(e) => setResetName(e.target.value)}
-                  required
-                />
+                <input type="text" className="w-full bg-gray-800 text-right p-2 border border-gray-600 rounded-md text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition" value={resetName} onChange={(e) => setResetName(e.target.value)} required />
               </div>
               <div>
                 <label className="block text-sm text-gray-300 mb-1">الجنس <span className="text-red-400">*</span></label>
-                <select
-                  className="w-full bg-gray-800 text-right p-2 border border-gray-600 rounded-md text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition"
-                  value={resetGender}
-                  onChange={(e) => setResetGender(e.target.value)}
-                  required
-                >
+                <select className="w-full bg-gray-800 text-right p-2 border border-gray-600 rounded-md text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition" value={resetGender} onChange={(e) => setResetGender(e.target.value)} required>
                   <option value="">اختر</option>
                   <option value="ذكر">ذكر</option>
                   <option value="أنثى">أنثى</option>
@@ -344,48 +328,20 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
               </div>
               <div>
                 <label className="block text-sm text-gray-300 mb-1">العمر <span className="text-red-400">*</span></label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  className="w-full bg-gray-800 text-right p-2 border border-gray-600 rounded-md text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition"
-                  value={resetAge}
-                  onChange={(e) => setResetAge(e.target.value)}
-                  required
-                />
+                <input type="text" inputMode="numeric" className="w-full bg-gray-800 text-right p-2 border border-gray-600 rounded-md text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition" value={resetAge} onChange={(e) => setResetAge(e.target.value)} required />
               </div>
               <div>
                 <label className="block text-sm text-gray-300 mb-1">رقم الهاتف (مع رمز الدولة بدون +) <span className="text-red-400">*</span></label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="مثال: 9627XXXXXXXX"
-                  className="w-full bg-gray-800 text-right p-2 border border-gray-600 rounded-md text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition"
-                  value={resetPhone}
-                  onChange={(e) => setResetPhone(e.target.value)}
-                  required
-                />
+                <input type="text" inputMode="numeric" placeholder="مثال: 9627XXXXXXXX" className="w-full bg-gray-800 text-right p-2 border border-gray-600 rounded-md text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition" value={resetPhone} onChange={(e) => setResetPhone(e.target.value)} required />
                 <p className="text-[10px] text-gray-500 mt-1">أدخل الرقم مع رمز الدولة، بدون + وبدون صفر بادئ</p>
               </div>
               {resetError && (
-                <p className="text-red-400 text-sm text-center bg-red-500/10 py-2 px-3 rounded-lg border border-red-500/20 whitespace-pre-line">
-                  {resetError}
-                </p>
+                <p className="text-red-400 text-sm text-center bg-red-500/10 py-2 px-3 rounded-lg border border-red-500/20 whitespace-pre-line">{resetError}</p>
               )}
 
               <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowResetModal(false)}
-                  className="flex-1 py-2 px-4 bg-gray-700 hover:bg-gray-600 rounded-xl text-white text-sm transition"
-                >
-                  إلغاء
-                </button>
-                <button
-                  type="button"
-                  onClick={handleResetRequest}
-                  disabled={resetLoading}
-                  className="flex-1 py-2 px-4 bg-purple-600 hover:bg-purple-700 rounded-xl text-white text-sm font-semibold transition disabled:opacity-60"
-                >
+                <button type="button" onClick={() => setShowResetModal(false)} className="flex-1 py-2 px-4 bg-gray-700 hover:bg-gray-600 rounded-xl text-white text-sm transition">إلغاء</button>
+                <button type="button" onClick={handleResetRequest} disabled={resetLoading} className="flex-1 py-2 px-4 bg-purple-600 hover:bg-purple-700 rounded-xl text-white text-sm font-semibold transition disabled:opacity-60">
                   {resetLoading ? 'جاري التجهيز...' : 'تجهيز الرسالة'}
                 </button>
               </div>

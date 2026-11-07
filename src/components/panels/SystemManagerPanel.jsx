@@ -3,12 +3,14 @@ import toast from 'react-hot-toast';
 import { 
   FaSignOutAlt, FaUserShield, FaExclamationTriangle, FaWhatsapp, 
   FaTimesCircle, FaUsers, FaTrashAlt, FaBell, FaPaperPlane, 
-  FaChalkboardTeacher, FaBroadcastTower, FaHourglassHalf
+  FaChalkboardTeacher, FaBroadcastTower, FaHourglassHalf, FaSpinner,
+  FaSearch
 } from 'react-icons/fa';
 import { db } from '../../firebase';
 import { 
   collection, query, onSnapshot, doc, serverTimestamp, 
-  orderBy, where, updateDoc, writeBatch
+  orderBy, where, updateDoc, writeBatch, getDocs, getCountFromServer,
+  limit, startAfter
 } from 'firebase/firestore';
 import { createSupervisorAccount } from '../../services/supervisor';
 import { requestNotificationPermission, setupOnMessageListener } from '../../utils/pushNotifications';
@@ -23,21 +25,15 @@ import {
   cleanupOldApprovedRequests
 } from '../../services/messageRequests';
 import {
-  sendWarningMessage,
-  sendNoticeMessage,
-  sendActivationMessage,
-  sendFreezeMessage,
-  sendDeleteMessage,
-  sendResetPasswordMessage,
-  sendDataUpdateApprovalMessage,
-  sendDataUpdateRejectionMessage,
-  sendGeneralMessageToStudent,
-  sendReportMessage
+  sendWarningMessage, sendNoticeMessage, sendActivationMessage, sendFreezeMessage,
+  sendDeleteMessage, sendResetPasswordMessage, sendDataUpdateApprovalMessage,
+  sendDataUpdateRejectionMessage, sendGeneralMessageToStudent, sendReportMessage
 } from '../../utils/whatsapp';
 import { deleteUserCompletely } from '../../services/accountDeletion';
 import { sanitizeInput, arabicToEnglishNumber } from '../../utils/helpers';
 import SystemManagerReviewsSection from './SystemManagerReviewsSection';
 import BlacklistSection from './BlacklistSection';
+import CountUp from '../common/CountUp';
 
 const computeNextGlobalLesson = (allTimes) => {
   const now = new Date();
@@ -107,13 +103,30 @@ const computeActiveLectures = (allTimes) => {
 
 const SystemManagerPanel = ({ user, onLogout }) => {
   const [messageRequests, setMessageRequests] = useState([]);
-  const [supervisors, setSupervisors] = useState([]);
-  const [students, setStudents] = useState([]);
-  const [teachers, setTeachers] = useState([]);
   const [allLessonTimes, setAllLessonTimes] = useState([]);
   const [nextGlobalLesson, setNextGlobalLesson] = useState(null);
   const [activeLecturesCount, setActiveLecturesCount] = useState(0);
   const [liveCountdown, setLiveCountdown] = useState({ d: 0, h: 0, m: 0, s: 0 });
+
+  // العدادات (تأتي من getCountFromServer)
+  const [studentsCount, setStudentsCount] = useState(0);
+  const [supervisorsCount, setSupervisorsCount] = useState(0);
+  const [teachersCount, setTeachersCount] = useState(0);
+
+  // قوائم مرقمة
+  const [supervisorsList, setSupervisorsList] = useState([]);
+  const [lastSupDoc, setLastSupDoc] = useState(null);
+  const [hasMoreSup, setHasMoreSup] = useState(true);
+  const [supSearch, setSupSearch] = useState('');
+  const [supLoading, setSupLoading] = useState(false);
+  const [supLoaded, setSupLoaded] = useState(false);
+
+  const [studentsList, setStudentsList] = useState([]);
+  const [lastStuDoc, setLastStuDoc] = useState(null);
+  const [hasMoreStu, setHasMoreStu] = useState(true);
+  const [stuSearch, setStuSearch] = useState('');
+  const [stuLoading, setStuLoading] = useState(false);
+  const [stuLoaded, setStuLoaded] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState([]);
@@ -131,6 +144,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
   const [newSupervisorGender, setNewSupervisorGender] = useState('');
   const [newSupervisorAge, setNewSupervisorAge] = useState('');
   const [newSupervisorPhone, setNewSupervisorPhone] = useState('');
+  const [canPublishAnnouncements, setCanPublishAnnouncements] = useState(false);
   const [supervisorLoading, setSupervisorLoading] = useState(false);
 
   useEffect(() => {
@@ -149,26 +163,26 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     cleanupOldApprovedRequests().catch(err => console.warn('cleanup initial failed:', err));
   }, []);
 
+  // ✅ جلب العدادات مرة واحدة
+  useEffect(() => {
+    (async () => {
+      try {
+        const [s, sup, t] = await Promise.all([
+          getCountFromServer(query(collection(db, 'profiles'), where('role', '==', 'student'))),
+          getCountFromServer(query(collection(db, 'profiles'), where('role', '==', 'supervisor'))),
+          getCountFromServer(query(collection(db, 'profiles'), where('role', '==', 'teacher')))
+        ]);
+        setStudentsCount(s.data().count);
+        setSupervisorsCount(sup.data().count);
+        setTeachersCount(t.data().count);
+      } catch (e) { console.warn('count load failed:', e); }
+    })();
+  }, []);
+
   useEffect(() => {
     const qRequests = query(collection(db, 'messageRequests'), orderBy('createdAt', 'desc'));
     const unsubRequests = onSnapshot(qRequests, (snapshot) => {
       setMessageRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-
-    const qSupervisors = query(collection(db, 'profiles'), where('role', '==', 'supervisor'));
-    const unsubSupervisors = onSnapshot(qSupervisors, (snapshot) => {
-      setSupervisors(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-
-    const qStudents = query(collection(db, 'profiles'), where('role', '==', 'student'));
-    const unsubStudents = onSnapshot(qStudents, (snapshot) => {
-      setStudents(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      setLoading(false);
-    });
-
-    const qTeachers = query(collection(db, 'profiles'), where('role', '==', 'teacher'));
-    const unsubTeachers = onSnapshot(qTeachers, (snapshot) => {
-      setTeachers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
     const unsubLessonTimes = onSnapshot(collection(db, 'teachers'), (snapshot) => {
@@ -188,9 +202,12 @@ const SystemManagerPanel = ({ user, onLogout }) => {
       setUnreadCount(list.filter(n => !n.read).length);
     });
 
+    setLoading(false);
+
     return () => {
-      unsubRequests(); unsubSupervisors(); unsubStudents();
-      unsubTeachers(); unsubLessonTimes(); unsubNotif();
+      unsubRequests();
+      unsubLessonTimes();
+      unsubNotif();
     };
   }, [user.id]);
 
@@ -243,6 +260,80 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
   }, [nextGlobalLesson]);
+
+  // ✅ دوال تحميل وترقيم المشرفين
+  const loadSupervisors = async (reset = false) => {
+    setSupLoading(true);
+    try {
+      let q;
+      if (reset || !lastSupDoc) {
+        q = query(collection(db, 'profiles'), where('role', '==', 'supervisor'), orderBy('createdAt', 'desc'), limit(20));
+      } else {
+        q = query(collection(db, 'profiles'), where('role', '==', 'supervisor'), orderBy('createdAt', 'desc'), startAfter(lastSupDoc), limit(20));
+      }
+      const snap = await getDocs(q);
+      const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setSupervisorsList(prev => reset ? items : [...prev, ...items]);
+      setLastSupDoc(snap.docs[snap.docs.length - 1] || null);
+      setHasMoreSup(items.length === 20);
+      setSupLoaded(true);
+    } catch (e) { toast.error('فشل التحميل: ' + e.message); }
+    finally { setSupLoading(false); }
+  };
+
+  const searchSupervisors = async () => {
+    const term = supSearch.trim();
+    if (!term) { setLastSupDoc(null); return loadSupervisors(true); }
+    setSupLoading(true);
+    try {
+      const [byName, byUser] = await Promise.all([
+        getDocs(query(collection(db, 'profiles'), where('role', '==', 'supervisor'), where('name', '>=', term), where('name', '<=', term + '\uf8ff'), limit(20))),
+        getDocs(query(collection(db, 'profiles'), where('role', '==', 'supervisor'), where('username', '==', term), limit(5)))
+      ]);
+      const map = new Map();
+      [...byName.docs, ...byUser.docs].forEach(d => map.set(d.id, { id: d.id, ...d.data() }));
+      setSupervisorsList(Array.from(map.values()));
+      setHasMoreSup(false);
+    } catch (e) { toast.error('فشل البحث: ' + e.message); }
+    finally { setSupLoading(false); }
+  };
+
+  // ✅ دوال تحميل وترقيم الطلاب
+  const loadStudents = async (reset = false) => {
+    setStuLoading(true);
+    try {
+      let q;
+      if (reset || !lastStuDoc) {
+        q = query(collection(db, 'profiles'), where('role', '==', 'student'), orderBy('createdAt', 'desc'), limit(20));
+      } else {
+        q = query(collection(db, 'profiles'), where('role', '==', 'student'), orderBy('createdAt', 'desc'), startAfter(lastStuDoc), limit(20));
+      }
+      const snap = await getDocs(q);
+      const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setStudentsList(prev => reset ? items : [...prev, ...items]);
+      setLastStuDoc(snap.docs[snap.docs.length - 1] || null);
+      setHasMoreStu(items.length === 20);
+      setStuLoaded(true);
+    } catch (e) { toast.error('فشل التحميل: ' + e.message); }
+    finally { setStuLoading(false); }
+  };
+
+  const searchStudents = async () => {
+    const term = stuSearch.trim();
+    if (!term) { setLastStuDoc(null); return loadStudents(true); }
+    setStuLoading(true);
+    try {
+      const [byName, byUser] = await Promise.all([
+        getDocs(query(collection(db, 'profiles'), where('role', '==', 'student'), where('name', '>=', term), where('name', '<=', term + '\uf8ff'), limit(20))),
+        getDocs(query(collection(db, 'profiles'), where('role', '==', 'student'), where('username', '==', term), limit(5)))
+      ]);
+      const map = new Map();
+      [...byName.docs, ...byUser.docs].forEach(d => map.set(d.id, { id: d.id, ...d.data() }));
+      setStudentsList(Array.from(map.values()));
+      setHasMoreStu(false);
+    } catch (e) { toast.error('فشل البحث: ' + e.message); }
+    finally { setStuLoading(false); }
+  };
 
   const handleOpenNotifications = async () => {
     setNotificationIdsAtOpen(notifications.map(n => n.id));
@@ -305,12 +396,25 @@ const SystemManagerPanel = ({ user, onLogout }) => {
         sanitizeInput(newSupervisorGender),
         ageNum,
         normalizedPhone,
-        user.id
+        user.id,
+        canPublishAnnouncements
       );
       toast.success(`تم إضافة المشرف ${result.name}`);
       setNewSupervisorName(''); setNewSupervisorGender('');
       setNewSupervisorAge(''); setNewSupervisorPhone('');
+      setCanPublishAnnouncements(false);
       setShowSupervisorModal(false);
+      // تحديث العداد والقائمة
+      try {
+        const snap = await getCountFromServer(query(collection(db, 'profiles'), where('role', '==', 'supervisor')));
+        setSupervisorsCount(snap.data().count);
+      } catch {}
+      if (supLoaded) {
+        setSupervisorsList(prev => [
+          { id: result.id, name: result.name, username: result.username, canPublishAnnouncements, isFrozen: false, createdAt: new Date() },
+          ...prev
+        ]);
+      }
     } catch (err) {
       toast.error('فشل إضافة المشرف: ' + err.message, { duration: 8000 });
     } finally { setSupervisorLoading(false); }
@@ -322,6 +426,8 @@ const SystemManagerPanel = ({ user, onLogout }) => {
       const toastId = toast.loading('جاري الحذف...');
       await deleteUserCompletely(student.id);
       toast.success('✅ تم حذف الطالب نهائياً.', { id: toastId });
+      setStudentsList(prev => prev.filter(s => s.id !== student.id));
+      setStudentsCount(prev => Math.max(0, prev - 1));
     } catch (err) {
       toast.error('فشل الحذف: ' + err.message);
     }
@@ -335,6 +441,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
         frozenAt: nextStatus ? serverTimestamp() : null,
         updatedAt: serverTimestamp()
       });
+      setStudentsList(prev => prev.map(s => s.id === student.id ? { ...s, isFrozen: nextStatus } : s));
       toast.success(nextStatus ? 'تم تجميد الطالب.' : 'تم فك التجميد.');
     } catch (err) {
       toast.error('فشل تحديث الحالة: ' + err.message);
@@ -346,9 +453,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
       const studentObj = {
         name: request.targetName || '',
         phone: request.targetPhone || '',
-        classes: request.targetClass
-          ? request.targetClass.split(', ').map(n => ({ name: n }))
-          : [],
+        classes: request.targetClass ? request.targetClass.split(', ').map(n => ({ name: n })) : [],
         age: request.payload?.age,
         gender: request.payload?.gender,
         username: request.payload?.username || ''
@@ -356,36 +461,16 @@ const SystemManagerPanel = ({ user, onLogout }) => {
 
       let success = true;
       switch (request.type) {
-        case 'warning':
-          success = sendWarningMessage(studentObj, request.payload.warningNumber, request.payload.description);
-          break;
-        case 'notice':
-          success = sendNoticeMessage(studentObj, request.payload.description);
-          break;
-        case 'general':
-          success = sendGeneralMessageToStudent(studentObj, request.payload.subject, request.payload.body);
-          break;
-        case 'report':
-          success = sendReportMessage(studentObj, request.payload.reason, request.targetClass);
-          break;
-        case 'freeze':
-          success = sendFreezeMessage(studentObj);
-          break;
-        case 'delete':
-          success = sendDeleteMessage(studentObj);
-          break;
-        case 'reset_password':
-          success = sendResetPasswordMessage(studentObj, request.payload.newPassword);
-          break;
-        case 'activation':
-          success = sendActivationMessage(studentObj, request.payload.username, request.payload.password);
-          break;
-        case 'data_update_approval':
-          success = sendDataUpdateApprovalMessage(studentObj, {});
-          break;
-        case 'data_update_rejection':
-          success = sendDataUpdateRejectionMessage(studentObj, request.payload?.reason);
-          break;
+        case 'warning': success = sendWarningMessage(studentObj, request.payload.warningNumber, request.payload.description); break;
+        case 'notice': success = sendNoticeMessage(studentObj, request.payload.description); break;
+        case 'general': success = sendGeneralMessageToStudent(studentObj, request.payload.subject, request.payload.body); break;
+        case 'report': success = sendReportMessage(studentObj, request.payload.reason, request.targetClass); break;
+        case 'freeze': success = sendFreezeMessage(studentObj); break;
+        case 'delete': success = sendDeleteMessage(studentObj); break;
+        case 'reset_password': success = sendResetPasswordMessage(studentObj, request.payload.newPassword); break;
+        case 'activation': success = sendActivationMessage(studentObj, request.payload.username, request.payload.password); break;
+        case 'data_update_approval': success = sendDataUpdateApprovalMessage(studentObj, {}); break;
+        case 'data_update_rejection': success = sendDataUpdateRejectionMessage(studentObj, request.payload?.reason); break;
         default:
           toast.error('نوع طلب غير معروف.');
           return;
@@ -396,8 +481,9 @@ const SystemManagerPanel = ({ user, onLogout }) => {
         return;
       }
 
-      await updateMessageRequestStatus(request.id, MESSAGE_REQUEST_STATUS.APPROVED, user.id);
-      toast.success('✅ تم فتح واتساب واعتماد الطلب.');
+      // ✅ مسح الطلب نهائياً بعد الإرسال
+      await deleteMessageRequest(request.id);
+      toast.success('✅ تم فتح واتساب واعتماد الطلب ومسحه من السجلات.');
     } catch (err) {
       toast.error('فشل إرسال الطلب: ' + err.message);
     }
@@ -419,7 +505,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     } catch (err) { toast.error('فشل الحذف: ' + err.message); }
   };
 
-  // ✅ تصفية البلاغات (تُدار الآن من لوحة المشرفين)
   const filteredRequests = messageRequests.filter(r => {
     if (r.type === 'report') return false;
     if (requestFilter === 'all') return true;
@@ -460,7 +545,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center shadow-lg"><FaExclamationTriangle className="text-white text-xl" /></div>
               <div><p className="text-xs text-red-300 uppercase tracking-widest font-semibold">طلبات معلّقة</p><h3 className="text-sm font-bold text-red-100">قيد المراجعة</h3></div>
             </div>
-            <p className="text-4xl font-black text-white">{pendingCount}</p>
+            <p className="text-4xl font-black text-white"><CountUp value={pendingCount} /></p>
           </div>
 
           <div className="relative overflow-hidden bg-gradient-to-br from-emerald-900/50 to-emerald-900/20 p-6 rounded-2xl border border-emerald-500/30 shadow-xl">
@@ -468,7 +553,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center shadow-lg"><FaUsers className="text-white text-xl" /></div>
               <div><p className="text-xs text-emerald-300 uppercase tracking-widest font-semibold">الطلاب</p><h3 className="text-sm font-bold text-emerald-100">إجمالي المسجلين</h3></div>
             </div>
-            <p className="text-4xl font-black text-white">{students.length}</p>
+            <p className="text-4xl font-black text-white"><CountUp value={studentsCount} /></p>
           </div>
 
           <div className="relative overflow-hidden bg-gradient-to-br from-indigo-900/50 to-indigo-900/20 p-6 rounded-2xl border border-indigo-500/30 shadow-xl">
@@ -476,7 +561,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-lg"><FaUserShield className="text-white text-xl" /></div>
               <div><p className="text-xs text-indigo-300 uppercase tracking-widest font-semibold">المشرفين</p><h3 className="text-sm font-bold text-indigo-100">الحسابات النشطة</h3></div>
             </div>
-            <p className="text-4xl font-black text-white">{supervisors.length}</p>
+            <p className="text-4xl font-black text-white"><CountUp value={supervisorsCount} /></p>
           </div>
 
           <div className="relative overflow-hidden bg-gradient-to-br from-blue-900/50 to-blue-900/20 p-6 rounded-2xl border border-blue-500/30 shadow-xl">
@@ -484,7 +569,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center shadow-lg"><FaChalkboardTeacher className="text-white text-xl" /></div>
               <div><p className="text-xs text-blue-300 uppercase tracking-widest font-semibold">المعلمين</p><h3 className="text-sm font-bold text-blue-100">في النظام</h3></div>
             </div>
-            <p className="text-4xl font-black text-white">{teachers.length}</p>
+            <p className="text-4xl font-black text-white"><CountUp value={teachersCount} /></p>
           </div>
 
           <div className="relative overflow-hidden bg-gradient-to-br from-purple-900/50 to-purple-900/20 p-6 rounded-2xl border border-purple-500/30 shadow-xl">
@@ -492,7 +577,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-fuchsia-600 flex items-center justify-center shadow-lg"><FaBroadcastTower className="text-white text-xl" /></div>
               <div><p className="text-xs text-purple-300 uppercase tracking-widest font-semibold">محاضرات</p><h3 className="text-sm font-bold text-purple-100">نشطة الآن (60 دقيقة)</h3></div>
             </div>
-            <p className="text-4xl font-black text-white">{activeLecturesCount}</p>
+            <p className="text-4xl font-black text-white"><CountUp value={activeLecturesCount} /></p>
           </div>
 
           <div className="relative overflow-hidden bg-gradient-to-br from-amber-900/50 to-amber-900/20 p-6 rounded-2xl border border-amber-500/30 shadow-xl">
@@ -514,10 +599,8 @@ const SystemManagerPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* ✅ خانة المراجعات الجديدة */}
         <SystemManagerReviewsSection user={user} />
 
-        {/* ✅ قسم طلبات الرسائل */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-amber-500/30">
           <div className="flex justify-between items-center flex-wrap gap-3 mb-4">
             <h3 className="text-xl font-semibold text-amber-300 flex items-center gap-2">
@@ -530,7 +613,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
               <button onClick={() => setRequestFilter('all')} className={`px-3 py-1 rounded-lg text-xs ${requestFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300'}`}>الكل</button>
             </div>
           </div>
-          <p className="text-xs text-gray-500 mb-3">📌 الطلبات المُرسلة تُحذف تلقائياً بعد 48 ساعة. (البلاغات تُدار من لوحة المشرفين)</p>
+          <p className="text-xs text-gray-500 mb-3">📌 الطلبات تُمسح فور اعتمادها. (البلاغات تُدار من لوحة المشرفين)</p>
 
           {filteredRequests.length === 0 ? (
             <p className="text-gray-400 text-center py-6">لا توجد طلبات في هذا التصنيف.</p>
@@ -612,69 +695,133 @@ const SystemManagerPanel = ({ user, onLogout }) => {
           )}
         </div>
 
-        {/* المشرفين */}
+        {/* ✅ المشرفين مع ترقيم وبحث */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-indigo-500/20">
-          <div className="flex justify-between items-center mb-4">
+          <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
             <h3 className="text-xl font-semibold text-indigo-300 flex items-center gap-2">
-              <FaUserShield /> المشرفين ({supervisors.length})
+              <FaUserShield /> المشرفين ({supervisorsCount})
             </h3>
             <button onClick={() => setShowSupervisorModal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm">
               إضافة مشرف
             </button>
           </div>
-          <div className="space-y-2 max-h-[300px] overflow-y-auto">
-            {supervisors.map(s => (
-              <div key={s.id} className="p-3 bg-black/30 rounded-xl border border-gray-700 flex justify-between items-center">
-                <div>
-                  <span className="text-white text-sm">{s.name}</span>
-                  <span className="text-xs text-gray-400 mr-2">({s.username})</span>
-                  {s.isFrozen && <span className="text-xs text-orange-400 mr-2">(مجمد)</span>}
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={async () => {
-                    if (!window.confirm(`حذف المشرف "${s.name}" نهائياً؟`)) return;
-                    try {
-                      const toastId = toast.loading('جاري الحذف...');
-                      await deleteUserCompletely(s.id);
-                      toast.success('✅ تم حذف المشرف.', { id: toastId });
-                    } catch (e) { toast.error('فشل: ' + e.message); }
-                  }} className="text-xs bg-red-500/20 text-red-300 px-2 py-1 rounded-lg hover:bg-red-500/30">
-                    <FaTrashAlt /> حذف
-                  </button>
-                </div>
+
+          {!supLoaded ? (
+            <div className="text-center py-4">
+              <p className="text-gray-400 text-sm mb-3">يتم تحميل القائمة عند الطلب لتوفير موارد السيرفر.</p>
+              <button onClick={() => loadSupervisors(true)} disabled={supLoading} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg inline-flex items-center gap-2">
+                {supLoading ? <FaSpinner className="animate-spin" /> : null} تحميل القائمة
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="flex gap-2 mb-3 flex-wrap">
+                <input
+                  type="text"
+                  placeholder="ابحث بالاسم أو اسم المستخدم"
+                  value={supSearch}
+                  onChange={(e) => setSupSearch(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') searchSupervisors(); }}
+                  className="flex-1 bg-gray-800 text-right p-2 border border-gray-600 rounded-md text-white min-w-[180px]"
+                />
+                <button onClick={searchSupervisors} disabled={supLoading} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm inline-flex items-center gap-1">
+                  <FaSearch /> بحث
+                </button>
+                {supSearch && <button onClick={() => { setSupSearch(''); setLastSupDoc(null); loadSupervisors(true); }} className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md text-sm">إلغاء</button>}
               </div>
-            ))}
-          </div>
+              <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                {supervisorsList.map(s => (
+                  <div key={s.id} className="p-3 bg-black/30 rounded-xl border border-gray-700 flex justify-between items-center flex-wrap gap-2">
+                    <div>
+                      <span className="text-white text-sm">{s.name}</span>
+                      <span className="text-xs text-gray-400 mr-2">({s.username})</span>
+                      {s.isFrozen && <span className="text-xs text-orange-400 mr-2">(مجمد)</span>}
+                      {s.canPublishAnnouncements && <span className="text-xs text-green-400 mr-2">(صلاحية إشعارات)</span>}
+                    </div>
+                    <button onClick={async () => {
+                      if (!window.confirm(`حذف المشرف "${s.name}" نهائياً؟`)) return;
+                      try {
+                        const toastId = toast.loading('جاري الحذف...');
+                        await deleteUserCompletely(s.id);
+                        toast.success('✅ تم حذف المشرف.', { id: toastId });
+                        setSupervisorsList(prev => prev.filter(x => x.id !== s.id));
+                        setSupervisorsCount(prev => Math.max(0, prev - 1));
+                      } catch (e) { toast.error('فشل: ' + e.message); }
+                    }} className="text-xs bg-red-500/20 text-red-300 px-2 py-1 rounded-lg hover:bg-red-500/30">
+                      <FaTrashAlt /> حذف
+                    </button>
+                  </div>
+                ))}
+                {supervisorsList.length === 0 && <p className="text-gray-400 text-center py-3 text-sm">لا توجد نتائج.</p>}
+              </div>
+              {hasMoreSup && (
+                <button onClick={() => loadSupervisors(false)} disabled={supLoading} className="w-full mt-3 text-blue-400 hover:text-blue-300 text-sm flex items-center justify-center gap-2">
+                  {supLoading ? <FaSpinner className="animate-spin" /> : null} تحميل المزيد (20)
+                </button>
+              )}
+            </>
+          )}
         </div>
 
-        {/* الطلاب */}
+        {/* ✅ الطلاب مع ترقيم وبحث */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700">
           <h3 className="text-xl font-semibold text-blue-300 mb-4 flex items-center gap-2">
-            <FaUsers /> إدارة الطلاب
+            <FaUsers /> إدارة الطلاب ({studentsCount})
           </h3>
-          <div className="space-y-2 max-h-[400px] overflow-y-auto">
-            {students.map(s => (
-              <div key={s.id} className="p-3 bg-black/30 rounded-xl border border-gray-700 flex justify-between items-center flex-wrap gap-2">
-                <div>
-                  <span className="text-white text-sm">{s.name}</span>
-                  <span className="text-xs text-gray-400 mr-2">({s.username})</span>
-                  {s.phone && <span className="text-xs text-gray-400 mr-2">📱 {s.phone}</span>}
-                  {s.isFrozen && <span className="text-xs text-red-400 mr-2">(مجمد)</span>}
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={() => toggleFreezeStudent(s)} className={`text-xs px-2 py-1 rounded-lg ${s.isFrozen ? 'bg-green-500/20 text-green-300' : 'bg-orange-500/20 text-orange-300'}`}>
-                    {s.isFrozen ? 'فك التجميد' : 'تجميد'}
-                  </button>
-                  <button onClick={() => handleDeleteStudent(s)} className="text-xs bg-red-500/20 text-red-300 px-2 py-1 rounded-lg hover:bg-red-500/30">
-                    <FaTrashAlt /> حذف
-                  </button>
-                </div>
+
+          {!stuLoaded ? (
+            <div className="text-center py-4">
+              <p className="text-gray-400 text-sm mb-3">يتم تحميل القائمة عند الطلب لتوفير موارد السيرفر.</p>
+              <button onClick={() => loadStudents(true)} disabled={stuLoading} className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg inline-flex items-center gap-2">
+                {stuLoading ? <FaSpinner className="animate-spin" /> : null} تحميل القائمة
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="flex gap-2 mb-3 flex-wrap">
+                <input
+                  type="text"
+                  placeholder="ابحث بالاسم أو اسم المستخدم"
+                  value={stuSearch}
+                  onChange={(e) => setStuSearch(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') searchStudents(); }}
+                  className="flex-1 bg-gray-800 text-right p-2 border border-gray-600 rounded-md text-white min-w-[180px]"
+                />
+                <button onClick={searchStudents} disabled={stuLoading} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm inline-flex items-center gap-1">
+                  <FaSearch /> بحث
+                </button>
+                {stuSearch && <button onClick={() => { setStuSearch(''); setLastStuDoc(null); loadStudents(true); }} className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md text-sm">إلغاء</button>}
               </div>
-            ))}
-          </div>
+              <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                {studentsList.map(s => (
+                  <div key={s.id} className="p-3 bg-black/30 rounded-xl border border-gray-700 flex justify-between items-center flex-wrap gap-2">
+                    <div>
+                      <span className="text-white text-sm">{s.name}</span>
+                      <span className="text-xs text-gray-400 mr-2">({s.username})</span>
+                      {s.phone && <span className="text-xs text-gray-400 mr-2">📱 {s.phone}</span>}
+                      {s.isFrozen && <span className="text-xs text-red-400 mr-2">(مجمد)</span>}
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => toggleFreezeStudent(s)} className={`text-xs px-2 py-1 rounded-lg ${s.isFrozen ? 'bg-green-500/20 text-green-300' : 'bg-orange-500/20 text-orange-300'}`}>
+                        {s.isFrozen ? 'فك التجميد' : 'تجميد'}
+                      </button>
+                      <button onClick={() => handleDeleteStudent(s)} className="text-xs bg-red-500/20 text-red-300 px-2 py-1 rounded-lg hover:bg-red-500/30">
+                        <FaTrashAlt /> حذف
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {studentsList.length === 0 && <p className="text-gray-400 text-center py-3 text-sm">لا توجد نتائج.</p>}
+              </div>
+              {hasMoreStu && (
+                <button onClick={() => loadStudents(false)} disabled={stuLoading} className="w-full mt-3 text-blue-400 hover:text-blue-300 text-sm flex items-center justify-center gap-2">
+                  {stuLoading ? <FaSpinner className="animate-spin" /> : null} تحميل المزيد (20)
+                </button>
+              )}
+            </>
+          )}
         </div>
 
-        {/* ✅ القائمة السوداء */}
         <BlacklistSection />
 
         {showNotificationsModal && (
@@ -734,6 +881,18 @@ const SystemManagerPanel = ({ user, onLogout }) => {
                   <label className="text-xs text-gray-400 block">رقم الهاتف (مع رمز الدولة بدون +)</label>
                   <input type="text" inputMode="numeric" placeholder="مثال: 9627XXXXXXXX" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newSupervisorPhone} onChange={e => setNewSupervisorPhone(arabicToEnglishNumber(e.target.value))} required />
                   <p className="text-[10px] text-gray-500 mt-1">أدخل الرقم مع رمز الدولة، بدون + وبدون صفر بادئ</p>
+                </div>
+                <div className="flex items-center gap-2 bg-gray-800/40 p-3 rounded-lg border border-gray-700">
+                  <input
+                    type="checkbox"
+                    id="canPublishAnnouncements"
+                    checked={canPublishAnnouncements}
+                    onChange={e => setCanPublishAnnouncements(e.target.checked)}
+                    className="w-4 h-4 accent-indigo-500"
+                  />
+                  <label htmlFor="canPublishAnnouncements" className="text-sm text-gray-300 cursor-pointer">
+                    صلاحية نشر الإشعارات العامة
+                  </label>
                 </div>
                 <button type="submit" disabled={supervisorLoading} className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 rounded-md text-white">
                   {supervisorLoading ? 'جاري الإضافة...' : 'إضافة'}

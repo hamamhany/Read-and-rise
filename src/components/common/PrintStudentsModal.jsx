@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FaPrint, FaTimes, FaSpinner } from 'react-icons/fa';
+import { FaPrint, FaTimes, FaSpinner, FaSave } from 'react-icons/fa';
 import { db } from '../../firebase';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import toast from 'react-hot-toast';
@@ -64,7 +64,7 @@ const PrintStudentsModal = ({ isOpen, onClose, students }) => {
         <table>
           <thead>
             <tr>
-              <th style="width:40px;">م</th>
+              <th style="width:60px;">الرقم</th>
               <th>اسم الطالب</th>
               <th>الشعبة</th>
               <th style="width:70px;">الإنذارات</th>
@@ -107,11 +107,9 @@ const PrintStudentsModal = ({ isOpen, onClose, students }) => {
     }, 300);
   };
 
-  const handlePrint = async () => {
-    setIsSaving(true);
-
-    // حفظ الملاحظات في الخلفية
-    const savePromise = (async () => {
+  const handlePrint = async (saveNotes) => {
+    if (saveNotes) {
+      setIsSaving(true);
       try {
         const promises = [];
         for (const s of sortedStudents) {
@@ -127,22 +125,23 @@ const PrintStudentsModal = ({ isOpen, onClose, students }) => {
         if (promises.length > 0) {
           await Promise.all(promises);
           toast.success('تم حفظ الملاحظات في النظام ✓');
+        } else {
+          toast.info('لا توجد ملاحظات جديدة للحفظ.');
         }
       } catch (err) {
         console.error('فشل حفظ الملاحظات:', err);
-        toast.error('فشل حفظ بعض الملاحظات، لكن سيتم الطباعة');
+        toast.error('فشل حفظ الملاحظات، لكن سيتم الطباعة');
+      } finally {
+        setIsSaving(false);
       }
-    })();
+    }
 
-    // إطلاق الطباعة فوراً
     try {
       triggerPrint();
     } catch (err) {
       console.error('Print trigger failed:', err);
       toast.error('فشلت الطباعة: ' + err.message);
     }
-
-    savePromise.finally(() => setIsSaving(false));
   };
 
   if (!isOpen) return null;
@@ -166,7 +165,7 @@ const PrintStudentsModal = ({ isOpen, onClose, students }) => {
           <table className="w-full text-right border-collapse text-sm">
             <thead className="sticky top-0 bg-gray-800">
               <tr className="text-gray-300">
-                <th className="border border-gray-600 p-2 text-center w-12">#</th>
+                <th className="border border-gray-600 p-2 text-center w-16">الرقم</th>
                 <th className="border border-gray-600 p-2">اسم الطالب</th>
                 <th className="border border-gray-600 p-2 text-center">الشعبة</th>
                 <th className="border border-gray-600 p-2 text-center">الإنذارات</th>
@@ -200,16 +199,22 @@ const PrintStudentsModal = ({ isOpen, onClose, students }) => {
 
         <div className="mt-6 flex flex-wrap gap-3 justify-end">
           <button
-            onClick={handlePrint}
+            onClick={() => handlePrint(true)}
             disabled={isSaving}
-            className="btn-primary bg-green-600 hover:bg-green-700 px-6 py-3 rounded-xl text-white flex items-center gap-2 font-bold shadow-lg disabled:opacity-60"
+            className="bg-blue-600 hover:bg-blue-700 px-5 py-3 rounded-xl text-white flex items-center gap-2 font-bold shadow-lg disabled:opacity-60"
           >
-            {isSaving ? <FaSpinner className="animate-spin" /> : <FaPrint />}
-            {isSaving ? 'جاري الحفظ والطباعة...' : 'طباعة'}
+            {isSaving ? <FaSpinner className="animate-spin" /> : <FaSave />}
+            {isSaving ? 'جاري الحفظ...' : 'حفظ الملاحظات والطباعة'}
+          </button>
+          <button
+            onClick={() => handlePrint(false)}
+            className="bg-green-600 hover:bg-green-700 px-5 py-3 rounded-xl text-white flex items-center gap-2 font-bold shadow-lg"
+          >
+            <FaPrint /> اكتفاء بالطباعة فقط
           </button>
           <button
             onClick={onClose}
-            className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-3 rounded-xl text-white"
+            className="bg-gray-600 hover:bg-gray-700 px-5 py-3 rounded-xl text-white"
           >
             إلغاء
           </button>

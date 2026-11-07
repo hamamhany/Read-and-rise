@@ -7,15 +7,12 @@ import { sendNotificationToTeacher } from '../utils/notifications';
 import { sendSupervisorActivationMessage } from '../utils/whatsapp';
 import { MAX_SUPERVISORS } from '../constants';
 
-export const createSupervisorAccount = async (name, gender, age, phone, teacherId) => {
+export const createSupervisorAccount = async (name, gender, age, phone, teacherId, canPublishAnnouncements = false) => {
   try {
-    // ✅ التحقق من صحة رقم الهاتف أولاً (قبل أي عملية أخرى)
     const phoneDigits = String(phone || '').replace(/[^\d]/g, '');
     const normalizedPhone = phoneDigits.startsWith('00') ? phoneDigits.substring(2) : phoneDigits;
 
-    if (!normalizedPhone) {
-      throw new Error('رقم الهاتف مطلوب.');
-    }
+    if (!normalizedPhone) throw new Error('رقم الهاتف مطلوب.');
     if (normalizedPhone.startsWith('0')) {
       throw new Error('يرجى إدخال رقم الهاتف مع رمز الدولة بدون صفر بادئ.\nمثال (الأردن): 962786117388');
     }
@@ -37,14 +34,10 @@ export const createSupervisorAccount = async (name, gender, age, phone, teacherI
       username = `supervisor${randomNum}`;
       const q2 = query(collection(db, 'profiles'), where('username', '==', username));
       const snap = await getDocs(q2);
-      if (snap.empty) {
-        exists = false;
-      }
+      if (snap.empty) exists = false;
       attempts++;
     }
-    if (exists) {
-      throw new Error('تعذر إنشاء اسم مستخدم فريد، حاول مرة أخرى.');
-    }
+    if (exists) throw new Error('تعذر إنشاء اسم مستخدم فريد، حاول مرة أخرى.');
 
     const tempPassword = Math.floor(Math.random() * 1000000000).toString().padStart(9, '0');
     const email = `${username}@readandrise.com`;
@@ -54,9 +47,7 @@ export const createSupervisorAccount = async (name, gender, age, phone, teacherI
       userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, tempPassword);
     } catch (authError) {
       console.error('Auth creation error (secondary):', authError);
-      if (authError.code === 'auth/email-already-in-use') {
-        throw new Error('البريد الإلكتروني مستخدم بالفعل. حاول مرة أخرى.');
-      }
+      if (authError.code === 'auth/email-already-in-use') throw new Error('البريد الإلكتروني مستخدم بالفعل.');
       throw new Error('فشل إنشاء حساب المصادقة: ' + authError.message);
     }
     const firebaseUser = userCredential.user;
@@ -64,9 +55,7 @@ export const createSupervisorAccount = async (name, gender, age, phone, teacherI
 
     const newId = generateId();
     const ageNum = parseInt(age);
-    if (isNaN(ageNum) || ageNum < 1 || ageNum > 99) {
-      throw new Error('العمر يجب أن يكون رقماً بين 1 و 99.');
-    }
+    if (isNaN(ageNum) || ageNum < 1 || ageNum > 99) throw new Error('العمر يجب أن يكون رقماً بين 1 و 99.');
 
     await setDoc(doc(db, 'profiles', newId), {
       email,
@@ -79,6 +68,7 @@ export const createSupervisorAccount = async (name, gender, age, phone, teacherI
       isFrozen: false,
       infoVerified: false,
       isProfileComplete: false,
+      canPublishAnnouncements: !!canPublishAnnouncements,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       uid: firebaseUser.uid,

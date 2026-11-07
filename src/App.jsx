@@ -13,7 +13,7 @@ import FrozenAccount from './components/common/FrozenAccount';
 import SupervisorPanel from './components/panels/SupervisorPanel';
 import TeacherPanel from './components/panels/TeacherPanel';
 import StudentPanel from './components/panels/StudentPanel';
-import SystemManagerPanel from './components/panels/SystemManagerPanel'; // ملف جديد
+import SystemManagerPanel from './components/panels/SystemManagerPanel';
 
 const App = () => {
   const [user, setUser] = useState(null);
@@ -42,10 +42,7 @@ const App = () => {
       const classMap = await fetchClassNames(frozenData.classIds);
       classNames = frozenData.classIds.map(id => classMap[id] || null).filter(Boolean);
     }
-    setFrozenUser({
-      ...frozenData,
-      class_name: classNames.join(', ') || 'غير محدد'
-    });
+    setFrozenUser({ ...frozenData, class_name: classNames.join(', ') || 'غير محدد' });
     setUser(null);
     setPendingUserForComplete(null);
   };
@@ -61,9 +58,7 @@ const App = () => {
 
   const checkSessionAndProfile = async (firebaseUser) => {
     if (!firebaseUser) {
-      setUser(null);
-      setFrozenUser(null);
-      setPendingUserForComplete(null);
+      setUser(null); setFrozenUser(null); setPendingUserForComplete(null);
       setLoading(false);
       return;
     }
@@ -98,9 +93,7 @@ const App = () => {
             email: firebaseUser.email,
             username: firebaseUser.displayName || ''
           });
-          setUser(null);
-          setFrozenUser(null);
-          setLoading(false);
+          setUser(null); setFrozenUser(null); setLoading(false);
           return;
         }
       }
@@ -121,9 +114,7 @@ const App = () => {
           phone: profile.phone,
           class_name: classNames.join(', ') || 'غير محدد'
         });
-        setUser(null);
-        setPendingUserForComplete(null);
-        setLoading(false);
+        setUser(null); setPendingUserForComplete(null); setLoading(false);
         return;
       }
 
@@ -136,9 +127,7 @@ const App = () => {
             username: profile.username || '',
             ...profile
           });
-          setUser(null);
-          setFrozenUser(null);
-          setLoading(false);
+          setUser(null); setFrozenUser(null); setLoading(false);
           return;
         }
         setUser({
@@ -152,11 +141,10 @@ const App = () => {
           age: profile.age,
           phone: profile.phone,
           classIds: [],
-          isProfileComplete: true
+          isProfileComplete: true,
+          canPublishAnnouncements: profile.canPublishAnnouncements !== false
         });
-        setFrozenUser(null);
-        setPendingUserForComplete(null);
-        setLoading(false);
+        setFrozenUser(null); setPendingUserForComplete(null); setLoading(false);
         return;
       }
 
@@ -169,9 +157,7 @@ const App = () => {
           username: profile.username || '',
           ...profile
         });
-        setUser(null);
-        setFrozenUser(null);
-        setLoading(false);
+        setUser(null); setFrozenUser(null); setLoading(false);
         return;
       }
 
@@ -188,15 +174,10 @@ const App = () => {
         classIds: profile.classIds || [],
         isProfileComplete: true
       });
-      setFrozenUser(null);
-      setPendingUserForComplete(null);
-      setLoading(false);
+      setFrozenUser(null); setPendingUserForComplete(null); setLoading(false);
     } catch (err) {
       console.error(err);
-      setUser(null);
-      setFrozenUser(null);
-      setPendingUserForComplete(null);
-      setLoading(false);
+      setUser(null); setFrozenUser(null); setPendingUserForComplete(null); setLoading(false);
     }
   };
 
@@ -204,20 +185,13 @@ const App = () => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       await checkSessionAndProfile(firebaseUser);
     });
-
     return () => unsubscribe();
   }, []);
 
   if (loading) return <div className="container-center min-h-screen text-white"><div className="bg-gray-900 p-8 rounded-2xl border border-gray-700 shadow-xl animate-pulse">جاري التحميل...</div></div>;
 
   if (pendingUserForComplete) {
-    return (
-      <CompleteProfile
-        user={pendingUserForComplete}
-        onSuccess={handleCompleteProfileSuccess}
-        onCancel={handleLogout}
-      />
-    );
+    return <CompleteProfile user={pendingUserForComplete} onSuccess={handleCompleteProfileSuccess} onCancel={handleLogout} />;
   }
 
   if (frozenUser) {
@@ -225,13 +199,7 @@ const App = () => {
   }
 
   if (!user) {
-    return (
-      <Login
-        onLogin={handleLogin}
-        onFrozen={handleFrozen}
-        onCompleteProfile={handleCompleteProfile}
-      />
-    );
+    return <Login onLogin={handleLogin} onFrozen={handleFrozen} onCompleteProfile={handleCompleteProfile} />;
   }
 
   if (user.role === 'system_manager') {
@@ -242,7 +210,9 @@ const App = () => {
     return <SupervisorPanel user={user} onLogout={handleLogout} />;
   }
 
-  return user.role === 'teacher' ? <TeacherPanel user={user} onLogout={handleLogout} /> : <StudentPanel user={user} onLogout={handleLogout} />;
+  return user.role === 'teacher'
+    ? <TeacherPanel user={user} onLogout={handleLogout} />
+    : <StudentPanel user={user} onLogout={handleLogout} />;
 };
 
 const Root = () => (
