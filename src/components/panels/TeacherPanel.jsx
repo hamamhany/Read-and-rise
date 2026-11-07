@@ -179,6 +179,17 @@ const TeacherPanel = ({ user, onLogout }) => {
     const sanitizedAge = sanitizeInput(arabicToEnglishNumber(newStudentAge));
     const sanitizedPhone = sanitizeInput(arabicToEnglishNumber(newStudentPhone));
     if (!sanitizedName || !sanitizedGender || !sanitizedAge || !sanitizedPhone) return toast.error('جميع الحقول مطلوبة.');
+
+    // ✅ التحقق من صحة رقم الهاتف (الكل مع رمز الدولة بدون +)
+    const phoneDigits = sanitizedPhone.replace(/[^\d]/g, '');
+    const normalizedPhone = phoneDigits.startsWith('00') ? phoneDigits.substring(2) : phoneDigits;
+    if (normalizedPhone.startsWith('0')) {
+      return toast.error('يرجى إدخال رقم الهاتف مع رمز الدولة بدون صفر بادئ.\nمثال: 962786117388', { duration: 7000 });
+    }
+    if (normalizedPhone.length < 10 || normalizedPhone.length > 15) {
+      return toast.error('رقم الهاتف غير صالح. يرجى إدخال الرقم مع رمز الدولة (10 إلى 15 رقماً).', { duration: 7000 });
+    }
+
     setStudentLoading(true);
     try {
       let maxNum = 0;
@@ -195,7 +206,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       const tempPassword = Math.floor(Math.random() * 1000000000).toString().padStart(9, '0');
       const email = `${newUsername}@readandrise.com`;
       const newId = generateId();
-      const cleanPhone = sanitizedPhone.replace(/[^0-9]/g, '');
+      const cleanPhone = normalizedPhone;
       const ageNum = parseInt(sanitizedAge);
 
       let userCredential;
@@ -754,13 +765,10 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
         )}
 
-        {/* ✅ التعديل: عمودين، العمود الأول يحتوي على بطاقتين (طلاب + شعب) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           
-          {/* العمود الأيسر: بطاقة الطلاب (أعلى) + بطاقة الشعب (أسفل) */}
           <div className="flex flex-col gap-4">
             
-            {/* بطاقة الطلاب - تم إرجاع الشريط وإضافة مسافات متناسقة */}
             <div className="flex-1 relative overflow-hidden bg-gradient-to-br from-indigo-900/60 via-purple-900/40 to-purple-900/20 p-4 rounded-2xl border border-purple-500/30 shadow-xl group hover:shadow-purple-500/20 hover:border-purple-400/50 transition-all duration-300">
               <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-purple-500/20 transition" />
               <div className="relative z-10">
@@ -779,7 +787,6 @@ const TeacherPanel = ({ user, onLogout }) => {
                     <span className="text-purple-300 text-sm font-medium">طالب</span>
                   </div>
                 </div>
-                {/* ✅ الشريط الجميل عاد هنا */}
                 <div className="flex items-center gap-2">
                   <div className="flex-1 h-1.5 bg-purple-900/50 rounded-full overflow-hidden">
                     <div className="h-full bg-gradient-to-r from-purple-500 to-indigo-400 rounded-full transition-all" style={{ width: `${Math.min(students.length * 5, 100)}%` }} />
@@ -789,7 +796,6 @@ const TeacherPanel = ({ user, onLogout }) => {
               </div>
             </div>
 
-            {/* بطاقة الشعب الدراسية - جديدة أسفل الطلاب */}
             <div className="flex-1 relative overflow-hidden bg-gradient-to-br from-pink-900/60 via-fuchsia-900/40 to-fuchsia-900/20 p-4 rounded-2xl border border-pink-500/30 shadow-xl group hover:shadow-pink-500/20 hover:border-pink-400/50 transition-all duration-300 flex flex-col justify-center">
               <div className="absolute top-0 right-0 w-32 h-32 bg-pink-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-pink-500/20 transition" />
               <div className="relative z-10 flex items-center justify-between">
@@ -811,7 +817,6 @@ const TeacherPanel = ({ user, onLogout }) => {
 
           </div>
 
-          {/* العمود الأيمن: العد التنازلي */}
           <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700 flex flex-col justify-center">
             <div className="flex justify-between items-center mb-2">
               <h3 className="text-lg font-semibold text-purple-200">الوقت المتبقي للحصة القادمة</h3>
@@ -951,7 +956,14 @@ const TeacherPanel = ({ user, onLogout }) => {
                 <option value="أنثى">أنثى</option>
               </select>
               <input type="text" placeholder="العمر *" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentAge} onChange={e => setNewStudentAge(e.target.value)} required />
-              <input type="text" placeholder="رقم الهاتف *" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentPhone} onChange={e => setNewStudentPhone(e.target.value)} required />
+              <input
+                type="text"
+                placeholder="رقم الهاتف * (مع رمز الدولة بدون + مثال: 962786117388)"
+                className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white"
+                value={newStudentPhone}
+                onChange={e => setNewStudentPhone(e.target.value)}
+                required
+              />
               <select multiple className="bg-gray-800 w-full h-24 text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentClassIds} onChange={(e) => setNewStudentClassIds(Array.from(e.target.selectedOptions).map(o => o.value))} required>
                 {classes.map(cls => <option key={cls.id} value={cls.id}>{cls.name}</option>)}
               </select>

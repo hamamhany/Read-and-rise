@@ -9,6 +9,20 @@ import { MAX_SUPERVISORS } from '../constants';
 
 export const createSupervisorAccount = async (name, gender, age, phone, teacherId) => {
   try {
+    // ✅ التحقق من صحة رقم الهاتف أولاً (قبل أي عملية أخرى)
+    const phoneDigits = String(phone || '').replace(/[^\d]/g, '');
+    const normalizedPhone = phoneDigits.startsWith('00') ? phoneDigits.substring(2) : phoneDigits;
+
+    if (!normalizedPhone) {
+      throw new Error('رقم الهاتف مطلوب.');
+    }
+    if (normalizedPhone.startsWith('0')) {
+      throw new Error('يرجى إدخال رقم الهاتف مع رمز الدولة بدون صفر بادئ.\nمثال (الأردن): 962786117388');
+    }
+    if (normalizedPhone.length < 10 || normalizedPhone.length > 15) {
+      throw new Error('رقم الهاتف غير صالح. يرجى إدخال الرقم مع رمز الدولة (10 إلى 15 رقماً).');
+    }
+
     const q = query(collection(db, 'profiles'), where('role', '==', 'supervisor'));
     const snapshot = await getDocs(q);
     if (snapshot.size >= MAX_SUPERVISORS) {
@@ -49,7 +63,6 @@ export const createSupervisorAccount = async (name, gender, age, phone, teacherI
     await signOut(secondaryAuth);
 
     const newId = generateId();
-    const cleanPhone = phone.replace(/[^0-9]/g, '');
     const ageNum = parseInt(age);
     if (isNaN(ageNum) || ageNum < 1 || ageNum > 99) {
       throw new Error('العمر يجب أن يكون رقماً بين 1 و 99.');
@@ -61,7 +74,7 @@ export const createSupervisorAccount = async (name, gender, age, phone, teacherI
       name: sanitizeInput(name),
       gender: sanitizeInput(gender),
       age: ageNum,
-      phone: cleanPhone,
+      phone: normalizedPhone,
       role: 'supervisor',
       isFrozen: false,
       infoVerified: false,
@@ -74,19 +87,26 @@ export const createSupervisorAccount = async (name, gender, age, phone, teacherI
 
     await sendNotificationToTeacher(
       teacherId,
-      '👁️ إضافة مشرف جديد',
-      `تم إضافة المشرف ${name} (اسم المستخدم: ${username})`,
+      '✅ تم إنشاء حساب مشرف جديد',
+      `تم إنشاء حساب المشرف ${sanitizeInput(name)} (اسم المستخدم: ${username}). يرجى إرسال بيانات الدخول له عبر واتساب.`,
       'add_supervisor',
       newId
     );
 
-    const supervisorObj = { name, phone: cleanPhone };
-    const sent = sendSupervisorActivationMessage(supervisorObj, username, tempPassword);
-    if (!sent) {
-      toast.warn('لم يتم إرسال رسالة واتساب للمشرف بسبب خطأ في رقم الهاتف، ولكن تم إنشاء الحساب بنجاح.');
+    const supervisorObj = { name: sanitizeInput(name), phone: normalizedPhone };
+    const waOpened = sendSupervisorActivationMessage(supervisorObj, username, tempPassword);
+
+    if (!waOpened) {
+      toast.error(
+        `⚠️ تم إنشاء الحساب لكن لم يُفتح واتساب.\n` +
+        `اسم المستخدم: ${username}\n` +
+        `كلمة المرور: ${tempPassword}\n\n` +
+        `يرجى إرسال هذه البيانات للمشرف يدوياً.`,
+        { duration: 12000 }
+      );
     }
 
-    return { id: newId, username, password: tempPassword, name };
+    return { id: newId, username, password: tempPassword, name: sanitizeInput(name) };
   } catch (err) {
     console.error('Error creating supervisor:', err);
     throw err;

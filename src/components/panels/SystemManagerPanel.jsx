@@ -316,9 +316,38 @@ const SystemManagerPanel = ({ user, onLogout }) => {
       toast.error('جميع الحقول مطلوبة.');
       return;
     }
+
+    // ✅ التحقق من صحة رقم الهاتف (الكل مع رمز الدولة بدون +)
+    const phoneDigits = String(newSupervisorPhone).replace(/[^\d]/g, '');
+    const normalizedPhone = phoneDigits.startsWith('00') ? phoneDigits.substring(2) : phoneDigits;
+    if (!normalizedPhone) {
+      toast.error('رقم الهاتف مطلوب.', { duration: 6000 });
+      return;
+    }
+    if (normalizedPhone.startsWith('0')) {
+      toast.error(
+        'يرجى إدخال رقم الهاتف مع رمز الدولة بدون صفر بادئ.\nمثال (الأردن): 962786117388',
+        { duration: 7000 }
+      );
+      return;
+    }
+    if (normalizedPhone.length < 10 || normalizedPhone.length > 15) {
+      toast.error(
+        'رقم الهاتف غير صالح. يرجى إدخال الرقم مع رمز الدولة (10 إلى 15 رقماً).',
+        { duration: 7000 }
+      );
+      return;
+    }
+
     setSupervisorLoading(true);
     try {
-      const result = await createSupervisorAccount(newSupervisorName, newSupervisorGender, newSupervisorAge, newSupervisorPhone, user.id);
+      const result = await createSupervisorAccount(
+        newSupervisorName,
+        newSupervisorGender,
+        newSupervisorAge,
+        newSupervisorPhone,
+        user.id
+      );
       toast.success(`تم إضافة المشرف ${result.name}`);
       setNewSupervisorName('');
       setNewSupervisorGender('');
@@ -326,7 +355,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
       setNewSupervisorPhone('');
       setShowSupervisorModal(false);
     } catch (err) {
-      toast.error('فشل إضافة المشرف: ' + err.message);
+      toast.error('فشل إضافة المشرف: ' + err.message, { duration: 8000 });
     } finally {
       setSupervisorLoading(false);
     }
@@ -369,41 +398,49 @@ const SystemManagerPanel = ({ user, onLogout }) => {
         username: request.payload?.username || ''
       };
 
+      let success = true;
+
       switch (request.type) {
         case 'warning':
-          sendWarningMessage(studentObj, request.payload.warningNumber, request.payload.description);
+          success = sendWarningMessage(studentObj, request.payload.warningNumber, request.payload.description);
           break;
         case 'general':
-          sendGeneralMessageToStudent(studentObj, request.payload.subject, request.payload.body);
+          success = sendGeneralMessageToStudent(studentObj, request.payload.subject, request.payload.body);
           break;
         case 'report':
-          sendReportMessage(studentObj, request.payload.reason, request.targetClass);
+          success = sendReportMessage(studentObj, request.payload.reason, request.targetClass);
           break;
         case 'freeze':
-          sendFreezeMessage(studentObj);
+          success = sendFreezeMessage(studentObj);
           break;
         case 'delete':
-          sendDeleteMessage(studentObj);
+          success = sendDeleteMessage(studentObj);
           break;
         case 'reset_password':
-          sendResetPasswordMessage(studentObj, request.payload.newPassword);
+          success = sendResetPasswordMessage(studentObj, request.payload.newPassword);
           break;
         case 'activation':
-          sendActivationMessage(studentObj, request.payload.username, request.payload.password);
+          success = sendActivationMessage(studentObj, request.payload.username, request.payload.password);
           break;
         case 'data_update_approval':
-          sendDataUpdateApprovalMessage(studentObj, {});
+          success = sendDataUpdateApprovalMessage(studentObj, {});
           break;
         case 'data_update_rejection':
-          sendDataUpdateRejectionMessage(studentObj, request.payload?.reason);
+          success = sendDataUpdateRejectionMessage(studentObj, request.payload?.reason);
           break;
         default:
           toast.error('نوع طلب غير معروف.');
           return;
       }
 
+      if (!success) {
+        // فشل فتح واتساب — لا نُعلّم الطلب كمُرسل
+        toast.error('لم يتم اعتماد الطلب لأن واتساب لم يُفتح. يرجى المحاولة مجدداً بعد السماح بالنوافذ المنبثقة.');
+        return;
+      }
+
       await updateMessageRequestStatus(request.id, MESSAGE_REQUEST_STATUS.APPROVED, user.id);
-      toast.success('✅ تم الإرسال واعتماد الطلب.');
+      toast.success('✅ تم فتح واتساب واعتماد الطلب.');
     } catch (err) {
       toast.error('فشل إرسال الطلب: ' + err.message);
     }
@@ -797,8 +834,16 @@ const SystemManagerPanel = ({ user, onLogout }) => {
                   <input type="text" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newSupervisorAge} onChange={e => setNewSupervisorAge(e.target.value)} required />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-400 block">رقم الهاتف</label>
-                  <input type="text" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newSupervisorPhone} onChange={e => setNewSupervisorPhone(e.target.value)} required />
+                  <label className="text-xs text-gray-400 block">رقم الهاتف (مع رمز الدولة بدون +)</label>
+                  <input
+                    type="text"
+                    placeholder="مثال: 962786117388"
+                    className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white"
+                    value={newSupervisorPhone}
+                    onChange={e => setNewSupervisorPhone(e.target.value)}
+                    required
+                  />
+                  <p className="text-[10px] text-gray-500 mt-1">أدخل الرقم مع رمز الدولة، بدون + وبدون صفر بادئ</p>
                 </div>
                 <button type="submit" disabled={supervisorLoading} className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 rounded-md text-white">
                   {supervisorLoading ? 'جاري الإضافة...' : 'إضافة'}

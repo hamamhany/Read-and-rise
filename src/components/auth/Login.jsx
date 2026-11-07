@@ -165,10 +165,22 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     const name = sanitizeInput(resetName.trim());
     const gender = sanitizeInput(resetGender.trim());
     const age = sanitizeInput(arabicToEnglishNumber(resetAge.trim()));
-    const phone = sanitizeInput(arabicToEnglishNumber(resetPhone.trim()));
+    const rawPhone = sanitizeInput(arabicToEnglishNumber(resetPhone.trim()));
 
-    if (!name || !gender || !age || !phone) {
+    if (!name || !gender || !age || !rawPhone) {
       setResetError('جميع الحقول مطلوبة.');
+      return;
+    }
+
+    // ✅ التحقق من صحة رقم الهاتف (الكل مع رمز الدولة بدون +)
+    const phoneDigits = rawPhone.replace(/[^\d]/g, '');
+    const phone = phoneDigits.startsWith('00') ? phoneDigits.substring(2) : phoneDigits;
+    if (phone.startsWith('0')) {
+      setResetError('يرجى إدخال رقم الهاتف مع رمز الدولة بدون صفر بادئ.\nمثال: 962786117388');
+      return;
+    }
+    if (phone.length < 10 || phone.length > 15) {
+      setResetError('رقم الهاتف غير صالح. يرجى إدخال الرقم مع رمز الدولة (10 إلى 15 رقماً).');
       return;
     }
 
@@ -193,7 +205,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
       `${name}`;
 
     sendWhatsAppToTeacher(message);
-    toast.success('تم إرسال طلب إعادة التعيين إلى المعلم.');
+    toast.success('تم تجهيز الرسالة — يرجى الضغط على "إرسال" داخل واتساب.');
     setShowResetModal(false);
     setResetName('');
     setResetGender('');
@@ -303,7 +315,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
               <FaUnlockAlt className="inline-block me-2" /> استعادة كلمة المرور
             </h3>
             <p className="text-gray-300 text-sm text-center mb-4">
-              يرجى إدخال بياناتك للتحقق من هويتك، وسيتم إرسال طلب إعادة التعيين إلى المعلم.
+              يرجى إدخال بياناتك للتحقق من هويتك، وسيتم تجهيز رسالة إعادة التعيين لإرسالها إلى المعلم.
             </p>
 
             <div className="space-y-4">
@@ -342,18 +354,20 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
                 />
               </div>
               <div>
-                <label className="block text-sm text-gray-300 mb-1">رقم الهاتف <span className="text-red-400">*</span></label>
+                <label className="block text-sm text-gray-300 mb-1">رقم الهاتف (مع رمز الدولة بدون +) <span className="text-red-400">*</span></label>
                 <input
                   type="text"
                   inputMode="numeric"
+                  placeholder="مثال: 962786117388"
                   className="w-full bg-gray-800 text-right p-2 border border-gray-600 rounded-md text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition"
                   value={resetPhone}
                   onChange={(e) => setResetPhone(e.target.value)}
                   required
                 />
+                <p className="text-[10px] text-gray-500 mt-1">أدخل الرقم مع رمز الدولة، بدون + وبدون صفر بادئ</p>
               </div>
               {resetError && (
-                <p className="text-red-400 text-sm text-center bg-red-500/10 py-2 px-3 rounded-lg border border-red-500/20">
+                <p className="text-red-400 text-sm text-center bg-red-500/10 py-2 px-3 rounded-lg border border-red-500/20 whitespace-pre-line">
                   {resetError}
                 </p>
               )}
@@ -369,9 +383,10 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
                 <button
                   type="button"
                   onClick={handleResetRequest}
-                  className="flex-1 py-2 px-4 bg-purple-600 hover:bg-purple-700 rounded-xl text-white text-sm font-semibold transition"
+                  disabled={resetLoading}
+                  className="flex-1 py-2 px-4 bg-purple-600 hover:bg-purple-700 rounded-xl text-white text-sm font-semibold transition disabled:opacity-60"
                 >
-                  إرسال الطلب
+                  {resetLoading ? 'جاري التجهيز...' : 'تجهيز الرسالة'}
                 </button>
               </div>
             </div>

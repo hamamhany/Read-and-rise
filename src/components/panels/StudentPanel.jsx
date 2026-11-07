@@ -160,7 +160,6 @@ const StudentPanel = ({ user, onLogout }) => {
     return () => unsubscribe();
   }, []);
 
-  // ✅ فتح الإشعارات: نحفظ IDs الحالية ثم نطلب الإذن
   const handleOpenNotifications = () => {
     setNotificationIdsAtOpen(notifications.map(n => n.id));
     setShowNotificationsModal(true);
@@ -171,7 +170,6 @@ const StudentPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ✅ إغلاق الإشعارات: نحذف كل الإشعارات الشخصية (نُبقي الإعلانات العامة)
   const handleCloseNotifications = async () => {
     setShowNotificationsModal(false);
     try {
@@ -415,8 +413,19 @@ const StudentPanel = ({ user, onLogout }) => {
 
   const handleSendChanges = async () => {
     const name = sanitizeInput(editData.name);
-    const phone = sanitizeInput(editData.phone);
-    if (!name || !phone) return toast.error('الاسم ورقم الهاتف إلزاميان');
+    const phoneRaw = sanitizeInput(editData.phone);
+    if (!name || !phoneRaw) return toast.error('الاسم ورقم الهاتف إلزاميان');
+
+    // ✅ التحقق من صحة رقم الهاتف (الكل مع رمز الدولة بدون +)
+    const phoneDigits = phoneRaw.replace(/[^\d]/g, '');
+    const phone = phoneDigits.startsWith('00') ? phoneDigits.substring(2) : phoneDigits;
+    if (phone.startsWith('0')) {
+      return toast.error('يرجى إدخال رقم الهاتف مع رمز الدولة بدون صفر بادئ.\nمثال: 962786117388', { duration: 7000 });
+    }
+    if (phone.length < 10 || phone.length > 15) {
+      return toast.error('رقم الهاتف غير صالح. يرجى إدخال الرقم مع رمز الدولة (10 إلى 15 رقماً).', { duration: 7000 });
+    }
+
     const changes = {};
     if (name !== profile.name) changes.name = name;
     if (editData.gender !== profile.gender) changes.gender = editData.gender;
@@ -568,7 +577,14 @@ const StudentPanel = ({ user, onLogout }) => {
                           <option value="أنثى">أنثى</option>
                         </select>
                       ) : (
-                        <input type="text" inputMode={field === 'age' || field === 'phone' ? 'numeric' : 'text'} className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={editData[field] || ''} onChange={(e) => handleEditChange(field, (field === 'age' || field === 'phone') ? arabicToEnglishNumber(e.target.value) : e.target.value)} />
+                        <input
+                          type="text"
+                          inputMode={field === 'age' || field === 'phone' ? 'numeric' : 'text'}
+                          placeholder={field === 'phone' ? 'مع رمز الدولة بدون + مثال: 962786117388' : ''}
+                          className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white"
+                          value={editData[field] || ''}
+                          onChange={(e) => handleEditChange(field, (field === 'age' || field === 'phone') ? arabicToEnglishNumber(e.target.value) : e.target.value)}
+                        />
                       )
                     ) : (
                       <p className="text-white p-2 bg-gray-800/50 rounded-md">{editData[field] || 'غير مسجل'}</p>

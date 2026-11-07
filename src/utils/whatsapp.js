@@ -1,27 +1,104 @@
 import toast from 'react-hot-toast';
 import { TEACHER_PHONE } from '../constants';
-import { cleanPhoneNumber } from './helpers';
 
-export const sendWhatsAppToTeacher = (message) => {
-  const cleanedTeacherPhone = cleanPhoneNumber(TEACHER_PHONE);
-  if (!cleanedTeacherPhone) {
-    toast.error('رقم المعلم غير صالح.');
-    return;
+// =========================================================
+// ✅ توحيد وتنظيف رقم الهاتف (يدعم كل الدول)
+// القاعدة: الكل يدخل رمز الدولة بدون +
+//   - يزيل + والمسافات والرموز
+//   - يحوّل 00962 → 962
+//   - يرفض الأرقام التي تبدأ بصفر (لأنها محلية بدون رمز دولة)
+//   - يتحقق من الطول (10-15 رقماً حسب معايير ITU)
+// =========================================================
+const normalizePhone = (phone) => {
+  if (!phone) return { valid: false, reason: 'empty' };
+
+  let cleaned = String(phone).trim().replace(/[^\d]/g, '');
+  if (!cleaned) return { valid: false, reason: 'empty' };
+
+  // إزالة بادئة 00 الدولية (00962 → 962)
+  if (cleaned.startsWith('00')) cleaned = cleaned.substring(2);
+
+  // رفض الأرقام التي تبدأ بصفر — لأنها محلية بدون رمز دولة
+  if (cleaned.startsWith('0')) return { valid: false, reason: 'starts_with_zero' };
+
+  // التحقق من الطول (10-15 رقماً حسب معايير ITU E.164)
+  if (cleaned.length < 10 || cleaned.length > 15) {
+    return { valid: false, reason: 'invalid_length' };
   }
-  const encodedMessage = encodeURIComponent(message);
-  window.open(`https://wa.me/${cleanedTeacherPhone}?text=${encodedMessage}`, '_blank');
+
+  return { valid: true, phone: cleaned };
 };
 
+// =========================================================
+// ✅ دالة موحّدة لفتح واتساب مع التحقق الكامل
+// =========================================================
+const openWhatsApp = (phone, rawMessage, successMsg) => {
+  const result = normalizePhone(phone);
+
+  if (!result.valid) {
+    if (result.reason === 'starts_with_zero') {
+      toast.error(
+        'يرجى إدخال رقم الهاتف مع رمز الدولة بدون صفر بادئ.\n' +
+        'مثال (الأردن): 962786117388\n' +
+        'مثال (مصر): 201012345678',
+        { duration: 8000 }
+      );
+    } else if (result.reason === 'invalid_length') {
+      toast.error(
+        'رقم الهاتف غير صالح. يرجى إدخال الرقم مع رمز الدولة (10 إلى 15 رقماً).',
+        { duration: 7000 }
+      );
+    } else {
+      toast.error('رقم الهاتف غير مسجل أو غير صالح.');
+    }
+    return false;
+  }
+
+  const waUrl = `https://wa.me/${result.phone}?text=${encodeURIComponent(rawMessage)}`;
+  const win = window.open(waUrl, '_blank');
+
+  if (!win || win.closed || typeof win.closed === 'undefined') {
+    try {
+      navigator.clipboard.writeText(rawMessage);
+      toast.error(
+        `⚠️ تم حظر النافذة المنبثقة من المتصفح.\n` +
+        `تم نسخ الرسالة للحافظة — افتح واتساب يدوياً وأرسلها للرقم: ${result.phone}`,
+        { duration: 8000 }
+      );
+    } catch {
+      toast.error(
+        `⚠️ فشل فتح واتساب. يرجى السماح بالنوافذ المنبثقة في المتصفح ثم إعادة المحاولة.`,
+        { duration: 8000 }
+      );
+    }
+    return false;
+  }
+
+  if (successMsg) {
+    toast.success(successMsg, { duration: 6000 });
+  }
+  return true;
+};
+
+// =========================================================
+// إرسال رسالة للمعلم
+// =========================================================
+export const sendWhatsAppToTeacher = (message) => {
+  return openWhatsApp(
+    TEACHER_PHONE,
+    message,
+    '✅ تم فتح واتساب على جهازك — اضغط زر "إرسال" داخل واتساب لإرسال الرسالة إلى المعلم.'
+  );
+};
+
+// =========================================================
+// إنذار طالب
+// =========================================================
 export const sendWarningMessage = (student, warningNumber, description) => {
   const phone = student.phone || '';
   if (!phone) {
     toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
-    return;
-  }
-  const cleanedPhone = cleanPhoneNumber(phone);
-  if (!cleanedPhone) {
-    toast.error('رقم الهاتف غير صالح.');
-    return;
+    return false;
   }
 
   const studentName = student.name || 'الطالب';
@@ -51,28 +128,29 @@ export const sendWarningMessage = (student, warningNumber, description) => {
            `نرجو منكم أخذ هذا الإنذار على محمل الجد التام، حيث إننا لا نستطيع التهاون أكثر في تطبيق قوانين الأكاديمية.\n` +
            `مع تحيات إدارة الأكاديمية`;
   } else {
-    return;
+    return false;
   }
 
-  const fullMessage = encodeURIComponent(
+  const fullMessage =
     `الموضوع: ${subject}\n\n` +
     body +
-    `\n\nللتواصل والدعم: +962 7 8611 7388`
-  );
+    `\n\nللتواصل والدعم: +962 7 8611 7388`;
 
-  window.open(`https://wa.me/${cleanedPhone}?text=${fullMessage}`, '_blank');
+  return openWhatsApp(
+    phone,
+    fullMessage,
+    `✅ تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال الإنذار إلى ولي أمر الطالب ${studentName}.`
+  );
 };
 
+// =========================================================
+// إنذار مشرف
+// =========================================================
 export const sendSupervisorWarningMessage = (supervisor, warningNumber, description) => {
   const phone = supervisor.phone || '';
   if (!phone) {
     toast.error('رقم الهاتف غير مسجل لهذا المشرف.');
-    return;
-  }
-  const cleanedPhone = cleanPhoneNumber(phone);
-  if (!cleanedPhone) {
-    toast.error('رقم الهاتف غير صالح.');
-    return;
+    return false;
   }
 
   const supervisorName = supervisor.name || 'المشرف';
@@ -98,34 +176,37 @@ export const sendSupervisorWarningMessage = (supervisor, warningNumber, descript
            `نكتب إليكم ببالغ الأسف بعد وصول عدد الإنذارات إلى 3، وبناءً على ذلك سيتم تجميد حسابكم بشكل فوري. هذا الإجراء نهائي ولا يمكن التراجع عنه إلا بعد مراجعة الإدارة.\n` +
            `مع تحيات إدارة الأكاديمية`;
   } else {
-    return;
+    return false;
   }
 
-  const fullMessage = encodeURIComponent(
+  const fullMessage =
     `الموضوع: ${subject}\n\n` +
     body +
-    `\n\nللتواصل والدعم: +962 7 8611 7388`
-  );
+    `\n\nللتواصل والدعم: +962 7 8611 7388`;
 
-  window.open(`https://wa.me/${cleanedPhone}?text=${fullMessage}`, '_blank');
+  return openWhatsApp(
+    phone,
+    fullMessage,
+    `✅ تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال الإنذار إلى المشرف ${supervisorName}.`
+  );
 };
 
+// =========================================================
+// رسالة تفعيل حساب طالب
+// =========================================================
 export const sendActivationMessage = (student, tempUsername, tempPassword) => {
   const phone = student.phone || '';
   if (!phone) {
     toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
-    return;
+    return false;
   }
-  const cleanedPhone = cleanPhoneNumber(phone);
-  if (!cleanedPhone) {
-    toast.error('رقم الهاتف غير صالح.');
-    return;
-  }
+
   const studentName = student.name || '';
   const studentClass = student.classes?.map(c => c.name).join(', ') || 'غير محدد';
   const studentAge = student.age || 'غير محدد';
   const studentGender = student.gender || 'غير محدد';
-  const message = encodeURIComponent(
+
+  const message =
     `الموضوع: تأكيد تفعيل حسابك في الفرسان التقنيين - اقرأ وارتق\n\n` +
     `عزيزي الطالب ${studentName}،\n` +
     `يسعدنا انضمامك إلينا في بيئة التعلم الرقمية الخاصة بـ "الفرسان التقنيين". نود إبلاغك بأنه تم إنشاء حسابك بنجاح، ونرفق لكم أدناه البيانات المسجلة في نظامنا:\n` +
@@ -142,24 +223,28 @@ export const sendActivationMessage = (student, tempUsername, tempPassword) => {
     `نرجو منكم الاحتفاظ بهذه البيانات، والالتزام بالقوانين التعليمية المتبعة. نتمنى لكم رحلة تعليمية مثمرة ومليئة بالإنجازات.\n\n` +
     `مع التقدير،\n` +
     `همام هاني محمد علي\n` +
-    `رئيس قسم التكنولوجيا وأمن المعلومات | معلم تطوير البرمجيات`
+    `رئيس قسم التكنولوجيا وأمن المعلومات | معلم تطوير البرمجيات`;
+
+  return openWhatsApp(
+    phone,
+    message,
+    `✅ تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال بيانات التفعيل إلى الطالب ${studentName}.`
   );
-  window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
 };
 
+// =========================================================
+// رسالة تفعيل حساب مشرف
+// =========================================================
 export const sendSupervisorActivationMessage = (supervisor, tempUsername, tempPassword) => {
   const phone = supervisor.phone || '';
   if (!phone) {
     toast.error('رقم الهاتف غير مسجل لهذا المشرف.');
     return false;
   }
-  const cleanedPhone = cleanPhoneNumber(phone);
-  if (!cleanedPhone) {
-    toast.error('رقم الهاتف غير صالح.');
-    return false;
-  }
+
   const supervisorName = supervisor.name || 'المشرف';
-  const message = encodeURIComponent(
+
+  const message =
     `الموضوع: بيانات الدخول المؤقتة لحساب المشرف – ${supervisorName}\n\n` +
     `الأستاذ الفاضل ${supervisorName} المحترم،\n` +
     `تحية طيبة وبعد،،\n` +
@@ -170,27 +255,29 @@ export const sendSupervisorActivationMessage = (supervisor, tempUsername, tempPa
     `نرجو منكم التكرم بتسجيل الدخول باستخدام هذه البيانات، والقيام بتغيير كلمة المرور فوراً من خلال لوحة التحكم الخاصة بكم لضمان أمان وخصوصية الحساب.\n` +
     `شاكرين لكم حسن تعاونكم، ونسأل الله لنا ولكم دوام التوفيق والسداد في مهامنا المشتركة.\n\n` +
     `مع خالص التحية والتقدير،\n` +
-    `رئيس قسم قسم التكنولوجيا وتطوير المعلومات والأمن السيبراني : همام هاني محمد`
+    `رئيس قسم قسم التكنولوجيا وتطوير المعلومات والأمن السيبراني : همام هاني محمد`;
+
+  return openWhatsApp(
+    phone,
+    message,
+    `✅ تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال بيانات الدخول إلى المشرف ${supervisorName}.`
   );
-  window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
-  toast.success('✅ تم إرسال رسالة التفعيل للمشرف عبر واتساب.');
-  return true;
 };
 
+// =========================================================
+// إشعار تجميد طالب
+// =========================================================
 export const sendFreezeMessage = (student) => {
   const phone = student.phone || '';
   if (!phone) {
     toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
-    return;
+    return false;
   }
-  const cleanedPhone = cleanPhoneNumber(phone);
-  if (!cleanedPhone) {
-    toast.error('رقم الهاتف غير صالح.');
-    return;
-  }
+
   const studentName = student.name || '';
   const studentClass = student.classes?.map(c => c.name).join(', ') || 'غير محدد';
-  const message = encodeURIComponent(
+
+  const message =
     `الموضوع: إشعار بشأن حساب الطالب في منصة "اقرأ وارتق"\n\n` +
     `عزيزي ولي أمر الطالب/ة ${studentName} المحترم،\n` +
     `تحية طيبة وبعد،،\n` +
@@ -203,24 +290,28 @@ export const sendFreezeMessage = (student) => {
     `نحن نقدر حرصكم الدائم على متابعة مستوى الطالب ونتطلع لتعاونكم معنا.\n\n` +
     `مع التقدير،\n` +
     `همام هاني محمد علي\n` +
-    `رئيس قسم التكنولوجيا وأمن المعلومات | معلم تطوير البرمجيات`
+    `رئيس قسم التكنولوجيا وأمن المعلومات | معلم تطوير البرمجيات`;
+
+  return openWhatsApp(
+    phone,
+    message,
+    `✅ تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال إشعار التجميد إلى ولي أمر الطالب ${studentName}.`
   );
-  window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
 };
 
+// =========================================================
+// إشعار حذف طالب
+// =========================================================
 export const sendDeleteMessage = (student) => {
   const phone = student.phone || '';
   if (!phone) {
     toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
-    return;
+    return false;
   }
-  const cleanedPhone = cleanPhoneNumber(phone);
-  if (!cleanedPhone) {
-    toast.error('رقم الهاتف غير صالح.');
-    return;
-  }
+
   const studentName = student.name || '';
-  const message = encodeURIComponent(
+
+  const message =
     `الموضوع: إشعار بخصوص إلغاء حساب الطالب ${studentName} في نظامنا الأكاديمي\n\n` +
     `عزيزي ولي أمر الطالب ${studentName} المحترم،\n` +
     `تحية طيبة وبعد،،\n` +
@@ -230,24 +321,28 @@ export const sendDeleteMessage = (student) => {
     `- حذف كافة البيانات، السجلات، والتقارير المرتبطة بالحساب نهائياً من قاعدة بياناتنا.\n\n` +
     `نود أن نشكركم على ثقتكم بنا خلال فترة انضمام الطالب للأكاديمية، ونتمنى له دوام التوفيق والنجاح في مسيرته التعليمية القادمة.\n\n` +
     `مع خالص التحية والتقدير،\n` +
-    `إدارة الأكاديمية`
+    `إدارة الأكاديمية`;
+
+  return openWhatsApp(
+    phone,
+    message,
+    `✅ تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال إشعار الحذف إلى ولي أمر الطالب ${studentName}.`
   );
-  window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
 };
 
+// =========================================================
+// إعادة تعيين كلمة مرور طالب
+// =========================================================
 export const sendResetPasswordMessage = (student, tempPassword) => {
   const phone = student.phone || '';
   if (!phone) {
     toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
-    return;
+    return false;
   }
-  const cleanedPhone = cleanPhoneNumber(phone);
-  if (!cleanedPhone) {
-    toast.error('رقم الهاتف غير صالح.');
-    return;
-  }
+
   const studentName = student.name || '';
-  const message = encodeURIComponent(
+
+  const message =
     `الموضوع: تم إعادة تعيين بيانات دخولك - بانتظار تحديث حسابك في "اقرأ وارتق"\n\n` +
     `عزيزي الطالب ${studentName}،\n` +
     `نود إعلامك بأنه قد تمت إعادة تعيين البيانات الدخول الخاصة بحسابك في منصة الفرسان التقنيين - اقرأ وارتق لتصحيح بياناتك.\n\n` +
@@ -265,48 +360,56 @@ export const sendResetPasswordMessage = (student, tempPassword) => {
     `نحن هنا لضمان تجربة تعليمية آمنة ومستقرة لكم.\n\n` +
     `مع التقدير،\n` +
     `همام هاني محمد علي\n` +
-    `رئيس قسم التكنولوجيا وأمن المعلومات | معلم تطوير البرمجيات`
+    `رئيس قسم التكنولوجيا وأمن المعلومات | معلم تطوير البرمجيات`;
+
+  return openWhatsApp(
+    phone,
+    message,
+    `✅ تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال بيانات الدخول الجديدة إلى الطالب ${studentName}.`
   );
-  window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
 };
 
+// =========================================================
+// إشعار الموافقة على تعديل بيانات الطالب
+// =========================================================
 export const sendDataUpdateApprovalMessage = (student, newData) => {
   const phone = student.phone || '';
   if (!phone) {
     toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
-    return;
+    return false;
   }
-  const cleanedPhone = cleanPhoneNumber(phone);
-  if (!cleanedPhone) {
-    toast.error('رقم الهاتف غير صالح.');
-    return;
-  }
+
   const studentName = student.name || 'الطالب';
-  const message = encodeURIComponent(
+
+  const message =
     `الموضوع: تأكيد الموافقة على طلب تصحيح البيانات – الطالب ${studentName}\n\n` +
     `عزيزي الطالب ${studentName}،\n` +
     `تحية طيبة،،\n` +
     `نود إعلامكم بأنه قد تم قبول طلبكم المقدم بخصوص تصحيح وتحديث البيانات الخاصة بكم في نظامنا الأكاديمي.\n` +
     `لقد تم إجراء التعديلات المطلوبة بنجاح، وأصبحت سجلاتكم الآن محدثة وفقاً للبيانات الجديدة التي قدمتموها. يمكنكم الآن الاطلاع على ملفكم الشخصي للتأكد من صحة التعديلات.\n` +
     `نشكر لكم حرصكم على دقة بياناتكم، ونتمنى لكم التوفيق في مسيرتكم الدراسية.\n\n` +
-    `مع تحيات إدارة الأكاديمية`
+    `مع تحيات إدارة الأكاديمية`;
+
+  return openWhatsApp(
+    phone,
+    message,
+    `✅ تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال إشعار الموافقة إلى الطالب ${studentName}.`
   );
-  window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
 };
 
+// =========================================================
+// إشعار رفض تعديل بيانات الطالب
+// =========================================================
 export const sendDataUpdateRejectionMessage = (student, reason = 'عدم مطابقة الوثائق الرسمية / الحاجة لتقديم إثبات رسمي آخر / عدم استيفاء الشروط المطلوبة') => {
   const phone = student.phone || '';
   if (!phone) {
     toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
-    return;
+    return false;
   }
-  const cleanedPhone = cleanPhoneNumber(phone);
-  if (!cleanedPhone) {
-    toast.error('رقم الهاتف غير صالح.');
-    return;
-  }
+
   const studentName = student.name || 'الطالب';
-  const message = encodeURIComponent(
+
+  const message =
     `الموضوع: بخصوص طلبكم الخاص بتصحيح البيانات – الطالب ${studentName}\n\n` +
     `عزيزي الطالب ${studentName}،\n` +
     `تحية طيبة،،\n` +
@@ -314,57 +417,72 @@ export const sendDataUpdateRejectionMessage = (student, reason = 'عدم مطا�
     `[${reason}].\n` +
     `نحن نحرص دائماً على دقة البيانات لضمان سلامة السجلات الأكاديمية. في حال كان لديكم أي اعتراض على هذا القرار، يمكنكم إرسال إثباتات أو مستندات داعمة إضافية عبر الرد على هذه الرسالة لإعادة النظر في طلبكم.\n` +
     `شاكرين لكم تفهمكم.\n\n` +
-    `مع تحيات إدارة الأكاديمية`
+    `مع تحيات إدارة الأكاديمية`;
+
+  return openWhatsApp(
+    phone,
+    message,
+    `✅ تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال إشعار الرفض إلى الطالب ${studentName}.`
   );
-  window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
 };
 
+// =========================================================
+// رسالة عامة لطالب
+// =========================================================
 export const sendGeneralMessageToStudent = (student, subject, body) => {
   const phone = student.phone || '';
   if (!phone) {
     toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
-    return;
+    return false;
   }
-  const cleanedPhone = cleanPhoneNumber(phone);
-  if (!cleanedPhone) {
-    toast.error('رقم الهاتف غير صالح.');
-    return;
-  }
+
   const studentName = student.name || '';
-  const fullMessage = encodeURIComponent(
+
+  const fullMessage =
     `الموضوع: [ ${subject || 'إشعار رسمي'} ]\n\n` +
     `عزيزي الطالب/ة ${studentName}،\n${body || '(نص الرسالة)'}\n\n` +
     `للتواصل: +962 7 8611 7388\n\n` +
-    `مع التقدير،\nهمام هاني محمد علي`
+    `مع التقدير،\nهمام هاني محمد علي`;
+
+  return openWhatsApp(
+    phone,
+    fullMessage,
+    `✅ تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال الرسالة إلى الطالب ${studentName}.`
   );
-  window.open(`https://wa.me/${cleanedPhone}?text=${fullMessage}`, '_blank');
 };
 
+// =========================================================
+// بلاغ ضد طالب
+// =========================================================
 export const sendReportMessage = (student, reason, studentClass) => {
   const phone = student.phone || '';
   if (!phone) {
     toast.error('رقم الهاتف غير مسجل لهذا الطالب.');
-    return;
+    return false;
   }
-  const cleanedPhone = cleanPhoneNumber(phone);
-  if (!cleanedPhone) {
-    toast.error('رقم الهاتف غير صالح.');
-    return;
-  }
+
   const studentName = student.name || '';
-  const message = encodeURIComponent(
+
+  const message =
     `الموضوع: بلاغ ضد الطالب ${studentName}\n\n` +
     `السبب: ${reason}\n` +
     `الشعبة: ${studentClass || 'غير محدد'}\n\n` +
-    `يرجى التواصل مع الإدارة.`
+    `يرجى التواصل مع الإدارة.`;
+
+  return openWhatsApp(
+    phone,
+    message,
+    `✅ تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال البلاغ إلى ولي أمر الطالب ${studentName}.`
   );
-  window.open(`https://wa.me/${cleanedPhone}?text=${message}`, '_blank');
 };
 
+// =========================================================
+// تذكير عاجل للمعلم
+// =========================================================
 export const sendUrgentReminderMessage = (student) => {
   if (!student) {
     toast.error('لا توجد بيانات الطالب.');
-    return;
+    return false;
   }
   const studentName = student.name || 'الطالب';
   const studentPhone = student.phone || 'غير مسجل';
@@ -382,13 +500,16 @@ export const sendUrgentReminderMessage = (student) => {
     `مع خالص التحية،\n` +
     `${studentName}`;
 
-  sendWhatsAppToTeacher(message);
+  return sendWhatsAppToTeacher(message);
 };
 
+// =========================================================
+// رسالة تواصل مع المعلم
+// =========================================================
 export const sendContactTeacherMessage = (student, requestType = 'تحديث') => {
   if (!student) {
     toast.error('لا توجد بيانات الطالب.');
-    return;
+    return false;
   }
   const studentName = student.name || 'الطالب';
   const studentClass = student.classes?.map(c => c.name).join(', ') || 'غير محدد';
@@ -408,5 +529,5 @@ export const sendContactTeacherMessage = (student, requestType = 'تحديث') =
     `مع التحية،\n` +
     `${studentName}`;
 
-  sendWhatsAppToTeacher(message);
+  return sendWhatsAppToTeacher(message);
 };
