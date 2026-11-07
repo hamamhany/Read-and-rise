@@ -7,7 +7,8 @@ import {
 import { db, secondaryAuth, messaging } from '../../firebase';
 import { 
   collection, query, orderBy, onSnapshot, doc, updateDoc, 
-  serverTimestamp, writeBatch, getDocs, where, setDoc, arrayUnion 
+  serverTimestamp, writeBatch, getDocs, where, setDoc, arrayUnion,
+  runTransaction // <-- تمت إضافة هذا الاستيراد
 } from 'firebase/firestore';
 import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
@@ -118,7 +119,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
     return () => unsubscribe();
   }, []);
 
-  // جلب الشعب الدراسية لإتاحة اختيارها عند إضافة طالب
   useEffect(() => {
     const qClasses = query(collection(db, 'classes'));
     const unsubClasses = onSnapshot(qClasses, (snapshot) => {
@@ -246,16 +246,42 @@ const SupervisorPanel = ({ user, onLogout }) => {
     setNotificationIdsAtOpen([]);
   };
 
-  // ✅ دالة إضافة طالب جديد (منقولة للمشرف)
+  // ✅ دالة ذكية لتوليد رقم مستخدم تسلسلي بسرعة فائقة (حتى مع ملايين المستخدمين)
+  const generateNextUsernameNumber = async () => {
+    const counterRef = doc(db, 'settings', 'userCounter');
+    try {
+      let nextNumber = 1;
+      await runTransaction(db, async (transaction) => {
+        const counterSnap = await transaction.get(counterRef);
+        if (!counterSnap.exists()) {
+          transaction.set(counterRef, { lastStudentNumber: 1 });
+          nextNumber = 1;
+        } else {
+          const current = counterSnap.data().lastStudentNumber || 0;
+          nextNumber = current + 1;
+          transaction.update(counterRef, { lastStudentNumber: nextNumber });
+        }
+      });
+      return nextNumber;
+    } catch (error) {
+      console.error("Counter transaction failed: ", error);
+      throw new Error('فشل في توليد رقم مستخدم جديد، يرجى المحاولة مرة أخرى');
+    }
+  };
+
+  // ✅ دالة إضافة طالب جديد (محسنة للسرعة القصوى)
   const handleAddStudent = async (e) => {
     e.preventDefault();
     if (newStudentClassIds.length === 0) return toast.error('يرجى اختيار شعبة واحدة على الأقل.');
+    
     const sanitizedName = sanitizeInput(newStudentName);
     const sanitizedGender = sanitizeInput(newStudentGender);
     const sanitizedAge = sanitizeInput(arabicToEnglishNumber(newStudentAge));
     const sanitizedPhone = sanitizeInput(arabicToEnglishNumber(newStudentPhone));
     
-    if (!sanitizedName || !sanitizedGender || !sanitizedAge || !sanitizedPhone) return toast.error('جميع الحقول مطلوبة.');
+    if (!sanitizedName || !sanitizedGender || !sanitizedAge || !sanitizedPhone) {
+      return toast.error('جميع الحقول مطلوبة.');
+    }
 
     const phoneDigits = sanitizedPhone.replace(/[^\d]/g, '');
     const normalizedPhone = phoneDigits.startsWith('00') ? phoneDigits.substring(2) : phoneDigits;
@@ -268,34 +294,46 @@ const SupervisorPanel = ({ user, onLogout }) => {
 
     setStudentLoading(true);
     try {
-      // 1. توليد اسم مستخدم فريد
-      let maxNum = 0;
-      const q = query(collection(db, 'profiles'), where('username', '>=', 'knight'), where('username', '<', 'knight\uF7FF'));
-      const querySnapshot = await getDocs(q);
-      querySnapshot.forEach(doc => {
-        const uname = doc.data().username;
-        if (uname && uname.startsWith('knight')) {
-          const num = parseInt(uname.substring(6), 10);
-          if (!isNaN(num) && num > maxNum) maxNum = num;
-        }
-      });
-      const newUsername = `knight${maxNum + 1}`;
-      const tempPassword = Math.floor(Math.random() * 1000000000).toString().padStart(9, '0');
-      const email = `${newUsername}@readandrise.com`;
-      const newId = generateId();
-      const ageNum = parseInt(sanitizedAge);
+      // 1. جلب الرقم التسلسلي الجديد من العداد الذكي
+      const startNumber = await generateNextUsernameNumber();
+      let currentNum = startNumber;
+      
+      let newUsername = `knight${currentNum}`;
+      let tempPassword = Math.floor(Math.random() * 1000000000).toString().padStart(9, '0');
+      let email = `${newUsername}@readandrise.com`;
+      let userCredential = null;
+      
+      // 2. محاولة إنشاء الحساب
+      let attempts = 0;
+      const maxAttempts = 10;
 
-      // 2. إنشاء حساب المصادقة
-      let userCredential;
-      try {
-        userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, tempPassword);
-      } catch (authError) {
-        return toast.error('فشل إنشاء حساب المصادقة: ' + authError.message);
+      while (attempts < maxAttempts) {
+        try {
+          userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, tempPassword);
+          break;
+        } catch (error) {
+          if (error.code === 'auth/email-already-in-use') {
+            currentNum++;
+            newUsername = `knight${currentNum}`;
+            email = `${newUsername}@readandrise.com`;
+            attempts++;
+          } else {
+            throw error;
+          }
+        }
       }
+
+      if (!userCredential) {
+        throw new Error('تعذر إيجاد اسم مستخدم فريد. يرجى المحاولة مرة أخرى.');
+      }
+
       const firebaseUser = userCredential.user;
       await signOut(secondaryAuth);
       
-      // 3. إنشاء الملف الشخصي
+      // 3. إنشاء الملف الشخصي في Firestore
+      const newId = generateId();
+      const ageNum = parseInt(sanitizedAge);
+
       await setDoc(doc(db, 'profiles', newId), {
         email, username: newUsername, name: sanitizedName, gender: sanitizedGender,
         age: ageNum, phone: normalizedPhone, classIds: newStudentClassIds, role: 'student',
@@ -305,7 +343,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
         uid: firebaseUser.uid
       });
 
-      // 4. إرسال طلب تفعيل لمدير النظام لإرسال البيانات عبر الواتساب
+      // 4. إرسال طلب تفعيل لمدير النظام
       const classMap = await fetchClassNames(newStudentClassIds);
       const classNames = newStudentClassIds.map(id => classMap[id] || null).filter(Boolean);
       
@@ -326,7 +364,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
         }
       });
 
-      toast.success('✅ تم إنشاء حساب الطالب بنجاح وحفظ طلب إرسال بيانات التفعيل لمدير النظام.');
+      toast.success(`✅ تم إنشاء حساب الطالب بنجاح باسم المستخدم: ${newUsername}`);
       setNewStudentName(''); setNewStudentGender(''); setNewStudentAge('');
       setNewStudentPhone(''); setNewStudentClassIds([]); setShowAddStudentModal(false);
     } catch (err) {
@@ -360,7 +398,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* قسم إدارة الطلاب (جديد) */}
+        {/* قسم إدارة الطلاب */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-blue-500/20 flex justify-between items-center flex-wrap gap-4">
           <div>
             <h3 className="text-xl font-semibold text-blue-200 flex items-center gap-2">
@@ -376,10 +414,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
           </button>
         </div>
 
-        {/* قسم مراجعة البلاغات */}
         <ReportsReviewSection user={user} />
-
-        {/* قسم التصويت على طلبات الإغلاق */}
         <ReviewVotingSection user={user} />
 
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-blue-500/20">
@@ -430,7 +465,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
         </div>
       </div>
 
-      {/* نافذة إضافة طالب جديد */}
       {showAddStudentModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowAddStudentModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-blue-500/30" onClick={(e) => e.stopPropagation()}>
@@ -443,15 +477,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
                 <option value="أنثى">أنثى</option>
               </select>
               <input type="text" inputMode="numeric" placeholder="العمر *" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentAge} onChange={e => setNewStudentAge(arabicToEnglishNumber(e.target.value))} required />
-              <input
-                type="text"
-                inputMode="numeric"
-                placeholder="رقم الهاتف * (مع رمز الدولة بدون +)"
-                className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white"
-                value={newStudentPhone}
-                onChange={e => setNewStudentPhone(arabicToEnglishNumber(e.target.value))}
-                required
-              />
+              <input type="text" inputMode="numeric" placeholder="رقم الهاتف * (مع رمز الدولة بدون +)" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentPhone} onChange={e => setNewStudentPhone(arabicToEnglishNumber(e.target.value))} required />
               <div>
                 <label className="text-xs text-gray-400 mb-1 block">الشعب الدراسية * (اضغط Ctrl لاختيار عدة شعب)</label>
                 <select multiple className="bg-gray-800 w-full h-24 text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentClassIds} onChange={(e) => setNewStudentClassIds(Array.from(e.target.selectedOptions).map(o => o.value))} required>
