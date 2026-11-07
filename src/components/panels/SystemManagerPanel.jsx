@@ -326,7 +326,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     }
     if (normalizedPhone.startsWith('0')) {
       toast.error(
-        'يرجى إدخال رقم الهاتف مع رمز الدولة بدون صفر بادئ.\nمثال (الأردن): 962786117388',
+        'يرجى إدخال رقم الهاتف مع رمز الدولة بدون صفر بادئ.\nمثال (الأردن): 9627XXXXXXXX',
         { duration: 7000 }
       );
       return;
@@ -837,7 +837,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
                   <label className="text-xs text-gray-400 block">رقم الهاتف (مع رمز الدولة بدون +)</label>
                   <input
                     type="text"
-                    placeholder="مثال: 962786117388"
+                    placeholder="مثال: 9627XXXXXXXX"
                     className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white"
                     value={newSupervisorPhone}
                     onChange={e => setNewSupervisorPhone(e.target.value)}

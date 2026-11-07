@@ -184,7 +184,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     const phoneDigits = sanitizedPhone.replace(/[^\d]/g, '');
     const normalizedPhone = phoneDigits.startsWith('00') ? phoneDigits.substring(2) : phoneDigits;
     if (normalizedPhone.startsWith('0')) {
-      return toast.error('يرجى إدخال رقم الهاتف مع رمز الدولة بدون صفر بادئ.\nمثال: 962786117388', { duration: 7000 });
+      return toast.error('يرجى إدخال رقم الهاتف مع رمز الدولة بدون صفر بادئ.\nمثال: 9627XXXXXXXX', { duration: 7000 });
     }
     if (normalizedPhone.length < 10 || normalizedPhone.length > 15) {
       return toast.error('رقم الهاتف غير صالح. يرجى إدخال الرقم مع رمز الدولة (10 إلى 15 رقماً).', { duration: 7000 });
@@ -958,7 +958,7 @@ const TeacherPanel = ({ user, onLogout }) => {
               <input type="text" placeholder="العمر *" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentAge} onChange={e => setNewStudentAge(e.target.value)} required />
               <input
                 type="text"
-                placeholder="رقم الهاتف * (مع رمز الدولة بدون + مثال: 962786117388)"
+                placeholder="رقم الهاتف * (مع رمز الدولة بدون + مثال: 9627XXXXXXXX)"
                 className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white"
                 value={newStudentPhone}
                 onChange={e => setNewStudentPhone(e.target.value)}

@@ -176,7 +176,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     const phoneDigits = rawPhone.replace(/[^\d]/g, '');
     const phone = phoneDigits.startsWith('00') ? phoneDigits.substring(2) : phoneDigits;
     if (phone.startsWith('0')) {
-      setResetError('يرجى إدخال رقم الهاتف مع رمز الدولة بدون صفر بادئ.\nمثال: 962786117388');
+      setResetError('يرجى إدخال رقم الهاتف مع رمز الدولة بدون صفر بادئ.\nمثال: 9627XXXXXXXX');
       return;
     }
     if (phone.length < 10 || phone.length > 15) {
@@ -358,7 +358,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
                 <input
                   type="text"
                   inputMode="numeric"
-                  placeholder="مثال: 962786117388"
+                  placeholder="مثال: 9627XXXXXXXX"
                   className="w-full bg-gray-800 text-right p-2 border border-gray-600 rounded-md text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition"
                   value={resetPhone}
                   onChange={(e) => setResetPhone(e.target.value)}

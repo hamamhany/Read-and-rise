@@ -420,7 +420,7 @@ const StudentPanel = ({ user, onLogout }) => {
     const phoneDigits = phoneRaw.replace(/[^\d]/g, '');
     const phone = phoneDigits.startsWith('00') ? phoneDigits.substring(2) : phoneDigits;
     if (phone.startsWith('0')) {
-      return toast.error('يرجى إدخال رقم الهاتف مع رمز الدولة بدون صفر بادئ.\nمثال: 962786117388', { duration: 7000 });
+      return toast.error('يرجى إدخال رقم الهاتف مع رمز الدولة بدون صفر بادئ.\nمثال: 9627XXXXXXXX', { duration: 7000 });
     }
     if (phone.length < 10 || phone.length > 15) {
       return toast.error('رقم الهاتف غير صالح. يرجى إدخال الرقم مع رمز الدولة (10 إلى 15 رقماً).', { duration: 7000 });
@@ -580,7 +580,7 @@ const StudentPanel = ({ user, onLogout }) => {
                         <input
                           type="text"
                           inputMode={field === 'age' || field === 'phone' ? 'numeric' : 'text'}
-                          placeholder={field === 'phone' ? 'مع رمز الدولة بدون + مثال: 962786117388' : ''}
+                          placeholder={field === 'phone' ? 'مع رمز الدولة بدون + مثال: 9627XXXXXXXX' : ''}
                           className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white"
                           value={editData[field] || ''}
                           onChange={(e) => handleEditChange(field, (field === 'age' || field === 'phone') ? arabicToEnglishNumber(e.target.value) : e.target.value)}
