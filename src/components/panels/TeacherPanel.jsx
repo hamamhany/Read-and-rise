@@ -864,7 +864,7 @@ const TeacherPanel = ({ user, onLogout }) => {
 
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700 space-y-4">
           <h3 className="text-xl font-semibold text-purple-200"><FaClock className="inline-block me-2" /> جدولة المواعيد</h3>
-          <button onClick={() => setShowLessonChoice(true)} className="btn-primary bg-gradient-to-r from-indigo-500 to-blue-600 py-3 px-6 rounded-md text-white"><FaClock className="inline-block me-2" /> إدارة المواعيد (حتى 6)</button>
+          <button onClick={() => setShowLessonChoice(true)} className="btn-primary bg-gradient-to-r from-indigo-500 to-blue-600 py-3 px-6 rounded-md text-white"><FaClock className="inline-block me-2" /> إدارة المواعيد </button>
         </div>
       </div>
 
