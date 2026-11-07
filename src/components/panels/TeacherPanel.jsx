@@ -6,13 +6,12 @@ import {
   FaPlus, FaVideo, FaUsers, FaTrashAlt, FaPrint, FaPaperPlane
 } from 'react-icons/fa';
 import { db, messaging } from '../../firebase';
-import { auth, secondaryAuth } from '../../services/firebaseAuth';
+import { auth } from '../../services/firebaseAuth';
 import { 
   doc, getDoc, setDoc, updateDoc, deleteDoc, collection, query,
   where, getDocs, onSnapshot, serverTimestamp, arrayUnion, orderBy, writeBatch
 } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
-import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 
 import { useConfirm } from '../common/ConfirmContext';
 import { CountdownTimer } from '../common/CountdownTimer';
@@ -23,12 +22,11 @@ import PrintStudentsModal from '../common/PrintStudentsModal';
 import ReportModal from '../common/ReportModal';
 import { 
   generateId, sanitizeInput, arabicToEnglishNumber, 
-  fetchClassNames 
+  fetchClassNames, getActiveWarnings 
 } from '../../utils/helpers';
 import { createMessageRequest } from '../../services/messageRequests';
-import {
-  MESSAGE_REQUEST_TYPES
-} from '../../constants';
+import { deleteUserCompletely } from '../../services/accountDeletion';
+import { MESSAGE_REQUEST_TYPES } from '../../constants';
 
 const TeacherPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -48,7 +46,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     typeof Notification !== 'undefined' && Notification.permission === 'granted' && !!messaging
   );
 
-  const [showAddStudentModal, setShowAddStudentModal] = useState(false);
   const [showStudentsModal, setShowStudentsModal] = useState(false);
   const [showAssignmentModal, setShowAssignmentModal] = useState(false);
   const [showLessonModal, setShowLessonModal] = useState(false);
@@ -60,14 +57,6 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [generalMessageSubject, setGeneralMessageSubject] = useState('');
   const [generalMessageText, setGeneralMessageText] = useState('');
   const [selectedStudentForMessage, setSelectedStudentForMessage] = useState(null);
-  const [newStudentName, setNewStudentName] = useState('');
-  const [newStudentGender, setNewStudentGender] = useState('');
-  const [newStudentAge, setNewStudentAge] = useState('');
-  const [newStudentPhone, setNewStudentPhone] = useState('');
-  const [newStudentClassIds, setNewStudentClassIds] = useState([]);
-  const [studentLoading, setStudentLoading] = useState(false);
-  const [showAddNotificationModal, setShowAddNotificationModal] = useState(false);
-  const [newlyAddedStudent, setNewlyAddedStudent] = useState(null);
   const [showClassSelectionModal, setShowClassSelectionModal] = useState(false);
   const [selectedStudentForClass, setSelectedStudentForClass] = useState(null);
   const [tempClassIds, setTempClassIds] = useState([]);
@@ -171,89 +160,24 @@ const TeacherPanel = ({ user, onLogout }) => {
     setNotificationIdsAtOpen([]);
   };
 
-  const handleAddStudent = async (e) => {
-    e.preventDefault();
-    if (newStudentClassIds.length === 0) return toast.error('يرجى اختيار شعبة واحدة على الأقل.');
-    const sanitizedName = sanitizeInput(newStudentName);
-    const sanitizedGender = sanitizeInput(newStudentGender);
-    const sanitizedAge = sanitizeInput(arabicToEnglishNumber(newStudentAge));
-    const sanitizedPhone = sanitizeInput(arabicToEnglishNumber(newStudentPhone));
-    if (!sanitizedName || !sanitizedGender || !sanitizedAge || !sanitizedPhone) return toast.error('جميع الحقول مطلوبة.');
+  // ❌ تم حذف handleAddStudent بالكامل — الإضافة الآن من لوحة المشرف فقط
 
-    // ✅ التحقق من صحة رقم الهاتف (الكل مع رمز الدولة بدون +)
-    const phoneDigits = sanitizedPhone.replace(/[^\d]/g, '');
-    const normalizedPhone = phoneDigits.startsWith('00') ? phoneDigits.substring(2) : phoneDigits;
-    if (normalizedPhone.startsWith('0')) {
-      return toast.error('يرجى إدخال رقم الهاتف مع رمز الدولة بدون صفر بادئ.\nمثال: 9627XXXXXXXX', { duration: 7000 });
-    }
-    if (normalizedPhone.length < 10 || normalizedPhone.length > 15) {
-      return toast.error('رقم الهاتف غير صالح. يرجى إدخال الرقم مع رمز الدولة (10 إلى 15 رقماً).', { duration: 7000 });
-    }
-
-    setStudentLoading(true);
-    try {
-      let maxNum = 0;
-      const q = query(collection(db, 'profiles'), where('username', '>=', 'knight'), where('username', '<', 'knight\uF7FF'));
-      const querySnapshot = await getDocs(q);
-      querySnapshot.forEach(doc => {
-        const uname = doc.data().username;
-        if (uname && uname.startsWith('knight')) {
-          const num = parseInt(uname.substring(6), 10);
-          if (!isNaN(num) && num > maxNum) maxNum = num;
-        }
-      });
-      const newUsername = `knight${maxNum + 1}`;
-      const tempPassword = Math.floor(Math.random() * 1000000000).toString().padStart(9, '0');
-      const email = `${newUsername}@readandrise.com`;
-      const newId = generateId();
-      const cleanPhone = normalizedPhone;
-      const ageNum = parseInt(sanitizedAge);
-
-      let userCredential;
-      try {
-        userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, tempPassword);
-      } catch (authError) {
-        return toast.error('فشل إنشاء حساب المصادقة: ' + authError.message);
-      }
-      const firebaseUser = userCredential.user;
-      await signOut(secondaryAuth);
-      await setDoc(doc(db, 'profiles', newId), {
-        email, username: newUsername, name: sanitizedName, gender: sanitizedGender,
-        age: ageNum, phone: cleanPhone, classIds: newStudentClassIds, role: 'student',
-        isFrozen: false, infoVerified: false, isProfileComplete: false,
-        pendingChanges: null, reviewResult: null, reviewExpiry: null,
-        warnings: [], createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
-        uid: firebaseUser.uid
-      });
-      const classMap = await fetchClassNames(newStudentClassIds);
-      const classNames = newStudentClassIds.map(id => classMap[id] || null).filter(Boolean);
-      setNewlyAddedStudent({
-        id: newId,
-        name: sanitizedName, gender: sanitizedGender, age: ageNum, phone: cleanPhone,
-        classIds: newStudentClassIds,
-        classes: classNames.map(n => ({ name: n })),
-        username: newUsername, password: tempPassword
-      });
-      setShowAddNotificationModal(true);
-      setNewStudentName(''); setNewStudentGender(''); setNewStudentAge('');
-      setNewStudentPhone(''); setNewStudentClassIds([]); setShowAddStudentModal(false);
-    } catch (err) {
-      toast.error('فشل إضافة الطالب: ' + (err.message || 'خطأ غير معروف'));
-    } finally {
-      setStudentLoading(false);
-    }
+  const openWarningModal = (s) => {
+    const active = getActiveWarnings(s.warnings || []);
+    const studentWithActive = { ...s, warnings: active };
+    setSelectedStudentForWarning(studentWithActive);
+    setWarningDescription('');
+    setShowWarningModal(true);
   };
-
-  const openWarningModal = (s) => { setSelectedStudentForWarning(s); setWarningDescription(''); setShowWarningModal(true); };
 
   const confirmWarning = async () => {
     if (!selectedStudentForWarning) return;
     const desc = sanitizeInput(warningDescription);
     if (!desc.trim()) return toast.error('يرجى كتابة وصف المخالفة.');
     const student = selectedStudentForWarning;
-    const currentWarnings = student.warnings || [];
-    const newWarningNumber = currentWarnings.length + 1;
-    if (newWarningNumber > 3) return toast.error('تم تجاوز عدد الإنذارات المسموح به.');
+    const activeWarnings = getActiveWarnings(student.warnings || []);
+    const newWarningNumber = activeWarnings.length + 1;
+    if (newWarningNumber > 3) return toast.error('الطالب لديه 3 إنذارات نشطة بالفعل. استخدم خيار الحظر.');
 
     try {
       await createMessageRequest({
@@ -271,16 +195,20 @@ const TeacherPanel = ({ user, onLogout }) => {
         }
       });
 
+      const warningObj = {
+        id: generateId(),
+        issuedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 120 * 24 * 60 * 60 * 1000).toISOString(),
+        type: newWarningNumber,
+        description: desc.trim()
+      };
+
       const studentRef = doc(db, 'profiles', student.id);
       await updateDoc(studentRef, {
-        warnings: arrayUnion({
-          id: generateId(),
-          issuedAt: new Date().toISOString(),
-          type: newWarningNumber,
-          description: desc.trim()
-        }),
+        warnings: [...activeWarnings, warningObj],
         updatedAt: serverTimestamp()
       });
+
       if (newWarningNumber === 3) {
         await updateDoc(studentRef, {
           isFrozen: true,
@@ -328,7 +256,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         }
       });
 
-      toast.success('✅ تم إعادة تعيين الحساب وحفظ طلب إرسال البيانات. سيتم الإرسال بعد تدقيق مدير النظام.');
+      toast.success('✅ تم إعادة تعيين الحساب وحفظ طلب إرسال البيانات.');
     } catch (err) {
       toast.error('فشل إعادة التعيين: ' + err.message);
     }
@@ -337,7 +265,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   const handleDeleteStudentPermanently = async (student) => {
     const ok = await confirm(
       'حذف دائم',
-      `سيتم حذف الملف الشخصي للطالب "${student.name}" نهائياً من النظام. هل تريد المتابعة؟`
+      `سيتم حذف الملف الشخصي للطالب "${student.name}" نهائياً من النظام (Auth + Firestore). هل تريد المتابعة؟`
     );
     if (!ok) return;
 
@@ -361,10 +289,16 @@ const TeacherPanel = ({ user, onLogout }) => {
         });
       }
 
-      await deleteDoc(doc(db, 'profiles', student.id));
-      toast.success(notifyParent
-        ? '✅ تم حذف الطالب وحفظ طلب إشعار ولي الأمر.'
-        : '✅ تم حذف الطالب.');
+      const toastId = toast.loading('جاري حذف الحساب...');
+      try {
+        await deleteUserCompletely(student.id);
+        toast.success(
+          notifyParent ? '✅ تم حذف الطالب وحفظ طلب إشعار ولي الأمر.' : '✅ تم حذف الطالب نهائياً.',
+          { id: toastId }
+        );
+      } catch (e) {
+        toast.error('فشل الحذف: ' + e.message, { id: toastId });
+      }
     } catch (err) {
       toast.error('فشل الحذف: ' + err.message);
     }
@@ -382,7 +316,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       if (nextStatus) {
         const notifyParent = await confirm(
           'إخطار ولي الأمر بالتجميد',
-          `تم تجميد حساب الطالب "${student.name}".\n\nهل تريد إرسال إشعار تجميد لولي الأمر؟\n\n📨 سيُحفظ كطلب ويُرسل رسمياً بعد تدقيق مدير النظام.`
+          `تم تجميد حساب الطالب "${student.name}".\n\nهل تريد إرسال إشعار تجميد لولي الأمر؟`
         );
         if (notifyParent) {
           await createMessageRequest({
@@ -450,7 +384,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         payload: {}
       });
 
-      toast.success('✅ تم قبول التغييرات وحفظ طلب إشعار الموافقة. سيُرسل بعد تدقيق مدير النظام.');
+      toast.success('✅ تم قبول التغييرات وحفظ طلب إشعار الموافقة.');
       setShowReviewModal(false);
     } catch (err) { toast.error('فشل القبول: ' + err.message); }
   };
@@ -483,7 +417,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         }
       });
 
-      toast.success('✅ تم رفض التغييرات وحفظ طلب إشعار الرفض. سيُرسل بعد تدقيق مدير النظام.');
+      toast.success('✅ تم رفض التغييرات وحفظ طلب إشعار الرفض.');
       setShowReviewModal(false);
     } catch (err) { toast.error('فشل الرفض: ' + err.message); }
   };
@@ -558,40 +492,13 @@ const TeacherPanel = ({ user, onLogout }) => {
           body: sanitizeInput(generalMessageText)
         }
       });
-      toast.success('✅ تم حفظ الرسالة كطلب معلّق. سيتم إرسالها بعد تدقيق مدير النظام.');
+      toast.success('✅ تم حفظ الرسالة كطلب معلّق.');
       setShowGeneralMessageModal(false);
       setGeneralMessageSubject('');
       setGeneralMessageText('');
       setSelectedStudentForMessage(null);
     } catch (err) {
       toast.error('فشل حفظ الرسالة: ' + err.message);
-    }
-  };
-
-  const handleSaveActivationRequest = async () => {
-    if (!newlyAddedStudent) return;
-    try {
-      await createMessageRequest({
-        type: MESSAGE_REQUEST_TYPES.ACTIVATION,
-        targetType: 'student',
-        targetId: newlyAddedStudent.id || '',
-        targetName: newlyAddedStudent.name,
-        targetPhone: newlyAddedStudent.phone,
-        targetClass: newlyAddedStudent.classes?.map(c => c.name).join(', ') || 'غير محدد',
-        requestedBy: user.id,
-        requestedByName: user.name || user.username || 'معلم',
-        payload: {
-          username: newlyAddedStudent.username,
-          password: newlyAddedStudent.password,
-          age: newlyAddedStudent.age,
-          gender: newlyAddedStudent.gender
-        }
-      });
-      toast.success('✅ تم حفظ طلب إرسال بيانات التفعيل. سيُرسل بعد تدقيق مدير النظام.');
-      setShowAddNotificationModal(false);
-      setNewlyAddedStudent(null);
-    } catch (err) {
-      toast.error('فشل حفظ الطلب: ' + err.message);
     }
   };
 
@@ -766,9 +673,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          
           <div className="flex flex-col gap-4">
-            
             <div className="flex-1 relative overflow-hidden bg-gradient-to-br from-indigo-900/60 via-purple-900/40 to-purple-900/20 p-4 rounded-2xl border border-purple-500/30 shadow-xl group hover:shadow-purple-500/20 hover:border-purple-400/50 transition-all duration-300">
               <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-purple-500/20 transition" />
               <div className="relative z-10">
@@ -814,7 +719,6 @@ const TeacherPanel = ({ user, onLogout }) => {
                 </div>
               </div>
             </div>
-
           </div>
 
           <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700 flex flex-col justify-center">
@@ -833,7 +737,6 @@ const TeacherPanel = ({ user, onLogout }) => {
               </button>
             )}
           </div>
-
         </div>
 
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700 space-y-4">
@@ -860,7 +763,7 @@ const TeacherPanel = ({ user, onLogout }) => {
           <div className="flex flex-wrap justify-between items-center gap-3">
             <h3 className="text-xl font-semibold text-blue-300"><FaUser className="inline-block me-2" /> إدارة الطلاب</h3>
             <div className="flex flex-wrap gap-2">
-              <button onClick={() => setShowAddStudentModal(true)} className="btn-primary bg-blue-600 hover:bg-blue-700 py-2 px-4 text-sm rounded-md text-white"><FaPlus className="inline-block me-2" /> إضافة طالب</button>
+              {/* ❌ تم حذف زر "إضافة طالب" — الصلاحية للمشرف فقط */}
               <button onClick={() => setShowStudentsModal(true)} className="btn-primary bg-purple-600 hover:bg-purple-700 py-2 px-4 text-sm rounded-md text-white"><FaClipboardList className="inline-block me-2" /> عرض الطلبة</button>
               <button onClick={() => setShowPrintModal(true)} className="btn-primary bg-teal-600 hover:bg-teal-700 py-2 px-4 text-sm rounded-md text-white"><FaPrint className="inline-block me-2" /> طباعة الجدول</button>
             </div>
@@ -894,7 +797,7 @@ const TeacherPanel = ({ user, onLogout }) => {
             <div className="space-y-3">
               {students.map(s => {
                 const classNames = s.classes?.map(c => c.name).filter(Boolean).join(', ') || 'لا توجد شعبة';
-                const warningCount = (s.warnings || []).length;
+                const warningCount = getActiveWarnings(s.warnings || []).length;
                 return (
                   <div key={s.id} className={`p-3 rounded-xl border flex flex-wrap justify-between items-center gap-3 ${s.isFrozen ? 'bg-gray-800/60 border-gray-700 opacity-80' : 'bg-gray-800/30 border-gray-700'}`}>
                     <div className="flex items-center gap-3 flex-wrap flex-1">
@@ -930,6 +833,7 @@ const TeacherPanel = ({ user, onLogout }) => {
           <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-yellow-500/30" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-xl font-semibold text-yellow-300 mb-4"><FaExclamationTriangle className="inline-block me-2" /> إصدار إنذار</h3>
             <p className="text-gray-300 text-sm mb-2">الطالب: <strong>{selectedStudentForWarning.name}</strong></p>
+            <p className="text-gray-400 text-xs mb-2">الإنذارات النشطة: {getActiveWarnings(selectedStudentForWarning.warnings || []).length} / 3</p>
             <div className="space-y-4">
               <textarea className="bg-gray-800 w-full h-24 text-right p-2 border border-gray-600 rounded-md text-white resize-none" placeholder="اكتب وصف المخالفة..." value={warningDescription} onChange={(e) => setWarningDescription(e.target.value)} />
               <div className="bg-yellow-500/10 p-3 rounded-xl border border-yellow-500/20 text-xs text-yellow-300">
@@ -944,38 +848,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {showAddStudentModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-40 p-4" onClick={() => setShowAddStudentModal(false)}>
-          <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-semibold text-blue-300 mb-4"><FaPlus className="inline-block me-2" /> إضافة طالب</h3>
-            <form onSubmit={handleAddStudent} className="space-y-4">
-              <input type="text" placeholder="الاسم الكامل *" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentName} onChange={e => setNewStudentName(e.target.value)} required />
-              <select className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentGender} onChange={e => setNewStudentGender(e.target.value)} required>
-                <option value="">الجنس *</option>
-                <option value="ذكر">ذكر</option>
-                <option value="أنثى">أنثى</option>
-              </select>
-              <input type="text" placeholder="العمر *" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentAge} onChange={e => setNewStudentAge(e.target.value)} required />
-              <input
-                type="text"
-                placeholder="رقم الهاتف * (مع رمز الدولة بدون + مثال: 9627XXXXXXXX)"
-                className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white"
-                value={newStudentPhone}
-                onChange={e => setNewStudentPhone(e.target.value)}
-                required
-              />
-              <select multiple className="bg-gray-800 w-full h-24 text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentClassIds} onChange={(e) => setNewStudentClassIds(Array.from(e.target.selectedOptions).map(o => o.value))} required>
-                {classes.map(cls => <option key={cls.id} value={cls.id}>{cls.name}</option>)}
-              </select>
-              <p className="text-xs text-gray-400">اضغط Ctrl لاختيار عدة شعب</p>
-              <button type="submit" disabled={studentLoading} className="btn-primary w-full py-3 bg-blue-600 hover:bg-blue-700 rounded-md text-white">
-                {studentLoading ? 'جاري...' : 'إضافة'}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
       {showGeneralMessageModal && selectedStudentForMessage && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowGeneralMessageModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
@@ -984,7 +856,7 @@ const TeacherPanel = ({ user, onLogout }) => {
               <input type="text" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" placeholder="الموضوع" value={generalMessageSubject} onChange={(e) => setGeneralMessageSubject(e.target.value)} />
               <textarea className="bg-gray-800 w-full h-32 text-right p-2 border border-gray-600 rounded-md text-white resize-none" placeholder="نص الرسالة..." value={generalMessageText} onChange={(e) => setGeneralMessageText(e.target.value)} />
               <div className="bg-blue-500/10 p-3 rounded-xl border border-blue-500/20 text-xs text-blue-200">
-                📨 سيتم حفظ الرسالة كطلب معلّق، ولن تُرسل إلى ولي الأمر إلا بعد اعتماد <strong>مدير النظام</strong>.
+                📨 سيتم حفظ الرسالة كطلب معلّق، ولن تُرسل إلا بعد اعتماد <strong>مدير النظام</strong>.
               </div>
               <div className="flex gap-3">
                 <button onClick={handleSaveGeneralMessage} className="btn-primary bg-green-600 hover:bg-green-700 px-6 py-2 rounded-md text-white"><FaPaperPlane className="inline-block me-2" /> حفظ الطلب</button>
@@ -1030,21 +902,6 @@ const TeacherPanel = ({ user, onLogout }) => {
               <button onClick={() => rejectReview(selectedReviewStudent.id)} className="btn-primary bg-red-600 px-6 py-2 rounded-md text-white"><FaTimesCircle className="inline-block me-2" /> رفض</button>
               <button onClick={() => setShowReviewModal(false)} className="btn-primary bg-gray-600 px-6 py-2 rounded-md text-white">إلغاء</button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {showAddNotificationModal && newlyAddedStudent && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-green-500/30">
-            <h3 className="text-xl font-semibold text-green-300 mb-2 text-center"><FaCheckCircle className="inline-block me-2" /> تم تسجيل الطالب</h3>
-            <p className="text-gray-300 text-center mb-4">تم إضافة {newlyAddedStudent.name} بنجاح.</p>
-            <div className="bg-amber-500/10 p-3 rounded-xl border border-amber-500/30 text-xs text-amber-200 mb-3">
-              📨 سيتم حفظ طلب إرسال بيانات التفعيل لولي الأمر، ولن يُرسل إلا بعد اعتماد <strong>مدير النظام</strong>.
-            </div>
-            <button onClick={handleSaveActivationRequest} className="btn-primary bg-green-600 hover:bg-green-700 w-full py-3 rounded-md text-white">
-              <FaPaperPlane className="inline-block me-2" /> حفظ طلب إرسال بيانات التفعيل
-            </button>
           </div>
         </div>
       )}

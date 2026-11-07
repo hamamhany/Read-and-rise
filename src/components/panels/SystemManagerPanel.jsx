@@ -7,8 +7,8 @@ import {
 } from 'react-icons/fa';
 import { db } from '../../firebase';
 import { 
-  collection, query, onSnapshot, doc, deleteDoc, 
-  serverTimestamp, orderBy, where, updateDoc, writeBatch
+  collection, query, onSnapshot, doc, serverTimestamp, 
+  orderBy, where, updateDoc, writeBatch
 } from 'firebase/firestore';
 import { createSupervisorAccount } from '../../services/supervisor';
 import { requestNotificationPermission, setupOnMessageListener } from '../../utils/pushNotifications';
@@ -24,6 +24,7 @@ import {
 } from '../../services/messageRequests';
 import {
   sendWarningMessage,
+  sendNoticeMessage,
   sendActivationMessage,
   sendFreezeMessage,
   sendDeleteMessage,
@@ -33,15 +34,17 @@ import {
   sendGeneralMessageToStudent,
   sendReportMessage
 } from '../../utils/whatsapp';
+import { deleteUserCompletely } from '../../services/accountDeletion';
+import { sanitizeInput, arabicToEnglishNumber } from '../../utils/helpers';
+import SystemManagerReviewsSection from './SystemManagerReviewsSection';
+import BlacklistSection from './BlacklistSection';
 
-// دالة مساعدة: أول حصة قادمة على مستوى النظام كله
 const computeNextGlobalLesson = (allTimes) => {
   const now = new Date();
   let nearest = null;
   for (const lt of allTimes) {
     if (!lt.time) continue;
     let d = null;
-
     if (lt.type === 'once') {
       const dd = new Date(lt.date);
       if (!isNaN(dd.getTime())) {
@@ -55,8 +58,7 @@ const computeNextGlobalLesson = (allTimes) => {
       let diff = dayIndex - now.getDay();
       if (diff < 0) diff += 7;
       if (diff === 0) {
-        const t = new Date(now);
-        t.setHours(lt.time.hours, lt.time.minutes, 0, 0);
+        const t = new Date(now); t.setHours(lt.time.hours, lt.time.minutes, 0, 0);
         if (t <= now) diff = 7;
       }
       const dd = new Date(now);
@@ -68,10 +70,7 @@ const computeNextGlobalLesson = (allTimes) => {
       if (!md) continue;
       let dd = new Date(now.getFullYear(), now.getMonth(), md);
       dd.setHours(lt.time.hours, lt.time.minutes, 0, 0);
-      if (dd <= now) {
-        dd = new Date(now.getFullYear(), now.getMonth() + 1, md);
-        dd.setHours(lt.time.hours, lt.time.minutes, 0, 0);
-      }
+      if (dd <= now) { dd = new Date(now.getFullYear(), now.getMonth() + 1, md); dd.setHours(lt.time.hours, lt.time.minutes, 0, 0); }
       d = dd;
     }
     if (d && (!nearest || d < nearest)) nearest = d;
@@ -79,35 +78,25 @@ const computeNextGlobalLesson = (allTimes) => {
   return nearest;
 };
 
-// دالة مساعدة: عدد المحاضرات النشطة الآن (مدة كل محاضرة 60 دقيقة)
 const computeActiveLectures = (allTimes) => {
   const now = new Date();
   let count = 0;
   for (const lt of allTimes) {
     if (!lt.time) continue;
     let start = null;
-
     if (lt.type === 'once') {
       const dd = new Date(lt.date);
-      if (!isNaN(dd.getTime())) {
-        dd.setHours(lt.time.hours, lt.time.minutes, 0, 0);
-        start = dd;
-      }
+      if (!isNaN(dd.getTime())) { dd.setHours(lt.time.hours, lt.time.minutes, 0, 0); start = dd; }
     } else if (lt.type === 'recurring') {
       const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
       const dayIndex = days.indexOf(lt.day);
       if (dayIndex !== now.getDay()) continue;
-      const dd = new Date(now);
-      dd.setHours(lt.time.hours, lt.time.minutes, 0, 0);
-      start = dd;
+      const dd = new Date(now); dd.setHours(lt.time.hours, lt.time.minutes, 0, 0); start = dd;
     } else if (lt.type === 'monthly') {
       const md = parseInt(lt.monthDay);
       if (md !== now.getDate()) continue;
-      const dd = new Date(now);
-      dd.setHours(lt.time.hours, lt.time.minutes, 0, 0);
-      start = dd;
+      const dd = new Date(now); dd.setHours(lt.time.hours, lt.time.minutes, 0, 0); start = dd;
     }
-
     if (start) {
       const end = new Date(start.getTime() + 60 * 60 * 1000);
       if (now >= start && now < end) count++;
@@ -144,7 +133,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
   const [newSupervisorPhone, setNewSupervisorPhone] = useState('');
   const [supervisorLoading, setSupervisorLoading] = useState(false);
 
-  // ✅ onMessage listener
   useEffect(() => {
     const unsub = setupOnMessageListener((payload) => {
       toast.custom(() => (
@@ -157,19 +145,12 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     return () => unsub();
   }, []);
 
-  // ✅ تنظيف أولي عند الدخول (لأي طلبات قديمة من قبل)
   useEffect(() => {
-    cleanupOldApprovedRequests().catch(err => 
-      console.warn('cleanup initial failed:', err)
-    );
+    cleanupOldApprovedRequests().catch(err => console.warn('cleanup initial failed:', err));
   }, []);
 
-  // ✅ الاشتراكات
   useEffect(() => {
-    const qRequests = query(
-      collection(db, 'messageRequests'),
-      orderBy('createdAt', 'desc')
-    );
+    const qRequests = query(collection(db, 'messageRequests'), orderBy('createdAt', 'desc'));
     const unsubRequests = onSnapshot(qRequests, (snapshot) => {
       setMessageRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
@@ -213,12 +194,10 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     };
   }, [user.id]);
 
-  // ✅ حذف الطلبات المعتمدة تلقائياً بعد 48 ساعة (real-time)
   useEffect(() => {
     if (!messageRequests.length) return;
     const now = Date.now();
     const fortyEightHours = 48 * 60 * 60 * 1000;
-
     const toDelete = messageRequests.filter(r => {
       if (r.status !== 'approved') return false;
       if (!r.processedAt) return false;
@@ -226,29 +205,19 @@ const SystemManagerPanel = ({ user, onLogout }) => {
       if (!ms) return false;
       return (now - ms) > fortyEightHours;
     });
-
     if (toDelete.length > 0) {
       (async () => {
         try {
           const batch = writeBatch(db);
-          toDelete.forEach(r => {
-            batch.delete(doc(db, 'messageRequests', r.id));
-          });
+          toDelete.forEach(r => batch.delete(doc(db, 'messageRequests', r.id)));
           await batch.commit();
-        } catch (err) {
-          console.warn('فشل حذف الطلبات القديمة:', err);
-        }
+        } catch (err) { console.warn('فشل حذف الطلبات القديمة:', err); }
       })();
     }
   }, [messageRequests]);
 
-  // ✅ حساب أول حصة قادمة + عدد المحاضرات النشطة (كل 30 ثانية)
   useEffect(() => {
-    if (allLessonTimes.length === 0) {
-      setNextGlobalLesson(null);
-      setActiveLecturesCount(0);
-      return;
-    }
+    if (allLessonTimes.length === 0) { setNextGlobalLesson(null); setActiveLecturesCount(0); return; }
     const tick = () => {
       setNextGlobalLesson(computeNextGlobalLesson(allLessonTimes));
       setActiveLecturesCount(computeActiveLectures(allLessonTimes));
@@ -258,18 +227,11 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     return () => clearInterval(interval);
   }, [allLessonTimes]);
 
-  // ✅ العد التنازلي اللحظي (كل ثانية) لأول حصة
   useEffect(() => {
-    if (!nextGlobalLesson) {
-      setLiveCountdown({ d: 0, h: 0, m: 0, s: 0 });
-      return;
-    }
+    if (!nextGlobalLesson) { setLiveCountdown({ d: 0, h: 0, m: 0, s: 0 }); return; }
     const tick = () => {
       const diff = nextGlobalLesson.getTime() - Date.now();
-      if (diff <= 0) {
-        setLiveCountdown({ d: 0, h: 0, m: 0, s: 0 });
-        return;
-      }
+      if (diff <= 0) { setLiveCountdown({ d: 0, h: 0, m: 0, s: 0 }); return; }
       setLiveCountdown({
         d: Math.floor(diff / (1000 * 60 * 60 * 24)),
         h: Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
@@ -285,7 +247,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
   const handleOpenNotifications = async () => {
     setNotificationIdsAtOpen(notifications.map(n => n.id));
     setShowNotificationsModal(true);
-    // إذا كان الإذن ممنوحاً بالفعل — لا نستدعي طلب الإذن مرة أخرى (بدون رسالة)
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
       setNotificationsActive(true);
       return;
@@ -304,9 +265,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
         });
         await batch.commit();
       }
-    } catch (err) {
-      console.warn('فشل حذف الإشعارات:', err);
-    }
+    } catch (err) { console.warn('فشل حذف الإشعارات:', err); }
     setNotificationIdsAtOpen([]);
   };
 
@@ -317,57 +276,54 @@ const SystemManagerPanel = ({ user, onLogout }) => {
       return;
     }
 
-    // ✅ التحقق من صحة رقم الهاتف (الكل مع رمز الدولة بدون +)
-    const phoneDigits = String(newSupervisorPhone).replace(/[^\d]/g, '');
-    const normalizedPhone = phoneDigits.startsWith('00') ? phoneDigits.substring(2) : phoneDigits;
-    if (!normalizedPhone) {
-      toast.error('رقم الهاتف مطلوب.', { duration: 6000 });
+    const ageConverted = arabicToEnglishNumber(newSupervisorAge);
+    const phoneConverted = arabicToEnglishNumber(newSupervisorPhone);
+
+    const ageNum = parseInt(ageConverted);
+    if (isNaN(ageNum) || ageNum < 1 || ageNum > 99) {
+      toast.error('العمر يجب أن يكون رقماً بين 1 و 99.');
       return;
     }
+
+    const phoneDigits = String(phoneConverted).replace(/[^\d]/g, '');
+    const normalizedPhone = phoneDigits.startsWith('00') ? phoneDigits.substring(2) : phoneDigits;
+
+    if (!normalizedPhone) { toast.error('رقم الهاتف مطلوب.'); return; }
     if (normalizedPhone.startsWith('0')) {
-      toast.error(
-        'يرجى إدخال رقم الهاتف مع رمز الدولة بدون صفر بادئ.\nمثال (الأردن): 9627XXXXXXXX',
-        { duration: 7000 }
-      );
+      toast.error('يرجى إدخال رقم الهاتف مع رمز الدولة بدون صفر بادئ.', { duration: 7000 });
       return;
     }
     if (normalizedPhone.length < 10 || normalizedPhone.length > 15) {
-      toast.error(
-        'رقم الهاتف غير صالح. يرجى إدخال الرقم مع رمز الدولة (10 إلى 15 رقماً).',
-        { duration: 7000 }
-      );
+      toast.error('رقم الهاتف غير صالح. (10 إلى 15 رقماً).', { duration: 7000 });
       return;
     }
 
     setSupervisorLoading(true);
     try {
       const result = await createSupervisorAccount(
-        newSupervisorName,
-        newSupervisorGender,
-        newSupervisorAge,
-        newSupervisorPhone,
+        sanitizeInput(newSupervisorName),
+        sanitizeInput(newSupervisorGender),
+        ageNum,
+        normalizedPhone,
         user.id
       );
       toast.success(`تم إضافة المشرف ${result.name}`);
-      setNewSupervisorName('');
-      setNewSupervisorGender('');
-      setNewSupervisorAge('');
-      setNewSupervisorPhone('');
+      setNewSupervisorName(''); setNewSupervisorGender('');
+      setNewSupervisorAge(''); setNewSupervisorPhone('');
       setShowSupervisorModal(false);
     } catch (err) {
       toast.error('فشل إضافة المشرف: ' + err.message, { duration: 8000 });
-    } finally {
-      setSupervisorLoading(false);
-    }
+    } finally { setSupervisorLoading(false); }
   };
 
-  const handleDeleteStudent = async (studentId) => {
-    if (!window.confirm('هل أنت متأكد من حذف الطالب نهائياً؟')) return;
+  const handleDeleteStudent = async (student) => {
+    if (!window.confirm(`حذف الطالب "${student.name}" نهائياً من Auth + Firestore؟`)) return;
     try {
-      await deleteDoc(doc(db, 'profiles', studentId));
-      toast.success('تم حذف الطالب.');
+      const toastId = toast.loading('جاري الحذف...');
+      await deleteUserCompletely(student.id);
+      toast.success('✅ تم حذف الطالب نهائياً.', { id: toastId });
     } catch (err) {
-      toast.error('فشل حذف الطالب: ' + err.message);
+      toast.error('فشل الحذف: ' + err.message);
     }
   };
 
@@ -399,10 +355,12 @@ const SystemManagerPanel = ({ user, onLogout }) => {
       };
 
       let success = true;
-
       switch (request.type) {
         case 'warning':
           success = sendWarningMessage(studentObj, request.payload.warningNumber, request.payload.description);
+          break;
+        case 'notice':
+          success = sendNoticeMessage(studentObj, request.payload.description);
           break;
         case 'general':
           success = sendGeneralMessageToStudent(studentObj, request.payload.subject, request.payload.body);
@@ -434,8 +392,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
       }
 
       if (!success) {
-        // فشل فتح واتساب — لا نُعلّم الطلب كمُرسل
-        toast.error('لم يتم اعتماد الطلب لأن واتساب لم يُفتح. يرجى المحاولة مجدداً بعد السماح بالنوافذ المنبثقة.');
+        toast.error('لم يتم اعتماد الطلب لأن واتساب لم يُفتح.');
         return;
       }
 
@@ -451,9 +408,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     try {
       await updateMessageRequestStatus(requestId, MESSAGE_REQUEST_STATUS.REJECTED, user.id, reason);
       toast.success('تم رفض الطلب.');
-    } catch (err) {
-      toast.error('فشل الرفض: ' + err.message);
-    }
+    } catch (err) { toast.error('فشل الرفض: ' + err.message); }
   };
 
   const handleDeleteRequest = async (requestId) => {
@@ -461,19 +416,18 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     try {
       await deleteMessageRequest(requestId);
       toast.success('تم حذف الطلب.');
-    } catch (err) {
-      toast.error('فشل الحذف: ' + err.message);
-    }
+    } catch (err) { toast.error('فشل الحذف: ' + err.message); }
   };
 
+  // ✅ تصفية البلاغات (تُدار الآن من لوحة المشرفين)
   const filteredRequests = messageRequests.filter(r => {
+    if (r.type === 'report') return false;
     if (requestFilter === 'all') return true;
     return r.status === requestFilter;
   });
 
-  const pendingCount = messageRequests.filter(r => r.status === 'pending').length;
+  const pendingCount = messageRequests.filter(r => r.status === 'pending' && r.type !== 'report').length;
 
-  // ✅ تنسيق ثنائي الأرقام للعد التنازلي
   const pad2 = (n) => String(n).padStart(2, '0');
 
   if (loading) return <div className="text-center text-gray-400 p-8">جاري التحميل...</div>;
@@ -489,20 +443,10 @@ const SystemManagerPanel = ({ user, onLogout }) => {
             <p className="text-gray-400 text-sm mt-1">مرحباً بك: {user.name || user.username}</p>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={handleOpenNotifications}
-              className="relative bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-full text-2xl transition shadow-lg"
-              title={notificationsActive ? 'الإشعارات مفعلة' : 'تفعيل الإشعارات'}
-            >
+            <button onClick={handleOpenNotifications} className="relative bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-full text-2xl transition shadow-lg" title={notificationsActive ? 'الإشعارات مفعلة' : 'تفعيل الإشعارات'}>
               <FaBell />
-              {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                  {unreadCount}
-                </span>
-              )}
-              {notificationsActive && (
-                <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-400 rounded-full border-2 border-gray-900 animate-pulse" />
-              )}
+              {unreadCount > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">{unreadCount}</span>}
+              {notificationsActive && <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-400 rounded-full border-2 border-gray-900 animate-pulse" />}
             </button>
             <button onClick={onLogout} className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-full text-2xl transition shadow-lg" title="تسجيل الخروج">
               <FaSignOutAlt />
@@ -510,115 +454,74 @@ const SystemManagerPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* Stats Cards — 6 بطاقات */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* البلاغات المعلقة */}
           <div className="relative overflow-hidden bg-gradient-to-br from-red-900/50 to-red-900/20 p-6 rounded-2xl border border-red-500/30 shadow-xl">
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center shadow-lg">
-                <FaExclamationTriangle className="text-white text-xl" />
-              </div>
-              <div>
-                <p className="text-xs text-red-300 uppercase tracking-widest font-semibold">طلبات معلّقة</p>
-                <h3 className="text-sm font-bold text-red-100">قيد المراجعة</h3>
-              </div>
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center shadow-lg"><FaExclamationTriangle className="text-white text-xl" /></div>
+              <div><p className="text-xs text-red-300 uppercase tracking-widest font-semibold">طلبات معلّقة</p><h3 className="text-sm font-bold text-red-100">قيد المراجعة</h3></div>
             </div>
             <p className="text-4xl font-black text-white">{pendingCount}</p>
           </div>
 
-          {/* الطلاب */}
           <div className="relative overflow-hidden bg-gradient-to-br from-emerald-900/50 to-emerald-900/20 p-6 rounded-2xl border border-emerald-500/30 shadow-xl">
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center shadow-lg">
-                <FaUsers className="text-white text-xl" />
-              </div>
-              <div>
-                <p className="text-xs text-emerald-300 uppercase tracking-widest font-semibold">الطلاب</p>
-                <h3 className="text-sm font-bold text-emerald-100">إجمالي المسجلين</h3>
-              </div>
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center shadow-lg"><FaUsers className="text-white text-xl" /></div>
+              <div><p className="text-xs text-emerald-300 uppercase tracking-widest font-semibold">الطلاب</p><h3 className="text-sm font-bold text-emerald-100">إجمالي المسجلين</h3></div>
             </div>
             <p className="text-4xl font-black text-white">{students.length}</p>
           </div>
 
-          {/* المشرفين */}
           <div className="relative overflow-hidden bg-gradient-to-br from-indigo-900/50 to-indigo-900/20 p-6 rounded-2xl border border-indigo-500/30 shadow-xl">
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-lg">
-                <FaUserShield className="text-white text-xl" />
-              </div>
-              <div>
-                <p className="text-xs text-indigo-300 uppercase tracking-widest font-semibold">المشرفين</p>
-                <h3 className="text-sm font-bold text-indigo-100">الحسابات النشطة</h3>
-              </div>
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-lg"><FaUserShield className="text-white text-xl" /></div>
+              <div><p className="text-xs text-indigo-300 uppercase tracking-widest font-semibold">المشرفين</p><h3 className="text-sm font-bold text-indigo-100">الحسابات النشطة</h3></div>
             </div>
             <p className="text-4xl font-black text-white">{supervisors.length}</p>
           </div>
 
-          {/* المعلمين */}
           <div className="relative overflow-hidden bg-gradient-to-br from-blue-900/50 to-blue-900/20 p-6 rounded-2xl border border-blue-500/30 shadow-xl">
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center shadow-lg">
-                <FaChalkboardTeacher className="text-white text-xl" />
-              </div>
-              <div>
-                <p className="text-xs text-blue-300 uppercase tracking-widest font-semibold">المعلمين</p>
-                <h3 className="text-sm font-bold text-blue-100">في النظام</h3>
-              </div>
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center shadow-lg"><FaChalkboardTeacher className="text-white text-xl" /></div>
+              <div><p className="text-xs text-blue-300 uppercase tracking-widest font-semibold">المعلمين</p><h3 className="text-sm font-bold text-blue-100">في النظام</h3></div>
             </div>
             <p className="text-4xl font-black text-white">{teachers.length}</p>
           </div>
 
-          {/* المحاضرات النشطة */}
           <div className="relative overflow-hidden bg-gradient-to-br from-purple-900/50 to-purple-900/20 p-6 rounded-2xl border border-purple-500/30 shadow-xl">
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-fuchsia-600 flex items-center justify-center shadow-lg">
-                <FaBroadcastTower className="text-white text-xl" />
-              </div>
-              <div>
-                <p className="text-xs text-purple-300 uppercase tracking-widest font-semibold">محاضرات</p>
-                <h3 className="text-sm font-bold text-purple-100">نشطة الآن (60 دقيقة)</h3>
-              </div>
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-fuchsia-600 flex items-center justify-center shadow-lg"><FaBroadcastTower className="text-white text-xl" /></div>
+              <div><p className="text-xs text-purple-300 uppercase tracking-widest font-semibold">محاضرات</p><h3 className="text-sm font-bold text-purple-100">نشطة الآن (60 دقيقة)</h3></div>
             </div>
             <p className="text-4xl font-black text-white">{activeLecturesCount}</p>
           </div>
 
-          {/* ✅ أول حصة قادمة — العد التنازلي المصغر */}
           <div className="relative overflow-hidden bg-gradient-to-br from-amber-900/50 to-amber-900/20 p-6 rounded-2xl border border-amber-500/30 shadow-xl">
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500 to-yellow-600 flex items-center justify-center shadow-lg">
-                <FaHourglassHalf className="text-white text-xl" />
-              </div>
-              <div>
-                <p className="text-xs text-amber-300 uppercase tracking-widest font-semibold">الحصة القادمة</p>
-                <h3 className="text-sm font-bold text-amber-100">العد التنازلي</h3>
-              </div>
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500 to-yellow-600 flex items-center justify-center shadow-lg"><FaHourglassHalf className="text-white text-xl" /></div>
+              <div><p className="text-xs text-amber-300 uppercase tracking-widest font-semibold">الحصة القادمة</p><h3 className="text-sm font-bold text-amber-100">العد التنازلي</h3></div>
             </div>
             {nextGlobalLesson ? (
               <div className="text-center">
                 <p className="text-3xl md:text-4xl font-black text-white tabular-nums leading-tight" dir="ltr">
-                  {liveCountdown.d > 0 && (
-                    <span className="text-amber-200">
-                      {liveCountdown.d}
-                      <span className="text-xs font-bold text-amber-300 mx-1">يوم</span>
-                    </span>
-                  )}
+                  {liveCountdown.d > 0 && <span className="text-amber-200">{liveCountdown.d}<span className="text-xs font-bold text-amber-300 mx-1">يوم</span></span>}
                   {pad2(liveCountdown.h)}:{pad2(liveCountdown.m)}:{pad2(liveCountdown.s)}
                 </p>
                 <p className="text-[10px] text-amber-300 mt-1 tracking-wider">
                   {liveCountdown.d > 0 ? 'يوم : ساعة : دقيقة : ثانية' : 'ساعة : دقيقة : ثانية'}
                 </p>
               </div>
-            ) : (
-              <p className="text-2xl font-black text-gray-500 text-center">—</p>
-            )}
+            ) : <p className="text-2xl font-black text-gray-500 text-center">—</p>}
           </div>
         </div>
 
-        {/* قسم طلبات الرسائل */}
+        {/* ✅ خانة المراجعات الجديدة */}
+        <SystemManagerReviewsSection user={user} />
+
+        {/* ✅ قسم طلبات الرسائل */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-amber-500/30">
           <div className="flex justify-between items-center flex-wrap gap-3 mb-4">
             <h3 className="text-xl font-semibold text-amber-300 flex items-center gap-2">
-              <FaPaperPlane /> طلبات الرسائل والتواصل مع الطلاب ({messageRequests.length})
+              <FaPaperPlane /> طلبات الرسائل والتواصل مع الطلاب ({filteredRequests.length})
             </h3>
             <div className="flex flex-wrap gap-2">
               <button onClick={() => setRequestFilter('pending')} className={`px-3 py-1 rounded-lg text-xs ${requestFilter === 'pending' ? 'bg-amber-600 text-white' : 'bg-gray-700 text-gray-300'}`}>قيد المراجعة ({pendingCount})</button>
@@ -627,8 +530,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
               <button onClick={() => setRequestFilter('all')} className={`px-3 py-1 rounded-lg text-xs ${requestFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300'}`}>الكل</button>
             </div>
           </div>
-
-          <p className="text-xs text-gray-500 mb-3">📌 الطلبات المُرسلة تُحذف تلقائياً بعد 48 ساعة لتوفير مساحة السحابة.</p>
+          <p className="text-xs text-gray-500 mb-3">📌 الطلبات المُرسلة تُحذف تلقائياً بعد 48 ساعة. (البلاغات تُدار من لوحة المشرفين)</p>
 
           {filteredRequests.length === 0 ? (
             <p className="text-gray-400 text-center py-6">لا توجد طلبات في هذا التصنيف.</p>
@@ -662,14 +564,14 @@ const SystemManagerPanel = ({ user, onLogout }) => {
                         {request.type === 'warning' && (
                           <p className="text-xs text-yellow-200 mt-1">إنذار رقم {request.payload?.warningNumber} — {request.payload?.description}</p>
                         )}
+                        {request.type === 'notice' && (
+                          <p className="text-xs text-yellow-200 mt-1">تنبيه: {request.payload?.description}</p>
+                        )}
                         {request.type === 'general' && (
                           <div className="mt-1 text-xs text-gray-300">
                             <p><strong>الموضوع:</strong> {request.payload?.subject}</p>
                             <p className="line-clamp-2"><strong>النص:</strong> {request.payload?.body}</p>
                           </div>
-                        )}
-                        {request.type === 'report' && (
-                          <p className="text-xs text-red-200 mt-1">السبب: {request.payload?.reason}</p>
                         )}
                         {request.type === 'activation' && (
                           <p className="text-xs text-green-200 mt-1">اسم المستخدم: {request.payload?.username}</p>
@@ -690,24 +592,15 @@ const SystemManagerPanel = ({ user, onLogout }) => {
                       <div className="flex flex-col gap-2">
                         {isPending && (
                           <>
-                            <button
-                              onClick={() => handleSendRequest(request)}
-                              className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-1"
-                            >
+                            <button onClick={() => handleSendRequest(request)} className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-1">
                               <FaWhatsapp /> إرسال واتساب
                             </button>
-                            <button
-                              onClick={() => handleRejectRequest(request.id)}
-                              className="text-xs bg-orange-600 hover:bg-orange-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-1"
-                            >
+                            <button onClick={() => handleRejectRequest(request.id)} className="text-xs bg-orange-600 hover:bg-orange-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-1">
                               <FaTimesCircle /> رفض
                             </button>
                           </>
                         )}
-                        <button
-                          onClick={() => handleDeleteRequest(request.id)}
-                          className="text-xs bg-gray-600 hover:bg-gray-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-1"
-                        >
+                        <button onClick={() => handleDeleteRequest(request.id)} className="text-xs bg-gray-600 hover:bg-gray-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-1">
                           <FaTrashAlt /> حذف
                         </button>
                       </div>
@@ -738,7 +631,14 @@ const SystemManagerPanel = ({ user, onLogout }) => {
                   {s.isFrozen && <span className="text-xs text-orange-400 mr-2">(مجمد)</span>}
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => deleteDoc(doc(db, 'profiles', s.id))} className="text-xs bg-red-500/20 text-red-300 px-2 py-1 rounded-lg hover:bg-red-500/30">
+                  <button onClick={async () => {
+                    if (!window.confirm(`حذف المشرف "${s.name}" نهائياً؟`)) return;
+                    try {
+                      const toastId = toast.loading('جاري الحذف...');
+                      await deleteUserCompletely(s.id);
+                      toast.success('✅ تم حذف المشرف.', { id: toastId });
+                    } catch (e) { toast.error('فشل: ' + e.message); }
+                  }} className="text-xs bg-red-500/20 text-red-300 px-2 py-1 rounded-lg hover:bg-red-500/30">
                     <FaTrashAlt /> حذف
                   </button>
                 </div>
@@ -765,7 +665,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
                   <button onClick={() => toggleFreezeStudent(s)} className={`text-xs px-2 py-1 rounded-lg ${s.isFrozen ? 'bg-green-500/20 text-green-300' : 'bg-orange-500/20 text-orange-300'}`}>
                     {s.isFrozen ? 'فك التجميد' : 'تجميد'}
                   </button>
-                  <button onClick={() => handleDeleteStudent(s.id)} className="text-xs bg-red-500/20 text-red-300 px-2 py-1 rounded-lg hover:bg-red-500/30">
+                  <button onClick={() => handleDeleteStudent(s)} className="text-xs bg-red-500/20 text-red-300 px-2 py-1 rounded-lg hover:bg-red-500/30">
                     <FaTrashAlt /> حذف
                   </button>
                 </div>
@@ -774,14 +674,14 @@ const SystemManagerPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* Notifications Modal */}
+        {/* ✅ القائمة السوداء */}
+        <BlacklistSection />
+
         {showNotificationsModal && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={handleCloseNotifications}>
             <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full max-h-[70vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xl font-semibold text-amber-300">
-                  <FaBell className="inline-block me-2" /> الإشعارات
-                </h3>
+                <h3 className="text-xl font-semibold text-amber-300"><FaBell className="inline-block me-2" /> الإشعارات</h3>
                 <button onClick={handleCloseNotifications} className="text-gray-400 hover:text-white text-2xl">✕</button>
               </div>
               <p className="text-xs text-gray-500 mb-3">📌 ستُحذف هذه الإشعارات تلقائياً عند إغلاق النافذة.</p>
@@ -798,9 +698,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
                     <div key={n.id} className="p-3 rounded-xl border bg-gray-800/60 border-blue-500/40">
                       <div className="flex justify-between items-start">
                         <h4 className="text-white font-medium">{n.title}</h4>
-                        <span className="text-xs text-gray-400">
-                          {n.createdAt?.toDate?.() ? new Date(n.createdAt.toDate()).toLocaleString('ar-EG') : ''}
-                        </span>
+                        <span className="text-xs text-gray-400">{n.createdAt?.toDate?.() ? new Date(n.createdAt.toDate()).toLocaleString('ar-EG') : ''}</span>
                       </div>
                       <p className="text-sm text-gray-300 mt-1">{n.body}</p>
                     </div>
@@ -811,7 +709,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
           </div>
         )}
 
-        {/* Add Supervisor Modal */}
         {showSupervisorModal && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowSupervisorModal(false)}>
             <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-indigo-500/30" onClick={(e) => e.stopPropagation()}>
@@ -831,18 +728,11 @@ const SystemManagerPanel = ({ user, onLogout }) => {
                 </div>
                 <div>
                   <label className="text-xs text-gray-400 block">العمر</label>
-                  <input type="text" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newSupervisorAge} onChange={e => setNewSupervisorAge(e.target.value)} required />
+                  <input type="text" inputMode="numeric" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newSupervisorAge} onChange={e => setNewSupervisorAge(arabicToEnglishNumber(e.target.value))} required />
                 </div>
                 <div>
                   <label className="text-xs text-gray-400 block">رقم الهاتف (مع رمز الدولة بدون +)</label>
-                  <input
-                    type="text"
-                    placeholder="مثال: 9627XXXXXXXX"
-                    className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white"
-                    value={newSupervisorPhone}
-                    onChange={e => setNewSupervisorPhone(e.target.value)}
-                    required
-                  />
+                  <input type="text" inputMode="numeric" placeholder="مثال: 9627XXXXXXXX" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newSupervisorPhone} onChange={e => setNewSupervisorPhone(arabicToEnglishNumber(e.target.value))} required />
                   <p className="text-[10px] text-gray-500 mt-1">أدخل الرقم مع رمز الدولة، بدون + وبدون صفر بادئ</p>
                 </div>
                 <button type="submit" disabled={supervisorLoading} className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 rounded-md text-white">
