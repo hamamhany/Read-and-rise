@@ -200,11 +200,11 @@ const ReportsReviewSection = ({ user }) => {
                 </button>
                 <button onClick={() => setActionMode('warning')}
                   className="w-full p-3 bg-orange-600/20 hover:bg-orange-600/30 border border-orange-500/40 rounded-xl text-orange-200 text-sm">
-                  ⚠️ إصدار إنذار رسمي (بحد أقصى 3)
+                  ⚠️ إصدار إنذار رسمي 
                 </button>
                 <button onClick={() => setActionMode('closure')}
                   className="w-full p-3 bg-red-600/20 hover:bg-red-600/30 border border-red-500/40 rounded-xl text-red-200 text-sm">
-                  <FaBan className="inline me-2" /> إغلاق الحساب وحظر الرقم نهائياً (يحتاج تصويت 4 مشرفين)
+                  <FaBan className="inline me-2" /> إغلاق الحساب وحظر الرقم نهائياً (يحتاج موافقة 4 مشرفين لتأكيد العقوبة)
                 </button>
                 <button onClick={async () => {
                   await resolveReport();
