@@ -176,7 +176,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     const phoneDigits = rawPhone.replace(/[^\d]/g, '');
     const phone = phoneDigits.startsWith('00') ? phoneDigits.substring(2) : phoneDigits;
     if (phone.startsWith('0')) {
-      setResetError('يرجى إدخال رقم الهاتف مع رمز الدولة بدون صفر بادئ.\nمثال: 9627XXXXXXXX');
+      setResetError('يرجى إدخال رقم الهاتف مع رمز الدولة بدون صفر بادئ.\nمثال: 962XXXXXXXXX');
       return;
     }
     if (phone.length < 10 || phone.length > 15) {
