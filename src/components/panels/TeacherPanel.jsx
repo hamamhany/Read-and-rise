@@ -1072,7 +1072,7 @@ const TeacherPanel = ({ user, onLogout }) => {
       )}
 
       <ChoiceModal isOpen={showAssignmentChoice} onClose={() => { setShowAssignmentChoice(false); setSelectedAssignmentType(null); }} onSelect={(type) => { setSelectedAssignmentType(type); setShowAssignmentChoice(false); setShowAssignmentModal(true); }} title="نوع الواجب" options={[{ value: 'now', label: 'نشر فوراً' }, { value: 'schedule', label: 'جدولة' }, { value: 'draft', label: 'حفظ كمسودة' }, { value: 'delay', label: 'نشر بعد وقت' }]} />
-      <ChoiceModal isOpen={showLessonChoice} onClose={() => { setShowLessonChoice(false); setSelectedLessonType(null); }} onSelect={(type) => { setSelectedLessonType(type); setShowLessonChoice(false); setShowLessonModal(true); }} title="إدارة المواعيد" options={[{ value: 'manage', label: 'إضافة / تعديل المواعيد (حتى 6)' }]} />
+      <ChoiceModal isOpen={showLessonChoice} onClose={() => { setShowLessonChoice(false); setSelectedLessonType(null); }} onSelect={(type) => { setSelectedLessonType(type); setShowLessonChoice(false); setShowLessonModal(true); }} title="إدارة المواعيد" options={[{ value: 'manage', label: 'إضافة / تعديل المواعيد ' }]} />
 
       <AddAssignmentModal isOpen={showAssignmentModal} onClose={() => { setShowAssignmentModal(false); setSelectedAssignmentType(null); }} onSubmit={saveHomeworkFromModal} classesList={classes} initialMode={selectedAssignmentType || 'now'} />
       <AddLessonModal isOpen={showLessonModal} onClose={() => { setShowLessonModal(false); setSelectedLessonType(null); }} onSubmit={saveLessonTimesFromModal} initialTimes={lessonTimes} classesList={classes} />
