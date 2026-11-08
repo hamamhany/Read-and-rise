@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import {
   FaStar, FaCheckCircle, FaTimesCircle, FaSpinner, FaEye,
-  FaExclamationTriangle, FaUser
+  FaExclamationTriangle, FaUser, FaHeadset
 } from 'react-icons/fa';
 import {
   subscribeToManagerReviewTickets, subscribeToManagerOpenTickets,
@@ -23,7 +23,7 @@ const ManagerSupportReviewsSection = ({ user }) => {
   const [selected, setSelected] = useState(null);
   const [supervisor, setSupervisor] = useState(null);
   const [student, setStudent] = useState(null);
-  const [mode, setMode] = useState(null); // 'apologize' | 'reject'
+  const [mode, setMode] = useState(null);
   const [reason, setReason] = useState('');
   const [processing, setProcessing] = useState(false);
   const [openChatId, setOpenChatId] = useState(null);
@@ -64,15 +64,12 @@ const ManagerSupportReviewsSection = ({ user }) => {
     if (!reason.trim()) { toast.error('اكتب سبب الاعتذار للمشرف'); return; }
     setProcessing(true);
     try {
-      // 1. إرسال تنبيه للمشرف
       if (supervisor) {
         sendSupervisorRatingWarningMessage(supervisor, selected.rating, reason.trim());
       }
-      // 2. إرسال اعتذار للطالب
       if (student) {
         sendApologyToStudentMessage(student);
       }
-      // 3. تطبيق القرار
       await managerDecide(selected.id, 'apologize', reason.trim());
       toast.success('✅ تم تسجيل القرار. اضغط "إنهاء وحذف" بعد إرسال الرسائل.');
       setMode('apologize');
@@ -84,7 +81,6 @@ const ManagerSupportReviewsSection = ({ user }) => {
     if (!window.confirm('سيتم إلغاء الشكوى وإعطاء المشرف 5 نجوم وإرسال تحذير حازم للطالب. متابعة؟')) return;
     setProcessing(true);
     try {
-      // 1. إرسال تحذير حازم للطالب
       if (student) {
         const classIds = student.classIds || [];
         let classNames = '';
@@ -97,7 +93,6 @@ const ManagerSupportReviewsSection = ({ user }) => {
         }
         sendComplaintRejectedMessage(student, classNames);
       }
-      // 2. تطبيق القرار
       await managerDecide(selected.id, 'reject', '');
       toast.success('✅ تم رفض الشكوى. اضغط "إنهاء وحذف" بعد إرسال الرسالة.');
       setMode('reject');
@@ -122,9 +117,12 @@ const ManagerSupportReviewsSection = ({ user }) => {
         <FaExclamationTriangle /> مراجعات تقييمات الدعم ({reviews.length})
       </h3>
 
-      {/* Low ratings */}
+      {/* ✅ الحالة الفارغة — يظهر دائماً */}
       {reviews.length === 0 ? (
-        <p className="text-gray-400 text-sm text-center py-2">لا توجد تقييمات سلبية بانتظار المراجعة.</p>
+        <div className="bg-black/20 p-4 rounded-xl border border-gray-700 text-center">
+          <p className="text-green-300 text-sm">✅ لا توجد تقييمات سلبية بانتظار المراجعة حالياً.</p>
+          <p className="text-gray-500 text-xs mt-1">ستظهر هنا أي شكوى من طالب على خدمة الدعم الفني.</p>
+        </div>
       ) : (
         <div className="space-y-2 max-h-96 overflow-y-auto mb-4">
           {reviews.map(t => {
@@ -153,10 +151,14 @@ const ManagerSupportReviewsSection = ({ user }) => {
         </div>
       )}
 
-      {/* Open tickets from supervisors */}
-      {openTickets.length > 0 && (
-        <div className="border-t border-gray-700 pt-4 mt-4">
-          <p className="text-sm text-cyan-200 font-bold mb-2">تذاكر من المشرفين ({openTickets.length})</p>
+      {/* ✅ تذاكر المشرفين — يظهر دائماً */}
+      <div className="border-t border-gray-700 pt-4 mt-4">
+        <p className="text-sm text-cyan-200 font-bold mb-2 flex items-center gap-2">
+          <FaHeadset /> تذاكر من المشرفين ({openTickets.length})
+        </p>
+        {openTickets.length === 0 ? (
+          <p className="text-gray-500 text-xs text-center py-2">لا توجد تذاكر دعم من المشرفين حالياً.</p>
+        ) : (
           <div className="space-y-2 max-h-48 overflow-y-auto">
             {openTickets.map(t => (
               <div key={t.id} className="p-2 bg-black/30 rounded-lg border border-cyan-500/20 flex justify-between items-center gap-2">
@@ -170,8 +172,8 @@ const ManagerSupportReviewsSection = ({ user }) => {
               </div>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {openChatId && (
         <SupportChat user={user} ticketId={openChatId} viewerMode="manager" onClose={() => setOpenChatId(null)} />
@@ -185,7 +187,6 @@ const ManagerSupportReviewsSection = ({ user }) => {
               <button onClick={closeModal} className="text-gray-400 hover:text-white text-2xl">✕</button>
             </div>
 
-            {/* Student info */}
             <div className="bg-gray-800/60 p-3 rounded-xl mb-3 text-sm">
               <p className="text-cyan-200 font-bold mb-1">👤 الطالب:</p>
               <p className="text-gray-300">الاسم: {selected.studentName}</p>
@@ -193,7 +194,6 @@ const ManagerSupportReviewsSection = ({ user }) => {
               {selected.studentPhone && <p className="text-gray-300">الهاتف: <span dir="ltr">{selected.studentPhone}</span></p>}
             </div>
 
-            {/* Supervisor info */}
             <div className="bg-gray-800/60 p-3 rounded-xl mb-3 text-sm">
               <p className="text-cyan-200 font-bold mb-1">🛡️ المشرف:</p>
               <p className="text-gray-300">الاسم: {selected.assignedSupervisorName}</p>
@@ -207,7 +207,6 @@ const ManagerSupportReviewsSection = ({ user }) => {
               )}
             </div>
 
-            {/* Rating details */}
             <div className="bg-rose-500/10 p-3 rounded-xl mb-3 text-sm border border-rose-500/30">
               <p className="text-rose-200 font-bold mb-1">⭐ التقييم السلبي:</p>
               <p className="text-gray-200">النجوم: {selected.rating}/5</p>
@@ -215,7 +214,6 @@ const ManagerSupportReviewsSection = ({ user }) => {
               <p className="text-gray-200">التفاصيل: "{selected.ratingReason}"</p>
             </div>
 
-            {/* Full chat history */}
             <div className="bg-gray-800/40 p-3 rounded-xl mb-3 max-h-60 overflow-y-auto border border-gray-700">
               <p className="text-xs text-gray-400 mb-2">📜 سجل المحادثة الكامل:</p>
               {selected.messages?.map(m => (
@@ -226,7 +224,6 @@ const ManagerSupportReviewsSection = ({ user }) => {
               ))}
             </div>
 
-            {/* Decision */}
             {!mode && (
               <div className="space-y-2">
                 <button onClick={() => setMode('apologize')} className="w-full p-3 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 rounded-xl text-amber-200 text-sm">

@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import {
   FaTimes, FaPaperPlane, FaStar, FaCheckCircle, FaTimesCircle,
-  FaSpinner, FaUserCircle, FaInfoCircle
+  FaSpinner, FaUserCircle, FaInfoCircle,
+  FaHeadset
 } from 'react-icons/fa';
 import {
   subscribeToTicket, sendTicketMessage, studentConfirmSolved,

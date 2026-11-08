@@ -16,7 +16,6 @@ const SystemManagerReviewsSection = ({ user }) => {
 
   useEffect(() => {
     const unsub = subscribeReviewRequests((list) => {
-      // ✅ القسم يظهر فقط عندما يكون هناك مراجعة (موافقة تحتاج تنفيذ أو خلاف يحتاج قرارك)
       const filtered = list.filter(r =>
         r.status === REVIEW_REQUEST_STATUS.APPROVED_BY_SUPERVISORS ||
         r.status === REVIEW_REQUEST_STATUS.DISPUTED
@@ -68,42 +67,48 @@ const SystemManagerReviewsSection = ({ user }) => {
     finally { setProcessing(false); }
   };
 
-  // ✅ القسم يختفي تماماً عند عدم وجود أي مراجعة
-  if (reviews.length === 0) return null;
-
   return (
     <div className="bg-gray-800/60 p-6 rounded-2xl border border-amber-500/20">
       <h3 className="text-xl font-semibold text-amber-300 flex items-center gap-2 mb-3">
         <FaClipboardList /> قرارات تحتاج تدخلك ({reviews.length})
       </h3>
-      <div className="space-y-3 max-h-[500px] overflow-y-auto">
-        {reviews.map(r => {
-          const agreeCount = (r.votes || []).filter(v => v.vote === 'agree').length;
-          const exCount = (r.votes || []).filter(v => v.vote === 'exaggerated').length;
-          const isApproved = r.status === REVIEW_REQUEST_STATUS.APPROVED_BY_SUPERVISORS;
-          return (
-            <div key={r.id} className={`p-4 rounded-xl border ${isApproved ? 'bg-green-900/20 border-green-500/30' : 'bg-orange-900/20 border-orange-500/30'}`}>
-              <div className="flex justify-between items-start gap-2 flex-wrap">
-                <div className="flex-1 min-w-0">
-                  <p className="text-white text-sm"><strong>ضد:</strong> {r.targetName}</p>
-                  <p className="text-xs text-red-200 mt-1 line-clamp-2"><strong>السبب:</strong> {r.reason}</p>
-                  <p className="text-xs text-gray-400 mt-1">
-                    مقدم من: {r.createdByName} • موافق: <span className="text-green-300">{agreeCount}</span> • مبالغ: <span className="text-orange-300">{exCount}</span>
-                  </p>
-                  <p className="text-xs mt-1">
-                    <span className={isApproved ? 'text-green-400' : 'text-orange-400'}>
-                      {isApproved ? '✅ موافقة جماعية (4/4) — جاهز للتنفيذ' : '⚠️ تعارض أصوات (يحتاج قرارك)'}
-                    </span>
-                  </p>
+
+      {/* ✅ الحالة الفارغة — يظهر دائماً */}
+      {reviews.length === 0 ? (
+        <div className="bg-black/20 p-4 rounded-xl border border-gray-700 text-center">
+          <p className="text-green-300 text-sm">✅ لا توجد قرارات معلّقة تحتاج تدخلك حالياً.</p>
+          <p className="text-gray-500 text-xs mt-1">ستظهر هنا طلبات إغلاق الحسابات التي تحتاج قرارك النهائي.</p>
+        </div>
+      ) : (
+        <div className="space-y-3 max-h-[500px] overflow-y-auto">
+          {reviews.map(r => {
+            const agreeCount = (r.votes || []).filter(v => v.vote === 'agree').length;
+            const exCount = (r.votes || []).filter(v => v.vote === 'exaggerated').length;
+            const isApproved = r.status === REVIEW_REQUEST_STATUS.APPROVED_BY_SUPERVISORS;
+            return (
+              <div key={r.id} className={`p-4 rounded-xl border ${isApproved ? 'bg-green-900/20 border-green-500/30' : 'bg-orange-900/20 border-orange-500/30'}`}>
+                <div className="flex justify-between items-start gap-2 flex-wrap">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white text-sm"><strong>ضد:</strong> {r.targetName}</p>
+                    <p className="text-xs text-red-200 mt-1 line-clamp-2"><strong>السبب:</strong> {r.reason}</p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      مقدم من: {r.createdByName} • موافق: <span className="text-green-300">{agreeCount}</span> • مبالغ: <span className="text-orange-300">{exCount}</span>
+                    </p>
+                    <p className="text-xs mt-1">
+                      <span className={isApproved ? 'text-green-400' : 'text-orange-400'}>
+                        {isApproved ? '✅ موافقة جماعية (4/4) — جاهز للتنفيذ' : '⚠️ تعارض أصوات (يحتاج قرارك)'}
+                      </span>
+                    </p>
+                  </div>
+                  <button onClick={() => openModal(r)} className="text-xs bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-lg">
+                    اتخاذ القرار
+                  </button>
                 </div>
-                <button onClick={() => openModal(r)} className="text-xs bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-lg">
-                  اتخاذ القرار
-                </button>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {showModal && selected && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowModal(false)}>

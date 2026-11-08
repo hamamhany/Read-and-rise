@@ -149,14 +149,21 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
 
     } catch (err) {
       console.error(err);
-      if (err.code === 'auth/wrong-password') {
-        setError('كلمة المرور غير صحيحة');
-      } else if (err.code === 'auth/user-not-found') {
-        setError('الحساب غير موجود. يرجى التواصل مع المعلم لتفعيل الحساب.');
+      // ✅ رسالة موحّدة واضحة بالعربية لأي خطأ في بيانات الدخول
+      if (
+        err.code === 'auth/wrong-password' ||
+        err.code === 'auth/user-not-found' ||
+        err.code === 'auth/invalid-credential' ||
+        err.code === 'auth/invalid-email' ||
+        err.code === 'auth/invalid-login-credentials'
+      ) {
+        setError('اسم المستخدم أو كلمة المرور غير صحيحة. يرجى التحقق والمحاولة مرة أخرى.');
       } else if (err.code === 'auth/too-many-requests') {
-        setError('تم حظر الحساب مؤقتاً بسبب كثرة المحاولات، حاول لاحقاً');
+        setError('تم حظر الحساب مؤقتاً بسبب كثرة المحاولات. يرجى المحاولة بعد قليل.');
+      } else if (err.code === 'auth/network-request-failed') {
+        setError('فشل الاتصال بالإنترنت. تحقق من اتصالك وحاول مجدداً.');
       } else {
-        setError(err.message || 'حدث خطأ غير متوقع.');
+        setError('تعذّر تسجيل الدخول. يرجى المحاولة مرة أخرى أو التواصل مع الإدارة.');
       }
     } finally {
       setLoading(false);
