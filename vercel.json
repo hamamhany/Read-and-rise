@@ -3,6 +3,10 @@
     {
       "path": "/api/cron-absence",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron-support-close",
+      "schedule": "*/30 * * * *"
     }
   ]
 }

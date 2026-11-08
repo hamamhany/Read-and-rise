@@ -5,7 +5,7 @@ export const ANNOUNCEMENTS_LIMIT = 6;
 export const MESSAGE_REQUESTS_COLLECTION = 'messageRequests';
 export const REVIEW_REQUESTS_COLLECTION = 'reviewRequests';
 export const BLACKLIST_COLLECTION = 'blacklist';
-export const SUPPORT_MESSAGES_COLLECTION = 'supportMessages';
+export const SUPPORT_TICKETS_COLLECTION = 'supportTickets';
 export const PASSWORD_RESET_REQUESTS_COLLECTION = 'passwordResetRequests';
 
 export const MESSAGE_REQUEST_RETENTION_MS = 48 * 60 * 60 * 1000;
@@ -39,9 +39,11 @@ export const MESSAGE_REQUEST_TYPES = {
   ABSENCE_WARNING: 'absence_warning',
   AUTO_FREEZE: 'auto_freeze',
   AUTO_DELETE: 'auto_delete',
-  // ✅ جديد — طلبات إعادة تعيين بيانات الدخول
   PASSWORD_RESET_APPROVAL: 'password_reset_approval',
-  PASSWORD_RESET_REJECTION: 'password_reset_rejection'
+  PASSWORD_RESET_REJECTION: 'password_reset_rejection',
+  // ✅ جديد — قرارات المدير بشأن تقييمات الدعم
+  SUPPORT_APOLOGY: 'support_apology',
+  SUPPORT_REJECTION: 'support_rejection'
 };
 
 export const MESSAGE_REQUEST_TYPE_LABELS = {
@@ -59,13 +61,12 @@ export const MESSAGE_REQUEST_TYPE_LABELS = {
   auto_freeze: 'تجميد تلقائي — غياب',
   auto_delete: 'حذف تلقائي — غياب',
   password_reset_approval: 'موافقة على إعادة تعيين بيانات الدخول',
-  password_reset_rejection: 'رفض طلب إعادة تعيين بيانات الدخول'
+  password_reset_rejection: 'رفض طلب إعادة تعيين بيانات الدخول',
+  support_apology: 'اعتذار رسمي — تقييم دعم',
+  support_rejection: 'رفض شكوى — تقييم دعم'
 };
 
-export const REPORT_STATUS = {
-  PENDING: 'pending',
-  RESOLVED: 'resolved'
-};
+export const REPORT_STATUS = { PENDING: 'pending', RESOLVED: 'resolved' };
 
 export const REVIEW_REQUEST_STATUS = {
   PENDING_VOTES: 'pending_votes',
@@ -75,20 +76,35 @@ export const REVIEW_REQUEST_STATUS = {
   REJECTED: 'rejected'
 };
 
-export const REVIEW_VOTE_OPTIONS = {
-  AGREE: 'agree',
-  EXAGGERATED: 'exaggerated'
-};
-
+export const REVIEW_VOTE_OPTIONS = { AGREE: 'agree', EXAGGERATED: 'exaggerated' };
 export const REVIEW_REQUIRED_VOTES = 4;
 
-export const PASSWORD_RESET_STATUS = {
-  PENDING: 'pending',
-  APPROVED: 'approved',
-  REJECTED: 'rejected'
+export const PASSWORD_RESET_STATUS = { PENDING: 'pending', APPROVED: 'approved', REJECTED: 'rejected' };
+
+// =========================================================
+// ✅ نظام الدعم الفني الجديد (دردشة داخلية)
+// =========================================================
+export const SUPPORT_TICKET_STATUS = {
+  OPEN: 'open',                        // مفتوحة — بانتظار مشرف
+  IN_PROGRESS: 'in_progress',          // جارية مع مشرف
+  SUPERVISOR_ENDED: 'supervisor_ended',// المشرف طلب الإنهاء — بانتظار تأكيد الطالب
+  AWAITING_RATING: 'awaiting_rating',  // الطالب أكد الحل — بانتظار تقييم
+  RATED_FULL: 'rated_full',            // ⭐ 5 — إغلاق طبيعي
+  RATED_LOW: 'rated_low',              // ⭐ أقل — بانتظار قرار المدير
+  MANAGER_APOLOGIZED: 'manager_apologized', // المدير اعتذر → أُغلقت
+  MANAGER_REJECTED: 'manager_rejected',     // المدير رفض الشكوى → أُغلقت
+  AUTO_CLOSED: 'auto_closed'           // إغلاق تلقائي بعد 24 ساعة
 };
 
-export const SUPPORT_MESSAGE_STATUS = {
-  NEW: 'new',
-  READ: 'read'
-};
+export const SUPPORT_MAX_ACTIVE_PER_SUPERVISOR = 5;  // الحد العادي
+export const SUPPORT_MAX_ACTIVE_OVERLOAD = 8;         // حد الضغط
+export const SUPPORT_END_TIMEOUT_MS = 24 * 60 * 60 * 1000; // مهلة تأكيد الطالب
+export const SUPPORT_AUTO_CLOSE_MS = 24 * 60 * 60 * 1000;  // تنظيف بعد الإغلاق
+
+export const SUPPORT_RATING_CATEGORIES = [
+  { value: 'bad_treatment', label: 'سوء في المعاملة' },
+  { value: 'poor_response', label: 'طريقة الرد غير مناسبة' },
+  { value: 'slow_reply', label: 'تأخر في الرد' },
+  { value: 'wrong_info', label: 'معلومات غير دقيقة' },
+  { value: 'unresolved', label: 'المشكلة لم تُحل فعلياً' }
+];

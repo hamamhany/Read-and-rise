@@ -27,10 +27,11 @@ import {
   sendDeleteMessage, sendResetPasswordMessage, sendDataUpdateApprovalMessage,
   sendDataUpdateRejectionMessage, sendGeneralMessageToStudent, sendReportMessage,
   sendAbsenceWarningMessage, sendAutoFreezeMessage, sendAutoDeleteMessage,
-  // ✅ جديد — رسائل استعادة بيانات الدخول
   sendPasswordResetApprovalMessage, sendPasswordResetRejectionMessage
 } from '../../utils/whatsapp';
 import SystemManagerReviewsSection from './SystemManagerReviewsSection';
+// ✅ جديد
+import ManagerSupportReviewsSection from './ManagerSupportReviewsSection';
 import SupervisorsManagerModal from './SupervisorsManagerModal';
 import StudentsManagerModal from './StudentsManagerModal';
 import BlacklistModal from './BlacklistModal';
@@ -273,7 +274,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
         age: request.payload?.age,
         gender: request.payload?.gender,
         username: request.payload?.username || '',
-        serialNumber: request.payload?.serialNumber || '' // ✅ جديد — مهم للرسائل
+        serialNumber: request.payload?.serialNumber || ''
       };
 
       let success = true;
@@ -291,7 +292,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
         case 'absence_warning': success = sendAbsenceWarningMessage(studentObj, request.payload?.absenceCount || 10); break;
         case 'auto_freeze': success = sendAutoFreezeMessage(studentObj, request.payload?.absenceCount || 13); break;
         case 'auto_delete': success = sendAutoDeleteMessage(studentObj); break;
-        // ✅ جديد — استعادة بيانات الدخول
         case 'password_reset_approval':
           success = sendPasswordResetApprovalMessage(studentObj, request.payload?.username, request.payload?.password);
           break;
@@ -426,6 +426,9 @@ const SystemManagerPanel = ({ user, onLogout }) => {
 
         <SystemManagerReviewsSection user={user} />
 
+        {/* ✅ جديد — مراجعة تقييمات الدعم الفني */}
+        <ManagerSupportReviewsSection user={user} />
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <button
             onClick={() => setShowSupervisorsModal(true)}
@@ -543,7 +546,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
                         {request.type === 'reset_password' && (
                           <p className="text-xs text-indigo-200 mt-1">اسم المستخدم: {request.payload?.username}</p>
                         )}
-                        {/* ✅ جديد — استعادة بيانات الدخول */}
                         {request.type === 'password_reset_approval' && (
                           <div className="mt-1 text-xs text-cyan-200">
                             <p>اسم المستخدم المؤقت: {request.payload?.username}</p>

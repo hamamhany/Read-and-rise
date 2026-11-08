@@ -20,9 +20,9 @@ import { ANNOUNCEMENTS_LIMIT, MESSAGE_REQUEST_TYPES } from '../../constants';
 import { sanitizeInput, arabicToEnglishNumber, generateId, fetchClassNames, formatSerial, generateNextSerialNumber } from '../../utils/helpers';
 import ReportsReviewSection from './ReportsReviewSection';
 import ReviewVotingSection from './ReviewVotingSection';
-// ✅ جديد
 import ResetRequestsSection from './ResetRequestsSection';
-import SupportMessagesSection from './SupportMessagesSection';
+// ✅ التعديل: استبدل SupportMessagesSection بـ SupportTicketsSection
+import SupportTicketsSection from './SupportTicketsSection';
 import { COUNTRIES } from '../../utils/countries';
 
 const SupervisorPanel = ({ user, onLogout }) => {
@@ -54,7 +54,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
   const [newStudentAge, setNewStudentAge] = useState('');
   const [newStudentPhone, setNewStudentPhone] = useState('');
   const [newStudentClassIds, setNewStudentClassIds] = useState([]);
-  const [newStudentCountry, setNewStudentCountry] = useState(''); // ✅ جديد
+  const [newStudentCountry, setNewStudentCountry] = useState('');
   const [studentLoading, setStudentLoading] = useState(false);
 
   const requestNotificationPermission = async () => {
@@ -271,7 +271,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
   const handleAddStudent = async (e) => {
     e.preventDefault();
     if (newStudentClassIds.length === 0) return toast.error('يرجى اختيار شعبة واحدة على الأقل.');
-    if (!newStudentCountry) return toast.error('يرجى اختيار البلد.'); // ✅ جديد
+    if (!newStudentCountry) return toast.error('يرجى اختيار البلد.');
 
     const sanitizedName = sanitizeInput(newStudentName);
     const sanitizedGender = sanitizeInput(newStudentGender);
@@ -332,7 +332,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
         email, username: newUsername, name: sanitizedName, gender: sanitizedGender,
         age: ageNum, phone: normalizedPhone, classIds: newStudentClassIds, role: 'student',
         serialNumber,
-        country: newStudentCountry, // ✅ جديد
+        country: newStudentCountry,
         isFrozen: false, infoVerified: false, isProfileComplete: false,
         pendingChanges: null, reviewResult: null, reviewExpiry: null,
         warnings: [], createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
@@ -405,11 +405,11 @@ const SupervisorPanel = ({ user, onLogout }) => {
           </button>
         </div>
 
-        {/* ✅ أقسام المشرف — الترتيب كما هو + الإضافات الجديدة */}
         <ReportsReviewSection user={user} />
         <ReviewVotingSection user={user} />
         <ResetRequestsSection user={user} />
-        <SupportMessagesSection />
+        {/* ✅ التعديل: SupportTicketsSection بدلاً من SupportMessagesSection */}
+        <SupportTicketsSection user={user} />
 
         {canPublish && (
           <div className="bg-gray-800/60 p-6 rounded-2xl border border-blue-500/20">
@@ -475,7 +475,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
               <input type="text" inputMode="numeric" placeholder="العمر *" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentAge} onChange={e => setNewStudentAge(arabicToEnglishNumber(e.target.value))} required />
               <input type="text" inputMode="numeric" placeholder="رقم الهاتف * (مع رمز الدولة بدون +)" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentPhone} onChange={e => setNewStudentPhone(arabicToEnglishNumber(e.target.value))} required />
 
-              {/* ✅ جديد — قائمة الدول */}
               <div>
                 <label className="text-xs text-gray-400 mb-1 block">البلد *</label>
                 <select
