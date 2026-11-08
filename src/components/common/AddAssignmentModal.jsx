@@ -132,11 +132,11 @@ export const AddAssignmentModal = ({
         d1.getDate() === d2.getDate();
     };
 
-    const isDisabled = (day) => {
+        const isDisabled = (day) => {
       if (!day) return true;
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      return day <= today;
+      return day < today; // ✅ تم تعديلها لتسمح باختيار تاريخ اليوم
     };
 
     return (

@@ -50,9 +50,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [showAssignmentModal, setShowAssignmentModal] = useState(false);
   const [showLessonModal, setShowLessonModal] = useState(false);
   const [showAssignmentChoice, setShowAssignmentChoice] = useState(false);
-  const [showLessonChoice, setShowLessonChoice] = useState(false);
   const [selectedAssignmentType, setSelectedAssignmentType] = useState(null);
-  const [selectedLessonType, setSelectedLessonType] = useState(null);
   const [showGeneralMessageModal, setShowGeneralMessageModal] = useState(false);
   const [generalMessageSubject, setGeneralMessageSubject] = useState('');
   const [generalMessageText, setGeneralMessageText] = useState('');
@@ -159,8 +157,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
     setNotificationIdsAtOpen([]);
   };
-
-  // ❌ تم حذف handleAddStudent بالكامل — الإضافة الآن من لوحة المشرف فقط
 
   const openWarningModal = (s) => {
     const active = getActiveWarnings(s.warnings || []);
@@ -451,9 +447,8 @@ const TeacherPanel = ({ user, onLogout }) => {
       await updateDoc(doc(db, 'teachers', user.id), {
         lessonTimes: timesWithId, updatedAt: serverTimestamp()
       });
-      toast.success('✅ تم تحديث المواعيد!');
+      toast.success('✅ تم تحديث المواعيد بنجاح!');
       setShowLessonModal(false);
-      setSelectedLessonType(null);
     } catch (err) { toast.error('فشل التحديث: ' + err.message); }
   };
 
@@ -763,16 +758,18 @@ const TeacherPanel = ({ user, onLogout }) => {
           <div className="flex flex-wrap justify-between items-center gap-3">
             <h3 className="text-xl font-semibold text-blue-300"><FaUser className="inline-block me-2" /> إدارة الطلاب</h3>
             <div className="flex flex-wrap gap-2">
-              {/* ❌ تم حذف زر "إضافة طالب" — الصلاحية للمشرف فقط */}
               <button onClick={() => setShowStudentsModal(true)} className="btn-primary bg-purple-600 hover:bg-purple-700 py-2 px-4 text-sm rounded-md text-white"><FaClipboardList className="inline-block me-2" /> عرض الطلبة</button>
               <button onClick={() => setShowPrintModal(true)} className="btn-primary bg-teal-600 hover:bg-teal-700 py-2 px-4 text-sm rounded-md text-white"><FaPrint className="inline-block me-2" /> طباعة الجدول</button>
             </div>
           </div>
         </div>
 
+        {/* ✅ زر إدارة المواعيد المحدث */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700 space-y-4">
           <h3 className="text-xl font-semibold text-purple-200"><FaClock className="inline-block me-2" /> جدولة المواعيد</h3>
-          <button onClick={() => setShowLessonChoice(true)} className="btn-primary bg-gradient-to-r from-indigo-500 to-blue-600 py-3 px-6 rounded-md text-white"><FaClock className="inline-block me-2" /> إدارة المواعيد </button>
+          <button onClick={() => setShowLessonModal(true)} className="btn-primary bg-gradient-to-r from-indigo-500 to-blue-600 py-3 px-6 rounded-md text-white font-bold shadow-lg hover:scale-105 transition-transform">
+            <FaClock className="inline-block me-2" /> إدارة وتعديل المواعيد
+          </button>
         </div>
       </div>
 
@@ -941,10 +938,11 @@ const TeacherPanel = ({ user, onLogout }) => {
       )}
 
       <ChoiceModal isOpen={showAssignmentChoice} onClose={() => { setShowAssignmentChoice(false); setSelectedAssignmentType(null); }} onSelect={(type) => { setSelectedAssignmentType(type); setShowAssignmentChoice(false); setShowAssignmentModal(true); }} title="نوع الواجب" options={[{ value: 'now', label: 'نشر فوراً' }, { value: 'schedule', label: 'جدولة' }, { value: 'draft', label: 'حفظ كمسودة' }, { value: 'delay', label: 'نشر بعد وقت' }]} />
-      <ChoiceModal isOpen={showLessonChoice} onClose={() => { setShowLessonChoice(false); setSelectedLessonType(null); }} onSelect={(type) => { setSelectedLessonType(type); setShowLessonChoice(false); setShowLessonModal(true); }} title="إدارة المواعيد" options={[{ value: 'manage', label: 'إضافة / تعديل المواعيد ' }]} />
 
       <AddAssignmentModal isOpen={showAssignmentModal} onClose={() => { setShowAssignmentModal(false); setSelectedAssignmentType(null); }} onSubmit={saveHomeworkFromModal} classesList={classes} initialMode={selectedAssignmentType || 'now'} />
-      <AddLessonModal isOpen={showLessonModal} onClose={() => { setShowLessonModal(false); setSelectedLessonType(null); }} onSubmit={saveLessonTimesFromModal} initialTimes={lessonTimes} classesList={classes} />
+      
+      {/* ✅ تم تمرير initialTimes هنا لفتح التعديل مباشرة */}
+      <AddLessonModal isOpen={showLessonModal} onClose={() => setShowLessonModal(false)} onSubmit={saveLessonTimesFromModal} initialTimes={lessonTimes} classesList={classes} />
     </div>
   );
 };

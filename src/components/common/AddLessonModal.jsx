@@ -1,7 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { FaClock, FaSave, FaTrash, FaPlus } from 'react-icons/fa';
-import { safeDate, generateId } from '../../utils/helpers';
+import { generateId } from '../../utils/helpers';
+
+// دالة لجلب التاريخ المحلي بدقة لتفادي مشاكل التوقيت العالمي
+const getLocalDateStr = (dateVal) => {
+  if (!dateVal) return '';
+  const d = new Date(dateVal);
+  if (isNaN(d.getTime())) return '';
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 export const AddLessonModal = ({ isOpen, onClose, onSubmit, initialTimes = [], classesList = [] }) => {
   const [schedules, setSchedules] = useState([]);
@@ -31,7 +42,7 @@ export const AddLessonModal = ({ isOpen, onClose, onSubmit, initialTimes = [], c
   };
 
   const removeSchedule = (id) => {
-    if (schedules.length === 1) return toast.error('يجب إضافة موعد واحد على الأقل');
+    if (schedules.length === 1) return toast.error('يجب إضافة موعد واحد على الأقل، أو قم بإلغاء العملية');
     setSchedules(schedules.filter(s => s.id !== id));
   };
 
@@ -64,14 +75,16 @@ export const AddLessonModal = ({ isOpen, onClose, onSubmit, initialTimes = [], c
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
       <div className="bg-gray-900 p-6 rounded-3xl w-[95%] max-w-4xl max-h-[90vh] overflow-y-auto border border-gray-700">
-        <h3 className="text-2xl font-bold text-white mb-4"><FaClock className="inline-block me-2" /> جدولة المواعيد</h3>
+        <h3 className="text-2xl font-bold text-white mb-4"><FaClock className="inline-block me-2" /> إدارة وتعديل المواعيد</h3>
         
         <form onSubmit={handleSubmit} className="space-y-4">
           {schedules.map((s, idx) => (
             <div key={s.id} className="bg-gray-800/50 p-4 rounded-xl border border-gray-700 relative space-y-3">
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between items-center border-b border-gray-600 pb-2 mb-2">
                 <span className="text-purple-300 font-bold">الموعد #{idx + 1}</span>
-                <button type="button" onClick={() => removeSchedule(s.id)} className="text-red-400 hover:text-red-300"><FaTrash /></button>
+                <button type="button" onClick={() => removeSchedule(s.id)} className="text-red-400 hover:text-white hover:bg-red-500/20 px-3 py-1 rounded-md transition flex items-center gap-1 text-sm">
+                  <FaTrash /> حذف هذا الموعد
+                </button>
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -84,7 +97,7 @@ export const AddLessonModal = ({ isOpen, onClose, onSubmit, initialTimes = [], c
                 <div>
                   <label className="text-xs text-gray-400">نوع الموعد</label>
                   <select value={s.type} onChange={e => updateSchedule(s.id, { type: e.target.value })} className="w-full bg-gray-700 text-white p-2 rounded-md">
-                    <option value="once">مرة واحدة</option>
+                    <option value="once">مرة واحدة (تاريخ محدد)</option>
                     <option value="recurring">متكرر أسبوعياً</option>
                     <option value="monthly">متكرر شهرياً</option>
                   </select>
@@ -106,8 +119,18 @@ export const AddLessonModal = ({ isOpen, onClose, onSubmit, initialTimes = [], c
 
               {s.type === 'once' && (
                 <div>
-                  <label className="text-xs text-gray-400">التاريخ</label>
-                  <input type="date" value={safeDate(s.date).toISOString().split('T')[0]} onChange={e => updateSchedule(s.id, { date: new Date(e.target.value) })} className="w-full bg-gray-700 text-white p-2 rounded-md" />
+                  <label className="text-xs text-gray-400">التاريخ (يمكنك اختيار أي يوم في الشهر)</label>
+                  <input 
+                    type="date" 
+                    value={getLocalDateStr(s.date)} 
+                    onChange={e => {
+                      const val = e.target.value;
+                      if (!val) return;
+                      const [y, m, d] = val.split('-').map(Number);
+                      updateSchedule(s.id, { date: new Date(y, m - 1, d, 12, 0, 0) }); // منتصف النهار لتفادي مشاكل التوقيت
+                    }} 
+                    className="w-full bg-gray-700 text-white p-2 rounded-md" 
+                  />
                 </div>
               )}
 
@@ -133,11 +156,11 @@ export const AddLessonModal = ({ isOpen, onClose, onSubmit, initialTimes = [], c
             </div>
           ))}
           
-          <button type="button" onClick={addSchedule} className="text-blue-400 hover:text-blue-300 text-sm flex items-center gap-1"><FaPlus /> إضافة موعد آخر</button>
+          <button type="button" onClick={addSchedule} className="text-blue-400 hover:text-blue-300 text-sm flex items-center gap-1 font-bold"><FaPlus /> إضافة موعد إضافي</button>
           
           <div className="flex justify-end gap-3 pt-4 border-t border-gray-700">
-            <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-600 rounded-md text-white">إلغاء</button>
-            <button type="submit" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-white"><FaSave /> حفظ</button>
+            <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-md text-white transition">إلغاء</button>
+            <button type="submit" className="px-6 py-2 bg-green-600 hover:bg-green-700 rounded-md text-white font-bold transition flex items-center gap-2"><FaSave /> حفظ التعديلات</button>
           </div>
         </form>
       </div>
