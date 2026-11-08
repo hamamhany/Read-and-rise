@@ -5,6 +5,8 @@ export const ANNOUNCEMENTS_LIMIT = 6;
 export const MESSAGE_REQUESTS_COLLECTION = 'messageRequests';
 export const REVIEW_REQUESTS_COLLECTION = 'reviewRequests';
 export const BLACKLIST_COLLECTION = 'blacklist';
+export const SUPPORT_MESSAGES_COLLECTION = 'supportMessages';
+export const PASSWORD_RESET_REQUESTS_COLLECTION = 'passwordResetRequests';
 
 export const MESSAGE_REQUEST_RETENTION_MS = 48 * 60 * 60 * 1000;
 
@@ -12,13 +14,10 @@ export const WARNING_RETENTION_DAYS = 120;
 export const WARNING_RETENTION_MS = WARNING_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 export const MAX_WARNINGS = 3;
 
-// =========================================================
-// ✅ نظام الغياب التلقائي (جديد)
-// =========================================================
-export const ABSENCE_WARNING_THRESHOLD = 10;   // 10 حصص → إنذار
-export const ABSENCE_FREEZE_THRESHOLD = 13;    // 13 حصة → تجميد
-export const ABSENCE_DELETE_DAYS = 7;          // 7 أيام بعد التجميد → حذف
-export const BLACKLIST_DURATION_DAYS = 180;    // 6 أشهر حظر
+export const ABSENCE_WARNING_THRESHOLD = 10;
+export const ABSENCE_FREEZE_THRESHOLD = 13;
+export const ABSENCE_DELETE_DAYS = 7;
+export const BLACKLIST_DURATION_DAYS = 180;
 
 export const MESSAGE_REQUEST_STATUS = {
   PENDING: 'pending',
@@ -37,10 +36,12 @@ export const MESSAGE_REQUEST_TYPES = {
   ACTIVATION: 'activation',
   DATA_UPDATE_APPROVAL: 'data_update_approval',
   DATA_UPDATE_REJECTION: 'data_update_rejection',
-  // ✅ جديد
   ABSENCE_WARNING: 'absence_warning',
   AUTO_FREEZE: 'auto_freeze',
-  AUTO_DELETE: 'auto_delete'
+  AUTO_DELETE: 'auto_delete',
+  // ✅ جديد — طلبات إعادة تعيين بيانات الدخول
+  PASSWORD_RESET_APPROVAL: 'password_reset_approval',
+  PASSWORD_RESET_REJECTION: 'password_reset_rejection'
 };
 
 export const MESSAGE_REQUEST_TYPE_LABELS = {
@@ -54,10 +55,11 @@ export const MESSAGE_REQUEST_TYPE_LABELS = {
   activation: 'تفعيل حساب',
   data_update_approval: 'موافقة على تعديل بيانات',
   data_update_rejection: 'رفض تعديل بيانات',
-  // ✅ جديد
   absence_warning: 'إنذار غياب متكرر',
   auto_freeze: 'تجميد تلقائي — غياب',
-  auto_delete: 'حذف تلقائي — غياب'
+  auto_delete: 'حذف تلقائي — غياب',
+  password_reset_approval: 'موافقة على إعادة تعيين بيانات الدخول',
+  password_reset_rejection: 'رفض طلب إعادة تعيين بيانات الدخول'
 };
 
 export const REPORT_STATUS = {
@@ -79,3 +81,14 @@ export const REVIEW_VOTE_OPTIONS = {
 };
 
 export const REVIEW_REQUIRED_VOTES = 4;
+
+export const PASSWORD_RESET_STATUS = {
+  PENDING: 'pending',
+  APPROVED: 'approved',
+  REJECTED: 'rejected'
+};
+
+export const SUPPORT_MESSAGE_STATUS = {
+  NEW: 'new',
+  READ: 'read'
+};

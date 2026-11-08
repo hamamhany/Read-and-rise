@@ -4,9 +4,9 @@ import { FaUnlockAlt } from 'react-icons/fa';
 import { auth } from '../../services/firebaseAuth';
 import { db } from '../../firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { doc, getDoc, updateDoc, query, collection, where, getDocs } from 'firebase/firestore';
+import { doc, updateDoc, query, collection, where, getDocs } from 'firebase/firestore';
 import { sanitizeInput, arabicToEnglishNumber } from '../../utils/helpers';
-import { sendWhatsAppToTeacher } from '../../utils/whatsapp';
+import { createPasswordResetRequest } from '../../services/passwordReset';
 
 const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [username, setUsername] = useState('');
@@ -20,6 +20,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [resetGender, setResetGender] = useState('');
   const [resetAge, setResetAge] = useState('');
   const [resetPhone, setResetPhone] = useState('');
+  const [resetSerial, setResetSerial] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
   const [resetError, setResetError] = useState('');
 
@@ -162,14 +163,15 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     }
   };
 
-  const handleResetRequest = () => {
+  const handleResetRequest = async () => {
     setResetError('');
     const name = sanitizeInput(resetName.trim());
     const gender = sanitizeInput(resetGender.trim());
     const age = sanitizeInput(arabicToEnglishNumber(resetAge.trim()));
     const rawPhone = sanitizeInput(arabicToEnglishNumber(resetPhone.trim()));
+    const serial = sanitizeInput(arabicToEnglishNumber(resetSerial.trim()));
 
-    if (!name || !gender || !age || !rawPhone) {
+    if (!name || !gender || !age || !rawPhone || !serial) {
       setResetError('جميع الحقول مطلوبة.');
       return;
     }
@@ -191,27 +193,37 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
       return;
     }
 
-    const message =
-      `الموضوع: طلب إعادة تعيين بيانات تسجيل الدخول - ${name}\n\n` +
-      `إلى إدارة الأكاديمية الموقرة،\n` +
-      `تحية طيبة وبعد،،\n` +
-      `أود إبلاغكم بأنني أواجه مشكلة في الوصول إلى حسابي الشخصي في نظام الأكاديمية نتيجة [نسيان كلمة المرور / نسيان اسم المستخدم].\n` +
-      `أرجو منكم التكرم بمساعدتي في استعادة الوصول إلى الحساب، وفيما يلي بياناتي للتحقق:\n` +
-      `الاسم الكامل: ${name}\n` +
-      `رقم الهاتف : ${phone}\n` +
-      `الجنس : ${gender}\n` +
-      `العمر : ${age}\n` +
-      `أقر بأنني صاحب هذا الحساب، وأنتظر تزويدي بالتعليمات اللازمة لإعادة التعيين. شاكراً لكم تعاونكم.\n\n` +
-      `مع التحية،\n` +
-      `${name}`;
+    if (serial.length < 4) {
+      setResetError('الرقم التسلسلي غير صالح (على الأقل 4 أرقام).');
+      return;
+    }
 
-    sendWhatsAppToTeacher(message);
-    toast.success('تم تجهيز الرسالة — يرجى الضغط على "إرسال" داخل واتساب.');
-    setShowResetModal(false);
-    setResetName('');
-    setResetGender('');
-    setResetAge('');
-    setResetPhone('');
+    setResetLoading(true);
+    try {
+      await createPasswordResetRequest({
+        submittedName: name,
+        submittedGender: gender,
+        submittedAge: ageNum,
+        submittedPhone: phone,
+        submittedSerialNumber: serial
+      });
+
+      toast.success(
+        '✅ تم إرسال طلبك. سيتم إرسال تفاصيل إعادة تعيين بيانات الدخول عبر واتساب إلى الرقم المسجل بالرقم التسلسلي في حال الموافقة على الطلب.',
+        { duration: 9000 }
+      );
+      setShowResetModal(false);
+      setResetName('');
+      setResetGender('');
+      setResetAge('');
+      setResetPhone('');
+      setResetSerial('');
+    } catch (err) {
+      console.error(err);
+      setResetError('فشل إرسال الطلب: ' + (err.message || 'خطأ غير معروف'));
+    } finally {
+      setResetLoading(false);
+    }
   };
 
   return (
@@ -307,13 +319,13 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowResetModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-purple-500/30 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-2xl font-bold text-center text-purple-300 mb-2">
-              <FaUnlockAlt className="inline-block me-2" /> استعادة كلمة المرور
+              <FaUnlockAlt className="inline-block me-2" /> استعادة بيانات الدخول
             </h3>
             <p className="text-gray-300 text-sm text-center mb-4">
-              يرجى إدخال بياناتك للتحقق من هويتك، وسيتم تجهيز رسالة إعادة التعيين لإرسالها إلى المعلم.
+              يرجى إدخال بياناتك للتحقق. سيتم إرسال طلبك إلى المشرفين لمراجعته، وفي حال الموافقة ستصلك تفاصيل الدخول الجديدة عبر واتساب.
             </p>
 
-            <div className="space-y-4">
+            <div className="space-y-3">
               <div>
                 <label className="block text-sm text-gray-300 mb-1">الاسم الكامل <span className="text-red-400">*</span></label>
                 <input type="text" className="w-full bg-gray-800 text-right p-2 border border-gray-600 rounded-md text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition" value={resetName} onChange={(e) => setResetName(e.target.value)} required />
@@ -326,15 +338,26 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
                   <option value="أنثى">أنثى</option>
                 </select>
               </div>
-              <div>
-                <label className="block text-sm text-gray-300 mb-1">العمر <span className="text-red-400">*</span></label>
-                <input type="text" inputMode="numeric" className="w-full bg-gray-800 text-right p-2 border border-gray-600 rounded-md text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition" value={resetAge} onChange={(e) => setResetAge(e.target.value)} required />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-sm text-gray-300 mb-1">العمر <span className="text-red-400">*</span></label>
+                  <input type="text" inputMode="numeric" className="w-full bg-gray-800 text-right p-2 border border-gray-600 rounded-md text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition" value={resetAge} onChange={(e) => setResetAge(e.target.value)} required />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-300 mb-1">الرقم التسلسلي <span className="text-red-400">*</span></label>
+                  <input type="text" inputMode="numeric" placeholder="مثال: 000123" className="w-full bg-gray-800 text-right p-2 border border-gray-600 rounded-md text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition" value={resetSerial} onChange={(e) => setResetSerial(e.target.value)} required />
+                </div>
               </div>
               <div>
-                <label className="block text-sm text-gray-300 mb-1">رقم الهاتف (مع رمز الدولة بدون +) <span className="text-red-400">*</span></label>
+                <label className="block text-sm text-gray-300 mb-1">رقم الهاتف (للتواصل) <span className="text-red-400">*</span></label>
                 <input type="text" inputMode="numeric" placeholder="مثال: 9627XXXXXXXX" className="w-full bg-gray-800 text-right p-2 border border-gray-600 rounded-md text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition" value={resetPhone} onChange={(e) => setResetPhone(e.target.value)} required />
                 <p className="text-[10px] text-gray-500 mt-1">أدخل الرقم مع رمز الدولة، بدون + وبدون صفر بادئ</p>
               </div>
+
+              <div className="bg-blue-500/10 p-3 rounded-xl border border-blue-500/20 text-xs text-blue-200 leading-relaxed">
+                ℹ️ بعد الضغط على "تدقيق"، سيتم إرسال طلبك إلى المشرفين لمراجعته. في حال الموافقة، ستصلك بيانات الدخول الجديدة عبر واتساب على الرقم المسجل في النظام (وليس بالضرورة الرقم المكتوب هنا).
+              </div>
+
               {resetError && (
                 <p className="text-red-400 text-sm text-center bg-red-500/10 py-2 px-3 rounded-lg border border-red-500/20 whitespace-pre-line">{resetError}</p>
               )}
@@ -342,7 +365,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowResetModal(false)} className="flex-1 py-2 px-4 bg-gray-700 hover:bg-gray-600 rounded-xl text-white text-sm transition">إلغاء</button>
                 <button type="button" onClick={handleResetRequest} disabled={resetLoading} className="flex-1 py-2 px-4 bg-purple-600 hover:bg-purple-700 rounded-xl text-white text-sm font-semibold transition disabled:opacity-60">
-                  {resetLoading ? 'جاري التجهيز...' : 'تجهيز الرسالة'}
+                  {resetLoading ? 'جاري الإرسال...' : 'تدقيق'}
                 </button>
               </div>
             </div>

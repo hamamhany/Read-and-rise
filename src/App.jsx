@@ -15,6 +15,7 @@ import SupervisorPanel from './components/panels/SupervisorPanel';
 import TeacherPanel from './components/panels/TeacherPanel';
 import StudentPanel from './components/panels/StudentPanel';
 import SystemManagerPanel from './components/panels/SystemManagerPanel';
+import SupportButton from './components/common/SupportButton'; // ✅ جديد
 
 const App = () => {
   const [user, setUser] = useState(null);
@@ -143,7 +144,8 @@ const App = () => {
           phone: profile.phone,
           classIds: [],
           isProfileComplete: true,
-          canPublishAnnouncements: profile.canPublishAnnouncements !== false
+          canPublishAnnouncements: profile.canPublishAnnouncements !== false,
+          serialNumber: profile.serialNumber || ''
         });
         setFrozenUser(null); setPendingUserForComplete(null); setLoading(false);
         return;
@@ -173,7 +175,8 @@ const App = () => {
         age: profile.age,
         phone: profile.phone,
         classIds: profile.classIds || [],
-        isProfileComplete: true
+        isProfileComplete: true,
+        serialNumber: profile.serialNumber || ''
       });
       setFrozenUser(null); setPendingUserForComplete(null); setLoading(false);
     } catch (err) {
@@ -203,18 +206,39 @@ const App = () => {
     return <Login onLogin={handleLogin} onFrozen={handleFrozen} onCompleteProfile={handleCompleteProfile} />;
   }
 
-  // ✅ التوجيه الصحيح: كل مستخدم يرى لوحته فقط
   if (user.role === 'system_manager') {
-    return <SystemManagerPanel user={user} onLogout={handleLogout} />;
+    return (
+      <>
+        <SystemManagerPanel user={user} onLogout={handleLogout} />
+        <SupportButton user={user} />
+      </>
+    );
   }
 
   if (user.role === 'supervisor') {
-    return <SupervisorPanel user={user} onLogout={handleLogout} />;
+    return (
+      <>
+        <SupervisorPanel user={user} onLogout={handleLogout} />
+        <SupportButton user={user} />
+      </>
+    );
   }
 
-  return user.role === 'teacher'
-    ? <TeacherPanel user={user} onLogout={handleLogout} />
-    : <StudentPanel user={user} onLogout={handleLogout} />;
+  if (user.role === 'teacher') {
+    return (
+      <>
+        <TeacherPanel user={user} onLogout={handleLogout} />
+        <SupportButton user={user} />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <StudentPanel user={user} onLogout={handleLogout} />
+      <SupportButton user={user} />
+    </>
+  );
 };
 
 const Root = () => (

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import toast from 'react-hot-toast';
 import { auth } from '../../services/firebaseAuth';
 import { db } from '../../firebase';
-import { updatePassword, signOut } from 'firebase/auth';
+import { updatePassword, updateEmail, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc, query, collection, where, getDocs, serverTimestamp } from 'firebase/firestore';
 import { sanitizeInput } from '../../utils/helpers';
 
@@ -62,14 +62,33 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
         throw new Error('المستخدم غير مسجل الدخول');
       }
 
+      // 1. تحديث كلمة المرور
       await updatePassword(currentUser, newPassword);
 
+      // 2. ✅ جديد — تحديث الإيميل في Firebase Auth
+      // (ضروري ليستطيع المستخدم الدخول باسم المستخدم الجديد)
+      try {
+        await updateEmail(currentUser, email);
+      } catch (emailErr) {
+        if (emailErr.code === 'auth/requires-recent-login') {
+          setError('لأسباب أمنية، يجب تسجيل الخروج والدخول مرة أخرى لتحديث البريد. سيتم تسجيل خروجك الآن.');
+          setTimeout(async () => {
+            await signOut(auth);
+            onCancel();
+          }, 2500);
+          return;
+        }
+        throw emailErr;
+      }
+
+      // 3. تحديث الملف الشخصي
       await setDoc(doc(db, 'profiles', user.id), {
         username: cleanUsername,
         email: email,
         uid: user.uid,
         isProfileComplete: true,
         infoVerified: true,
+        tempPassword: null,
         updatedAt: serverTimestamp()
       }, { merge: true });
 

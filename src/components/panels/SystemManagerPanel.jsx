@@ -26,7 +26,9 @@ import {
   sendWarningMessage, sendNoticeMessage, sendActivationMessage, sendFreezeMessage,
   sendDeleteMessage, sendResetPasswordMessage, sendDataUpdateApprovalMessage,
   sendDataUpdateRejectionMessage, sendGeneralMessageToStudent, sendReportMessage,
-  sendAbsenceWarningMessage, sendAutoFreezeMessage, sendAutoDeleteMessage
+  sendAbsenceWarningMessage, sendAutoFreezeMessage, sendAutoDeleteMessage,
+  // ✅ جديد — رسائل استعادة بيانات الدخول
+  sendPasswordResetApprovalMessage, sendPasswordResetRejectionMessage
 } from '../../utils/whatsapp';
 import SystemManagerReviewsSection from './SystemManagerReviewsSection';
 import SupervisorsManagerModal from './SupervisorsManagerModal';
@@ -270,7 +272,8 @@ const SystemManagerPanel = ({ user, onLogout }) => {
         classes: request.targetClass ? request.targetClass.split(', ').map(n => ({ name: n })) : [],
         age: request.payload?.age,
         gender: request.payload?.gender,
-        username: request.payload?.username || ''
+        username: request.payload?.username || '',
+        serialNumber: request.payload?.serialNumber || '' // ✅ جديد — مهم للرسائل
       };
 
       let success = true;
@@ -285,10 +288,16 @@ const SystemManagerPanel = ({ user, onLogout }) => {
         case 'activation': success = sendActivationMessage(studentObj, request.payload.username, request.payload.password); break;
         case 'data_update_approval': success = sendDataUpdateApprovalMessage(studentObj, {}); break;
         case 'data_update_rejection': success = sendDataUpdateRejectionMessage(studentObj, request.payload?.reason); break;
-        // ✅ الأنواع الجديدة
         case 'absence_warning': success = sendAbsenceWarningMessage(studentObj, request.payload?.absenceCount || 10); break;
         case 'auto_freeze': success = sendAutoFreezeMessage(studentObj, request.payload?.absenceCount || 13); break;
         case 'auto_delete': success = sendAutoDeleteMessage(studentObj); break;
+        // ✅ جديد — استعادة بيانات الدخول
+        case 'password_reset_approval':
+          success = sendPasswordResetApprovalMessage(studentObj, request.payload?.username, request.payload?.password);
+          break;
+        case 'password_reset_rejection':
+          success = sendPasswordResetRejectionMessage(studentObj);
+          break;
         default:
           toast.error('نوع طلب غير معروف.');
           return;
@@ -533,6 +542,17 @@ const SystemManagerPanel = ({ user, onLogout }) => {
                         )}
                         {request.type === 'reset_password' && (
                           <p className="text-xs text-indigo-200 mt-1">اسم المستخدم: {request.payload?.username}</p>
+                        )}
+                        {/* ✅ جديد — استعادة بيانات الدخول */}
+                        {request.type === 'password_reset_approval' && (
+                          <div className="mt-1 text-xs text-cyan-200">
+                            <p>اسم المستخدم المؤقت: {request.payload?.username}</p>
+                            {request.payload?.serialNumber && <p>الرقم التسلسلي: {request.payload.serialNumber}</p>}
+                            <p className="text-gray-400">📞 سيُرسل إلى الرقم المسجل في الملف الشخصي</p>
+                          </div>
+                        )}
+                        {request.type === 'password_reset_rejection' && (
+                          <p className="text-xs text-red-200 mt-1">📞 سيُرسل إلى الرقم المكتوب في الطلب</p>
                         )}
                         {request.type === 'data_update_rejection' && request.payload?.reason && (
                           <p className="text-xs text-red-200 mt-1">سبب الرفض: {request.payload.reason}</p>

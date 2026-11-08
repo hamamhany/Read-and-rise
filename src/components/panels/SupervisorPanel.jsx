@@ -1,13 +1,13 @@
 // src/components/panels/SupervisorPanel.jsx
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { 
-  FaBell, FaSignOutAlt, FaBullhorn, FaPlus, FaEdit, FaTrashAlt, 
+import {
+  FaBell, FaSignOutAlt, FaBullhorn, FaPlus, FaEdit, FaTrashAlt,
   FaSpinner, FaUpload, FaClock, FaUsers
 } from 'react-icons/fa';
 import { db, secondaryAuth, messaging } from '../../firebase';
-import { 
-  collection, query, orderBy, onSnapshot, doc, updateDoc, 
+import {
+  collection, query, orderBy, onSnapshot, doc, updateDoc,
   serverTimestamp, writeBatch, getDocs, where, setDoc, arrayUnion,
   runTransaction
 } from 'firebase/firestore';
@@ -17,10 +17,13 @@ import { createGeneralAnnouncement, updateAnnouncement, deleteAnnouncement } fro
 import { sendNotificationToAllStudents, sendNotificationToTeacher } from '../../utils/notifications';
 import { createMessageRequest } from '../../services/messageRequests';
 import { ANNOUNCEMENTS_LIMIT, MESSAGE_REQUEST_TYPES } from '../../constants';
-// ✅ التعديل 1: إضافة formatSerial و generateNextSerialNumber
 import { sanitizeInput, arabicToEnglishNumber, generateId, fetchClassNames, formatSerial, generateNextSerialNumber } from '../../utils/helpers';
 import ReportsReviewSection from './ReportsReviewSection';
 import ReviewVotingSection from './ReviewVotingSection';
+// ✅ جديد
+import ResetRequestsSection from './ResetRequestsSection';
+import SupportMessagesSection from './SupportMessagesSection';
+import { COUNTRIES } from '../../utils/countries';
 
 const SupervisorPanel = ({ user, onLogout }) => {
   const [announcements, setAnnouncements] = useState([]);
@@ -51,6 +54,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
   const [newStudentAge, setNewStudentAge] = useState('');
   const [newStudentPhone, setNewStudentPhone] = useState('');
   const [newStudentClassIds, setNewStudentClassIds] = useState([]);
+  const [newStudentCountry, setNewStudentCountry] = useState(''); // ✅ جديد
   const [studentLoading, setStudentLoading] = useState(false);
 
   const requestNotificationPermission = async () => {
@@ -267,12 +271,13 @@ const SupervisorPanel = ({ user, onLogout }) => {
   const handleAddStudent = async (e) => {
     e.preventDefault();
     if (newStudentClassIds.length === 0) return toast.error('يرجى اختيار شعبة واحدة على الأقل.');
-    
+    if (!newStudentCountry) return toast.error('يرجى اختيار البلد.'); // ✅ جديد
+
     const sanitizedName = sanitizeInput(newStudentName);
     const sanitizedGender = sanitizeInput(newStudentGender);
     const sanitizedAge = sanitizeInput(arabicToEnglishNumber(newStudentAge));
     const sanitizedPhone = sanitizeInput(arabicToEnglishNumber(newStudentPhone));
-    
+
     if (!sanitizedName || !sanitizedGender || !sanitizedAge || !sanitizedPhone) {
       return toast.error('جميع الحقول مطلوبة.');
     }
@@ -289,8 +294,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
     setStudentLoading(true);
     try {
       const startNumber = await generateNextUsernameNumber();
-      
-      // ✅ التعديل 2: توليد الرقم التسلسلي هنا
       const nextSerial = await generateNextSerialNumber();
       const serialNumber = formatSerial(nextSerial);
 
@@ -328,7 +331,8 @@ const SupervisorPanel = ({ user, onLogout }) => {
       await setDoc(doc(db, 'profiles', newId), {
         email, username: newUsername, name: sanitizedName, gender: sanitizedGender,
         age: ageNum, phone: normalizedPhone, classIds: newStudentClassIds, role: 'student',
-        serialNumber, // ✅ التعديل 3: حفظ الرقم التسلسلي في الملف الشخصي
+        serialNumber,
+        country: newStudentCountry, // ✅ جديد
         isFrozen: false, infoVerified: false, isProfileComplete: false,
         pendingChanges: null, reviewResult: null, reviewExpiry: null,
         warnings: [], createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
@@ -337,7 +341,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
 
       const classMap = await fetchClassNames(newStudentClassIds);
       const classNames = newStudentClassIds.map(id => classMap[id] || null).filter(Boolean);
-      
+
       await createMessageRequest({
         type: MESSAGE_REQUEST_TYPES.ACTIVATION,
         targetType: 'student',
@@ -347,12 +351,13 @@ const SupervisorPanel = ({ user, onLogout }) => {
         targetClass: classNames.join(', ') || 'غير محدد',
         requestedBy: user.id,
         requestedByName: user.name || user.username || 'مشرف',
-        payload: { username: newUsername, password: tempPassword, age: ageNum, gender: sanitizedGender, serialNumber } // ✅ التعديل 4: إرسال الرقم التسلسلي مع رسالة الواتساب
+        payload: { username: newUsername, password: tempPassword, age: ageNum, gender: sanitizedGender, serialNumber }
       });
 
       toast.success(`✅ تم إنشاء حساب الطالب بنجاح باسم المستخدم: ${newUsername} — الرقم التسلسلي: ${serialNumber}`);
       setNewStudentName(''); setNewStudentGender(''); setNewStudentAge('');
-      setNewStudentPhone(''); setNewStudentClassIds([]); setShowAddStudentModal(false);
+      setNewStudentPhone(''); setNewStudentClassIds([]); setNewStudentCountry('');
+      setShowAddStudentModal(false);
     } catch (err) {
       toast.error('فشل إضافة الطالب: ' + (err.message || 'خطأ غير معروف'));
     } finally {
@@ -392,16 +397,19 @@ const SupervisorPanel = ({ user, onLogout }) => {
             </h3>
             <p className="text-sm text-gray-400 mt-1">يمكنك إضافة حسابات الطلاب الجدد من هنا.</p>
           </div>
-          <button 
-            onClick={() => setShowAddStudentModal(true)} 
+          <button
+            onClick={() => setShowAddStudentModal(true)}
             className="btn-primary bg-blue-600 hover:bg-blue-700 py-2 px-6 rounded-md text-white font-bold"
           >
             <FaPlus className="inline-block me-2" /> إضافة طالب جديد
           </button>
         </div>
 
+        {/* ✅ أقسام المشرف — الترتيب كما هو + الإضافات الجديدة */}
         <ReportsReviewSection user={user} />
         <ReviewVotingSection user={user} />
+        <ResetRequestsSection user={user} />
+        <SupportMessagesSection />
 
         {canPublish && (
           <div className="bg-gray-800/60 p-6 rounded-2xl border border-blue-500/20">
@@ -455,7 +463,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
 
       {showAddStudentModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowAddStudentModal(false)}>
-          <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-blue-500/30" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-blue-500/30 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-xl font-semibold text-blue-300 mb-4"><FaPlus className="inline-block me-2" /> إضافة طالب جديد</h3>
             <form onSubmit={handleAddStudent} className="space-y-4">
               <input type="text" placeholder="الاسم الكامل *" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentName} onChange={e => setNewStudentName(e.target.value)} required />
@@ -466,6 +474,23 @@ const SupervisorPanel = ({ user, onLogout }) => {
               </select>
               <input type="text" inputMode="numeric" placeholder="العمر *" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentAge} onChange={e => setNewStudentAge(arabicToEnglishNumber(e.target.value))} required />
               <input type="text" inputMode="numeric" placeholder="رقم الهاتف * (مع رمز الدولة بدون +)" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentPhone} onChange={e => setNewStudentPhone(arabicToEnglishNumber(e.target.value))} required />
+
+              {/* ✅ جديد — قائمة الدول */}
+              <div>
+                <label className="text-xs text-gray-400 mb-1 block">البلد *</label>
+                <select
+                  className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white"
+                  value={newStudentCountry}
+                  onChange={e => setNewStudentCountry(e.target.value)}
+                  required
+                >
+                  <option value="">اختر البلد</option>
+                  {COUNTRIES.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+
               <div>
                 <label className="text-xs text-gray-400 mb-1 block">الشعب الدراسية * (اضغط Ctrl لاختيار عدة شعب)</label>
                 <select multiple className="bg-gray-800 w-full h-24 text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentClassIds} onChange={(e) => setNewStudentClassIds(Array.from(e.target.selectedOptions).map(o => o.value))} required>
