@@ -1,3 +1,4 @@
+// src/components/panels/SupervisorPanel.jsx
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { 
@@ -16,6 +17,7 @@ import { createGeneralAnnouncement, updateAnnouncement, deleteAnnouncement } fro
 import { sendNotificationToAllStudents, sendNotificationToTeacher } from '../../utils/notifications';
 import { createMessageRequest } from '../../services/messageRequests';
 import { ANNOUNCEMENTS_LIMIT, MESSAGE_REQUEST_TYPES } from '../../constants';
+// ✅ التعديل 1: إضافة formatSerial و generateNextSerialNumber
 import { sanitizeInput, arabicToEnglishNumber, generateId, fetchClassNames, formatSerial, generateNextSerialNumber } from '../../utils/helpers';
 import ReportsReviewSection from './ReportsReviewSection';
 import ReviewVotingSection from './ReviewVotingSection';
@@ -287,6 +289,11 @@ const SupervisorPanel = ({ user, onLogout }) => {
     setStudentLoading(true);
     try {
       const startNumber = await generateNextUsernameNumber();
+      
+      // ✅ التعديل 2: توليد الرقم التسلسلي هنا
+      const nextSerial = await generateNextSerialNumber();
+      const serialNumber = formatSerial(nextSerial);
+
       let currentNum = startNumber;
       let newUsername = `knight${currentNum}`;
       let tempPassword = Math.floor(Math.random() * 1000000000).toString().padStart(9, '0');
@@ -321,6 +328,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
       await setDoc(doc(db, 'profiles', newId), {
         email, username: newUsername, name: sanitizedName, gender: sanitizedGender,
         age: ageNum, phone: normalizedPhone, classIds: newStudentClassIds, role: 'student',
+        serialNumber, // ✅ التعديل 3: حفظ الرقم التسلسلي في الملف الشخصي
         isFrozen: false, infoVerified: false, isProfileComplete: false,
         pendingChanges: null, reviewResult: null, reviewExpiry: null,
         warnings: [], createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
@@ -339,10 +347,10 @@ const SupervisorPanel = ({ user, onLogout }) => {
         targetClass: classNames.join(', ') || 'غير محدد',
         requestedBy: user.id,
         requestedByName: user.name || user.username || 'مشرف',
-        payload: { username: newUsername, password: tempPassword, age: ageNum, gender: sanitizedGender }
+        payload: { username: newUsername, password: tempPassword, age: ageNum, gender: sanitizedGender, serialNumber } // ✅ التعديل 4: إرسال الرقم التسلسلي مع رسالة الواتساب
       });
 
-      toast.success(`✅ تم إنشاء حساب الطالب بنجاح باسم المستخدم: ${newUsername}`);
+      toast.success(`✅ تم إنشاء حساب الطالب بنجاح باسم المستخدم: ${newUsername} — الرقم التسلسلي: ${serialNumber}`);
       setNewStudentName(''); setNewStudentGender(''); setNewStudentAge('');
       setNewStudentPhone(''); setNewStudentClassIds([]); setShowAddStudentModal(false);
     } catch (err) {

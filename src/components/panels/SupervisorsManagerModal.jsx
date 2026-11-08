@@ -1,3 +1,4 @@
+// src/components/panels/SupervisorPanel.jsx
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { 
