@@ -90,7 +90,7 @@ const SupportButton = ({ user }) => {
             </p>
             <textarea
               className="w-full bg-gray-800 text-right p-3 border border-gray-600 rounded-lg text-white resize-none h-32"
-              placeholder="اكتب استفسارك هنا..."
+              placeholder="اكتب استفسارك هنا بشكل مختصر يمكنك التفصيل لاحقا سيتعمل هذا كعنوان للمشكلة..."
               value={newMessage}
               onChange={e => setNewMessage(e.target.value)}
               maxLength={2000}
