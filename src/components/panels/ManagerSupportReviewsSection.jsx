@@ -1,8 +1,8 @@
+// src/components/panels/ManagerSupportReviewsSection.jsx
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import {
-  FaStar, FaCheckCircle, FaTimesCircle, FaSpinner, FaEye,
-  FaExclamationTriangle, FaUser, FaHeadset
+  FaExclamationTriangle, FaEye, FaUser, FaHeadset
 } from 'react-icons/fa';
 import {
   subscribeToManagerReviewTickets, subscribeToManagerOpenTickets,
@@ -111,19 +111,17 @@ const ManagerSupportReviewsSection = ({ user }) => {
     finally { setProcessing(false); }
   };
 
+  // ✅ إخفاء القسم بالكامل إذا لم يوجد شيء
+  if (reviews.length === 0 && openTickets.length === 0) return null;
+
   return (
     <div className="bg-gray-800/60 p-6 rounded-2xl border border-rose-500/20">
       <h3 className="text-xl font-semibold text-rose-300 flex items-center gap-2 mb-4">
         <FaExclamationTriangle /> مراجعات تقييمات الدعم ({reviews.length})
       </h3>
 
-      {/* ✅ الحالة الفارغة — يظهر دائماً */}
-      {reviews.length === 0 ? (
-        <div className="bg-black/20 p-4 rounded-xl border border-gray-700 text-center">
-          <p className="text-green-300 text-sm">✅ لا توجد تقييمات سلبية بانتظار المراجعة حالياً.</p>
-          <p className="text-gray-500 text-xs mt-1">ستظهر هنا أي شكوى من طالب على خدمة الدعم الفني.</p>
-        </div>
-      ) : (
+      {/* التقييمات السلبية */}
+      {reviews.length > 0 && (
         <div className="space-y-2 max-h-96 overflow-y-auto mb-4">
           {reviews.map(t => {
             const catLabel = SUPPORT_RATING_CATEGORIES.find(c => c.value === t.ratingCategory)?.label || '';
@@ -151,14 +149,12 @@ const ManagerSupportReviewsSection = ({ user }) => {
         </div>
       )}
 
-      {/* ✅ تذاكر المشرفين — يظهر دائماً */}
-      <div className="border-t border-gray-700 pt-4 mt-4">
-        <p className="text-sm text-cyan-200 font-bold mb-2 flex items-center gap-2">
-          <FaHeadset /> تذاكر من المشرفين ({openTickets.length})
-        </p>
-        {openTickets.length === 0 ? (
-          <p className="text-gray-500 text-xs text-center py-2">لا توجد تذاكر دعم من المشرفين حالياً.</p>
-        ) : (
+      {/* تذاكر المشرفين */}
+      {openTickets.length > 0 && (
+        <div className="border-t border-gray-700 pt-4 mt-4">
+          <p className="text-sm text-cyan-200 font-bold mb-2 flex items-center gap-2">
+            <FaHeadset /> تذاكر من المشرفين ({openTickets.length})
+          </p>
           <div className="space-y-2 max-h-48 overflow-y-auto">
             {openTickets.map(t => (
               <div key={t.id} className="p-2 bg-black/30 rounded-lg border border-cyan-500/20 flex justify-between items-center gap-2">
@@ -172,8 +168,8 @@ const ManagerSupportReviewsSection = ({ user }) => {
               </div>
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {openChatId && (
         <SupportChat user={user} ticketId={openChatId} viewerMode="manager" onClose={() => setOpenChatId(null)} />

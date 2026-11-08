@@ -1,18 +1,41 @@
 import React, { useState, useEffect } from 'react';
-import toast from 'react-hot-toast';
 import { FaHeadset } from 'react-icons/fa';
-import { createSupportTicket, getStudentOpenTicket } from '../../services/support';
+import { createSupportTicket, getStudentOpenTicket, markTicketAsRead, dismissClosedBubble } from '../../services/support';
 import { sanitizeInput } from '../../utils/helpers';
-import { SUPPORT_TICKET_STATUS } from '../../constants';
 import SupportChat from './SupportChat';
+import toast from 'react-hot-toast';
 
 const SupportButton = ({ user }) => {
   const [open, setOpen] = useState(false);
   const [checking, setChecking] = useState(false);
-  const [activeTicketId, setActiveTicketId] = useState(null);
+  const [activeTicket, setActiveTicket] = useState(null);
   const [showNewForm, setShowNewForm] = useState(false);
   const [newMessage, setNewMessage] = useState('');
   const [creating, setCreating] = useState(false);
+  const [hasUnread, setHasUnread] = useState(false);
+  const [showBubble, setShowBubble] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    const checkStatus = async () => {
+      const ticket = await getStudentOpenTicket(user.id);
+      if (ticket) {
+        if (!ticket.isClosed) {
+          setHasUnread(!!ticket.unreadForStudent);
+          setShowBubble(false);
+        } else {
+          setHasUnread(false);
+          setShowBubble(true);
+        }
+      } else {
+        setHasUnread(false);
+        setShowBubble(false);
+      }
+    };
+    checkStatus();
+    const int = setInterval(checkStatus, 10000);
+    return () => clearInterval(int);
+  }, [user]);
 
   if (!user) return null;
 
@@ -20,8 +43,18 @@ const SupportButton = ({ user }) => {
     setChecking(true);
     try {
       const ticket = await getStudentOpenTicket(user.id);
-      if (ticket) {
-        setActiveTicketId(ticket.id);
+      if (ticket && !ticket.isClosed) {
+        setActiveTicket(ticket);
+        setShowNewForm(false);
+        if (ticket.unreadForStudent) {
+          await markTicketAsRead(ticket.id, 'student');
+          setHasUnread(false);
+        }
+      } else if (ticket && ticket.isClosed) {
+        setActiveTicket(ticket);
+        setShowNewForm(false);
+        setShowBubble(false);
+        await dismissClosedBubble(ticket.id);
       } else {
         setShowNewForm(true);
       }
@@ -50,7 +83,8 @@ const SupportButton = ({ user }) => {
         initialMessage: text
       });
       toast.success('✅ تم إرسال طلبك — بانتظار مشرف');
-      setActiveTicketId(id);
+      const newTicket = await getStudentOpenTicket(user.id);
+      setActiveTicket(newTicket);
       setShowNewForm(false);
       setNewMessage('');
     } catch (err) {
@@ -62,43 +96,37 @@ const SupportButton = ({ user }) => {
 
   const handleClose = () => {
     setOpen(false);
-    setActiveTicketId(null);
+    setActiveTicket(null);
     setShowNewForm(false);
     setNewMessage('');
   };
 
   return (
     <>
-      <button onClick={openSupport} disabled={checking} className="support-float-btn" title="الدعم الفني" aria-label="الدعم الفني">
-        <FaHeadset size={26} />
-      </button>
+      <div className="fixed bottom-6 left-6 z-[60] flex flex-col items-start">
+        {showBubble && (
+          <div onClick={openSupport} className="mb-3 bg-white text-slate-800 p-3 rounded-2xl rounded-bl-none shadow-lg border border-slate-200 cursor-pointer animate-bubble flex items-center gap-2 text-sm font-bold">
+            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+            تم إغلاق المحادثة. اضغط للمراجعة.
+          </div>
+        )}
+        <button onClick={openSupport} disabled={checking} className="relative w-14 h-14 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 text-white flex items-center justify-center shadow-lg hover:scale-105 transition-transform">
+          <FaHeadset size={24} />
+          {hasUnread && <span className="absolute top-0 right-0 w-4 h-4 bg-red-500 border-2 border-white rounded-full animate-red-dot"></span>}
+        </button>
+      </div>
 
-      {open && activeTicketId && (
-        <SupportChat
-          user={user}
-          ticketId={activeTicketId}
-          onClose={handleClose}
-        />
+      {open && activeTicket && (
+        <SupportChat user={user} ticketId={activeTicket.id} viewerMode="student" onClose={handleClose} />
       )}
 
       {open && showNewForm && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] p-4" onClick={handleClose}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-blue-500/30" onClick={e => e.stopPropagation()}>
             <h3 className="text-xl font-bold text-blue-300 flex items-center gap-2 mb-3"><FaHeadset /> طلب دعم جديد</h3>
-            <p className="text-xs text-gray-400 mb-3">
-              مرحباً {user.name || 'بك'}، اكتب استفسارك وسيتواصل معك أحد المشرفين.
-            </p>
-            <textarea
-              className="w-full bg-gray-800 text-right p-3 border border-gray-600 rounded-lg text-white resize-none h-32"
-              placeholder="اكتب استفسارك هنا بشكل مختصر يمكنك التفصيل لاحقا سيتعمل هذا كعنوان للمشكلة..."
-              value={newMessage}
-              onChange={e => setNewMessage(e.target.value)}
-              maxLength={2000}
-            />
+            <textarea className="w-full bg-gray-800 text-right p-3 border border-gray-600 rounded-lg text-white resize-none h-32" placeholder="اكتب استفسارك هنا..." value={newMessage} onChange={e => setNewMessage(e.target.value)} maxLength={2000} />
             <div className="flex gap-3 mt-3">
-              <button onClick={handleCreate} disabled={creating} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg disabled:opacity-50 font-bold">
-                {creating ? 'جاري الإرسال...' : 'إرسال'}
-              </button>
+              <button onClick={handleCreate} disabled={creating} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-bold">{creating ? 'جاري الإرسال...' : 'إرسال'}</button>
               <button onClick={handleClose} className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg">إغلاق</button>
             </div>
           </div>

@@ -9,7 +9,7 @@ import { db, secondaryAuth, messaging } from '../../firebase';
 import {
   collection, query, orderBy, onSnapshot, doc, updateDoc,
   serverTimestamp, writeBatch, getDocs, where, setDoc, arrayUnion,
-  runTransaction
+  runTransaction, getDoc
 } from 'firebase/firestore';
 import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
@@ -21,7 +21,6 @@ import { sanitizeInput, arabicToEnglishNumber, generateId, fetchClassNames, form
 import ReportsReviewSection from './ReportsReviewSection';
 import ReviewVotingSection from './ReviewVotingSection';
 import ResetRequestsSection from './ResetRequestsSection';
-// ✅ التعديل: استبدل SupportMessagesSection بـ SupportTicketsSection
 import SupportTicketsSection from './SupportTicketsSection';
 import { COUNTRIES } from '../../utils/countries';
 
@@ -56,6 +55,41 @@ const SupervisorPanel = ({ user, onLogout }) => {
   const [newStudentClassIds, setNewStudentClassIds] = useState([]);
   const [newStudentCountry, setNewStudentCountry] = useState('');
   const [studentLoading, setStudentLoading] = useState(false);
+
+  // ✅ الصلاحيات والعدادات
+  const [permissions, setPermissions] = useState({ reports: true, resets: true, support: true });
+  const [counts, setCounts] = useState({ reports: 0, resets: 0, support: 0 });
+
+  useEffect(() => {
+    const fetchPerms = async () => {
+      const snap = await getDoc(doc(db, 'profiles', user.id));
+      if (snap.exists() && snap.data().permissions) {
+        setPermissions(snap.data().permissions);
+      }
+    };
+    fetchPerms();
+  }, [user.id]);
+
+  useEffect(() => {
+    if (!permissions.support) return;
+    const q = query(collection(db, 'supportTickets'), where('status', '==', 'open'));
+    const unsub = onSnapshot(q, (snap) => setCounts(prev => ({ ...prev, support: snap.size })));
+    return () => unsub();
+  }, [permissions.support]);
+
+  useEffect(() => {
+    if (!permissions.reports) return;
+    const q = query(collection(db, 'messageRequests'), where('type', '==', 'report'), where('reportStatus', '==', 'pending'));
+    const unsub = onSnapshot(q, (snap) => setCounts(prev => ({ ...prev, reports: snap.size })));
+    return () => unsub();
+  }, [permissions.reports]);
+
+  useEffect(() => {
+    if (!permissions.resets) return;
+    const q = query(collection(db, 'passwordResetRequests'), where('status', '==', 'pending'));
+    const unsub = onSnapshot(q, (snap) => setCounts(prev => ({ ...prev, resets: snap.size })));
+    return () => unsub();
+  }, [permissions.resets]);
 
   const requestNotificationPermission = async () => {
     try {
@@ -285,7 +319,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
     const phoneDigits = sanitizedPhone.replace(/[^\d]/g, '');
     const normalizedPhone = phoneDigits.startsWith('00') ? phoneDigits.substring(2) : phoneDigits;
     if (normalizedPhone.startsWith('0')) {
-      return toast.error('يرجى إدخال رقم الهاتف مع رمز الدولة بدون صفر بادئ.\nمثال: 9627XXXXXXXX', { duration: 7000 });
+      return toast.error('يرجى إدخال رقم الهاتف مع رمز الدولة بدون صفر بادئ.', { duration: 7000 });
     }
     if (normalizedPhone.length < 10 || normalizedPhone.length > 15) {
       return toast.error('رقم الهاتف غير صالح. يرجى إدخال الرقم مع رمز الدولة (10 إلى 15 رقماً).', { duration: 7000 });
@@ -321,7 +355,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
         }
       }
 
-      if (!userCredential) throw new Error('تعذر إيجاد اسم مستخدم فريد. يرجى المحاولة مرة أخرى.');
+      if (!userCredential) throw new Error('تعذر إيجاد اسم مستخدم فريد.');
 
       const firebaseUser = userCredential.user;
       await signOut(secondaryAuth);
@@ -331,8 +365,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
       await setDoc(doc(db, 'profiles', newId), {
         email, username: newUsername, name: sanitizedName, gender: sanitizedGender,
         age: ageNum, phone: normalizedPhone, classIds: newStudentClassIds, role: 'student',
-        serialNumber,
-        country: newStudentCountry,
+        serialNumber, country: newStudentCountry,
         isFrozen: false, infoVerified: false, isProfileComplete: false,
         pendingChanges: null, reviewResult: null, reviewExpiry: null,
         warnings: [], createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
@@ -354,7 +387,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
         payload: { username: newUsername, password: tempPassword, age: ageNum, gender: sanitizedGender, serialNumber }
       });
 
-      toast.success(`✅ تم إنشاء حساب الطالب بنجاح باسم المستخدم: ${newUsername} — الرقم التسلسلي: ${serialNumber}`);
+      toast.success(`✅ تم إنشاء حساب الطالب بنجاح باسم: ${newUsername} — التسلسلي: ${serialNumber}`);
       setNewStudentName(''); setNewStudentGender(''); setNewStudentAge('');
       setNewStudentPhone(''); setNewStudentClassIds([]); setNewStudentCountry('');
       setShowAddStudentModal(false);
@@ -405,11 +438,14 @@ const SupervisorPanel = ({ user, onLogout }) => {
           </button>
         </div>
 
-        <ReportsReviewSection user={user} />
+        {/* ✅ إخفاء أقسام البلاغات وطلبات الاستعادة إذا كانت فارغة */}
+        {permissions.reports && counts.reports > 0 && <ReportsReviewSection user={user} />}
+        
         <ReviewVotingSection user={user} />
-        <ResetRequestsSection user={user} />
-        {/* ✅ التعديل: SupportTicketsSection بدلاً من SupportMessagesSection */}
-        <SupportTicketsSection user={user} />
+        
+        {permissions.resets && counts.resets > 0 && <ResetRequestsSection user={user} />}
+        
+        {permissions.support && counts.support > 0 && <SupportTicketsSection user={user} />}
 
         {canPublish && (
           <div className="bg-gray-800/60 p-6 rounded-2xl border border-blue-500/20">

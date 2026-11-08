@@ -33,7 +33,8 @@ const SupervisorsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
   const [newGender, setNewGender] = useState('');
   const [newAge, setNewAge] = useState('');
   const [newPhone, setNewPhone] = useState('');
-  const [canPublish, setCanPublish] = useState(false);
+  // ✅ الصلاحيات الجديدة
+  const [permissions, setPermissions] = useState({ reports: true, resets: true, support: true });
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -183,10 +184,11 @@ const SupervisorsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
         ageNum,
         normalizedPhone,
         user.id,
-        canPublish
+        permissions // ✅ تمرير الصلاحيات
       );
       toast.success(`✅ تم إضافة المشرف ${result.name}`);
-      setNewName(''); setNewGender(''); setNewAge(''); setNewPhone(''); setCanPublish(false);
+      setNewName(''); setNewGender(''); setNewAge(''); setNewPhone('');
+      setPermissions({ reports: true, resets: true, support: true });
       setShowAddForm(false);
       await loadCount();
       setPageDocs([null]);
@@ -272,10 +274,26 @@ const SupervisorsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
                 <input type="text" inputMode="numeric" placeholder="العمر *" value={newAge} onChange={e => setNewAge(arabicToEnglishNumber(e.target.value))} className="bg-gray-700 text-right p-2 rounded-lg text-white text-sm border border-gray-600" required />
                 <input type="text" inputMode="numeric" placeholder="رقم الهاتف * (مع رمز الدولة)" value={newPhone} onChange={e => setNewPhone(arabicToEnglishNumber(e.target.value))} className="bg-gray-700 text-right p-2 rounded-lg text-white text-sm border border-gray-600" required />
               </div>
-              <div className="flex items-center gap-2 bg-gray-700/50 p-2 rounded-lg">
-                <input type="checkbox" id="canPub" checked={canPublish} onChange={e => setCanPublish(e.target.checked)} className="w-4 h-4 accent-indigo-500" />
-                <label htmlFor="canPub" className="text-sm text-gray-300 cursor-pointer">صلاحية نشر الإشعارات العامة</label>
+              
+              {/* ✅ خيارات الصلاحيات */}
+              <div className="bg-gray-700/50 p-3 rounded-lg border border-gray-600">
+                <p className="text-sm text-gray-300 font-bold mb-2">الصلاحيات:</p>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                    <input type="checkbox" checked={permissions.reports} onChange={e => setPermissions({...permissions, reports: e.target.checked})} className="w-4 h-4 accent-indigo-500" />
+                    الرد على البلاغات
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                    <input type="checkbox" checked={permissions.resets} onChange={e => setPermissions({...permissions, resets: e.target.checked})} className="w-4 h-4 accent-indigo-500" />
+                    طلبات استعادة بيانات الدخول
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                    <input type="checkbox" checked={permissions.support} onChange={e => setPermissions({...permissions, support: e.target.checked})} className="w-4 h-4 accent-indigo-500" />
+                    الدعم الفني
+                  </label>
+                </div>
               </div>
+
               <button type="submit" disabled={submitting} className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-bold">
                 {submitting ? 'جاري الإضافة...' : 'إضافة المشرف'}
               </button>
@@ -304,7 +322,9 @@ const SupervisorsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
                     </div>
                     <div className="flex gap-2 mt-1 flex-wrap">
                       {s.isFrozen && <span className="text-xs text-orange-400 bg-orange-500/10 px-2 py-0.5 rounded">مجمد</span>}
-                      {s.canPublishAnnouncements && <span className="text-xs text-green-400 bg-green-500/10 px-2 py-0.5 rounded">صلاحية إشعارات</span>}
+                      {s.permissions?.reports && <span className="text-xs text-green-400 bg-green-500/10 px-2 py-0.5 rounded">بلاغات</span>}
+                      {s.permissions?.resets && <span className="text-xs text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded">استعادة</span>}
+                      {s.permissions?.support && <span className="text-xs text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded">دعم</span>}
                     </div>
                   </div>
                   <button

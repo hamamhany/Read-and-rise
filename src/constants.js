@@ -41,7 +41,6 @@ export const MESSAGE_REQUEST_TYPES = {
   AUTO_DELETE: 'auto_delete',
   PASSWORD_RESET_APPROVAL: 'password_reset_approval',
   PASSWORD_RESET_REJECTION: 'password_reset_rejection',
-  // ✅ جديد — قرارات المدير بشأن تقييمات الدعم
   SUPPORT_APOLOGY: 'support_apology',
   SUPPORT_REJECTION: 'support_rejection'
 };
@@ -93,13 +92,20 @@ export const SUPPORT_TICKET_STATUS = {
   RATED_LOW: 'rated_low',              // ⭐ أقل — بانتظار قرار المدير
   MANAGER_APOLOGIZED: 'manager_apologized', // المدير اعتذر → أُغلقت
   MANAGER_REJECTED: 'manager_rejected',     // المدير رفض الشكوى → أُغلقت
-  AUTO_CLOSED: 'auto_closed'           // إغلاق تلقائي بعد 24 ساعة
+  AUTO_CLOSED: 'auto_closed',          // إغلاق تلقائي بعد 24 ساعة
+  MANAGER_PENDING: 'manager_pending'   // ✅ جديد: محولة للمدير
 };
 
-export const SUPPORT_MAX_ACTIVE_PER_SUPERVISOR = 5;  // الحد العادي
-export const SUPPORT_MAX_ACTIVE_OVERLOAD = 8;         // حد الضغط
-export const SUPPORT_END_TIMEOUT_MS = 24 * 60 * 60 * 1000; // مهلة تأكيد الطالب
-export const SUPPORT_AUTO_CLOSE_MS = 24 * 60 * 60 * 1000;  // تنظيف بعد الإغلاق
+export const CONTACT_REQUEST_STATUS = {
+  PENDING: 'pending',
+  APPROVED: 'approved',
+  REJECTED: 'rejected'
+};
+
+export const SUPPORT_MAX_ACTIVE_PER_SUPERVISOR = 5;
+export const SUPPORT_MAX_ACTIVE_OVERLOAD = 8;
+export const SUPPORT_END_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+export const SUPPORT_AUTO_CLOSE_MS = 24 * 60 * 60 * 1000;
 
 export const SUPPORT_RATING_CATEGORIES = [
   { value: 'bad_treatment', label: 'سوء في المعاملة' },

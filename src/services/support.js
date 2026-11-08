@@ -9,12 +9,11 @@ import {
   SUPPORT_TICKETS_COLLECTION,
   SUPPORT_TICKET_STATUS,
   SUPPORT_MAX_ACTIVE_OVERLOAD,
-  SUPPORT_END_TIMEOUT_MS
+  SUPPORT_END_TIMEOUT_MS,
+  CONTACT_REQUEST_STATUS
 } from '../constants';
 
-// ✅ إنشاء تذكرة دعم جديدة
 export const createSupportTicket = async (data) => {
-  // التحقق من وجود تذكرة مفتوحة سابقة
   const q = query(
     collection(db, SUPPORT_TICKETS_COLLECTION),
     where('studentId', '==', data.studentId),
@@ -27,9 +26,7 @@ export const createSupportTicket = async (data) => {
     limit(1)
   );
   const snap = await getDocs(q);
-  if (!snap.empty) {
-    throw new Error('لديك تذكرة دعم مفتوحة بالفعل. يرجى متابعتها أولاً.');
-  }
+  if (!snap.empty) throw new Error('لديك تذكرة دعم مفتوحة بالفعل.');
 
   const initialMessage = data.initialMessage;
   delete data.initialMessage;
@@ -37,7 +34,7 @@ export const createSupportTicket = async (data) => {
   const ticket = {
     ...data,
     status: SUPPORT_TICKET_STATUS.OPEN,
-    requiresManager: data.studentRole === 'supervisor', // تذاكر المشرفين للمدير فقط
+    requiresManager: data.studentRole === 'supervisor',
     assignedSupervisorId: null,
     assignedSupervisorName: null,
     assignedAt: null,
@@ -62,6 +59,10 @@ export const createSupportTicket = async (data) => {
     managerNotificationSent: false,
     supervisorNotificationSent: false,
     studentNotificationSent: false,
+    unreadForStudent: false,
+    unreadForSupervisor: true,
+    bubbleDismissedByStudent: false,
+    contactRequest: null,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   };
@@ -70,7 +71,6 @@ export const createSupportTicket = async (data) => {
   return ref.id;
 };
 
-// ✅ جلب تذكرة واحدة للطالب
 export const getStudentOpenTicket = async (studentId) => {
   const q = query(
     collection(db, SUPPORT_TICKETS_COLLECTION),
@@ -80,22 +80,44 @@ export const getStudentOpenTicket = async (studentId) => {
       SUPPORT_TICKET_STATUS.IN_PROGRESS,
       SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED,
       SUPPORT_TICKET_STATUS.AWAITING_RATING,
-      SUPPORT_TICKET_STATUS.RATED_LOW
+      SUPPORT_TICKET_STATUS.RATED_LOW,
+      SUPPORT_TICKET_STATUS.MANAGER_PENDING
     ]),
     limit(1)
   );
   const snap = await getDocs(q);
-  return snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() };
+  if (!snap.empty) return { id: snap.docs[0].id, ...snap.docs[0].data(), isClosed: false };
+
+  const qClosed = query(
+    collection(db, SUPPORT_TICKETS_COLLECTION),
+    where('studentId', '==', studentId),
+    where('status', 'in', [
+      SUPPORT_TICKET_STATUS.AUTO_CLOSED,
+      SUPPORT_TICKET_STATUS.RATED_FULL,
+      SUPPORT_TICKET_STATUS.MANAGER_APOLOGIZED,
+      SUPPORT_TICKET_STATUS.MANAGER_REJECTED
+    ]),
+    orderBy('updatedAt', 'desc'),
+    limit(1)
+  );
+  const snapClosed = await getDocs(qClosed);
+  if (!snapClosed.empty) {
+    const ticket = { id: snapClosed.docs[0].id, ...snapClosed.docs[0].data() };
+    const closedAt = ticket.closedAt?.toDate?.() || new Date(ticket.closedAt);
+    const hours = (new Date() - closedAt) / (1000 * 60 * 60);
+    if (hours < 24 && !ticket.bubbleDismissedByStudent) {
+      return { ...ticket, isClosed: true };
+    }
+  }
+  return null;
 };
 
-// ✅ متابعة تذكرة واحدة (realtime)
 export const subscribeToTicket = (ticketId, callback) => {
   return onSnapshot(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), (snap) => {
     callback(snap.exists() ? { id: snap.id, ...snap.data() } : null);
   });
 };
 
-// ✅ تذاكر المشرف (المخصصة له)
 export const subscribeToSupervisorTickets = (supervisorId, callback) => {
   const q = query(
     collection(db, SUPPORT_TICKETS_COLLECTION),
@@ -113,7 +135,6 @@ export const subscribeToSupervisorTickets = (supervisorId, callback) => {
   });
 };
 
-// ✅ التذاكر غير المحجوزة (للمشرفين)
 export const subscribeToUnassignedTickets = (callback) => {
   const q = query(
     collection(db, SUPPORT_TICKETS_COLLECTION),
@@ -127,12 +148,11 @@ export const subscribeToUnassignedTickets = (callback) => {
   });
 };
 
-// ✅ التذاكر التي تحتاج قرار مدير (تقييم سلبي)
 export const subscribeToManagerReviewTickets = (callback) => {
   const q = query(
     collection(db, SUPPORT_TICKETS_COLLECTION),
-    where('status', '==', SUPPORT_TICKET_STATUS.RATED_LOW),
-    orderBy('ratedAt', 'desc'),
+    where('status', 'in', [SUPPORT_TICKET_STATUS.RATED_LOW, SUPPORT_TICKET_STATUS.MANAGER_PENDING]),
+    orderBy('updatedAt', 'desc'),
     limit(50)
   );
   return onSnapshot(q, (snap) => {
@@ -140,7 +160,6 @@ export const subscribeToManagerReviewTickets = (callback) => {
   });
 };
 
-// ✅ التذاكر المفتوحة للمدير (تذاكر مشرفين)
 export const subscribeToManagerOpenTickets = (callback) => {
   const q = query(
     collection(db, SUPPORT_TICKETS_COLLECTION),
@@ -154,7 +173,6 @@ export const subscribeToManagerOpenTickets = (callback) => {
   });
 };
 
-// ✅ حجز تذكرة (Transaction آمن)
 export const claimTicket = async (ticketId, supervisorId, supervisorName, managerMode = false) => {
   await runTransaction(db, async (transaction) => {
     const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
@@ -171,12 +189,8 @@ export const claimTicket = async (ticketId, supervisorId, supervisorName, manage
     const supData = supSnap.data() || {};
     const currentActive = supData.activeTicketCount || 0;
 
-    // المدير لا يوجد لديه حد أقصى
-    if (!managerMode) {
-      const cap = SUPPORT_MAX_ACTIVE_OVERLOAD;
-      if (currentActive >= cap) {
-        throw new Error(`لقد وصلت للحد الأقصى من التذاكر النشطة (${cap}). أنهِ بعضها أولاً.`);
-      }
+    if (!managerMode && currentActive >= SUPPORT_MAX_ACTIVE_OVERLOAD) {
+      throw new Error(`لقد وصلت للحد الأقصى من التذاكر النشطة (${SUPPORT_MAX_ACTIVE_OVERLOAD}).`);
     }
 
     transaction.update(ticketRef, {
@@ -184,7 +198,8 @@ export const claimTicket = async (ticketId, supervisorId, supervisorName, manage
       assignedSupervisorName: supervisorName,
       assignedAt: serverTimestamp(),
       status: SUPPORT_TICKET_STATUS.IN_PROGRESS,
-      updatedAt: serverTimestamp()
+      updatedAt: serverTimestamp(),
+      unreadForSupervisor: false
     });
 
     if (!managerMode) {
@@ -193,7 +208,6 @@ export const claimTicket = async (ticketId, supervisorId, supervisorName, manage
   });
 };
 
-// ✅ إرسال رسالة في التذكرة
 export const sendTicketMessage = async (ticketId, sender, text) => {
   const message = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
@@ -203,13 +217,48 @@ export const sendTicketMessage = async (ticketId, sender, text) => {
     text,
     createdAt: new Date().toISOString()
   };
-  await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
+  const isSupervisor = ['supervisor', 'system_manager'].includes(sender.role);
+  const updates = {
     messages: arrayUnion(message),
+    updatedAt: serverTimestamp(),
+    lastMessage: text,
+    unreadForStudent: isSupervisor ? true : false,
+    unreadForSupervisor: isSupervisor ? false : true
+  };
+  await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), updates);
+};
+
+export const markTicketAsRead = async (ticketId, role) => {
+  const updates = {};
+  if (role === 'student') updates.unreadForStudent = false;
+  if (['supervisor', 'system_manager'].includes(role)) updates.unreadForSupervisor = false;
+  await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), updates);
+};
+
+export const dismissClosedBubble = async (ticketId) => {
+  await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), { bubbleDismissedByStudent: true });
+};
+
+export const transferToManager = async (ticketId, supervisorName) => {
+  await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
+    status: SUPPORT_TICKET_STATUS.MANAGER_PENDING,
+    transferredBy: supervisorName,
     updatedAt: serverTimestamp()
   });
 };
 
-// ✅ المشرف يطلب إنهاء المحادثة
+export const requestContactInfo = async (ticketId, reason, supervisorId) => {
+  await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
+    contactRequest: {
+      reason,
+      requestedBy: supervisorId,
+      requestedAt: serverTimestamp(),
+      status: CONTACT_REQUEST_STATUS.PENDING
+    },
+    updatedAt: serverTimestamp()
+  });
+};
+
 export const requestTicketEnd = async (ticketId) => {
   const now = Date.now();
   await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
@@ -220,7 +269,6 @@ export const requestTicketEnd = async (ticketId) => {
   });
 };
 
-// ✅ الطالب يؤكد الحل
 export const studentConfirmSolved = async (ticketId) => {
   await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
     status: SUPPORT_TICKET_STATUS.AWAITING_RATING,
@@ -229,7 +277,6 @@ export const studentConfirmSolved = async (ticketId) => {
   });
 };
 
-// ✅ الطالب يؤكد عدم الحل
 export const studentConfirmNotSolved = async (ticketId) => {
   await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
     status: SUPPORT_TICKET_STATUS.IN_PROGRESS,
@@ -240,7 +287,6 @@ export const studentConfirmNotSolved = async (ticketId) => {
   });
 };
 
-// ✅ تقديم التقييم
 export const submitRating = async (ticketId, rating, ratingCategory, ratingReason) => {
   const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
   const snap = await getDoc(ticketRef);
@@ -259,7 +305,6 @@ export const submitRating = async (ticketId, rating, ratingCategory, ratingReaso
     updatedAt: serverTimestamp()
   });
 
-  // تحديث تقييم المشرف
   if (data.assignedSupervisorId) {
     const supRef = doc(db, 'profiles', data.assignedSupervisorId);
     const supSnap = await getDoc(supRef);
@@ -275,11 +320,9 @@ export const submitRating = async (ticketId, rating, ratingCategory, ratingReaso
       });
     }
   }
-
   return newStatus;
 };
 
-// ✅ قرار المدير (اعتذار أو رفض)
 export const managerDecide = async (ticketId, decision, managerReason) => {
   const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
   const snap = await getDoc(ticketRef);
@@ -295,10 +338,10 @@ export const managerDecide = async (ticketId, decision, managerReason) => {
     managerReviewedAt: serverTimestamp(),
     managerDecision: decision,
     managerReason: managerReason || '',
+    closedAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   });
 
-  // تحديث تقييم المشرف
   if (data.assignedSupervisorId) {
     const supRef = doc(db, 'profiles', data.assignedSupervisorId);
     const supSnap = await getDoc(supRef);
@@ -306,9 +349,7 @@ export const managerDecide = async (ticketId, decision, managerReason) => {
       const sup = supSnap.data();
       const count = sup.ratingCount || 0;
       const avg = sup.ratingAverage || 0;
-
       if (decision === 'reject') {
-        // إضافة تقييم 5 نجوم كتعويض للمشرف
         const newCount = count + 1;
         const newAvg = ((avg * count) + 5) / newCount;
         await updateDoc(supRef, {
@@ -316,21 +357,17 @@ export const managerDecide = async (ticketId, decision, managerReason) => {
           ratingAverage: Math.round(newAvg * 100) / 100
         });
       }
-      // في حالة "اعتذار" — التقييم السلبي يبقى محسوباً ضد المشرف
     }
   }
-
   return newStatus;
 };
 
-// ✅ حذف التذكرة نهائياً (بعد إرسال الرسائل)
 export const finalizeAndDeleteTicket = async (ticketId) => {
   const ref = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
   const snap = await getDoc(ref);
   if (!snap.exists()) return;
   const data = snap.data();
 
-  // إنقاص العداد من المشرف
   if (data.assignedSupervisorId) {
     try {
       const supRef = doc(db, 'profiles', data.assignedSupervisorId);
@@ -341,6 +378,5 @@ export const finalizeAndDeleteTicket = async (ticketId) => {
       }
     } catch (e) { console.warn('decrement failed:', e); }
   }
-
   await deleteDoc(ref);
 };

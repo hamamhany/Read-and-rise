@@ -1,3 +1,4 @@
+// src/components/panels/ReportsReviewSection.jsx
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { FaExclamationTriangle, FaEye, FaTimes, FaPaperPlane, FaBan, FaDownload, FaSpinner } from 'react-icons/fa';
@@ -11,7 +12,7 @@ import { createMessageRequest } from '../../services/messageRequests';
 import { createAccountClosureRequest } from '../../services/reviewRequests';
 import { issueWarning } from '../../services/warnings';
 import { getActiveWarnings } from '../../utils/helpers';
-import { sendNotificationToTeacher } from '../../utils/notifications'; // ✅ استيراد دالة إشعار المعلم
+import { sendNotificationToTeacher } from '../../utils/notifications';
 
 const CLAIM_DURATION_MS = 10 * 60 * 1000;
 
@@ -111,7 +112,6 @@ const ReportsReviewSection = ({ user }) => {
     setActionMode(null);
   };
 
-  // ✅ دالة معالجة البلاغ وإرسال إشعار للمعلم
   const resolveReport = async (actionMessage = 'تم اتخاذ إجراء بشأن البلاغ') => {
     if (!selected) return;
     try {
@@ -122,7 +122,6 @@ const ReportsReviewSection = ({ user }) => {
         resolvedAt: serverTimestamp()
       });
 
-      // إرسال إشعار للمعلم صاحب البلاغ
       if (selected.requestedBy) {
         await sendNotificationToTeacher(
           selected.requestedBy,
@@ -152,7 +151,7 @@ const ReportsReviewSection = ({ user }) => {
         requestedByName: user.name || user.username || 'مشرف',
         payload: { description: description.trim() }
       });
-      await resolveReport('تم حفظ وإرسال تنبيه تحذيري للطالب'); // ✅ إشعار للمعلم
+      await resolveReport('تم حفظ وإرسال تنبيه تحذيري للطالب');
       toast.success('✅ تم حفظ التنبيه التحذيري');
       closeModal();
     } catch (e) { toast.error('فشل: ' + e.message); }
@@ -175,7 +174,7 @@ const ReportsReviewSection = ({ user }) => {
         requestedByName: user.name || user.username || 'مشرف',
         payload: { warningNumber: result.warningNumber, description: description.trim() }
       });
-      await resolveReport(`تم إصدار الإنذار رقم ${result.warningNumber} للطالب`); // ✅ إشعار للمعلم
+      await resolveReport(`تم إصدار الإنذار رقم ${result.warningNumber} للطالب`);
       toast.success(`✅ تم إصدار الإنذار رقم ${result.warningNumber} وحفظه للإرسال`);
       closeModal();
     } catch (e) { toast.error('فشل: ' + e.message); }
@@ -196,7 +195,7 @@ const ReportsReviewSection = ({ user }) => {
         createdBy: user.id,
         createdByName: user.name || user.username || 'مشرف'
       });
-      await resolveReport('تم تحويل الطالب لطلب إغلاق الحساب وحظره نهائياً (بانتظار التصويت)'); // ✅ إشعار للمعلم
+      await resolveReport('تم تحويل الطالب لطلب إغلاق الحساب وحظره نهائياً (بانتظار التصويت)');
       toast.success('✅ تم إنشاء طلب إغلاق الحساب — سيُرسل إلى 4 مشرفين للتصويت');
       closeModal();
     } catch (e) { toast.error('فشل: ' + e.message); }
@@ -207,7 +206,7 @@ const ReportsReviewSection = ({ user }) => {
     if (!window.confirm('تجاهل هذا البلاغ وإغلاقه؟')) return;
     setIsSubmitting(true);
     try {
-      await resolveReport('تم تجاهل البلاغ من قبل المشرف'); // ✅ إشعار للمعلم
+      await resolveReport('تم تجاهل البلاغ من قبل المشرف');
       toast.success('تم تجاهل البلاغ');
       closeModal();
     } catch (e) {
@@ -220,6 +219,9 @@ const ReportsReviewSection = ({ user }) => {
   const selectedActiveWarnings = selected
     ? getActiveWarnings(selected.targetActiveWarnings || [])
     : [];
+
+  // ✅ إخفاء القسم إذا تم التحميل ولا توجد بلاغات
+  if (hasEverLoaded && reports.length === 0) return null;
 
   if (!hasEverLoaded && reports.length === 0) {
     return (
@@ -259,7 +261,7 @@ const ReportsReviewSection = ({ user }) => {
       </div>
 
       {reports.length === 0 ? (
-        <p className="text-gray-400 text-center py-4">لا توجد بلاغات محجوزة لك حالياً — اضغط "تحميل المزيد".</p>
+        <p className="text-gray-400 text-center py-4">لا توجد بلاغات محجوزة لك حالياً.</p>
       ) : (
         <div className="space-y-3 max-h-[500px] overflow-y-auto">
           {reports.map(r => (

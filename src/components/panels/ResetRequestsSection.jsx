@@ -1,3 +1,4 @@
+// src/components/panels/ResetRequestsSection.jsx
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import {
@@ -117,12 +118,10 @@ const ResetRequestsSection = ({ user }) => {
     if (!window.confirm('سيتم تحديث بيانات دخول الطالب وإرسال رسالة عبر واتساب. متابعة؟')) return;
     setSubmitting(true);
     try {
-      // توليد بيانات دخول مؤقتة
       const randomNum = Math.floor(Math.random() * 900000) + 100000;
       const newUsername = `knight${randomNum}`;
       const newPassword = Math.floor(Math.random() * 1000000000).toString().padStart(9, '0');
 
-      // 1. اعتماد الطلب + تحديث Firebase Auth
       await approvePasswordReset({
         requestId: selected.id,
         resolvedUser,
@@ -132,13 +131,12 @@ const ResetRequestsSection = ({ user }) => {
         supervisorName: user.name || user.username || 'مشرف'
       });
 
-      // 2. إنشاء messageRequest للإرسال عبر واتساب (الرقم من الملف الشخصي وليس من الطلب)
       await createMessageRequest({
         type: MESSAGE_REQUEST_TYPES.PASSWORD_RESET_APPROVAL,
         targetType: 'student',
         targetId: resolvedUser.id,
         targetName: resolvedUser.name || selected.submittedName,
-        targetPhone: resolvedUser.phone || '', // ⚠️ الرقم المسجل في الملف الشخصي
+        targetPhone: resolvedUser.phone || '',
         targetClass: resolvedClassNames.join(', ') || 'غير محدد',
         requestedBy: user.id,
         requestedByName: user.name || user.username || 'مشرف',
@@ -168,13 +166,12 @@ const ResetRequestsSection = ({ user }) => {
         supervisorName: user.name || user.username || 'مشرف'
       });
 
-      // إنشاء messageRequest للإرسال إلى الرقم المكتوب في الطلب
       await createMessageRequest({
         type: MESSAGE_REQUEST_TYPES.PASSWORD_RESET_REJECTION,
         targetType: 'student',
         targetId: resolvedUser.id,
         targetName: selected.submittedName,
-        targetPhone: selected.submittedPhone, // ⚠️ الرقم من الطلب نفسه
+        targetPhone: selected.submittedPhone,
         targetClass: '',
         requestedBy: user.id,
         requestedByName: user.name || user.username || 'مشرف',
@@ -188,7 +185,8 @@ const ResetRequestsSection = ({ user }) => {
     } finally { setSubmitting(false); }
   };
 
-  const selectedClassNames = selected?.resolvedClassIds || [];
+  // ✅ إخفاء القسم إذا تم التحميل ولا توجد طلبات
+  if (hasEverLoaded && requests.length === 0) return null;
 
   if (!hasEverLoaded && requests.length === 0) {
     return (
@@ -243,7 +241,6 @@ const ResetRequestsSection = ({ user }) => {
               <button onClick={closeModal} className="text-gray-400 hover:text-white text-2xl"><FaTimes /></button>
             </div>
 
-            {/* بيانات مكتوبة في الطلب */}
             <div className="bg-gray-800/50 p-4 rounded-xl mb-4 space-y-1 text-sm">
               <p className="text-cyan-200 font-bold mb-1">📝 البيانات المكتوبة في الطلب:</p>
               <p className="text-gray-300"><strong>الاسم:</strong> {selected.submittedName}</p>
@@ -253,7 +250,6 @@ const ResetRequestsSection = ({ user }) => {
               <p className="text-gray-300"><strong>الرقم التسلسلي:</strong> {selected.submittedSerialNumber}</p>
             </div>
 
-            {/* بيانات المستخدم الفعلية */}
             <div className="bg-gray-800/50 p-4 rounded-xl mb-4 space-y-1 text-sm">
               <p className="text-green-200 font-bold mb-1">🔍 البيانات الفعلية من النظام (بالرقم التسلسلي):</p>
               {loadingUser ? (
