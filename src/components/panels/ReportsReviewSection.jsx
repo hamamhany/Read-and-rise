@@ -11,6 +11,7 @@ import { createMessageRequest } from '../../services/messageRequests';
 import { createAccountClosureRequest } from '../../services/reviewRequests';
 import { issueWarning } from '../../services/warnings';
 import { getActiveWarnings } from '../../utils/helpers';
+import { sendNotificationToTeacher } from '../../utils/notifications'; // ✅ استيراد دالة إشعار المعلم
 
 const CLAIM_DURATION_MS = 10 * 60 * 1000;
 
@@ -84,7 +85,6 @@ const ReportsReviewSection = ({ user }) => {
 
       setHasEverLoaded(true);
       if (claimedCount === 0) {
-        // ✅ تم إصلاح toast.info → toast()
         toast('لا توجد بلاغات جديدة متاحة حالياً — قد يكون حجزها مشرف آخر.', { icon: 'ℹ️' });
       } else {
         toast.success(`تم تحميل ${claimedCount} بلاغ جديد.`);
@@ -111,14 +111,30 @@ const ReportsReviewSection = ({ user }) => {
     setActionMode(null);
   };
 
-  const resolveReport = async () => {
+  // ✅ دالة معالجة البلاغ وإرسال إشعار للمعلم
+  const resolveReport = async (actionMessage = 'تم اتخاذ إجراء بشأن البلاغ') => {
     if (!selected) return;
-    await updateDoc(doc(db, 'messageRequests', selected.id), {
-      reportStatus: REPORT_STATUS.RESOLVED,
-      resolvedBy: user.id,
-      resolvedByName: user.name || user.username || 'مشرف',
-      resolvedAt: serverTimestamp()
-    });
+    try {
+      await updateDoc(doc(db, 'messageRequests', selected.id), {
+        reportStatus: REPORT_STATUS.RESOLVED,
+        resolvedBy: user.id,
+        resolvedByName: user.name || user.username || 'مشرف',
+        resolvedAt: serverTimestamp()
+      });
+
+      // إرسال إشعار للمعلم صاحب البلاغ
+      if (selected.requestedBy) {
+        await sendNotificationToTeacher(
+          selected.requestedBy,
+          '📢 تحديث بشأن بلاغك',
+          `تمت مراجعة بلاغك ضد الطالب (${selected.targetName}). الإجراء المتخذ: ${actionMessage}`,
+          'report_update',
+          selected.id
+        );
+      }
+    } catch (err) {
+      console.error('Error resolving report:', err);
+    }
   };
 
   const handleNotice = async () => {
@@ -136,7 +152,7 @@ const ReportsReviewSection = ({ user }) => {
         requestedByName: user.name || user.username || 'مشرف',
         payload: { description: description.trim() }
       });
-      await resolveReport();
+      await resolveReport('تم حفظ وإرسال تنبيه تحذيري للطالب'); // ✅ إشعار للمعلم
       toast.success('✅ تم حفظ التنبيه التحذيري');
       closeModal();
     } catch (e) { toast.error('فشل: ' + e.message); }
@@ -159,7 +175,7 @@ const ReportsReviewSection = ({ user }) => {
         requestedByName: user.name || user.username || 'مشرف',
         payload: { warningNumber: result.warningNumber, description: description.trim() }
       });
-      await resolveReport();
+      await resolveReport(`تم إصدار الإنذار رقم ${result.warningNumber} للطالب`); // ✅ إشعار للمعلم
       toast.success(`✅ تم إصدار الإنذار رقم ${result.warningNumber} وحفظه للإرسال`);
       closeModal();
     } catch (e) { toast.error('فشل: ' + e.message); }
@@ -180,11 +196,25 @@ const ReportsReviewSection = ({ user }) => {
         createdBy: user.id,
         createdByName: user.name || user.username || 'مشرف'
       });
-      await resolveReport();
+      await resolveReport('تم تحويل الطالب لطلب إغلاق الحساب وحظره نهائياً (بانتظار التصويت)'); // ✅ إشعار للمعلم
       toast.success('✅ تم إنشاء طلب إغلاق الحساب — سيُرسل إلى 4 مشرفين للتصويت');
       closeModal();
     } catch (e) { toast.error('فشل: ' + e.message); }
     finally { setIsSubmitting(false); }
+  };
+
+  const handleIgnore = async () => {
+    if (!window.confirm('تجاهل هذا البلاغ وإغلاقه؟')) return;
+    setIsSubmitting(true);
+    try {
+      await resolveReport('تم تجاهل البلاغ من قبل المشرف'); // ✅ إشعار للمعلم
+      toast.success('تم تجاهل البلاغ');
+      closeModal();
+    } catch (e) {
+      toast.error('فشل: ' + e.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const selectedActiveWarnings = selected
@@ -280,7 +310,7 @@ const ReportsReviewSection = ({ user }) => {
                 <button onClick={() => setActionMode('closure')} className="w-full p-3 bg-red-600/20 hover:bg-red-600/30 border border-red-500/40 rounded-xl text-red-200 text-sm">
                   <FaBan className="inline me-2" /> إغلاق الحساب وحظر الرقم نهائياً (يحتاج موافقة 4 مشرفين)
                 </button>
-                <button onClick={async () => { await resolveReport(); toast.success('تم تجاهل البلاغ'); closeModal(); }} className="w-full p-2 bg-gray-700 hover:bg-gray-600 rounded-xl text-gray-300 text-xs">
+                <button onClick={handleIgnore} disabled={isSubmitting} className="w-full p-2 bg-gray-700 hover:bg-gray-600 rounded-xl text-gray-300 text-xs">
                   تجاهل البلاغ وإغلاقه
                 </button>
               </div>

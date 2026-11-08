@@ -1,3 +1,4 @@
+// src/App.jsx
 import React, { useState, useEffect } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
 import { auth } from './services/firebaseAuth';
@@ -202,6 +203,7 @@ const App = () => {
     return <Login onLogin={handleLogin} onFrozen={handleFrozen} onCompleteProfile={handleCompleteProfile} />;
   }
 
+  // ✅ التوجيه الصحيح: كل مستخدم يرى لوحته فقط
   if (user.role === 'system_manager') {
     return <SystemManagerPanel user={user} onLogout={handleLogout} />;
   }
