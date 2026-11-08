@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import {
-  FaHeadset, FaUser, FaSpinner, FaLock, FaCheckCircle, FaTimesCircle, FaEye
+  FaHeadset, FaUser, FaSpinner, FaLock, FaCheckCircle, FaEye
 } from 'react-icons/fa';
 import {
   subscribeToUnassignedTickets, subscribeToSupervisorTickets,

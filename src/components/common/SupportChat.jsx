@@ -56,7 +56,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
 
   const isStudent = viewerMode === 'student';
   const canSend = isStudent
-    ? [SUPPORT_TICKET_STATUS.OPEN, SUPPORT_TICKET_STATUS.IN_PROGRESS, SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED, SUPPORT_TICKET_STATUS.AWAITING_RATING].includes(ticket.status) && ticket.status !== SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED && ticket.status !== SUPPORT_TICKET_STATUS.AWAITING_RATING
+    ? [SUPPORT_TICKET_STATUS.OPEN, SUPPORT_TICKET_STATUS.IN_PROGRESS].includes(ticket.status)
     : [SUPPORT_TICKET_STATUS.IN_PROGRESS, SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED].includes(ticket.status);
 
   const handleSend = async () => {
@@ -121,7 +121,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           <button onClick={onClose} className="text-gray-400 hover:text-white text-xl flex-shrink-0"><FaTimes /></button>
         </div>
 
-        {/* Supervisor info (if assigned) */}
+        {/* Supervisor info */}
         {supervisorInfo && isStudent && (
           <div className="px-3 py-2 bg-blue-500/5 border-b border-blue-500/20 text-[11px] text-blue-200">
             <FaUserCircle className="inline me-1" /> {supervisorInfo.name || 'مشرف'}
@@ -156,9 +156,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
         {/* Status banners */}
         {ticket.status === SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED && isStudent && (
           <div className="p-3 bg-yellow-500/10 border-t border-yellow-500/30">
-            <p className="text-yellow-200 text-sm text-center mb-2">
-              هل تم حل مشكلتك بنجاح؟
-            </p>
+            <p className="text-yellow-200 text-sm text-center mb-2">هل تم حل مشكلتك بنجاح؟</p>
             <div className="flex gap-2">
               <button onClick={handleSolved} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg text-sm font-bold">
                 <FaCheckCircle className="inline me-1" /> نعم، تم الحل
