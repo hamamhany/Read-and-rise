@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron-support-close",
-      "schedule": "*/30 * * * *"
+      "schedule": "30 0 * * *"
     }
   ]
 }
