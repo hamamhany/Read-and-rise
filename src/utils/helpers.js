@@ -1,5 +1,8 @@
 import { db } from '../firebase';
-import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import {
+  doc, getDoc, collection, query, where, getDocs,
+  runTransaction
+} from 'firebase/firestore';
 import { WARNING_RETENTION_MS } from '../constants';
 
 export const generateId = () => {
@@ -37,11 +40,8 @@ export const fetchClassNames = async (classIds) => {
   await Promise.all(classIds.map(async (id) => {
     try {
       const docSnap = await getDoc(doc(db, 'classes', id));
-      if (docSnap.exists()) {
-        names[id] = docSnap.data().name;
-      } else {
-        names[id] = null;
-      }
+      if (docSnap.exists()) names[id] = docSnap.data().name;
+      else names[id] = null;
     } catch (err) {
       console.error('Error fetching class name for id', id, err);
       names[id] = null;
@@ -55,7 +55,6 @@ export const cleanPhoneNumber = (phone) => {
   return phone.replace(/^0+/, '').replace(/[^0-9]/g, '');
 };
 
-// دالة ترتيب الطلاب أبجدياً
 export const sortStudentsAlphabetically = (students) => {
   return [...students].sort((a, b) => {
     const nameA = a.name || '';
@@ -72,9 +71,6 @@ export const sortStudentsAlphabetically = (students) => {
   });
 };
 
-// =========================================================
-// ✅ إدارة الإنذارات (120 يوماً)
-// =========================================================
 export const getActiveWarnings = (warnings = []) => {
   const now = Date.now();
   return warnings.filter(w => {
@@ -86,17 +82,11 @@ export const getActiveWarnings = (warnings = []) => {
   });
 };
 
-// =========================================================
-// ✅ فحص القائمة السوداء (Blacklist)
-// =========================================================
 export const checkPhoneBlacklist = async (phone) => {
   if (!phone) return { blacklisted: false };
   try {
     const normalized = String(phone).replace(/[^\d]/g, '');
-    const q = query(
-      collection(db, 'blacklist'),
-      where('phone', '==', normalized)
-    );
+    const q = query(collection(db, 'blacklist'), where('phone', '==', normalized));
     const snap = await getDocs(q);
     if (snap.empty) return { blacklisted: false };
     return { blacklisted: true, record: snap.docs[0].data() };
@@ -106,9 +96,6 @@ export const checkPhoneBlacklist = async (phone) => {
   }
 };
 
-// =========================================================
-// ✅ التحقق الموحد من رقم الهاتف
-// =========================================================
 export const validatePhoneNumber = (phone) => {
   if (!phone) return { valid: false, reason: 'empty' };
   let cleaned = String(phone).trim().replace(/[^\d]/g, '');
@@ -117,4 +104,28 @@ export const validatePhoneNumber = (phone) => {
   if (cleaned.startsWith('0')) return { valid: false, reason: 'starts_with_zero' };
   if (cleaned.length < 10 || cleaned.length > 15) return { valid: false, reason: 'invalid_length' };
   return { valid: true, phone: cleaned };
+};
+
+// =========================================================
+// ✅ الرقم التسلسلي للطالب (جديد)
+// =========================================================
+export const formatSerial = (num) => {
+  if (num < 1000000) return String(num).padStart(6, '0');
+  return String(num); // 7 خانات أو أكثر عند الحاجة
+};
+
+export const generateNextSerialNumber = async () => {
+  const counterRef = doc(db, 'settings', 'studentSerialCounter');
+  let serialNumber = 1;
+  await runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(counterRef);
+    if (!snap.exists()) {
+      transaction.set(counterRef, { lastSerial: 1 });
+      serialNumber = 1;
+    } else {
+      serialNumber = (snap.data().lastSerial || 0) + 1;
+      transaction.update(counterRef, { lastSerial: serialNumber });
+    }
+  });
+  return serialNumber;
 };

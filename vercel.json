@@ -1,17 +1,8 @@
 {
-  "headers": [
+  "crons": [
     {
-      "source": "/(.*)",
-      "headers": [
-        {
-          "key": "Cross-Origin-Opener-Policy",
-          "value": "same-origin"
-        },
-        {
-          "key": "Cross-Origin-Embedder-Policy",
-          "value": "require-corp"
-        }
-      ]
+      "path": "/api/cron-absence",
+      "schedule": "0 0 * * *"
     }
   ]
 }

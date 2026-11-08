@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { 
   FaUser, FaBell, FaSignOutAlt, FaPen, FaUsers, FaVideo, FaEdit, 
@@ -15,6 +15,7 @@ import { getToken, onMessage } from 'firebase/messaging';
 import { useConfirm } from '../common/ConfirmContext';
 import { CountdownTimer, HomeworkTextCountdown } from '../common/CountdownTimer';
 import { sanitizeInput, arabicToEnglishNumber, fetchClassNames } from '../../utils/helpers';
+import { recordAttendance, processStudentAbsences } from '../../services/attendance';
 import { sendUrgentReminderMessage, sendContactTeacherMessage } from '../../utils/whatsapp';
 
 const StudentPanel = ({ user, onLogout }) => {
@@ -49,6 +50,10 @@ const StudentPanel = ({ user, onLogout }) => {
   const [timeRemaining, setTimeRemaining] = useState({ hours: 0, minutes: 0, seconds: 0 });
 
   const [classStudentCount, setClassStudentCount] = useState({});
+
+  // ✅ حالة تسجيل الحضور
+  const [isRecordingAttendance, setIsRecordingAttendance] = useState(false);
+  const absenceProcessedRef = useRef(false);
 
   const requestNotificationPermission = async () => {
     try {
@@ -312,6 +317,16 @@ const StudentPanel = ({ user, onLogout }) => {
     return () => clearInterval(interval);
   }, [teacherData?.homeworks]);
 
+  // ✅ معالجة الغياب عند توفر بيانات المعلم والملف الشخصي
+  useEffect(() => {
+    if (absenceProcessedRef.current) return;
+    if (!teacherData?.lessonTimes || !profile) return;
+    absenceProcessedRef.current = true;
+    processStudentAbsences(user.id, teacherData.lessonTimes).catch(err =>
+      console.warn('absence processing failed:', err)
+    );
+  }, [teacherData?.lessonTimes, profile]);
+
   useEffect(() => {
     if (!reviewExpiry) return;
     const interval = setInterval(() => {
@@ -395,6 +410,25 @@ const StudentPanel = ({ user, onLogout }) => {
 
   const nextLesson = getNextLessonTime();
 
+  // ✅ تسجيل الحضور عند الضغط على زر الانضمام
+  const handleJoinLesson = async () => {
+    setIsRecordingAttendance(true);
+    try {
+      await recordAttendance(user.id);
+      setProfile(prev => prev ? {
+        ...prev,
+        lastAttendanceAt: new Date(),
+        consecutiveAbsences: 0,
+        absenceWarningSent: false
+      } : prev);
+      toast.success('✅ تم تسجيل حضورك بنجاح!');
+    } catch (err) {
+      toast.error('فشل تسجيل الحضور: ' + err.message);
+    } finally {
+      setIsRecordingAttendance(false);
+    }
+  };
+
   const openProfileModal = () => {
     if (hasPendingRequest) return setShowPendingRequestModal(true);
     if (reviewResult && reviewExpiry) return setShowReviewResultModal(true);
@@ -416,7 +450,6 @@ const StudentPanel = ({ user, onLogout }) => {
     const phoneRaw = sanitizeInput(editData.phone);
     if (!name || !phoneRaw) return toast.error('الاسم ورقم الهاتف إلزاميان');
 
-    // ✅ التحقق من صحة رقم الهاتف (الكل مع رمز الدولة بدون +)
     const phoneDigits = phoneRaw.replace(/[^\d]/g, '');
     const phone = phoneDigits.startsWith('00') ? phoneDigits.substring(2) : phoneDigits;
     if (phone.startsWith('0')) {
@@ -525,11 +558,26 @@ const StudentPanel = ({ user, onLogout }) => {
           <CountdownTimer targetDate={nextLesson ? nextLesson.date : null} />
           <div className="mt-4 flex flex-col items-center gap-2 w-full">
             <button
-              onClick={() => toast.success('🎥 تم تسجيل دخولك حالياً (نظام المكالمات قيد التطوير).')}
-              className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl text-lg font-bold shadow-lg transition-all duration-300 transform hover:scale-105 w-full text-center block animate-pulse"
+              onClick={handleJoinLesson}
+              disabled={isRecordingAttendance}
+              className="bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white px-6 py-3 rounded-xl text-lg font-bold shadow-lg transition-all duration-300 transform hover:scale-105 w-full text-center block"
             >
-              <FaVideo className="inline-block me-2" /> 🎯 انضم إلى غرفة الصف الآن
+              <FaVideo className="inline-block me-2" />
+              {isRecordingAttendance ? 'جاري تسجيل الحضور...' : '🎯 انضم إلى غرفة الصف الآن (تسجيل حضور)'}
             </button>
+
+            {/* ✅ عرض حالة الغياب */}
+            {profile?.consecutiveAbsences > 0 && (
+              <div className={`mt-3 p-3 rounded-xl border text-sm text-center w-full ${
+                profile.consecutiveAbsences >= 13
+                  ? 'bg-red-500/20 border-red-500/40 text-red-200'
+                  : profile.consecutiveAbsences >= 10
+                    ? 'bg-orange-500/20 border-orange-500/40 text-orange-200'
+                    : 'bg-yellow-500/10 border-yellow-500/30 text-yellow-200'
+              }`}>
+                ⚠️ غيابك المتتالي: <strong>{profile.consecutiveAbsences}</strong> حصة — يُرجى تسجيل الحضور فوراً
+              </div>
+            )}
           </div>
         </div>
 

@@ -16,7 +16,7 @@ import { createGeneralAnnouncement, updateAnnouncement, deleteAnnouncement } fro
 import { sendNotificationToAllStudents, sendNotificationToTeacher } from '../../utils/notifications';
 import { createMessageRequest } from '../../services/messageRequests';
 import { ANNOUNCEMENTS_LIMIT, MESSAGE_REQUEST_TYPES } from '../../constants';
-import { sanitizeInput, arabicToEnglishNumber, generateId, fetchClassNames } from '../../utils/helpers';
+import { sanitizeInput, arabicToEnglishNumber, generateId, fetchClassNames, formatSerial, generateNextSerialNumber } from '../../utils/helpers';
 import ReportsReviewSection from './ReportsReviewSection';
 import ReviewVotingSection from './ReviewVotingSection';
 

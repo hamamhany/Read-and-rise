@@ -25,7 +25,8 @@ import {
 import {
   sendWarningMessage, sendNoticeMessage, sendActivationMessage, sendFreezeMessage,
   sendDeleteMessage, sendResetPasswordMessage, sendDataUpdateApprovalMessage,
-  sendDataUpdateRejectionMessage, sendGeneralMessageToStudent, sendReportMessage
+  sendDataUpdateRejectionMessage, sendGeneralMessageToStudent, sendReportMessage,
+  sendAbsenceWarningMessage, sendAutoFreezeMessage, sendAutoDeleteMessage
 } from '../../utils/whatsapp';
 import SystemManagerReviewsSection from './SystemManagerReviewsSection';
 import SupervisorsManagerModal from './SupervisorsManagerModal';
@@ -122,7 +123,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
 
   const [requestFilter, setRequestFilter] = useState('pending');
 
-  // ✅ Modals state
   const [showSupervisorsModal, setShowSupervisorsModal] = useState(false);
   const [showStudentsModal, setShowStudentsModal] = useState(false);
   const [showBlacklistModal, setShowBlacklistModal] = useState(false);
@@ -143,7 +143,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     cleanupOldApprovedRequests().catch(err => console.warn('cleanup initial failed:', err));
   }, []);
 
-  // Counts
   useEffect(() => {
     (async () => {
       try {
@@ -286,6 +285,10 @@ const SystemManagerPanel = ({ user, onLogout }) => {
         case 'activation': success = sendActivationMessage(studentObj, request.payload.username, request.payload.password); break;
         case 'data_update_approval': success = sendDataUpdateApprovalMessage(studentObj, {}); break;
         case 'data_update_rejection': success = sendDataUpdateRejectionMessage(studentObj, request.payload?.reason); break;
+        // ✅ الأنواع الجديدة
+        case 'absence_warning': success = sendAbsenceWarningMessage(studentObj, request.payload?.absenceCount || 10); break;
+        case 'auto_freeze': success = sendAutoFreezeMessage(studentObj, request.payload?.absenceCount || 13); break;
+        case 'auto_delete': success = sendAutoDeleteMessage(studentObj); break;
         default:
           toast.error('نوع طلب غير معروف.');
           return;
@@ -333,7 +336,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
   return (
     <div className="container-center min-h-screen p-4 relative" dir="rtl">
       <div className="bg-gray-900/80 p-8 max-w-5xl w-full space-y-6 z-10 border border-gray-700 rounded-3xl backdrop-blur-sm">
-        {/* Header */}
         <div className="flex justify-between items-center flex-wrap gap-4 border-b border-gray-700 pb-4">
           <div>
             <h2 className="text-3xl font-bold text-amber-400 flex items-center gap-2">
@@ -353,7 +355,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="relative overflow-hidden bg-gradient-to-br from-red-900/50 to-red-900/20 p-6 rounded-2xl border border-red-500/30 shadow-xl">
             <div className="flex items-center gap-3 mb-3">
@@ -414,10 +415,8 @@ const SystemManagerPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* System Manager Reviews */}
         <SystemManagerReviewsSection user={user} />
 
-        {/* ✅ Management Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <button
             onClick={() => setShowSupervisorsModal(true)}
@@ -474,7 +473,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
           </button>
         </div>
 
-        {/* Message Requests */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-amber-500/30">
           <div className="flex justify-between items-center flex-wrap gap-3 mb-4">
             <h3 className="text-xl font-semibold text-amber-300 flex items-center gap-2">
@@ -570,7 +568,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
         </div>
       </div>
 
-      {/* ✅ Modals */}
       <SupervisorsManagerModal
         isOpen={showSupervisorsModal}
         onClose={() => setShowSupervisorsModal(false)}
@@ -588,7 +585,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
         onCountChange={setBlacklistCount}
       />
 
-      {/* Notifications Modal */}
       {showNotificationsModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={handleCloseNotifications}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full max-h-[70vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
