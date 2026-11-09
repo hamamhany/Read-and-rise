@@ -613,7 +613,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
                   inputMode="numeric"
                   value={approveCustomNumber}
                   onChange={e => setApproveCustomNumber(e.target.value)}
-                  placeholder="أدخل الرقم مع رمز الدولة (مثال: 9627XXXXXXXX)"
+                  placeholder="أدخل الرقم مع رمز الدولة "
                   className="w-full bg-gray-800 text-white p-2 rounded mb-3"
                 />
               )}
