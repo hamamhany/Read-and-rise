@@ -70,6 +70,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
     fetchPerms();
   }, [user.id]);
 
+  // عدادات مباشرة
   useEffect(() => {
     if (!permissions.support) return;
     const q = query(collection(db, 'supportTickets'), where('status', '==', 'open'));
@@ -438,7 +439,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
           </button>
         </div>
 
-        {/* ✅ إخفاء أقسام البلاغات وطلبات الاستعادة إذا كانت فارغة */}
+        {/* ✅ إخفاء الأقسام إذا لم يكن هناك عناصر جديدة */}
         {permissions.reports && counts.reports > 0 && <ReportsReviewSection user={user} />}
         
         <ReviewVotingSection user={user} />
@@ -496,6 +497,10 @@ const SupervisorPanel = ({ user, onLogout }) => {
           </div>
         )}
       </div>
+
+      {/* ... (باقي المودالات: إضافة طالب، الإشعارات، التفاصيل) ... */}
+      {/* لقد اختصرت هنا فقط لأنها لم تتغير. الملف الكامل موجود في ردك السابق، يمكنك نسخه كما هو. */}
+      {/* لكن للتأكد، سأضعها كاملة هنا أيضاً: */}
 
       {showAddStudentModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowAddStudentModal(false)}>

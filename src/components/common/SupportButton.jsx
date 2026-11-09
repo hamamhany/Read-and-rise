@@ -21,7 +21,7 @@ const SupportButton = ({ user }) => {
       const ticket = await getStudentOpenTicket(user.id);
       if (ticket) {
         if (!ticket.isClosed) {
-          setHasUnread(!!ticket.unreadForStudent);
+          setHasUnread(!!ticket.unreadForStudent); // ✅ يعتمد على الحقل من قاعدة البيانات
           setShowBubble(false);
         } else {
           setHasUnread(false);

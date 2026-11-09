@@ -1,4 +1,3 @@
-// src/components/panels/ReportsReviewSection.jsx
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { FaExclamationTriangle, FaEye, FaTimes, FaPaperPlane, FaBan, FaDownload, FaSpinner } from 'react-icons/fa';
@@ -25,7 +24,7 @@ const ReportsReviewSection = ({ user }) => {
   const [closureReason, setClosureReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [hasEverLoaded, setHasEverLoaded] = useState(false);
+  const [hasEverLoaded, setHasEverLoaded] = useState(false); // ✅ حالة الإخفاء
 
   useEffect(() => {
     const q = query(
@@ -84,7 +83,7 @@ const ReportsReviewSection = ({ user }) => {
         } catch (e) { /* skip */ }
       }
 
-      setHasEverLoaded(true);
+      setHasEverLoaded(true); // ✅ تم التحميل
       if (claimedCount === 0) {
         toast('لا توجد بلاغات جديدة متاحة حالياً — قد يكون حجزها مشرف آخر.', { icon: 'ℹ️' });
       } else {
@@ -220,9 +219,10 @@ const ReportsReviewSection = ({ user }) => {
     ? getActiveWarnings(selected.targetActiveWarnings || [])
     : [];
 
-  // ✅ إخفاء القسم إذا تم التحميل ولا توجد بلاغات
+  // ✅ إخفاء القسم بالكامل إذا تم التحميل ولم توجد بلاغات
   if (hasEverLoaded && reports.length === 0) return null;
 
+  // ✅ عرض زر التحميل في البداية فقط
   if (!hasEverLoaded && reports.length === 0) {
     return (
       <div className="bg-gray-800/60 p-6 rounded-2xl border border-red-500/20 text-center">
@@ -256,12 +256,12 @@ const ReportsReviewSection = ({ user }) => {
           className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
         >
           {isLoading ? <FaSpinner className="animate-spin" /> : <FaDownload />}
-          {isLoading ? 'جاري التحميل...' : 'تحميل المزيد'}
+          {isLoading ? 'جاري التحميل...' : 'تحميل 5 بلاغات جديدة'}
         </button>
       </div>
 
       {reports.length === 0 ? (
-        <p className="text-gray-400 text-center py-4">لا توجد بلاغات محجوزة لك حالياً.</p>
+        <p className="text-gray-400 text-center py-4">لا توجد بلاغات محجوزة لك حالياً — اضغط الزر لتحميل بلاغات جديدة.</p>
       ) : (
         <div className="space-y-3 max-h-[500px] overflow-y-auto">
           {reports.map(r => (

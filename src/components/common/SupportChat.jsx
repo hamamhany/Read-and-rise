@@ -2,12 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import {
   FaTimes, FaPaperPlane, FaStar, FaCheckCircle, FaTimesCircle,
-  FaSpinner, FaUserCircle, FaInfoCircle, FaHeadset, FaPhone, FaArrowLeftCircle
+  FaSpinner, FaUserCircle, FaInfoCircle, FaHeadset, FaPhone, FaLock
 } from 'react-icons/fa';
 import {
   subscribeToTicket, sendTicketMessage, studentConfirmSolved,
   studentConfirmNotSolved, submitRating, requestTicketEnd,
-  transferToManager, requestContactInfo, markTicketAsRead
+  transferToManager, requestContactInfo, markTicketAsRead, claimTicket
 } from '../../services/support';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
@@ -26,6 +26,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
   const [showContactModal, setShowContactModal] = useState(false);
   const [contactReason, setContactReason] = useState('');
   const [customReason, setCustomReason] = useState('');
+  const [claiming, setClaiming] = useState(false);
   const scrollRef = useRef(null);
 
   const contactReasons = [
@@ -35,7 +36,9 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
   useEffect(() => {
     if (!ticketId) return;
     if (viewerMode === 'student') markTicketAsRead(ticketId, 'student');
-    if (viewerMode === 'supervisor') markTicketAsRead(ticketId, 'supervisor');
+    if (viewerMode === 'supervisor' && ticket?.assignedSupervisorId === user.id) {
+      markTicketAsRead(ticketId, 'supervisor');
+    }
     
     const unsub = subscribeToTicket(ticketId, (t) => {
       setTicket(t);
@@ -46,7 +49,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
       }
     });
     return () => unsub();
-  }, [ticketId, viewerMode]);
+  }, [ticketId, viewerMode, user.id]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -63,9 +66,10 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
   }
 
   const isStudent = viewerMode === 'student';
+  const isClaimedByMe = ticket.assignedSupervisorId === user.id;
   const canSend = isStudent
     ? [SUPPORT_TICKET_STATUS.OPEN, SUPPORT_TICKET_STATUS.IN_PROGRESS].includes(ticket.status)
-    : [SUPPORT_TICKET_STATUS.IN_PROGRESS, SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED, SUPPORT_TICKET_STATUS.MANAGER_PENDING].includes(ticket.status);
+    : isClaimedByMe && [SUPPORT_TICKET_STATUS.IN_PROGRESS, SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED, SUPPORT_TICKET_STATUS.MANAGER_PENDING].includes(ticket.status);
 
   const handleSend = async () => {
     const t = text.trim();
@@ -76,6 +80,20 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
       setText('');
     } catch (e) { toast.error('فشل: ' + e.message); }
     finally { setSending(false); }
+  };
+
+  const handleClaim = async () => {
+    if (!window.confirm('هل تريد حجز هذه التذكرة لاستلامها؟')) return;
+    setClaiming(true);
+    try {
+      await claimTicket(ticketId, user.id, user.name || user.username || 'مشرف');
+      toast.success('✅ تم حجز التذكرة بنجاح');
+      // إعادة تحميل التذكرة ستحدث تلقائياً عبر onSnapshot
+    } catch (e) {
+      toast.error('فشل الحجز: ' + e.message);
+    } finally {
+      setClaiming(false);
+    }
   };
 
   const handleEndTicket = async () => {
@@ -146,7 +164,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
             <FaHeadset className="text-blue-400 text-lg flex-shrink-0" />
             <div className="min-w-0 flex items-center gap-2 flex-wrap">
               <p className="text-white font-bold text-sm truncate">الدعم الفني</p>
-              {!isStudent && ticket.status !== SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED && (
+              {!isStudent && isClaimedByMe && ticket.status !== SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED && (
                 <>
                   <button onClick={handleEndTicket} className="text-xs bg-red-500 hover:bg-red-600 px-2 py-0.5 rounded text-white">إنهاء</button>
                   <button onClick={handleTransferToManager} className="text-xs bg-amber-500 hover:bg-amber-600 px-2 py-0.5 rounded text-white">تحويل للمدير</button>
@@ -173,6 +191,20 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
             );
           })}
         </div>
+
+        {/* ✅ شريط الحجز للمشرف (إذا لم يحجز) */}
+        {!isStudent && !isClaimedByMe && (
+          <div className="p-4 bg-gray-800 border-t border-gray-700 text-center">
+            <p className="text-gray-300 text-sm mb-3">لم تقم بحجز هذه التذكرة بعد.</p>
+            <button
+              onClick={handleClaim}
+              disabled={claiming}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-bold disabled:opacity-50"
+            >
+              {claiming ? <><FaSpinner className="animate-spin inline me-1" /> جاري الحجز...</> : <><FaLock className="inline me-1" /> حجز التذكرة</>}
+            </button>
+          </div>
+        )}
 
         {/* الحالة والإدخال */}
         {ticket.status === SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED && isStudent && (

@@ -59,8 +59,8 @@ export const createSupportTicket = async (data) => {
     managerNotificationSent: false,
     supervisorNotificationSent: false,
     studentNotificationSent: false,
-    unreadForStudent: false,
-    unreadForSupervisor: true,
+    unreadForStudent: false, // الطالب هو من أنشأها
+    unreadForSupervisor: true, // المشرفون لم يروها بعد
     bubbleDismissedByStudent: false,
     contactRequest: null,
     createdAt: serverTimestamp(),
@@ -141,7 +141,7 @@ export const subscribeToUnassignedTickets = (callback) => {
     where('status', '==', SUPPORT_TICKET_STATUS.OPEN),
     where('requiresManager', '==', false),
     orderBy('createdAt', 'asc'),
-    limit(30)
+    limit(100) // نزيد الحد لنتمكن من التحميل التدريجي
   );
   return onSnapshot(q, (snap) => {
     callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -222,7 +222,9 @@ export const sendTicketMessage = async (ticketId, sender, text) => {
     messages: arrayUnion(message),
     updatedAt: serverTimestamp(),
     lastMessage: text,
+    // ✅ النقطة الحمراء تظهر للطالب فقط إذا كان المرسل مشرفاً
     unreadForStudent: isSupervisor ? true : false,
+    // ✅ النقطة الحمراء تظهر للمشرف فقط إذا كان المرسل طالباً
     unreadForSupervisor: isSupervisor ? false : true
   };
   await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), updates);

@@ -1,9 +1,8 @@
-// src/components/panels/ResetRequestsSection.jsx
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import {
-  FaClipboardList, FaEye, FaTimes, FaCheckCircle, FaTimesCircle,
-  FaSpinner, FaDownload, FaUser, FaLock
+  FaEye, FaTimes, FaCheckCircle, FaTimesCircle,
+  FaSpinner, FaDownload, FaLock
 } from 'react-icons/fa';
 import { db } from '../../firebase';
 import {
@@ -18,7 +17,7 @@ import {
   claimPasswordResetRequest
 } from '../../services/passwordReset';
 import { createMessageRequest } from '../../services/messageRequests';
-import { fetchClassNames, generateId } from '../../utils/helpers';
+import { fetchClassNames } from '../../utils/helpers';
 
 const CLAIM_DURATION_MS = 10 * 60 * 1000;
 
@@ -32,7 +31,6 @@ const ResetRequestsSection = ({ user }) => {
   const [rejectionReason, setRejectionReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [hasEverLoaded, setHasEverLoaded] = useState(false);
 
   useEffect(() => {
     const q = query(
@@ -74,7 +72,6 @@ const ResetRequestsSection = ({ user }) => {
         } catch (e) { /* skip */ }
       }
 
-      setHasEverLoaded(true);
       if (claimedCount === 0) {
         toast('لا توجد طلبات جديدة متاحة حالياً.', { icon: 'ℹ️' });
       } else {
@@ -185,34 +182,18 @@ const ResetRequestsSection = ({ user }) => {
     } finally { setSubmitting(false); }
   };
 
-  // ✅ إخفاء القسم إذا تم التحميل ولا توجد طلبات
-  if (hasEverLoaded && requests.length === 0) return null;
-
-  if (!hasEverLoaded && requests.length === 0) {
-    return (
-      <div className="bg-gray-800/60 p-6 rounded-2xl border border-cyan-500/20 text-center">
-        <h3 className="text-xl font-semibold text-cyan-300 flex items-center gap-2 mb-3 justify-center"><FaLock /> طلبات استعادة بيانات الدخول</h3>
-        <p className="text-gray-400 text-sm mb-4">لا تُحمّل الطلبات تلقائياً. اضغط الزر لتحميل حتى 5 طلبات (مع حجز مؤقت لمدة 10 دقائق).</p>
-        <button onClick={loadMoreRequests} disabled={isLoading} className="bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white px-6 py-3 rounded-xl font-bold inline-flex items-center gap-2">
-          {isLoading ? <FaSpinner className="animate-spin" /> : <FaDownload />}
-          {isLoading ? 'جاري التحميل...' : 'تحميل الطلبات'}
-        </button>
-      </div>
-    );
-  }
-
   return (
     <div className="bg-gray-800/60 p-6 rounded-2xl border border-cyan-500/20">
       <div className="flex justify-between items-center flex-wrap gap-3 mb-4">
         <h3 className="text-xl font-semibold text-cyan-300 flex items-center gap-2"><FaLock /> طلباتك المحجوزة ({requests.length})</h3>
         <button onClick={loadMoreRequests} disabled={isLoading} className="bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2">
           {isLoading ? <FaSpinner className="animate-spin" /> : <FaDownload />}
-          {isLoading ? 'جاري التحميل...' : 'تحميل المزيد'}
+          {isLoading ? 'جاري التحميل...' : 'تحميل 5 طلبات جديدة'}
         </button>
       </div>
 
       {requests.length === 0 ? (
-        <p className="text-gray-400 text-center py-4">لا توجد طلبات محجوزة لك حالياً.</p>
+        <p className="text-gray-400 text-center py-4">لا توجد طلبات محجوزة لك حالياً — اضغط الزر لتحميل طلبات جديدة.</p>
       ) : (
         <div className="space-y-3 max-h-[500px] overflow-y-auto">
           {requests.map(r => (
