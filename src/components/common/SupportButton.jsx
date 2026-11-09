@@ -21,7 +21,7 @@ const SupportButton = ({ user }) => {
       const ticket = await getStudentOpenTicket(user.id);
       if (ticket) {
         if (!ticket.isClosed) {
-          setHasUnread(!!ticket.unreadForStudent); // ✅ يعتمد على الحقل من قاعدة البيانات
+          setHasUnread(!!ticket.unreadForStudent);
           setShowBubble(false);
         } else {
           setHasUnread(false);
@@ -85,7 +85,7 @@ const SupportButton = ({ user }) => {
       const targetRole = (user.role === 'supervisor' || user.role === 'system_manager')
         ? 'مدير النظام'
         : 'مشرف';
-        toast.success(`✅ تم إرسال طلبك — بانتظار ${targetRole}`);
+      toast.success(`✅ تم إرسال طلبك — بانتظار ${targetRole}`);
       const newTicket = await getStudentOpenTicket(user.id);
       setActiveTicket(newTicket);
       setShowNewForm(false);
