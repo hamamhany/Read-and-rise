@@ -12,14 +12,15 @@ import {
   sendSupervisorRatingWarningMessage, sendApologyToStudentMessage,
   sendComplaintRejectedMessage
 } from '../../utils/whatsapp';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { SUPPORT_RATING_CATEGORIES } from '../../constants';
+import { SUPPORT_RATING_CATEGORIES, SUPPORT_TICKET_STATUS } from '../../constants';
 import SupportChat from '../common/SupportChat';
 
 const ManagerSupportReviewsSection = ({ user }) => {
   const [reviews, setReviews] = useState([]);
   const [openTickets, setOpenTickets] = useState([]);
+  const [myManagerTickets, setMyManagerTickets] = useState([]); // ✅ جديد
   const [selected, setSelected] = useState(null);
   const [supervisor, setSupervisor] = useState(null);
   const [student, setStudent] = useState(null);
@@ -33,6 +34,26 @@ const ManagerSupportReviewsSection = ({ user }) => {
     const u2 = subscribeToManagerOpenTickets(setOpenTickets);
     return () => { u1(); u2(); };
   }, []);
+
+  // ✅ جديد — تذاكر المدير النشطة (المحجوزة) حتى يتمكن من فتحها مرة أخرى
+  useEffect(() => {
+    const q = query(
+      collection(db, 'supportTickets'),
+      where('assignedSupervisorId', '==', user.id),
+      where('status', 'in', [
+        SUPPORT_TICKET_STATUS.IN_PROGRESS,
+        SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED,
+        SUPPORT_TICKET_STATUS.AWAITING_RATING
+      ]),
+      orderBy('updatedAt', 'desc'),
+      limit(20)
+    );
+    const unsub = onSnapshot(q,
+      (snap) => setMyManagerTickets(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+      (err) => console.warn('myManagerTickets subscription:', err.message)
+    );
+    return () => unsub();
+  }, [user.id]);
 
   const openReview = async (ticket) => {
     setSelected(ticket);
@@ -50,7 +71,10 @@ const ManagerSupportReviewsSection = ({ user }) => {
     } catch (e) { console.warn(e); }
   };
 
-  const closeModal = () => { setSelected(null); setSupervisor(null); setStudent(null); setMode(null); setReason(''); };
+  const closeModal = () => {
+    setSelected(null); setSupervisor(null); setStudent(null);
+    setMode(null); setReason('');
+  };
 
   const handleClaimOpenTicket = async (ticketId) => {
     try {
@@ -111,8 +135,13 @@ const ManagerSupportReviewsSection = ({ user }) => {
     finally { setProcessing(false); }
   };
 
-  // ✅ إخفاء القسم بالكامل إذا لم يوجد شيء
-  if (reviews.length === 0 && openTickets.length === 0) return null;
+  // ✅ لا نخفي القسم إذا كانت هناك دردشة مفتوحة أو تذاكر نشطة للمدير
+  if (
+    reviews.length === 0 &&
+    openTickets.length === 0 &&
+    myManagerTickets.length === 0 &&
+    !openChatId
+  ) return null;
 
   return (
     <div className="bg-gray-800/60 p-6 rounded-2xl border border-rose-500/20">
@@ -149,7 +178,31 @@ const ManagerSupportReviewsSection = ({ user }) => {
         </div>
       )}
 
-      {/* تذاكر المشرفين */}
+      {/* تذاكر المدير النشطة (المحجوزة) — جديدة */}
+      {myManagerTickets.length > 0 && (
+        <div className="border-t border-gray-700 pt-4 mt-4">
+          <p className="text-sm text-emerald-200 font-bold mb-2 flex items-center gap-2">
+            <FaHeadset /> تذاكرك النشطة ({myManagerTickets.length})
+          </p>
+          <div className="space-y-2 max-h-48 overflow-y-auto">
+            {myManagerTickets.map(t => (
+              <div key={t.id} className="p-2 bg-black/30 rounded-lg border border-emerald-500/20 flex justify-between items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-white text-xs truncate"><FaUser className="inline me-1" />{t.studentName}</p>
+                  <p className="text-[10px] text-gray-400 truncate">
+                    {t.messages?.[t.messages.length - 1]?.text || 'لا توجد رسائل'}
+                  </p>
+                </div>
+                <button onClick={() => setOpenChatId(t.id)} className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded-lg">
+                  فتح
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* تذاكر المشرفين (غير محجوزة) */}
       {openTickets.length > 0 && (
         <div className="border-t border-gray-700 pt-4 mt-4">
           <p className="text-sm text-cyan-200 font-bold mb-2 flex items-center gap-2">
@@ -172,7 +225,12 @@ const ManagerSupportReviewsSection = ({ user }) => {
       )}
 
       {openChatId && (
-        <SupportChat user={user} ticketId={openChatId} viewerMode="manager" onClose={() => setOpenChatId(null)} />
+        <SupportChat
+          user={user}
+          ticketId={openChatId}
+          viewerMode="manager"
+          onClose={() => setOpenChatId(null)}
+        />
       )}
 
       {selected && (

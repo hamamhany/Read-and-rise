@@ -446,7 +446,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
         
         {permissions.resets && counts.resets > 0 && <ResetRequestsSection user={user} />}
         
-        {permissions.support && counts.support > 0 && <SupportTicketsSection user={user} />}
+        {permissions.support && <SupportTicketsSection user={user} />}
 
         {canPublish && (
           <div className="bg-gray-800/60 p-6 rounded-2xl border border-blue-500/20">
