@@ -11,7 +11,8 @@ import {
   SUPPORT_MAX_ACTIVE_OVERLOAD,
   SUPPORT_END_TIMEOUT_MS,
   CONTACT_REQUEST_STATUS,
-  DELETE_REQUEST_STATUS
+  DELETE_REQUEST_STATUS,
+  SUPPORT_REPORT_REASONS
 } from '../constants';
 
 // =========================================================
@@ -25,7 +26,9 @@ export const createSupportTicket = async (data) => {
       SUPPORT_TICKET_STATUS.OPEN,
       SUPPORT_TICKET_STATUS.IN_PROGRESS,
       SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED,
-      SUPPORT_TICKET_STATUS.AWAITING_RATING
+      SUPPORT_TICKET_STATUS.AWAITING_RATING,
+      SUPPORT_TICKET_STATUS.REPORTED,
+      SUPPORT_TICKET_STATUS.NEEDS_COMPLETION
     ]),
     limit(1)
   );
@@ -68,6 +71,10 @@ export const createSupportTicket = async (data) => {
     bubbleDismissedByStudent: false,
     contactRequest: null,
     deleteRequest: null,
+    report: null,
+    reportResolvedAt: null,
+    reportResolvedBy: null,
+    reportAction: null,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   };
@@ -89,7 +96,9 @@ export const getStudentOpenTicket = async (studentId) => {
       SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED,
       SUPPORT_TICKET_STATUS.AWAITING_RATING,
       SUPPORT_TICKET_STATUS.RATED_LOW,
-      SUPPORT_TICKET_STATUS.MANAGER_PENDING
+      SUPPORT_TICKET_STATUS.MANAGER_PENDING,
+      SUPPORT_TICKET_STATUS.REPORTED,
+      SUPPORT_TICKET_STATUS.NEEDS_COMPLETION
     ]),
     limit(1)
   );
@@ -146,10 +155,14 @@ export const subscribeToSupervisorTickets = (supervisorId, callback) => {
   });
 };
 
+// ✅ يشمل التذاكر المفتوحة + التذاكر التي تحتاج إكمال (بعد فك الحظر)
 export const subscribeToUnassignedTickets = (callback) => {
   const q = query(
     collection(db, SUPPORT_TICKETS_COLLECTION),
-    where('status', '==', SUPPORT_TICKET_STATUS.OPEN),
+    where('status', 'in', [
+      SUPPORT_TICKET_STATUS.OPEN,
+      SUPPORT_TICKET_STATUS.NEEDS_COMPLETION
+    ]),
     where('requiresManager', '==', false),
     orderBy('createdAt', 'asc'),
     limit(100)
@@ -184,13 +197,26 @@ export const subscribeToManagerOpenTickets = (callback) => {
   });
 };
 
+// ✅ جديد: التذاكر المُبلّغ عنها — لمراجعة المدير
+export const subscribeToReportedTickets = (callback) => {
+  const q = query(
+    collection(db, SUPPORT_TICKETS_COLLECTION),
+    where('status', '==', SUPPORT_TICKET_STATUS.REPORTED),
+    orderBy('updatedAt', 'desc'),
+    limit(50)
+  );
+  return onSnapshot(q, (snap) => {
+    callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+  });
+};
+
 // Legacy
 export const subscribeToPendingContactRequests = (callback) => {
   return () => {};
 };
 
 // =========================================================
-// حجز التذكرة
+// حجز التذكرة (يشمل NEEDS_COMPLETION)
 // =========================================================
 export const claimTicket = async (ticketId, supervisorId, supervisorName, managerMode = false) => {
   await runTransaction(db, async (transaction) => {
@@ -203,7 +229,10 @@ export const claimTicket = async (ticketId, supervisorId, supervisorName, manage
     if (!ticketSnap.exists()) throw new Error('التذكرة غير موجودة');
     const ticket = ticketSnap.data();
     if (ticket.assignedSupervisorId) throw new Error('التذكرة محجوزة لمشرف آخر');
-    if (ticket.status !== SUPPORT_TICKET_STATUS.OPEN) throw new Error('التذكرة ليست متاحة');
+    if (ticket.status !== SUPPORT_TICKET_STATUS.OPEN &&
+        ticket.status !== SUPPORT_TICKET_STATUS.NEEDS_COMPLETION) {
+      throw new Error('التذكرة ليست متاحة');
+    }
 
     const supData = supSnap.data() || {};
     const currentActive = supData.activeTicketCount || 0;
@@ -228,7 +257,7 @@ export const claimTicket = async (ticketId, supervisorId, supervisorName, manage
 };
 
 // =========================================================
-// إرسال رسالة — يمنع الإرسال عند SUPERVISOR_ENDED (لكل الأطراف)
+// إرسال رسالة — يمنع الإرسال عند SUPERVISOR_ENDED و REPORTED
 // =========================================================
 export const sendTicketMessage = async (ticketId, sender, text) => {
   const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
@@ -236,9 +265,11 @@ export const sendTicketMessage = async (ticketId, sender, text) => {
   if (!ticketSnap.exists()) throw new Error('التذكرة غير موجودة');
   const ticketData = ticketSnap.data();
 
-  // ✅ منع الإرسال أثناء انتظار قرار صاحب التذكرة
   if (ticketData.status === SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED) {
     throw new Error('الدردشة متوقفة بانتظار قرار صاحب التذكرة');
+  }
+  if (ticketData.status === SUPPORT_TICKET_STATUS.REPORTED) {
+    throw new Error('المحادثة محوّلة إلى قسم المراجعة — لا يمكن إرسال رسائل');
   }
 
   const message = {
@@ -297,7 +328,7 @@ export const transferToManager = async (ticketId, supervisorName) => {
 };
 
 // =========================================================
-// ✅ طلب رقم صاحب التذكرة (من المشرف المعيّن أو المدير)
+// طلب رقم صاحب التذكرة
 // =========================================================
 export const requestContactInfo = async (ticketId, reason, requesterId, requesterName = '') => {
   const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
@@ -325,14 +356,11 @@ export const requestContactInfo = async (ticketId, reason, requesterId, requeste
   });
 };
 
-// ✅ صاحب التذكرة يوافق (مع خيار: مسجل أو رقم آخر)
 export const approveContactRequest = async (ticketId, options = {}) => {
   const { mode = 'registered', customNumber = null } = options;
-
   if (mode === 'other' && (!customNumber || customNumber.length < 10)) {
     throw new Error('يرجى إدخال رقم تواصل صالح');
   }
-
   await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
     'contactRequest.status': CONTACT_REQUEST_STATUS.APPROVED,
     'contactRequest.mode': mode,
@@ -352,7 +380,7 @@ export const rejectContactRequest = async (ticketId, reason = '') => {
 };
 
 // =========================================================
-// ✅ طلب حذف التذكرة (المدير يطلب، الطرفان يوافقان)
+// طلب حذف التذكرة (المدير يطلب، الطرفان يوافقان)
 // =========================================================
 export const requestTicketDeletion = async (ticketId, managerId, managerName) => {
   const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
@@ -572,7 +600,7 @@ export const managerDecide = async (ticketId, decision, managerReason) => {
 };
 
 // =========================================================
-// حذف نهائي (يُستدعى من Cron فقط)
+// حذف نهائي (يُستدعى من Cron)
 // =========================================================
 export const deleteTicketPermanently = async (ticketId) => {
   const ref = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
@@ -594,5 +622,96 @@ export const deleteTicketPermanently = async (ticketId) => {
   await deleteDoc(ref);
 };
 
-// Legacy للتوافق
 export const finalizeAndDeleteTicket = deleteTicketPermanently;
+
+// =========================================================
+// ✅ جديد: نظام بلاغات الدعم الفني
+// =========================================================
+
+// المشرف يقدّم بلاغاً ضد صاحب التذكرة
+export const reportTicket = async (ticketId, reporterId, reporterName, reasonValue, reasonDetails) => {
+  const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
+  const snap = await getDoc(ticketRef);
+  if (!snap.exists()) throw new Error('التذكرة غير موجودة');
+  const data = snap.data();
+
+  if (data.assignedSupervisorId !== reporterId) {
+    throw new Error('لا يمكنك الإبلاغ عن تذكرة لا تملكها');
+  }
+  if (data.status !== SUPPORT_TICKET_STATUS.IN_PROGRESS) {
+    throw new Error('لا يمكن الإبلاغ عن تذكرة في هذه الحالة');
+  }
+  if (!reasonValue) throw new Error('يرجى اختيار سبب البلاغ');
+  if (!reasonDetails || !reasonDetails.trim()) throw new Error('يرجى كتابة تفاصيل البلاغ');
+
+  const reasonLabel = SUPPORT_REPORT_REASONS.find(r => r.value === reasonValue)?.label || reasonValue;
+
+  const systemMessage = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+    senderId: 'system',
+    senderName: 'النظام',
+    senderRole: 'system',
+    text: '🔒 تم تحويل المحادثة إلى قسم المراجعة في الإدارة بسبب تقديم بلاغ على المحادثة. لا يمكن إرسال رسائل حتى تنتهي المراجعة.',
+    createdAt: new Date().toISOString()
+  };
+
+  await updateDoc(ticketRef, {
+    status: SUPPORT_TICKET_STATUS.REPORTED,
+    report: {
+      reason: reasonValue,
+      reasonLabel,
+      details: reasonDetails.trim(),
+      reportedBy: reporterId,
+      reportedByName: reporterName,
+      reportedAt: serverTimestamp()
+    },
+    messages: arrayUnion(systemMessage),
+    updatedAt: serverTimestamp()
+  });
+};
+
+// المدير: إلغاء البلاغ وحذف التذكرة نهائياً
+export const cancelReportAndDelete = async (ticketId) => {
+  await deleteDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId));
+};
+
+// المدير: إلغاء البلاغ وإعادة فتح التذكرة لمشرف آخر
+export const cancelReportAndReopen = async (ticketId, managerId) => {
+  const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
+  const snap = await getDoc(ticketRef);
+  if (!snap.exists()) throw new Error('التذكرة غير موجودة');
+
+  // رسالة نظام تظهر لصاحب التذكرة فقط (المشرف الجديد لا يراها)
+  const systemMessage = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+    senderId: 'system',
+    senderName: 'النظام',
+    senderRole: 'system',
+    text: 'تم فك الحظر عن هذه الدردشة، نعتذر منك لقد حدث عطل ما اضطرنا إلى تحويل الدردشة إلى الإدارة بعد الإشتباه في حالة مخالفة للقوانين الأكاديمية',
+    createdAt: new Date().toISOString(),
+    hiddenFor: ['supervisor']
+  };
+
+  await updateDoc(ticketRef, {
+    status: SUPPORT_TICKET_STATUS.NEEDS_COMPLETION,
+    assignedSupervisorId: null,
+    assignedSupervisorName: null,
+    assignedAt: null,
+    report: null,
+    reportResolvedAt: serverTimestamp(),
+    reportResolvedBy: managerId,
+    reportAction: 'reopened',
+    messages: arrayUnion(systemMessage),
+    updatedAt: serverTimestamp()
+  });
+};
+
+// المدير: إغلاق حساب المُبلَّغ عنه (يُستدعى من الواجهة بعد فتح واتساب)
+export const closeReportedTicketAfterAccountDeletion = async (ticketId) => {
+  await deleteDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId));
+};
+
+// المدير: حفظ قرار التنبيه ثم حذف التذكرة
+export const finalizeReportWithWarning = async (ticketId, managerId) => {
+  await deleteDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId));
+};

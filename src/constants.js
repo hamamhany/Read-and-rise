@@ -81,19 +81,21 @@ export const REVIEW_REQUIRED_VOTES = 4;
 export const PASSWORD_RESET_STATUS = { PENDING: 'pending', APPROVED: 'approved', REJECTED: 'rejected' };
 
 // =========================================================
-// ✅ نظام الدعم الفني الجديد (دردشة داخلية)
+// ✅ نظام الدعم الفني (دردشة داخلية)
 // =========================================================
 export const SUPPORT_TICKET_STATUS = {
-  OPEN: 'open',                        // مفتوحة — بانتظار مشرف
-  IN_PROGRESS: 'in_progress',          // جارية مع مشرف
-  SUPERVISOR_ENDED: 'supervisor_ended',// المشرف طلب الإنهاء — بانتظار تأكيد الطالب
-  AWAITING_RATING: 'awaiting_rating',  // الطالب أكد الحل — بانتظار تقييم
-  RATED_FULL: 'rated_full',            // ⭐ 5 — إغلاق طبيعي
-  RATED_LOW: 'rated_low',              // ⭐ أقل — بانتظار قرار المدير
-  MANAGER_APOLOGIZED: 'manager_apologized', // المدير اعتذر → أُغلقت
-  MANAGER_REJECTED: 'manager_rejected',     // المدير رفض الشكوى → أُغلقت
-  AUTO_CLOSED: 'auto_closed',          // إغلاق تلقائي بعد 24 ساعة
-  MANAGER_PENDING: 'manager_pending'   // ✅ جديد: محولة للمدير
+  OPEN: 'open',
+  IN_PROGRESS: 'in_progress',
+  SUPERVISOR_ENDED: 'supervisor_ended',
+  AWAITING_RATING: 'awaiting_rating',
+  RATED_FULL: 'rated_full',
+  RATED_LOW: 'rated_low',
+  MANAGER_APOLOGIZED: 'manager_apologized',
+  MANAGER_REJECTED: 'manager_rejected',
+  AUTO_CLOSED: 'auto_closed',
+  MANAGER_PENDING: 'manager_pending',
+  REPORTED: 'reported',                 // ✅ جديد
+  NEEDS_COMPLETION: 'needs_completion'  // ✅ جديد
 };
 
 export const CONTACT_REQUEST_STATUS = {
@@ -114,14 +116,28 @@ export const SUPPORT_RATING_CATEGORIES = [
   { value: 'wrong_info', label: 'معلومات غير دقيقة' },
   { value: 'unresolved', label: 'المشكلة لم تُحل فعلياً' }
 ];
+
 export const DELETE_REQUEST_STATUS = {
-  PENDING: 'pending',           // بانتظار موافقة الطرفين
-  BOTH_APPROVED: 'both_approved', // وافق الطرفان — مجدول للحذف
-  CANCELLED: 'cancelled'        // أُلغي (بسبب رسالة جديدة أو رفض)
+  PENDING: 'pending',
+  BOTH_APPROVED: 'both_approved',
+  CANCELLED: 'cancelled'
 };
 
 export const CONTACT_PREFERENCE_MODES = {
-  REGISTERED: 'registered', // الرقم المسجل في المنصة
-  OTHER: 'other',           // رقم آخر يكتبه صاحب التذكرة
-  NONE: 'none'              // لا يريد مشاركة رقمه
+  REGISTERED: 'registered',
+  OTHER: 'other',
+  NONE: 'none'
 };
+
+// =========================================================
+// ✅ جديد: أسباب البلاغ في محادثة الدعم الفني
+// =========================================================
+export const SUPPORT_REPORT_REASONS = [
+  { value: 'verbal_abuse',     label: 'إساءة لفظية' },
+  { value: 'threats',          label: 'تهديد أو ترويع' },
+  { value: 'disrespect',       label: 'عدم احترام الكادر التعليمي' },
+  { value: 'harassment',       label: 'تحرش أو مضايقة' },
+  { value: 'false_info',       label: 'تقديم معلومات كاذبة أو مضللة' },
+  { value: 'inappropriate',    label: 'سلوك غير لائق أو مسيء' },
+  { value: 'other',            label: 'أخرى' }
+];

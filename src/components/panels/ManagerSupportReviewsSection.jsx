@@ -2,25 +2,37 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import {
-  FaExclamationTriangle, FaEye, FaUser, FaHeadset
+  FaExclamationTriangle, FaEye, FaUser, FaHeadset, FaTimes,
+  FaSpinner, FaTrashAlt, FaCheckCircle, FaRedoAlt, FaBan, FaBell
 } from 'react-icons/fa';
 import {
   subscribeToManagerReviewTickets, subscribeToManagerOpenTickets,
-  managerDecide, finalizeAndDeleteTicket, claimTicket
+  subscribeToReportedTickets,
+  managerDecide, finalizeAndDeleteTicket, claimTicket,
+  cancelReportAndDelete, cancelReportAndReopen,
+  finalizeReportWithWarning,
+  closeReportedTicketAfterAccountDeletion
 } from '../../services/support';
 import {
   sendSupervisorRatingWarningMessage, sendApologyToStudentMessage,
-  sendComplaintRejectedMessage
+  sendComplaintRejectedMessage,
+  sendReportRejectedMessage, sendReportAccountClosedMessage,
+  sendReportWarningMessage
 } from '../../utils/whatsapp';
+import { issueWarning } from '../../services/warnings';
+import { deleteUserCompletely } from '../../services/accountDeletion';
 import { doc, getDoc, collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { SUPPORT_RATING_CATEGORIES, SUPPORT_TICKET_STATUS } from '../../constants';
+import {
+  SUPPORT_RATING_CATEGORIES, SUPPORT_TICKET_STATUS, SUPPORT_REPORT_REASONS
+} from '../../constants';
 import SupportChat from '../common/SupportChat';
 
 const ManagerSupportReviewsSection = ({ user }) => {
   const [reviews, setReviews] = useState([]);
   const [openTickets, setOpenTickets] = useState([]);
   const [myManagerTickets, setMyManagerTickets] = useState([]);
+  const [reportedTickets, setReportedTickets] = useState([]);
   const [selected, setSelected] = useState(null);
   const [supervisor, setSupervisor] = useState(null);
   const [student, setStudent] = useState(null);
@@ -29,10 +41,16 @@ const ManagerSupportReviewsSection = ({ user }) => {
   const [processing, setProcessing] = useState(false);
   const [openChatId, setOpenChatId] = useState(null);
 
+  // ✅ جديد: بلاغات
+  const [selectedReport, setSelectedReport] = useState(null);
+  const [reportedStudent, setReportedStudent] = useState(null);
+  const [reportedSupervisor, setReportedSupervisor] = useState(null);
+
   useEffect(() => {
     const u1 = subscribeToManagerReviewTickets(setReviews);
     const u2 = subscribeToManagerOpenTickets(setOpenTickets);
-    return () => { u1(); u2(); };
+    const u3 = subscribeToReportedTickets(setReportedTickets);
+    return () => { u1(); u2(); u3(); };
   }, []);
 
   useEffect(() => {
@@ -74,6 +92,29 @@ const ManagerSupportReviewsSection = ({ user }) => {
   const closeModal = () => {
     setSelected(null); setSupervisor(null); setStudent(null);
     setMode(null); setReason('');
+  };
+
+  // ✅ فتح بلاغ للمراجعة
+  const openReportedTicket = async (ticket) => {
+    setSelectedReport(ticket);
+    setReportedStudent(null);
+    setReportedSupervisor(null);
+    try {
+      if (ticket.studentId) {
+        const st = await getDoc(doc(db, 'profiles', ticket.studentId));
+        if (st.exists()) setReportedStudent({ id: st.id, ...st.data() });
+      }
+      if (ticket.report?.reportedBy) {
+        const sp = await getDoc(doc(db, 'profiles', ticket.report.reportedBy));
+        if (sp.exists()) setReportedSupervisor({ id: sp.id, ...sp.data() });
+      }
+    } catch (e) { console.warn(e); }
+  };
+
+  const closeReportModal = () => {
+    setSelectedReport(null);
+    setReportedStudent(null);
+    setReportedSupervisor(null);
   };
 
   const handleClaimOpenTicket = async (ticketId) => {
@@ -135,21 +176,138 @@ const ManagerSupportReviewsSection = ({ user }) => {
     finally { setProcessing(false); }
   };
 
+  // ✅ إجراءات البلاغ
+  const handleCancelReportAndDelete = async () => {
+    if (!selectedReport) return;
+    if (!window.confirm('⚠️ سيتم رفض البلاغ وحذف التذكرة نهائياً. متابعة؟')) return;
+    setProcessing(true);
+    try {
+      if (reportedSupervisor) sendReportRejectedMessage(reportedSupervisor);
+      await cancelReportAndDelete(selectedReport.id);
+      toast.success('✅ تم رفض البلاغ وحذف التذكرة نهائياً');
+      closeReportModal();
+    } catch (e) { toast.error('فشل: ' + e.message); }
+    finally { setProcessing(false); }
+  };
+
+  const handleCancelReportAndReopen = async () => {
+    if (!selectedReport) return;
+    if (!window.confirm('سيتم رفض البلاغ وإعادة فتح المحادثة لمشرف آخر. متابعة؟')) return;
+    setProcessing(true);
+    try {
+      if (reportedSupervisor) sendReportRejectedMessage(reportedSupervisor);
+      await cancelReportAndReopen(selectedReport.id, user.id);
+      toast.success('✅ تم رفض البلاغ وإعادة فتح المحادثة — بحاجة إلى مشرف جديد');
+      closeReportModal();
+    } catch (e) { toast.error('فشل: ' + e.message); }
+    finally { setProcessing(false); }
+  };
+
+  const handleCloseReportedAccount = async () => {
+    if (!selectedReport) return;
+    if (!window.confirm('⚠️ سيتم حذف حساب المُبلَّغ عنه نهائياً وإدراجه في القائمة السوداء. متأكد؟')) return;
+    setProcessing(true);
+    try {
+      const studentObj = {
+        name: selectedReport.studentName,
+        phone: selectedReport.studentPhone,
+        serialNumber: reportedStudent?.serialNumber
+      };
+      const opened = sendReportAccountClosedMessage(studentObj);
+      if (!opened) {
+        toast.error('لم يتم فتح واتساب — لم يتم إغلاق الحساب');
+        setProcessing(false);
+        return;
+      }
+      await deleteUserCompletely(selectedReport.studentId, {
+        blacklistReason: 'مخالفة سلوك أثناء التواصل مع الدعم الفني'
+      });
+      await closeReportedTicketAfterAccountDeletion(selectedReport.id);
+      toast.success('✅ تم إغلاق الحساب وحذف التذكرة');
+      closeReportModal();
+    } catch (e) { toast.error('فشل: ' + e.message); }
+    finally { setProcessing(false); }
+  };
+
+  const handleWarnReported = async () => {
+    if (!selectedReport) return;
+    if (!window.confirm('سيتم إرسال تنبيه إداري للمُبلَّغ عنه وحذف التذكرة. متابعة؟')) return;
+    setProcessing(true);
+    try {
+      // 1. محاولة فتح واتساب بالتنبيه
+      const studentObj = {
+        name: selectedReport.studentName,
+        phone: selectedReport.studentPhone,
+        serialNumber: reportedStudent?.serialNumber
+      };
+      const opened = sendReportWarningMessage(studentObj);
+      if (!opened) {
+        toast.error('لم يتم فتح واتساب — لم يتم إرسال التنبيه');
+        setProcessing(false);
+        return;
+      }
+      // 2. إصدار إنذار في النظام
+      try {
+        await issueWarning(selectedReport.studentId, 'مخالفة سلوك أثناء التواصل مع الدعم الفني');
+      } catch (warnErr) {
+        if (warnErr.message.includes('إنذار')) {
+          toast.error(warnErr.message + ' — استخدم خيار إغلاق الحساب');
+          setProcessing(false);
+          return;
+        }
+        throw warnErr;
+      }
+      // 3. حذف التذكرة
+      await finalizeReportWithWarning(selectedReport.id, user.id);
+      toast.success('✅ تم إرسال التنبيه وإصدار إنذار وحذف التذكرة');
+      closeReportModal();
+    } catch (e) { toast.error('فشل: ' + e.message); }
+    finally { setProcessing(false); }
+  };
+
   if (
     reviews.length === 0 &&
     openTickets.length === 0 &&
     myManagerTickets.length === 0 &&
+    reportedTickets.length === 0 &&
     !openChatId
   ) return null;
 
   return (
-    <div className="bg-gray-800/60 p-6 rounded-2xl border border-rose-500/20">
-      <h3 className="text-xl font-semibold text-rose-300 flex items-center gap-2 mb-4">
-        <FaExclamationTriangle /> مراجعات تقييمات الدعم ({reviews.length})
+    <div className="bg-gray-800/60 p-6 rounded-2xl border border-rose-500/20 space-y-4">
+      <h3 className="text-xl font-semibold text-rose-300 flex items-center gap-2">
+        <FaExclamationTriangle /> مراجعات الدعم الفني
       </h3>
 
+      {/* ========== بلاغات الدعم الفني (جديد) ========== */}
+      {reportedTickets.length > 0 && (
+        <div className="border border-red-500/30 rounded-xl p-3 bg-red-900/10">
+          <p className="text-sm text-red-200 font-bold mb-2 flex items-center gap-2">
+            <FaBell /> بلاغات الدعم الفني — بانتظار قرارك ({reportedTickets.length})
+          </p>
+          <div className="space-y-2 max-h-56 overflow-y-auto">
+            {reportedTickets.map(t => (
+              <div key={t.id} className="p-2 bg-black/40 rounded-lg border border-red-500/20 flex justify-between items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-white text-xs truncate">
+                    <FaUser className="inline me-1" />{t.studentName}
+                  </p>
+                  <p className="text-[10px] text-red-300 truncate">
+                    بلاغ من: {t.report?.reportedByName} — {t.report?.reasonLabel}
+                  </p>
+                </div>
+                <button onClick={() => openReportedTicket(t)} className="text-xs bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-lg whitespace-nowrap">
+                  <FaEye /> مراجعة
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ========== مراجعات تقييمات (قديم) ========== */}
       {reviews.length > 0 && (
-        <div className="space-y-2 max-h-96 overflow-y-auto mb-4">
+        <div className="space-y-2 max-h-96 overflow-y-auto">
           {reviews.map(t => {
             const catLabel = SUPPORT_RATING_CATEGORIES.find(c => c.value === t.ratingCategory)?.label || '';
             return (
@@ -175,7 +333,7 @@ const ManagerSupportReviewsSection = ({ user }) => {
       )}
 
       {myManagerTickets.length > 0 && (
-        <div className="border-t border-gray-700 pt-4 mt-4">
+        <div className="border-t border-gray-700 pt-4">
           <p className="text-sm text-emerald-200 font-bold mb-2 flex items-center gap-2">
             <FaHeadset /> تذاكرك النشطة ({myManagerTickets.length})
           </p>
@@ -198,7 +356,7 @@ const ManagerSupportReviewsSection = ({ user }) => {
       )}
 
       {openTickets.length > 0 && (
-        <div className="border-t border-gray-700 pt-4 mt-4">
+        <div className="border-t border-gray-700 pt-4">
           <p className="text-sm text-cyan-200 font-bold mb-2 flex items-center gap-2">
             <FaHeadset /> تذاكر من المشرفين ({openTickets.length})
           </p>
@@ -227,6 +385,91 @@ const ManagerSupportReviewsSection = ({ user }) => {
         />
       )}
 
+      {/* ============ مودال مراجعة البلاغ (جديد) ============ */}
+      {selectedReport && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] p-4" onClick={closeReportModal}>
+          <div className="bg-gray-900 p-6 rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-red-500/30" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold text-red-300 flex items-center gap-2">
+                <FaExclamationTriangle /> مراجعة بلاغ
+              </h3>
+              <button onClick={closeReportModal} className="text-gray-400 hover:text-white text-2xl"><FaTimes /></button>
+            </div>
+
+            <div className="bg-gray-800/60 p-3 rounded-xl mb-3 text-sm">
+              <p className="text-cyan-200 font-bold mb-1">👤 المُبلَّغ عنه (صاحب التذكرة):</p>
+              <p className="text-gray-300">الاسم: {selectedReport.studentName}</p>
+              {reportedStudent?.serialNumber && <p className="text-gray-300">الرقم التسلسلي: {reportedStudent.serialNumber}</p>}
+              {selectedReport.studentPhone && <p className="text-gray-300">الهاتف: <span dir="ltr">{selectedReport.studentPhone}</span></p>}
+            </div>
+
+            <div className="bg-gray-800/60 p-3 rounded-xl mb-3 text-sm">
+              <p className="text-cyan-200 font-bold mb-1">🛡️ المشرف المُبلِّغ:</p>
+              <p className="text-gray-300">الاسم: {selectedReport.report?.reportedByName}</p>
+              {reportedSupervisor?.phone && <p className="text-gray-300">الهاتف: <span dir="ltr">{reportedSupervisor.phone}</span></p>}
+            </div>
+
+            <div className="bg-rose-500/10 p-3 rounded-xl mb-3 text-sm border border-rose-500/30">
+              <p className="text-rose-200 font-bold mb-1">📝 تفاصيل البلاغ:</p>
+              <p className="text-gray-200">السبب: {selectedReport.report?.reasonLabel}</p>
+              <p className="text-gray-200">التفاصيل: "{selectedReport.report?.details}"</p>
+            </div>
+
+            <div className="bg-gray-800/40 p-3 rounded-xl mb-3 max-h-60 overflow-y-auto border border-gray-700">
+              <p className="text-xs text-gray-400 mb-2">📜 سجل المحادثة الكامل:</p>
+              {selectedReport.messages?.map(m => (
+                <div key={m.id} className="text-xs mb-1">
+                  <strong className="text-blue-300">{m.senderName}:</strong>
+                  <span className="text-gray-300"> {m.text}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="space-y-2">
+              <button
+                onClick={handleCancelReportAndDelete}
+                disabled={processing}
+                className="w-full p-3 bg-gray-600/30 hover:bg-gray-600/50 border border-gray-500/40 rounded-xl text-gray-200 text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <FaTrashAlt /> رفض البلاغ وحذف المحادثة نهائياً
+              </button>
+
+              <button
+                onClick={handleCancelReportAndReopen}
+                disabled={processing}
+                className="w-full p-3 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 rounded-xl text-blue-200 text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <FaRedoAlt /> رفض البلاغ وإعادة المحادثة لمشرف آخر
+              </button>
+
+              <button
+                onClick={handleWarnReported}
+                disabled={processing}
+                className="w-full p-3 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 rounded-xl text-amber-200 text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <FaBell /> إرسال تنبيه إداري للمُبلَّغ عنه
+              </button>
+
+              <button
+                onClick={handleCloseReportedAccount}
+                disabled={processing}
+                className="w-full p-3 bg-red-600/30 hover:bg-red-600/50 border border-red-500/50 rounded-xl text-red-200 text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <FaBan /> إغلاق حساب المُبلَّغ عنه نهائياً
+              </button>
+
+              <button
+                onClick={closeReportModal}
+                className="w-full p-2 bg-gray-700 hover:bg-gray-600 rounded-xl text-gray-300 text-xs"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============ مودال مراجعة تقييم سلبي (قديم) ============ */}
       {selected && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] p-4" onClick={closeModal}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-rose-500/30" onClick={e => e.stopPropagation()}>

@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { FaHeadset, FaSpinner, FaEye, FaChevronDown, FaArrowCircleLeft, FaCheckCircle, FaCheckSquare, FaSquare } from 'react-icons/fa';
+import {
+  FaHeadset, FaSpinner, FaEye, FaChevronDown, FaArrowCircleLeft,
+  FaCheckCircle, FaCheckSquare, FaSquare
+} from 'react-icons/fa';
 import { subscribeToUnassignedTickets, subscribeToSupervisorTickets } from '../../services/support';
 import { SUPPORT_TICKET_STATUS } from '../../constants';
 import { doc, writeBatch, serverTimestamp } from 'firebase/firestore';
@@ -116,10 +119,19 @@ const SupportTicketsSection = ({ user }) => {
             {mine.map(t => (
               <div key={t.id} className="p-3 bg-black/30 rounded-lg border border-gray-700 flex justify-between items-center gap-2">
                 <div className="flex-1 min-w-0">
-                  <p className="text-white text-sm font-medium truncate">{t.studentName}</p>
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <p className="text-white text-sm font-medium truncate">{t.studentName}</p>
+                    {t.status === SUPPORT_TICKET_STATUS.NEEDS_COMPLETION && (
+                      <span className="text-[10px] bg-yellow-500/20 text-yellow-300 px-1.5 py-0.5 rounded whitespace-nowrap">
+                        📝 بحاجة إلى إكمال
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-gray-400">
                     {t.status === SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED ? '⏳ بانتظار تأكيد الطالب'
                       : t.status === SUPPORT_TICKET_STATUS.AWAITING_RATING ? '⭐ بانتظار التقييم'
+                      : t.status === SUPPORT_TICKET_STATUS.NEEDS_COMPLETION ? '📝 بحاجة إلى إكمال المحادثة'
+                      : t.status === SUPPORT_TICKET_STATUS.REPORTED ? '🔒 محوّلة للمراجعة'
                       : '💬 جارية'}
                   </p>
                 </div>
@@ -171,7 +183,14 @@ const SupportTicketsSection = ({ user }) => {
                     </div>
 
                     <div className="flex-1 min-w-0">
-                      <p className="text-white text-sm font-medium truncate">{t.studentName}</p>
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <p className="text-white text-sm font-medium truncate">{t.studentName}</p>
+                        {t.status === SUPPORT_TICKET_STATUS.NEEDS_COMPLETION && (
+                          <span className="text-[10px] bg-yellow-500/20 text-yellow-300 px-1.5 py-0.5 rounded whitespace-nowrap">
+                            📝 بحاجة إلى إكمال
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-gray-400 truncate">{t.messages?.[0]?.text}</p>
                     </div>
 
