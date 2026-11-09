@@ -602,7 +602,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
                   />
                   <div>
                     <p className="font-bold">✏️ إدخال رقم آخر</p>
-                    <p className="text-[10px] text-cyan-300 mt-1">🔒 لن يظهر الرقم لفريق الدعم — زر تواصل فقط</p>
+                    <p className="text-[10px] text-cyan-300 mt-1">🔒 يرجى العلم أن رقمك الشخصي يُعامل بخصوصية تامة، وسيتم حذفه ومسحه من سجلات التواصل فور انتهائك من الدردشة مع الدعم الفني </p>
                   </div>
                 </label>
               </div>
