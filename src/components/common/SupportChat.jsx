@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import {
   FaTimes, FaPaperPlane, FaStar, FaCheckCircle, FaTimesCircle,
-  FaSpinner, FaHeadset, FaPhone, FaLock, FaWhatsapp, FaTrashAlt, FaBan
+  FaSpinner, FaHeadset, FaPhone, FaLock, FaWhatsapp, FaTrashAlt
 } from 'react-icons/fa';
 import {
   subscribeToTicket, sendTicketMessage, studentConfirmSolved,
@@ -94,6 +94,17 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
   const deleteRequest = ticket.deleteRequest;
   const deleteStatus = deleteRequest?.status;
 
+  // ✅ شريط طلب الرقم يظهر للمشرف المعيّن أو المدير
+  const closedStatuses = [
+    SUPPORT_TICKET_STATUS.AUTO_CLOSED,
+    SUPPORT_TICKET_STATUS.RATED_FULL,
+    SUPPORT_TICKET_STATUS.MANAGER_APOLOGIZED,
+    SUPPORT_TICKET_STATUS.MANAGER_REJECTED
+  ];
+  const showContactBar = !closedStatuses.includes(ticket.status) && (
+    (isSupervisor && isAssignedSupervisor) || isManager
+  );
+
   // ============ إرسال ============
   const handleSend = async () => {
     const t = text.trim();
@@ -138,13 +149,18 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
     } catch (e) { toast.error(e.message); }
   };
 
-  // ============ طلب الرقم (المشرف فقط) ============
+  // ============ طلب الرقم (مشرف أو مدير) ============
   const handleRequestContact = async () => {
     const finalReason = contactReason === 'سبب آخر' ? customReason.trim() : contactReason;
     if (!finalReason) return toast.error('اختر السبب أو اكتبه');
     setProcessing(true);
     try {
-      await requestContactInfo(ticketId, finalReason, user.id);
+      await requestContactInfo(
+        ticketId,
+        finalReason,
+        user.id,
+        user.name || user.username || 'فريق الدعم'
+      );
       toast.success('✅ تم إرسال طلب الرقم لصاحب التذكرة');
       setShowContactModal(false);
       setContactReason('');
@@ -153,9 +169,9 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
     finally { setProcessing(false); }
   };
 
-  // ============ صاحب التذكرة يوافق/يرفض على الرقم ============
+  // ============ صاحب التذكرة يوافق/يرفض ============
   const handleApproveContact = async () => {
-    if (!window.confirm('هل توافق على مشاركة رقمك المسجل مع المشرف؟')) return;
+    if (!window.confirm('هل توافق على مشاركة رقمك المسجل؟')) return;
     setProcessing(true);
     try {
       await approveContactRequest(ticketId);
@@ -258,7 +274,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
     finally { setSubmittingRating(false); }
   };
 
-  // ============ عرض زر التواصل بعد الموافقة ============
+  // ============ زر التواصل بعد الموافقة ============
   const renderContactButton = () => {
     if (contactStatus !== CONTACT_REQUEST_STATUS.APPROVED) return null;
     const phone = ticket.studentPhone;
@@ -301,8 +317,8 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           <button onClick={onClose} className="text-gray-400 hover:text-white text-xl flex-shrink-0"><FaTimes /></button>
         </div>
 
-        {/* ============ شريط طلب الرقم — للمشرف ============ */}
-        {isSupervisor && isAssignedSupervisor && ticket.status === SUPPORT_TICKET_STATUS.IN_PROGRESS && (
+        {/* ============ شريط طلب الرقم — للمشرف المعيّن أو المدير ============ */}
+        {showContactBar && (
           <div className="px-3 py-2 border-b border-gray-700 bg-gray-800/50 text-xs">
             {!contactStatus && (
               <button onClick={() => setShowContactModal(true)} className="text-cyan-300 hover:text-cyan-200 flex items-center gap-1">
@@ -310,12 +326,18 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
               </button>
             )}
             {contactStatus === CONTACT_REQUEST_STATUS.PENDING && (
-              <span className="text-yellow-300">⏳ طلب الرقم قيد المراجعة من صاحب التذكرة</span>
+              <span className="text-yellow-300">
+                ⏳ طلب الرقم قيد المراجعة من صاحب التذكرة
+                {contactRequest.requestedByName && ` (من: ${contactRequest.requestedByName})`}
+              </span>
             )}
             {contactStatus === CONTACT_REQUEST_STATUS.APPROVED && renderContactButton()}
             {contactStatus === CONTACT_REQUEST_STATUS.REJECTED && (
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-red-300">⚠️ رفض صاحب التذكرة المشاركة{contactRequest.rejectionReason ? `: ${contactRequest.rejectionReason}` : ''}</span>
+                <span className="text-red-300">
+                  ⚠️ رفض صاحب التذكرة المشاركة
+                  {contactRequest.rejectionReason ? `: ${contactRequest.rejectionReason}` : ''}
+                </span>
                 <button onClick={() => setShowContactModal(true)} className="text-xs bg-red-500/30 hover:bg-red-500/50 text-red-200 px-2 py-0.5 rounded">طلب مرة أخرى</button>
               </div>
             )}
@@ -325,7 +347,9 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
         {/* ============ واجهة صاحب التذكرة: الموافقة على طلب الرقم ============ */}
         {isCreator && contactStatus === CONTACT_REQUEST_STATUS.PENDING && (
           <div className="m-3 p-3 bg-amber-500/10 border border-amber-500/40 rounded-xl">
-            <p className="text-amber-200 text-sm mb-1">📞 يطلب المشرف رقمك للتواصل</p>
+            <p className="text-amber-200 text-sm mb-1">
+              📞 يطلب {contactRequest.requestedByName || 'فريق الدعم'} رقمك للتواصل
+            </p>
             <p className="text-xs text-gray-300 mb-2"><strong>السبب:</strong> {contactRequest.reason}</p>
             <p className="text-sm text-white font-bold mb-2">هل توافق على مشاركة رقمك المسجل؟</p>
             <div className="flex gap-2">
@@ -344,7 +368,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
 
         {isCreator && contactStatus === CONTACT_REQUEST_STATUS.APPROVED && (
           <div className="mx-3 mt-2 p-2 bg-green-500/10 border border-green-500/30 rounded-lg text-xs text-green-200">
-            ✅ وافقت على مشاركة رقمك مع المشرف.
+            ✅ وافقت على مشاركة رقمك مع فريق الدعم.
           </div>
         )}
 
@@ -374,7 +398,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
                   </span>
                 </p>
 
-                {/* المشرف المعيّن يوافق */}
                 {isSupervisor && isAssignedSupervisor && !deleteRequest.supervisorApproved && (
                   <div className="flex gap-2">
                     <button onClick={handleApproveDeleteSupervisor} disabled={processing}
@@ -388,7 +411,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
                   </div>
                 )}
 
-                {/* صاحب التذكرة يوافق */}
                 {isCreator && !deleteRequest.studentApproved && (
                   <div className="flex gap-2">
                     <button onClick={handleApproveDeleteStudent} disabled={processing}
@@ -402,7 +424,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
                   </div>
                 )}
 
-                {/* المدير يرى فقط */}
                 {isManager && (
                   <p className="text-xs text-yellow-300 mt-1">⏳ بانتظار موافقة الطرفين...</p>
                 )}
@@ -477,7 +498,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           </div>
         )}
 
-        {/* ============ مودال طلب الرقم (للمشرف) ============ */}
+        {/* ============ مودال طلب الرقم (للمشرف أو المدير) ============ */}
         {showContactModal && (
           <div className="fixed inset-0 bg-black/90 z-[80] flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
             <div className="bg-gray-900 p-6 rounded-2xl max-w-sm w-full border border-green-500/30">
@@ -532,9 +553,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           <div className="fixed inset-0 bg-black/90 z-[80] flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
             <div className="bg-gray-900 p-6 rounded-2xl max-w-sm w-full border border-red-500/30">
               <h3 className="font-bold text-white mb-3">🗑️ طلب حذف التذكرة</h3>
-              <p className="text-sm text-gray-300 mb-3">
-                سيتم إرسال طلب حذف إلى:
-              </p>
+              <p className="text-sm text-gray-300 mb-3">سيتم إرسال طلب حذف إلى:</p>
               <ul className="text-xs text-gray-400 mb-3 list-disc list-inside">
                 <li>المشرف المعيّن (إن لم تكن أنت)</li>
                 <li>صاحب التذكرة</li>
@@ -554,7 +573,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           </div>
         )}
 
-        {/* ============ مودال التقييم ============ */}
+        {/* ============ مودال التقييم (لصاحب التذكرة) ============ */}
         {showRating && (
           <div className="fixed inset-0 bg-black/90 z-[80] flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
             <div className="bg-gray-900 p-6 rounded-2xl max-w-sm w-full border border-yellow-500/30">

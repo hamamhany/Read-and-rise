@@ -184,8 +184,10 @@ export const subscribeToManagerOpenTickets = (callback) => {
   });
 };
 
+// =========================================================
+// (Legacy) لم يعد مستخدماً — طلب الرقم الآن عند صاحب التذكرة
+// =========================================================
 export const subscribeToPendingContactRequests = (callback) => {
-  // لم يعد مستخدماً — كان للمدير. الآن صاحب التذكرة يرى الطلب مباشرة
   return () => {};
 };
 
@@ -290,13 +292,24 @@ export const transferToManager = async (ticketId, supervisorName) => {
 };
 
 // =========================================================
-// ✅ طلب رقم الطالب (المشرف يطلب، صاحب التذكرة يوافق)
+// ✅ طلب رقم صاحب التذكرة (من المشرف المعيّن أو المدير)
+// الموافقة تأتي من صاحب التذكرة
 // =========================================================
-export const requestContactInfo = async (ticketId, reason, requesterId) => {
-  await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
+export const requestContactInfo = async (ticketId, reason, requesterId, requesterName = '') => {
+  const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
+  const snap = await getDoc(ticketRef);
+  if (!snap.exists()) throw new Error('التذكرة غير موجودة');
+  const data = snap.data();
+
+  if (data.contactRequest?.status === CONTACT_REQUEST_STATUS.PENDING) {
+    throw new Error('يوجد طلب رقم قيد المراجعة بالفعل');
+  }
+
+  await updateDoc(ticketRef, {
     contactRequest: {
       reason,
       requestedBy: requesterId,
+      requestedByName: requesterName,
       requestedAt: serverTimestamp(),
       status: CONTACT_REQUEST_STATUS.PENDING,
       reviewedAt: null,
@@ -306,7 +319,7 @@ export const requestContactInfo = async (ticketId, reason, requesterId) => {
   });
 };
 
-// ✅ صاحب التذكرة يوافق (يشارك رقمه المسجل)
+// ✅ صاحب التذكرة يوافق
 export const approveContactRequest = async (ticketId) => {
   await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
     'contactRequest.status': CONTACT_REQUEST_STATUS.APPROVED,
@@ -339,7 +352,7 @@ export const requestTicketDeletion = async (ticketId, managerId, managerName) =>
     throw new Error('يوجد طلب حذف نشط بالفعل');
   }
 
-  // إذا كان المدير هو المشرف المعيّن، فموافقته تلقائية
+  // إذا كان المدير هو المشرف المعيّن أو صاحب التذكرة، فموافقته تلقائية
   const isManagerTheSupervisor = data.assignedSupervisorId === managerId;
   const isManagerTheCreator = data.studentId === managerId;
 
