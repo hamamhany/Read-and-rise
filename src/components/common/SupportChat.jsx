@@ -44,12 +44,13 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
   const [approveCustomNumber, setApproveCustomNumber] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  // ✅ جديد: بلاغ
+  // بلاغ
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportReason, setReportReason] = useState('');
   const [reportDetails, setReportDetails] = useState('');
 
   const scrollRef = useRef(null);
+  const [ticketWasLoaded, setTicketWasLoaded] = useState(false);
 
   const contactReasons = [
     'إرسال صورة للتوضيح', 'إرسال فيديو للتوضيح', 'مشكلة تقنية',
@@ -64,6 +65,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
 
     const unsub = subscribeToTicket(ticketId, (t) => {
       setTicket(t);
+      if (t) setTicketWasLoaded(true);
       if (t?.assignedSupervisorId) {
         getDoc(doc(db, 'profiles', t.assignedSupervisorId)).then(snap => {
           if (snap.exists()) setSupervisorInfo(snap.data());
@@ -72,6 +74,13 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
     });
     return () => unsub();
   }, [ticketId, viewerMode]);
+
+  // ✅ إغلاق تلقائي عند حذف التذكرة من السيرفر (بموافقة الطرفين)
+  useEffect(() => {
+    if (ticketWasLoaded && ticket === null) {
+      setTimeout(() => onClose(), 600);
+    }
+  }, [ticket, ticketWasLoaded, onClose]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -223,12 +232,17 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
     finally { setProcessing(false); }
   };
 
+  // ✅ الموافقة → حذف فوري عند موافقة الطرفين
   const handleApproveDeleteSupervisor = async () => {
-    if (!window.confirm('الموافقة على حذف التذكرة؟ سيُحذف بعد 24 ساعة إن لم يكن تفاعل.')) return;
+    if (!window.confirm('الموافقة على حذف التذكرة نهائياً؟ لا يمكن التراجع.')) return;
     setProcessing(true);
     try {
-      await approveDeletionBySupervisor(ticketId);
-      toast.success('✅ تمت موافقتك');
+      const result = await approveDeletionBySupervisor(ticketId);
+      if (result?.shouldDelete) {
+        toast.success('✅ تم حذف التذكرة نهائياً');
+      } else {
+        toast.success('✅ تمت موافقتك — بانتظار موافقة صاحب التذكرة');
+      }
     } catch (e) { toast.error(e.message); }
     finally { setProcessing(false); }
   };
@@ -243,11 +257,15 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
   };
 
   const handleApproveDeleteStudent = async () => {
-    if (!window.confirm('الموافقة على حذف التذكرة؟ سيُحذف بعد 24 ساعة إن لم يكن تفاعل.')) return;
+    if (!window.confirm('الموافقة على حذف التذكرة نهائياً؟ لا يمكن التراجع.')) return;
     setProcessing(true);
     try {
-      await approveDeletionByStudent(ticketId);
-      toast.success('✅ تمت موافقتك');
+      const result = await approveDeletionByStudent(ticketId);
+      if (result?.shouldDelete) {
+        toast.success('✅ تم حذف التذكرة نهائياً');
+      } else {
+        toast.success('✅ تمت موافقتك — بانتظار موافقة المشرف');
+      }
     } catch (e) { toast.error(e.message); }
     finally { setProcessing(false); }
   };
@@ -292,7 +310,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
     finally { setSubmittingRating(false); }
   };
 
-  // ============ ✅ تقديم البلاغ (مشرف) ============
+  // ============ تقديم البلاغ (مشرف) ============
   const handleSubmitReport = async () => {
     if (!reportReason) return toast.error('اختر سبب البلاغ');
     if (!reportDetails.trim()) return toast.error('اكتب تفاصيل البلاغ');
@@ -341,7 +359,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
     );
   };
 
-  // ✅ فلترة الرسائل المخفية عن المشرف
   const shouldHideMessage = (m) => {
     if (!m.hiddenFor || !Array.isArray(m.hiddenFor)) return false;
     if (isSupervisor && m.hiddenFor.includes('supervisor')) return true;
@@ -353,7 +370,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[70] flex items-center justify-center p-2 sm:p-4" onClick={onClose}>
       <div className="bg-gray-900 rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col border border-blue-500/30" onClick={e => e.stopPropagation()}>
 
-        {/* ============ الهيدر ============ */}
+        {/* الهيدر */}
         <div className="flex items-center justify-between p-3 border-b border-gray-700">
           <div className="flex items-center gap-2 min-w-0 flex-wrap">
             <FaHeadset className="text-blue-400 text-lg flex-shrink-0" />
@@ -383,7 +400,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           <button onClick={onClose} className="text-gray-400 hover:text-white text-xl flex-shrink-0"><FaTimes /></button>
         </div>
 
-        {/* ============ شريط طلب الرقم ============ */}
+        {/* شريط طلب الرقم */}
         {showContactBar && (
           <div className="px-3 py-2 border-b border-gray-700 bg-gray-800/50 text-xs">
             {!contactStatus && (
@@ -410,7 +427,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           </div>
         )}
 
-        {/* ============ واجهة صاحب التذكرة: الموافقة على طلب الرقم ============ */}
+        {/* الموافقة على طلب الرقم */}
         {isCreator && contactStatus === CONTACT_REQUEST_STATUS.PENDING && (
           <div className="m-3 p-3 bg-amber-500/10 border border-amber-500/40 rounded-xl">
             <p className="text-amber-200 text-sm mb-1">
@@ -438,7 +455,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           </div>
         )}
 
-        {/* ============ طلب الحذف — عرض الحالة ============ */}
+        {/* طلب الحذف — الحالة */}
         {deleteStatus && deleteStatus !== DELETE_REQUEST_STATUS.CANCELLED && (
           <div className={`m-3 p-3 border rounded-xl text-sm ${
             deleteStatus === DELETE_REQUEST_STATUS.BOTH_APPROVED
@@ -497,9 +514,8 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
             )}
 
             {deleteStatus === DELETE_REQUEST_STATUS.BOTH_APPROVED && (
-              <p className="text-xs text-red-300">
-                ⚠️ وافق الطرفان — سيتم حذف التذكرة نهائياً خلال 24 ساعة من الآن إن لم يكن هناك رسائل جديدة.
-                <br />أي رسالة جديدة ستلغي طلب الحذف.
+              <p className="text-xs text-red-300 flex items-center gap-2">
+                <FaSpinner className="animate-spin" /> وافق الطرفان — جاري حذف التذكرة نهائياً...
               </p>
             )}
           </div>
@@ -511,7 +527,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           </div>
         )}
 
-        {/* ============ المحادثة ============ */}
+        {/* المحادثة */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-2" style={{ minHeight: 200 }}>
           {ticket.messages?.filter(m => !shouldHideMessage(m)).map((m) => {
             const isMe = m.senderId === user.id;
@@ -534,7 +550,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           })}
         </div>
 
-        {/* ✅ REPORTED — شريط بديل لمربع الإدخال */}
+        {/* REPORTED — شريط بديل */}
         {ticket.status === SUPPORT_TICKET_STATUS.REPORTED && (
           <div className="p-4 bg-red-500/10 border-t-2 border-red-500/40 text-center">
             <FaShieldAlt className="text-red-400 text-2xl mx-auto mb-2" />
@@ -547,7 +563,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           </div>
         )}
 
-        {/* ============ حجز التذكرة ============ */}
+        {/* حجز التذكرة */}
         {isWorkingOnTicket && !isAssignedSupervisor &&
           [SUPPORT_TICKET_STATUS.OPEN, SUPPORT_TICKET_STATUS.NEEDS_COMPLETION].includes(ticket.status) && (
           <div className="p-4 bg-gray-800 border-t border-gray-700 text-center">
@@ -559,7 +575,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           </div>
         )}
 
-        {/* ============ SUPERVISOR_ENDED ============ */}
+        {/* SUPERVISOR_ENDED */}
         {ticket.status === SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED && isCreator && (
           <div className="p-3 bg-yellow-500/10 border-t border-yellow-500/30">
             <p className="text-yellow-200 text-sm text-center mb-2">هل تم حل مشكلتك بنجاح؟</p>
@@ -591,7 +607,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           </div>
         )}
 
-        {/* ============ مربع الإدخال ============ */}
+        {/* مربع الإدخال */}
         {canSend && (
           <div className="p-2 border-t border-gray-700 flex gap-2">
             <input type="text" value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && !sending && handleSend()} placeholder="اكتب رسالتك..." className="flex-1 bg-gray-800 text-white p-2 rounded-lg border border-gray-600 text-sm" maxLength={2000} />
@@ -599,7 +615,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           </div>
         )}
 
-        {/* ============ ✅ مودال تقديم البلاغ ============ */}
+        {/* مودال البلاغ */}
         {showReportModal && (
           <div className="fixed inset-0 bg-black/90 z-[80] flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
             <div className="bg-gray-900 p-6 rounded-2xl max-w-md w-full border border-red-500/30 max-h-[90vh] overflow-y-auto">
@@ -646,12 +662,11 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           </div>
         )}
 
-        {/* ============ مودال طلب الرقم ============ */}
+        {/* مودال طلب الرقم */}
         {showContactModal && (
           <div className="fixed inset-0 bg-black/90 z-[80] flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
             <div className="bg-gray-900 p-6 rounded-2xl max-w-sm w-full border border-green-500/30">
               <h3 className="font-bold text-white mb-3">طلب رقم صاحب التذكرة</h3>
-
               <label className="text-sm text-gray-300 block mb-1">السبب</label>
               <select className="w-full bg-gray-800 text-white p-2 rounded mb-3" onChange={e => setContactReason(e.target.value)} value={contactReason}>
                 <option value="">اختر السبب...</option>
@@ -660,7 +675,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
               {contactReason === 'سبب آخر' && (
                 <input type="text" placeholder="اكتب السبب" className="w-full bg-gray-800 text-white p-2 rounded mb-3" onChange={e => setCustomReason(e.target.value)} value={customReason} />
               )}
-
               <p className="text-xs text-gray-400 mb-3">
                 📌 سيصل الطلب إلى صاحب التذكرة للموافقة أو الرفض.
               </p>
@@ -676,7 +690,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           </div>
         )}
 
-        {/* ============ مودال موافقة صاحب التذكرة ============ */}
+        {/* مودال موافقة صاحب التذكرة */}
         {showApproveContactModal && (
           <div className="fixed inset-0 bg-black/90 z-[80] flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
             <div className="bg-gray-900 p-6 rounded-2xl max-w-sm w-full border border-green-500/30">
@@ -696,7 +710,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
                   <input type="radio" name="contactMode" value="other" checked={approveContactMode === 'other'} onChange={() => setApproveContactMode('other')} className="mt-1" />
                   <div>
                     <p className="font-bold">✏️ إدخال رقم آخر</p>
-                    <p className="text-[10px] text-cyan-300 mt-1">🔒 يرجى العلم أن رقمك الشخصي يُعامل بخصوصية تامة، وسيتم حذفه ومسحه من سجلات التواصل فور انتهائك من الدردشة مع الدعم الفني</p>
+                    <p className="text-[10px] text-cyan-300 mt-1">🔒 رقمك الشخصي يُعامل بخصوصية تامة وسيُحذف من سجلات التواصل بعد الدردشة</p>
                   </div>
                 </label>
               </div>
@@ -716,7 +730,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           </div>
         )}
 
-        {/* ============ مودال رفض طلب الرقم ============ */}
+        {/* مودال رفض طلب الرقم */}
         {showRejectContactModal && (
           <div className="fixed inset-0 bg-black/90 z-[80] flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
             <div className="bg-gray-900 p-6 rounded-2xl max-w-sm w-full border border-red-500/30">
@@ -735,7 +749,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           </div>
         )}
 
-        {/* ============ مودال تأكيد طلب الحذف ============ */}
+        {/* مودال تأكيد طلب الحذف */}
         {showDeleteConfirm && (
           <div className="fixed inset-0 bg-black/90 z-[80] flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
             <div className="bg-gray-900 p-6 rounded-2xl max-w-sm w-full border border-red-500/30">
@@ -746,7 +760,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
                 <li>صاحب التذكرة</li>
               </ul>
               <p className="text-xs text-amber-300 mb-3">
-                ⚠️ يُحذف فقط إذا وافق الطرفان ولم يكن هناك رسائل جديدة خلال 24 ساعة.
+                ⚠️ يُحذف نهائياً وفوراً بمجرد موافقة الطرفين. لا يمكن التراجع بعد الحذف.
               </p>
               <div className="flex gap-2 justify-end">
                 <button onClick={() => setShowDeleteConfirm(false)} className="px-4 py-2 text-sm bg-gray-700 rounded text-white">إلغاء</button>
@@ -759,7 +773,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           </div>
         )}
 
-        {/* ============ مودال التقييم ============ */}
+        {/* مودال التقييم */}
         {showRating && (
           <div className="fixed inset-0 bg-black/90 z-[80] flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
             <div className="bg-gray-900 p-6 rounded-2xl max-w-sm w-full border border-yellow-500/30">

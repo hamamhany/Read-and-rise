@@ -155,7 +155,6 @@ export const subscribeToSupervisorTickets = (supervisorId, callback) => {
   });
 };
 
-// ✅ يشمل التذاكر المفتوحة + التذاكر التي تحتاج إكمال (بعد فك الحظر)
 export const subscribeToUnassignedTickets = (callback) => {
   const q = query(
     collection(db, SUPPORT_TICKETS_COLLECTION),
@@ -197,7 +196,6 @@ export const subscribeToManagerOpenTickets = (callback) => {
   });
 };
 
-// ✅ جديد: التذاكر المُبلّغ عنها — لمراجعة المدير
 export const subscribeToReportedTickets = (callback) => {
   const q = query(
     collection(db, SUPPORT_TICKETS_COLLECTION),
@@ -210,13 +208,12 @@ export const subscribeToReportedTickets = (callback) => {
   });
 };
 
-// Legacy
 export const subscribeToPendingContactRequests = (callback) => {
   return () => {};
 };
 
 // =========================================================
-// حجز التذكرة (يشمل NEEDS_COMPLETION)
+// حجز التذكرة
 // =========================================================
 export const claimTicket = async (ticketId, supervisorId, supervisorName, managerMode = false) => {
   await runTransaction(db, async (transaction) => {
@@ -257,7 +254,7 @@ export const claimTicket = async (ticketId, supervisorId, supervisorName, manage
 };
 
 // =========================================================
-// إرسال رسالة — يمنع الإرسال عند SUPERVISOR_ENDED و REPORTED
+// إرسال رسالة
 // =========================================================
 export const sendTicketMessage = async (ticketId, sender, text) => {
   const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
@@ -380,7 +377,7 @@ export const rejectContactRequest = async (ticketId, reason = '') => {
 };
 
 // =========================================================
-// طلب حذف التذكرة (المدير يطلب، الطرفان يوافقان)
+// ✅ طلب حذف التذكرة — الحذف فوري عند موافقة الطرفين
 // =========================================================
 export const requestTicketDeletion = async (ticketId, managerId, managerName) => {
   const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
@@ -414,29 +411,48 @@ export const requestTicketDeletion = async (ticketId, managerId, managerName) =>
   });
 };
 
+// ✅ المشرف يوافق — إن كان الطالب قد وافق يُحذف فوراً
 export const approveDeletionBySupervisor = async (ticketId) => {
   const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
-  const snap = await getDoc(ticketRef);
-  if (!snap.exists()) throw new Error('التذكرة غير موجودة');
-  const data = snap.data();
 
-  if (!data.deleteRequest || data.deleteRequest.status !== DELETE_REQUEST_STATUS.PENDING) {
-    throw new Error('لا يوجد طلب حذف نشط');
+  const result = await runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(ticketRef);
+    if (!snap.exists()) throw new Error('التذكرة غير موجودة');
+    const data = snap.data();
+
+    if (!data.deleteRequest) throw new Error('لا يوجد طلب حذف نشط');
+
+    if (data.deleteRequest.status === DELETE_REQUEST_STATUS.BOTH_APPROVED) {
+      return { shouldDelete: true };
+    }
+    if (data.deleteRequest.status !== DELETE_REQUEST_STATUS.PENDING) {
+      throw new Error('لا يوجد طلب حذف نشط');
+    }
+
+    const studentAlready = data.deleteRequest.studentApproved === true;
+
+    if (studentAlready) {
+      transaction.update(ticketRef, {
+        'deleteRequest.status': DELETE_REQUEST_STATUS.BOTH_APPROVED,
+        'deleteRequest.supervisorApproved': true,
+        'deleteRequest.supervisorApprovedAt': serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      return { shouldDelete: true };
+    }
+
+    transaction.update(ticketRef, {
+      'deleteRequest.supervisorApproved': true,
+      'deleteRequest.supervisorApprovedAt': serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    return { shouldDelete: false };
+  });
+
+  if (result.shouldDelete) {
+    await deleteTicketPermanently(ticketId);
   }
-
-  const studentAlready = data.deleteRequest.studentApproved === true;
-  const updates = {
-    'deleteRequest.supervisorApproved': true,
-    'deleteRequest.supervisorApprovedAt': serverTimestamp(),
-    updatedAt: serverTimestamp()
-  };
-
-  if (studentAlready) {
-    updates['deleteRequest.status'] = DELETE_REQUEST_STATUS.BOTH_APPROVED;
-    updates['deleteRequest.scheduledDeleteAt'] = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-  }
-
-  await updateDoc(ticketRef, updates);
+  return result;
 };
 
 export const rejectDeletionBySupervisor = async (ticketId, reason = '') => {
@@ -449,29 +465,48 @@ export const rejectDeletionBySupervisor = async (ticketId, reason = '') => {
   });
 };
 
+// ✅ الطالب يوافق — إن كان المشرف قد وافق يُحذف فوراً
 export const approveDeletionByStudent = async (ticketId) => {
   const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
-  const snap = await getDoc(ticketRef);
-  if (!snap.exists()) throw new Error('التذكرة غير موجودة');
-  const data = snap.data();
 
-  if (!data.deleteRequest || data.deleteRequest.status !== DELETE_REQUEST_STATUS.PENDING) {
-    throw new Error('لا يوجد طلب حذف نشط');
+  const result = await runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(ticketRef);
+    if (!snap.exists()) throw new Error('التذكرة غير موجودة');
+    const data = snap.data();
+
+    if (!data.deleteRequest) throw new Error('لا يوجد طلب حذف نشط');
+
+    if (data.deleteRequest.status === DELETE_REQUEST_STATUS.BOTH_APPROVED) {
+      return { shouldDelete: true };
+    }
+    if (data.deleteRequest.status !== DELETE_REQUEST_STATUS.PENDING) {
+      throw new Error('لا يوجد طلب حذف نشط');
+    }
+
+    const supervisorAlready = data.deleteRequest.supervisorApproved === true;
+
+    if (supervisorAlready) {
+      transaction.update(ticketRef, {
+        'deleteRequest.status': DELETE_REQUEST_STATUS.BOTH_APPROVED,
+        'deleteRequest.studentApproved': true,
+        'deleteRequest.studentApprovedAt': serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      return { shouldDelete: true };
+    }
+
+    transaction.update(ticketRef, {
+      'deleteRequest.studentApproved': true,
+      'deleteRequest.studentApprovedAt': serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    return { shouldDelete: false };
+  });
+
+  if (result.shouldDelete) {
+    await deleteTicketPermanently(ticketId);
   }
-
-  const supervisorAlready = data.deleteRequest.supervisorApproved === true;
-  const updates = {
-    'deleteRequest.studentApproved': true,
-    'deleteRequest.studentApprovedAt': serverTimestamp(),
-    updatedAt: serverTimestamp()
-  };
-
-  if (supervisorAlready) {
-    updates['deleteRequest.status'] = DELETE_REQUEST_STATUS.BOTH_APPROVED;
-    updates['deleteRequest.scheduledDeleteAt'] = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-  }
-
-  await updateDoc(ticketRef, updates);
+  return result;
 };
 
 export const rejectDeletionByStudent = async (ticketId, reason = '') => {
@@ -600,35 +635,47 @@ export const managerDecide = async (ticketId, decision, managerReason) => {
 };
 
 // =========================================================
-// حذف نهائي (يُستدعى من Cron)
+// ✅ حذف نهائي ذرّي (يمنع تكرار decrement العداد)
 // =========================================================
 export const deleteTicketPermanently = async (ticketId) => {
   const ref = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) return;
-  const data = snap.data();
 
-  if (data.assignedSupervisorId) {
-    try {
-      const supRef = doc(db, 'profiles', data.assignedSupervisorId);
-      const supSnap = await getDoc(supRef);
-      if (supSnap.exists()) {
-        const current = supSnap.data().activeTicketCount || 0;
-        await updateDoc(supRef, { activeTicketCount: Math.max(0, current - 1) });
-      }
-    } catch (e) { console.warn('decrement failed:', e); }
+  let supervisorId = null;
+
+  try {
+    await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(ref);
+      if (!snap.exists()) return;
+
+      const data = snap.data();
+      supervisorId = data.assignedSupervisorId;
+
+      transaction.delete(ref);
+    });
+  } catch (e) {
+    console.warn('delete ticket transaction failed:', e);
+    return;
   }
 
-  await deleteDoc(ref);
+  if (supervisorId) {
+    try {
+      const supRef = doc(db, 'profiles', supervisorId);
+      await runTransaction(db, async (transaction) => {
+        const supSnap = await transaction.get(supRef);
+        if (supSnap.exists()) {
+          const current = supSnap.data().activeTicketCount || 0;
+          transaction.update(supRef, { activeTicketCount: Math.max(0, current - 1) });
+        }
+      });
+    } catch (e) { console.warn('decrement failed:', e); }
+  }
 };
 
 export const finalizeAndDeleteTicket = deleteTicketPermanently;
 
 // =========================================================
-// ✅ جديد: نظام بلاغات الدعم الفني
+// نظام بلاغات الدعم الفني
 // =========================================================
-
-// المشرف يقدّم بلاغاً ضد صاحب التذكرة
 export const reportTicket = async (ticketId, reporterId, reporterName, reasonValue, reasonDetails) => {
   const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
   const snap = await getDoc(ticketRef);
@@ -670,18 +717,15 @@ export const reportTicket = async (ticketId, reporterId, reporterName, reasonVal
   });
 };
 
-// المدير: إلغاء البلاغ وحذف التذكرة نهائياً
 export const cancelReportAndDelete = async (ticketId) => {
-  await deleteDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId));
+  await deleteTicketPermanently(ticketId);
 };
 
-// المدير: إلغاء البلاغ وإعادة فتح التذكرة لمشرف آخر
 export const cancelReportAndReopen = async (ticketId, managerId) => {
   const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
   const snap = await getDoc(ticketRef);
   if (!snap.exists()) throw new Error('التذكرة غير موجودة');
 
-  // رسالة نظام تظهر لصاحب التذكرة فقط (المشرف الجديد لا يراها)
   const systemMessage = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
     senderId: 'system',
@@ -706,12 +750,10 @@ export const cancelReportAndReopen = async (ticketId, managerId) => {
   });
 };
 
-// المدير: إغلاق حساب المُبلَّغ عنه (يُستدعى من الواجهة بعد فتح واتساب)
 export const closeReportedTicketAfterAccountDeletion = async (ticketId) => {
-  await deleteDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId));
+  await deleteTicketPermanently(ticketId);
 };
 
-// المدير: حفظ قرار التنبيه ثم حذف التذكرة
 export const finalizeReportWithWarning = async (ticketId, managerId) => {
-  await deleteDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId));
+  await deleteTicketPermanently(ticketId);
 };

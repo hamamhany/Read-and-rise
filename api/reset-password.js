@@ -32,12 +32,10 @@ export default async function handler(req, res) {
     const reqSnap = await admin.firestore().collection('profiles')
       .where('uid', '==', requesterUid).limit(1).get();
     if (reqSnap.empty) return res.status(403).json({ error: 'الملف الشخصي غير موجود' });
-    const requesterRole = reqSnap.docs[0].data().role;
-    if (!['supervisor', 'system_manager'].includes(requesterRole)) {
-      return res.status(403).json({ error: 'ليس لديك صلاحية' });
-    }
+    const requesterProfile = reqSnap.docs[0].data();
+    const requesterRole = requesterProfile.role;
 
-    const { userId, newUsername, newPassword } = req.body || {};
+    const { action, userId, newUsername, newPassword } = req.body || {};
     if (!userId || !newUsername || !newPassword) {
       return res.status(400).json({ error: 'بيانات ناقصة' });
     }
@@ -48,30 +46,83 @@ export default async function handler(req, res) {
     const target = targetSnap.data();
     if (!target.uid) return res.status(400).json({ error: 'لا يوجد UID' });
 
-    // 1. تحديث Firebase Auth — الإيميل والباسورد
-    const newEmail = `${newUsername}@readandrise.com`;
+    // =========================================================
+    // ✅ تحديد الصلاحيات والسلوك حسب نوع العملية
+    // =========================================================
+    const isCompleteProfile = action === 'complete_profile';
+    const isSelf = target.uid === requesterUid;
+    const isPrivileged = ['supervisor', 'system_manager'].includes(requesterRole);
+
+    if (isCompleteProfile) {
+      // المستخدم يكمل ملفه بنفسه فقط
+      if (!isSelf) {
+        return res.status(403).json({ error: 'غير مصرح — يمكنك إكمال ملفك الشخصي فقط' });
+      }
+    } else {
+      // إعادة تعيين كلمة المرور — تتطلب صلاحيات مشرف
+      if (!isPrivileged) {
+        return res.status(403).json({ error: 'ليس لديك صلاحية' });
+      }
+    }
+
+    // التحقق من توفر اسم المستخدم
+    const newEmail = `${String(newUsername).toLowerCase()}@readandrise.com`;
+    try {
+      const existing = await admin.auth().getUserByEmail(newEmail);
+      if (existing.uid !== target.uid) {
+        return res.status(400).json({ error: 'اسم المستخدم هذا مستخدم بالفعل، يرجى اختيار آخر' });
+      }
+    } catch (err) {
+      if (err.code !== 'auth/user-not-found') throw err;
+    }
+
+    // 1. تحديث Firebase Auth — الإيميل والباسورد (يتجاوز شرط التحقق)
     await admin.auth().updateUser(target.uid, {
       email: newEmail,
-      password: newPassword,
+      password: String(newPassword),
       emailVerified: true
     });
 
-    // 2. تحديث الملف الشخصي
-    await targetRef.update({
-      username: newUsername,
+    // 2. تحديث الملف الشخصي حسب نوع العملية
+    const profileUpdate = {
+      username: String(newUsername).toLowerCase(),
       email: newEmail,
-      isProfileComplete: false,
-      infoVerified: false,
-      pendingChanges: null,
-      reviewResult: null,
-      reviewExpiry: null,
-      tempPassword: newPassword,
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    });
+    };
 
-    return res.status(200).json({ success: true, newUsername });
+    if (isCompleteProfile) {
+      // ✅ المستخدم أكمل ملفه — يصبح مكتملاً
+      profileUpdate.isProfileComplete = true;
+      profileUpdate.infoVerified = true;
+      profileUpdate.tempPassword = null;
+    } else {
+      // ✅ إعادة تعيين — يحتاج المستخدم لإكمال الملف من جديد
+      profileUpdate.isProfileComplete = false;
+      profileUpdate.infoVerified = false;
+      profileUpdate.pendingChanges = null;
+      profileUpdate.reviewResult = null;
+      profileUpdate.reviewExpiry = null;
+      profileUpdate.tempPassword = String(newPassword);
+    }
+
+    await targetRef.update(profileUpdate);
+
+    return res.status(200).json({
+      success: true,
+      newUsername: profileUpdate.username,
+      action: isCompleteProfile ? 'complete_profile' : 'reset_password'
+    });
   } catch (err) {
     console.error('reset-password error:', err);
+    if (err.code === 'auth/email-already-exists') {
+      return res.status(400).json({ error: 'اسم المستخدم هذا مستخدم بالفعل' });
+    }
+    if (err.code === 'auth/invalid-password') {
+      return res.status(400).json({ error: 'كلمة المرور ضعيفة جداً' });
+    }
+    if (err.code === 'auth/uid-not-found' || err.code === 'auth/user-not-found') {
+      return res.status(404).json({ error: 'حساب المصادقة غير موجود' });
+    }
     return res.status(500).json({ error: err.message || 'خطأ غير معروف' });
   }
 }

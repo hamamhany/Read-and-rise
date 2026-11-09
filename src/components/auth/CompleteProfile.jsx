@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import toast from 'react-hot-toast';
 import { auth } from '../../services/firebaseAuth';
 import { db } from '../../firebase';
-import { updatePassword, updateEmail, signOut } from 'firebase/auth';
+import { signOut, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc, setDoc, query, collection, where, getDocs, serverTimestamp } from 'firebase/firestore';
 import { sanitizeInput } from '../../utils/helpers';
 
@@ -18,9 +18,18 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
     setError('');
 
     const usernameRegex = /^[a-zA-Z0-9@._-]+$/;
-    const cleanUsername = sanitizeInput(newUsername);
+    const cleanUsername = sanitizeInput(newUsername).toLowerCase();
+
+    if (!cleanUsername) {
+      setError('يرجى إدخال اسم المستخدم');
+      return;
+    }
     if (!usernameRegex.test(cleanUsername)) {
       setError('اسم المستخدم يجب أن يحتوي على أحرف إنجليزية وأرقام والرموز (@ . _ -) فقط');
+      return;
+    }
+    if (!newPassword) {
+      setError('يرجى إدخال كلمة المرور');
       return;
     }
     if (!usernameRegex.test(newPassword)) {
@@ -38,6 +47,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
 
     const email = `${cleanUsername}@readandrise.com`;
 
+    // فحص التكرار في Firestore
     try {
       const q = query(collection(db, 'profiles'), where('username', '==', cleanUsername));
       const querySnap = await getDocs(q);
@@ -59,29 +69,31 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
     try {
       const currentUser = auth.currentUser;
       if (!currentUser) {
-        throw new Error('المستخدم غير مسجل الدخول');
+        throw new Error('انتهت الجلسة — يرجى تسجيل الدخول مرة أخرى');
       }
 
-      // 1. تحديث كلمة المرور
-      await updatePassword(currentUser, newPassword);
+      const idToken = await currentUser.getIdToken();
 
-      // 2. ✅ جديد — تحديث الإيميل في Firebase Auth
-      // (ضروري ليستطيع المستخدم الدخول باسم المستخدم الجديد)
-      try {
-        await updateEmail(currentUser, email);
-      } catch (emailErr) {
-        if (emailErr.code === 'auth/requires-recent-login') {
-          setError('لأسباب أمنية، يجب تسجيل الخروج والدخول مرة أخرى لتحديث البريد. سيتم تسجيل خروجك الآن.');
-          setTimeout(async () => {
-            await signOut(auth);
-            onCancel();
-          }, 2500);
-          return;
-        }
-        throw emailErr;
+      // ✅ استدعاء API (Admin SDK) — يتجاوز شرط التحقق من البريد
+      const res = await fetch('/api/reset-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify({
+          userId: user.id,
+          newUsername: cleanUsername,
+          newPassword: newPassword
+        })
+      });
+
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || 'فشل تحديث بيانات الدخول');
       }
 
-      // 3. تحديث الملف الشخصي
+      // تحديث Firestore
       await setDoc(doc(db, 'profiles', user.id), {
         username: cleanUsername,
         email: email,
@@ -91,6 +103,14 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
         tempPassword: null,
         updatedAt: serverTimestamp()
       }, { merge: true });
+
+      // إعادة تسجيل الدخول بصمت بالبيانات الجديدة
+      try {
+        await signOut(auth);
+        await signInWithEmailAndPassword(auth, email, newPassword);
+      } catch (reloginErr) {
+        console.warn('Auto re-login failed:', reloginErr);
+      }
 
       const updatedDocSnap = await getDoc(doc(db, 'profiles', user.id));
       let updatedProfile = {};
@@ -107,12 +127,15 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
       });
     } catch (err) {
       console.error('خطأ في التفعيل:', err);
-      if (err.code === 'auth/requires-recent-login') {
-        setError('لأسباب أمنية، يجب تسجيل الخروج والدخول مرة أخرى لتحديث كلمة المرور. سيتم تسجيل خروجك الآن.');
-        setTimeout(async () => {
-          await signOut(auth);
-          onCancel();
-        }, 2000);
+
+      const msg = String(err.message || '');
+      if (msg.includes('already in use') || msg.includes('مستخدم بالفعل') || msg.includes('email-already-exists')) {
+        setError('اسم المستخدم هذا مستخدم بالفعل، يرجى اختيار آخر');
+      } else if (msg.includes('weak') || msg.includes('ضعيفة') || msg.includes('invalid-password')) {
+        setError('كلمة المرور ضعيفة — استخدم 6 أحرف على الأقل');
+      } else if (msg.includes('غير مصرح') || msg.includes('Unauthorized') || msg.includes('انتهت الجلسة')) {
+        setError('انتهت الجلسة — يرجى تسجيل الدخول من جديد');
+        setTimeout(() => onCancel(), 2500);
       } else {
         setError('فشل التفعيل: ' + (err.message || 'خطأ غير معروف'));
       }
@@ -167,11 +190,15 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
                 required
               />
             </div>
-            {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+            {error && (
+              <p className="text-red-400 text-sm text-center bg-red-500/10 py-2 px-3 rounded-lg border border-red-500/20">
+                {error}
+              </p>
+            )}
             <button
               type="submit"
               disabled={loading}
-              className="btn-primary w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-md"
+              className="btn-primary w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-md disabled:opacity-60"
             >
               {loading ? 'جاري التفعيل...' : 'تفعيل الحساب'}
             </button>
