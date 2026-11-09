@@ -6,8 +6,7 @@ import {
 } from 'react-icons/fa';
 import {
   subscribeToManagerReviewTickets, subscribeToManagerOpenTickets,
-  managerDecide, finalizeAndDeleteTicket, claimTicket,
-  subscribeToPendingContactRequests
+  managerDecide, finalizeAndDeleteTicket, claimTicket
 } from '../../services/support';
 import {
   sendSupervisorRatingWarningMessage, sendApologyToStudentMessage,
@@ -22,7 +21,6 @@ const ManagerSupportReviewsSection = ({ user }) => {
   const [reviews, setReviews] = useState([]);
   const [openTickets, setOpenTickets] = useState([]);
   const [myManagerTickets, setMyManagerTickets] = useState([]);
-  const [pendingContactRequests, setPendingContactRequests] = useState([]); // ✅ جديد
   const [selected, setSelected] = useState(null);
   const [supervisor, setSupervisor] = useState(null);
   const [student, setStudent] = useState(null);
@@ -34,11 +32,9 @@ const ManagerSupportReviewsSection = ({ user }) => {
   useEffect(() => {
     const u1 = subscribeToManagerReviewTickets(setReviews);
     const u2 = subscribeToManagerOpenTickets(setOpenTickets);
-    const u3 = subscribeToPendingContactRequests(setPendingContactRequests); // ✅ جديد
-    return () => { u1(); u2(); u3(); };
+    return () => { u1(); u2(); };
   }, []);
 
-  // ✅ تذاكر المدير النشطة (المحجوزة)
   useEffect(() => {
     const q = query(
       collection(db, 'supportTickets'),
@@ -46,7 +42,8 @@ const ManagerSupportReviewsSection = ({ user }) => {
       where('status', 'in', [
         SUPPORT_TICKET_STATUS.IN_PROGRESS,
         SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED,
-        SUPPORT_TICKET_STATUS.AWAITING_RATING
+        SUPPORT_TICKET_STATUS.AWAITING_RATING,
+        SUPPORT_TICKET_STATUS.MANAGER_PENDING
       ]),
       orderBy('updatedAt', 'desc'),
       limit(20)
@@ -138,12 +135,10 @@ const ManagerSupportReviewsSection = ({ user }) => {
     finally { setProcessing(false); }
   };
 
-  // ✅ لا نخفي القسم إذا كانت هناك دردشة مفتوحة أو تذاكر نشطة أو طلبات رقم
   if (
     reviews.length === 0 &&
     openTickets.length === 0 &&
     myManagerTickets.length === 0 &&
-    pendingContactRequests.length === 0 &&
     !openChatId
   ) return null;
 
@@ -153,32 +148,6 @@ const ManagerSupportReviewsSection = ({ user }) => {
         <FaExclamationTriangle /> مراجعات تقييمات الدعم ({reviews.length})
       </h3>
 
-      {/* ✅ طلبات الحصول على رقم الطالب */}
-      {pendingContactRequests.length > 0 && (
-        <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl">
-          <p className="text-sm text-amber-200 font-bold mb-2 flex items-center gap-2">
-            📞 طلبات الحصول على رقم الطالب ({pendingContactRequests.length})
-          </p>
-          <div className="space-y-2 max-h-48 overflow-y-auto">
-            {pendingContactRequests.map(t => (
-              <div key={t.id} className="p-2 bg-black/30 rounded-lg border border-amber-500/20 flex justify-between items-center gap-2">
-                <div className="flex-1 min-w-0">
-                  <p className="text-white text-xs truncate">
-                    <strong>{t.assignedSupervisorName}</strong> — طالب: {t.studentName}
-                  </p>
-                  <p className="text-[10px] text-gray-400 truncate">السبب: {t.contactRequest?.reason}</p>
-                </div>
-                <button onClick={() => setOpenChatId(t.id)}
-                  className="text-xs bg-amber-600 hover:bg-amber-700 text-white px-3 py-1 rounded-lg whitespace-nowrap">
-                  مراجعة
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* التقييمات السلبية */}
       {reviews.length > 0 && (
         <div className="space-y-2 max-h-96 overflow-y-auto mb-4">
           {reviews.map(t => {
@@ -191,9 +160,7 @@ const ManagerSupportReviewsSection = ({ user }) => {
                       <strong>الطالب:</strong> {t.studentName}
                       {t.studentSerialNumber && <span className="text-xs text-gray-400 mx-1">({t.studentSerialNumber})</span>}
                     </p>
-                    <p className="text-xs text-rose-200 mt-1">
-                      ⭐ {t.rating}/5 — {catLabel}
-                    </p>
+                    <p className="text-xs text-rose-200 mt-1">⭐ {t.rating}/5 — {catLabel}</p>
                     <p className="text-xs text-gray-300 mt-1 line-clamp-2">"{t.ratingReason}"</p>
                     <p className="text-xs text-cyan-300 mt-1">المشرف: {t.assignedSupervisorName}</p>
                   </div>
@@ -207,7 +174,6 @@ const ManagerSupportReviewsSection = ({ user }) => {
         </div>
       )}
 
-      {/* تذاكر المدير النشطة (المحجوزة) */}
       {myManagerTickets.length > 0 && (
         <div className="border-t border-gray-700 pt-4 mt-4">
           <p className="text-sm text-emerald-200 font-bold mb-2 flex items-center gap-2">
@@ -231,7 +197,6 @@ const ManagerSupportReviewsSection = ({ user }) => {
         </div>
       )}
 
-      {/* تذاكر المشرفين (غير محجوزة) */}
       {openTickets.length > 0 && (
         <div className="border-t border-gray-700 pt-4 mt-4">
           <p className="text-sm text-cyan-200 font-bold mb-2 flex items-center gap-2">
