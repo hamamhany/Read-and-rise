@@ -10,11 +10,14 @@ import {
   SUPPORT_TICKET_STATUS,
   SUPPORT_MAX_ACTIVE_OVERLOAD,
   SUPPORT_END_TIMEOUT_MS,
-  CONTACT_REQUEST_STATUS
+  CONTACT_REQUEST_STATUS,
+  DELETE_REQUEST_STATUS,
+  CONTACT_PREFERENCE_MODES
 } from '../constants';
 
 // =========================================================
 // إنشاء تذكرة دعم جديدة
+// contactPreference: { mode: 'registered'|'other'|'none', customNumber }
 // =========================================================
 export const createSupportTicket = async (data) => {
   const q = query(
@@ -32,7 +35,9 @@ export const createSupportTicket = async (data) => {
   if (!snap.empty) throw new Error('لديك تذكرة دعم مفتوحة بالفعل.');
 
   const initialMessage = data.initialMessage;
+  const contactPreference = data.contactPreference || { mode: CONTACT_PREFERENCE_MODES.REGISTERED, customNumber: null };
   delete data.initialMessage;
+  delete data.contactPreference;
 
   const ticket = {
     ...data,
@@ -49,6 +54,13 @@ export const createSupportTicket = async (data) => {
       text: initialMessage,
       createdAt: new Date().toISOString()
     }],
+    contactPreference: {
+      mode: contactPreference.mode || CONTACT_PREFERENCE_MODES.REGISTERED,
+      customNumber: contactPreference.mode === CONTACT_PREFERENCE_MODES.OTHER
+        ? (contactPreference.customNumber || null)
+        : null,
+      setAt: new Date().toISOString()
+    },
     endRequestedAt: null,
     endRequestExpiresAt: null,
     studentSatisfied: null,
@@ -66,6 +78,7 @@ export const createSupportTicket = async (data) => {
     unreadForSupervisor: true,
     bubbleDismissedByStudent: false,
     contactRequest: null,
+    deleteRequest: null, // ✅ جديد
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   };
@@ -75,7 +88,7 @@ export const createSupportTicket = async (data) => {
 };
 
 // =========================================================
-// جلب التذكرة المفتوحة للطالب (أو المغلقة مؤخراً)
+// جلب التذكرة المفتوحة للطالب
 // =========================================================
 export const getStudentOpenTicket = async (studentId) => {
   const q = query(
@@ -182,7 +195,6 @@ export const subscribeToManagerOpenTickets = (callback) => {
   });
 };
 
-// ✅ جديد — طلبات الحصول على رقم الطالب (قيد المراجعة من المدير)
 export const subscribeToPendingContactRequests = (callback) => {
   const q = query(
     collection(db, SUPPORT_TICKETS_COLLECTION),
@@ -234,7 +246,7 @@ export const claimTicket = async (ticketId, supervisorId, supervisorName, manage
 };
 
 // =========================================================
-// إرسال رسالة
+// إرسال رسالة — ✅ يلغي طلب الحذف إن وجد
 // =========================================================
 export const sendTicketMessage = async (ticketId, sender, text) => {
   const message = {
@@ -246,6 +258,14 @@ export const sendTicketMessage = async (ticketId, sender, text) => {
     createdAt: new Date().toISOString()
   };
   const isSupervisor = ['supervisor', 'system_manager'].includes(sender.role);
+
+  // ✅ إلغاء طلب الحذف إن وجد (تفاعل جديد)
+  const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
+  const ticketSnap = await getDoc(ticketRef);
+  const ticketData = ticketSnap.exists() ? ticketSnap.data() : null;
+  const hasActiveDeleteRequest = ticketData?.deleteRequest &&
+    [DELETE_REQUEST_STATUS.PENDING, DELETE_REQUEST_STATUS.BOTH_APPROVED].includes(ticketData.deleteRequest.status);
+
   const updates = {
     messages: arrayUnion(message),
     updatedAt: serverTimestamp(),
@@ -253,7 +273,17 @@ export const sendTicketMessage = async (ticketId, sender, text) => {
     unreadForStudent: isSupervisor ? true : false,
     unreadForSupervisor: isSupervisor ? false : true
   };
-  await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), updates);
+
+  if (hasActiveDeleteRequest) {
+    updates.deleteRequest = {
+      ...ticketData.deleteRequest,
+      status: DELETE_REQUEST_STATUS.CANCELLED,
+      cancelledAt: serverTimestamp(),
+      cancelledReason: 'رسالة جديدة أثناء طلب الحذف'
+    };
+  }
+
+  await updateDoc(ticketRef, updates);
 };
 
 // =========================================================
@@ -282,36 +312,23 @@ export const transferToManager = async (ticketId, supervisorName) => {
 };
 
 // =========================================================
-// ✅ طلب رقم الطالب (مشرف أو مدير)
-// - المشرف: pending (بانتظار موافقة المدير)
-// - المدير: approved فوراً
+// ✅ طلب رقم الطالب (من المشرف — يحتاج موافقة المدير)
 // =========================================================
-export const requestContactInfo = async (ticketId, reason, requesterId, options = {}) => {
-  const { mode = 'registered', customNumber = null, isManager = false } = options;
-  const status = isManager
-    ? CONTACT_REQUEST_STATUS.APPROVED
-    : CONTACT_REQUEST_STATUS.PENDING;
-
+export const requestContactInfo = async (ticketId, reason, requesterId) => {
   await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
     contactRequest: {
       reason,
       requestedBy: requesterId,
       requestedAt: serverTimestamp(),
-      status,
-      mode,
-      customNumber: mode === 'other' ? customNumber : null,
-      autoApproved: isManager,
-      reviewedBy: isManager ? requesterId : null,
-      reviewedAt: isManager ? serverTimestamp() : null,
+      status: CONTACT_REQUEST_STATUS.PENDING,
+      reviewedBy: null,
+      reviewedAt: null,
       rejectionReason: null
     },
     updatedAt: serverTimestamp()
   });
 };
 
-// =========================================================
-// ✅ موافقة/رفض المدير على طلب الرقم من المشرف
-// =========================================================
 export const approveContactRequest = async (ticketId, managerId) => {
   await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
     'contactRequest.status': CONTACT_REQUEST_STATUS.APPROVED,
@@ -327,6 +344,120 @@ export const rejectContactRequest = async (ticketId, managerId, reason = '') => 
     'contactRequest.reviewedBy': managerId,
     'contactRequest.rejectionReason': reason,
     'contactRequest.reviewedAt': serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
+};
+
+// =========================================================
+// ✅ طلب الحذف من المدير (يحتاج موافقة مزدوجة: مشرف + طالب)
+// =========================================================
+export const requestTicketDeletion = async (ticketId, managerId, managerName) => {
+  const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
+  const snap = await getDoc(ticketRef);
+  if (!snap.exists()) throw new Error('التذكرة غير موجودة');
+  const data = snap.data();
+
+  if (data.deleteRequest && data.deleteRequest.status === DELETE_REQUEST_STATUS.PENDING) {
+    throw new Error('يوجد طلب حذف قيد المراجعة بالفعل');
+  }
+
+  // هل المشرف الحالي هو نفسه صاحب التذكرة؟ (تذكرة من مشرف للمدير)
+  const isSupervisorTicket = data.requiresManager === true;
+
+  await updateDoc(ticketRef, {
+    deleteRequest: {
+      requestedBy: managerId,
+      requestedByName: managerName,
+      requestedAt: serverTimestamp(),
+      status: DELETE_REQUEST_STATUS.PENDING,
+      supervisorApproved: isSupervisorTicket ? true : false, // إذا كانت التذكرة من مشرف، لا يحتاج موافقته
+      supervisorApprovedAt: isSupervisorTicket ? serverTimestamp() : null,
+      studentApproved: false,
+      studentApprovedAt: null,
+      scheduledDeleteAt: null,
+      cancelledAt: null,
+      cancelledReason: null
+    },
+    updatedAt: serverTimestamp()
+  });
+};
+
+// =========================================================
+// ✅ موافقة/رفض المشرف على الحذف
+// =========================================================
+export const approveDeletionBySupervisor = async (ticketId) => {
+  const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
+  const snap = await getDoc(ticketRef);
+  if (!snap.exists()) throw new Error('التذكرة غير موجودة');
+  const data = snap.data();
+
+  if (!data.deleteRequest || data.deleteRequest.status !== DELETE_REQUEST_STATUS.PENDING) {
+    throw new Error('لا يوجد طلب حذف نشط');
+  }
+
+  const studentApproved = data.deleteRequest.studentApproved === true;
+  const bothApproved = studentApproved; // المشرف وافق الآن + الطالب وافق سابقاً؟
+
+  const updates = {
+    'deleteRequest.supervisorApproved': true,
+    'deleteRequest.supervisorApprovedAt': serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+
+  if (bothApproved) {
+    updates['deleteRequest.status'] = DELETE_REQUEST_STATUS.BOTH_APPROVED;
+    updates['deleteRequest.scheduledDeleteAt'] = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  }
+
+  await updateDoc(ticketRef, updates);
+};
+
+export const rejectDeletionBySupervisor = async (ticketId, reason = '') => {
+  await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
+    'deleteRequest.status': DELETE_REQUEST_STATUS.CANCELLED,
+    'deleteRequest.supervisorApproved': false,
+    'deleteRequest.cancelledAt': serverTimestamp(),
+    'deleteRequest.cancelledReason': reason || 'رفض المشرف',
+    updatedAt: serverTimestamp()
+  });
+};
+
+// =========================================================
+// ✅ موافقة/رفض الطالب على الحذف
+// =========================================================
+export const approveDeletionByStudent = async (ticketId) => {
+  const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
+  const snap = await getDoc(ticketRef);
+  if (!snap.exists()) throw new Error('التذكرة غير موجودة');
+  const data = snap.data();
+
+  if (!data.deleteRequest || data.deleteRequest.status !== DELETE_REQUEST_STATUS.PENDING) {
+    throw new Error('لا يوجد طلب حذف نشط');
+  }
+
+  const supervisorApproved = data.deleteRequest.supervisorApproved === true;
+  const bothApproved = supervisorApproved;
+
+  const updates = {
+    'deleteRequest.studentApproved': true,
+    'deleteRequest.studentApprovedAt': serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+
+  if (bothApproved) {
+    updates['deleteRequest.status'] = DELETE_REQUEST_STATUS.BOTH_APPROVED;
+    updates['deleteRequest.scheduledDeleteAt'] = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  }
+
+  await updateDoc(ticketRef, updates);
+};
+
+export const rejectDeletionByStudent = async (ticketId, reason = '') => {
+  await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
+    'deleteRequest.status': DELETE_REQUEST_STATUS.CANCELLED,
+    'deleteRequest.studentApproved': false,
+    'deleteRequest.cancelledAt': serverTimestamp(),
+    'deleteRequest.cancelledReason': reason || 'رفض الطالب',
     updatedAt: serverTimestamp()
   });
 };
@@ -447,7 +578,7 @@ export const managerDecide = async (ticketId, decision, managerReason) => {
 };
 
 // =========================================================
-// ✅ إغلاق التذكرة نهائياً (حالة فقط — لا يحذف)
+// إغلاق فوري (للمدير — بدون موافقة)
 // =========================================================
 export const managerCloseTicket = async (ticketId) => {
   await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
@@ -458,8 +589,7 @@ export const managerCloseTicket = async (ticketId) => {
 };
 
 // =========================================================
-// ✅ حذف التذكرة نهائياً من Firestore
-// (مع تصفير عداد المشرف)
+// حذف نهائي (للسيرفر فقط — يُستدعى من Cron بعد انتهاء الجدولة)
 // =========================================================
 export const deleteTicketPermanently = async (ticketId) => {
   const ref = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
@@ -467,7 +597,6 @@ export const deleteTicketPermanently = async (ticketId) => {
   if (!snap.exists()) return;
   const data = snap.data();
 
-  // تصفير عداد المشرف (إن وجد)
   if (data.assignedSupervisorId) {
     try {
       const supRef = doc(db, 'profiles', data.assignedSupervisorId);
@@ -483,7 +612,7 @@ export const deleteTicketPermanently = async (ticketId) => {
 };
 
 // =========================================================
-// (Legacy) إنهاء وحذف التذكرة — مستخدمة في ManagerSupportReviewsSection
+// (Legacy) للتوافق مع ManagerSupportReviewsSection
 // =========================================================
 export const finalizeAndDeleteTicket = async (ticketId) => {
   const ref = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);

@@ -114,3 +114,14 @@ export const SUPPORT_RATING_CATEGORIES = [
   { value: 'wrong_info', label: 'معلومات غير دقيقة' },
   { value: 'unresolved', label: 'المشكلة لم تُحل فعلياً' }
 ];
+export const DELETE_REQUEST_STATUS = {
+  PENDING: 'pending',           // بانتظار موافقة الطرفين
+  BOTH_APPROVED: 'both_approved', // وافق الطرفان — مجدول للحذف
+  CANCELLED: 'cancelled'        // أُلغي (بسبب رسالة جديدة أو رفض)
+};
+
+export const CONTACT_PREFERENCE_MODES = {
+  REGISTERED: 'registered', // الرقم المسجل في المنصة
+  OTHER: 'other',           // رقم آخر يكتبه صاحب التذكرة
+  NONE: 'none'              // لا يريد مشاركة رقمه
+};
