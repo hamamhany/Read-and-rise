@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { FaHeadset, FaSpinner, FaEye, FaChevronDown, FaArrowLeftCircle, FaCheckCircle, FaCheckSquare, FaSquare } from 'react-icons/fa';
+import { FaHeadset, FaSpinner, FaEye, FaChevronDown, FaArrowCircleLeft, FaCheckCircle, FaCheckSquare, FaSquare } from 'react-icons/fa';
 import { subscribeToUnassignedTickets, subscribeToSupervisorTickets } from '../../services/support';
 import { SUPPORT_TICKET_STATUS } from '../../constants';
 import { doc, writeBatch, serverTimestamp } from 'firebase/firestore';
@@ -218,7 +218,7 @@ const SupportTicketsSection = ({ user }) => {
                     disabled={loadingAction}
                     className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1"
                   >
-                    <FaArrowLeftCircle /> تحويل للمدير
+                    <FaArrowCircleLeft /> تحويل للمدير
                   </button>
                 </div>
               </div>
