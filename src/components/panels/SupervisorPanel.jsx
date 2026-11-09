@@ -441,11 +441,12 @@ const SupervisorPanel = ({ user, onLogout }) => {
 
         {/* ✅ إخفاء الأقسام إذا لم يكن هناك عناصر جديدة */}
         {permissions.reports && counts.reports > 0 && <ReportsReviewSection user={user} />}
-        
+
         <ReviewVotingSection user={user} />
-        
+
         {permissions.resets && counts.resets > 0 && <ResetRequestsSection user={user} />}
-        
+
+        {/* ✅ الدعم الفني — بدون شرط counts.support (المكوّن يدير ظهوره بنفسه) */}
         {permissions.support && <SupportTicketsSection user={user} />}
 
         {canPublish && (
@@ -497,10 +498,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
           </div>
         )}
       </div>
-
-      {/* ... (باقي المودالات: إضافة طالب، الإشعارات، التفاصيل) ... */}
-      {/* لقد اختصرت هنا فقط لأنها لم تتغير. الملف الكامل موجود في ردك السابق، يمكنك نسخه كما هو. */}
-      {/* لكن للتأكد، سأضعها كاملة هنا أيضاً: */}
 
       {showAddStudentModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowAddStudentModal(false)}>

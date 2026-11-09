@@ -6,7 +6,8 @@ import {
 } from 'react-icons/fa';
 import {
   subscribeToManagerReviewTickets, subscribeToManagerOpenTickets,
-  managerDecide, finalizeAndDeleteTicket, claimTicket
+  managerDecide, finalizeAndDeleteTicket, claimTicket,
+  subscribeToPendingContactRequests
 } from '../../services/support';
 import {
   sendSupervisorRatingWarningMessage, sendApologyToStudentMessage,
@@ -20,7 +21,8 @@ import SupportChat from '../common/SupportChat';
 const ManagerSupportReviewsSection = ({ user }) => {
   const [reviews, setReviews] = useState([]);
   const [openTickets, setOpenTickets] = useState([]);
-  const [myManagerTickets, setMyManagerTickets] = useState([]); // ✅ جديد
+  const [myManagerTickets, setMyManagerTickets] = useState([]);
+  const [pendingContactRequests, setPendingContactRequests] = useState([]); // ✅ جديد
   const [selected, setSelected] = useState(null);
   const [supervisor, setSupervisor] = useState(null);
   const [student, setStudent] = useState(null);
@@ -32,10 +34,11 @@ const ManagerSupportReviewsSection = ({ user }) => {
   useEffect(() => {
     const u1 = subscribeToManagerReviewTickets(setReviews);
     const u2 = subscribeToManagerOpenTickets(setOpenTickets);
-    return () => { u1(); u2(); };
+    const u3 = subscribeToPendingContactRequests(setPendingContactRequests); // ✅ جديد
+    return () => { u1(); u2(); u3(); };
   }, []);
 
-  // ✅ جديد — تذاكر المدير النشطة (المحجوزة) حتى يتمكن من فتحها مرة أخرى
+  // ✅ تذاكر المدير النشطة (المحجوزة)
   useEffect(() => {
     const q = query(
       collection(db, 'supportTickets'),
@@ -135,11 +138,12 @@ const ManagerSupportReviewsSection = ({ user }) => {
     finally { setProcessing(false); }
   };
 
-  // ✅ لا نخفي القسم إذا كانت هناك دردشة مفتوحة أو تذاكر نشطة للمدير
+  // ✅ لا نخفي القسم إذا كانت هناك دردشة مفتوحة أو تذاكر نشطة أو طلبات رقم
   if (
     reviews.length === 0 &&
     openTickets.length === 0 &&
     myManagerTickets.length === 0 &&
+    pendingContactRequests.length === 0 &&
     !openChatId
   ) return null;
 
@@ -148,6 +152,31 @@ const ManagerSupportReviewsSection = ({ user }) => {
       <h3 className="text-xl font-semibold text-rose-300 flex items-center gap-2 mb-4">
         <FaExclamationTriangle /> مراجعات تقييمات الدعم ({reviews.length})
       </h3>
+
+      {/* ✅ طلبات الحصول على رقم الطالب */}
+      {pendingContactRequests.length > 0 && (
+        <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+          <p className="text-sm text-amber-200 font-bold mb-2 flex items-center gap-2">
+            📞 طلبات الحصول على رقم الطالب ({pendingContactRequests.length})
+          </p>
+          <div className="space-y-2 max-h-48 overflow-y-auto">
+            {pendingContactRequests.map(t => (
+              <div key={t.id} className="p-2 bg-black/30 rounded-lg border border-amber-500/20 flex justify-between items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-white text-xs truncate">
+                    <strong>{t.assignedSupervisorName}</strong> — طالب: {t.studentName}
+                  </p>
+                  <p className="text-[10px] text-gray-400 truncate">السبب: {t.contactRequest?.reason}</p>
+                </div>
+                <button onClick={() => setOpenChatId(t.id)}
+                  className="text-xs bg-amber-600 hover:bg-amber-700 text-white px-3 py-1 rounded-lg whitespace-nowrap">
+                  مراجعة
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* التقييمات السلبية */}
       {reviews.length > 0 && (
@@ -178,7 +207,7 @@ const ManagerSupportReviewsSection = ({ user }) => {
         </div>
       )}
 
-      {/* تذاكر المدير النشطة (المحجوزة) — جديدة */}
+      {/* تذاكر المدير النشطة (المحجوزة) */}
       {myManagerTickets.length > 0 && (
         <div className="border-t border-gray-700 pt-4 mt-4">
           <p className="text-sm text-emerald-200 font-bold mb-2 flex items-center gap-2">

@@ -382,3 +382,44 @@ export const finalizeAndDeleteTicket = async (ticketId) => {
   }
   await deleteDoc(ref);
 };
+// =========================================================
+// ✅ جديد — إدارة طلبات الحصول على رقم الطالب
+// =========================================================
+export const approveContactRequest = async (ticketId, managerId) => {
+  await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
+    'contactRequest.status': CONTACT_REQUEST_STATUS.APPROVED,
+    'contactRequest.reviewedBy': managerId,
+    'contactRequest.reviewedAt': serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
+};
+
+export const rejectContactRequest = async (ticketId, managerId, reason = '') => {
+  await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
+    'contactRequest.status': CONTACT_REQUEST_STATUS.REJECTED,
+    'contactRequest.reviewedBy': managerId,
+    'contactRequest.rejectionReason': reason,
+    'contactRequest.reviewedAt': serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
+};
+
+export const subscribeToPendingContactRequests = (callback) => {
+  const q = query(
+    collection(db, SUPPORT_TICKETS_COLLECTION),
+    where('contactRequest.status', '==', CONTACT_REQUEST_STATUS.PENDING),
+    orderBy('updatedAt', 'desc'),
+    limit(50)
+  );
+  return onSnapshot(q, (snap) => {
+    callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+  });
+};
+
+export const managerCloseTicket = async (ticketId) => {
+  await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
+    status: SUPPORT_TICKET_STATUS.AUTO_CLOSED,
+    closedAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
+};
