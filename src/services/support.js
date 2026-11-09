@@ -13,6 +13,9 @@ import {
   CONTACT_REQUEST_STATUS
 } from '../constants';
 
+// =========================================================
+// إنشاء تذكرة دعم جديدة
+// =========================================================
 export const createSupportTicket = async (data) => {
   const q = query(
     collection(db, SUPPORT_TICKETS_COLLECTION),
@@ -34,7 +37,7 @@ export const createSupportTicket = async (data) => {
   const ticket = {
     ...data,
     status: SUPPORT_TICKET_STATUS.OPEN,
-    requiresManager: data.studentRole === 'supervisor',
+    requiresManager: data.studentRole === 'supervisor' || data.studentRole === 'system_manager',
     assignedSupervisorId: null,
     assignedSupervisorName: null,
     assignedAt: null,
@@ -59,8 +62,8 @@ export const createSupportTicket = async (data) => {
     managerNotificationSent: false,
     supervisorNotificationSent: false,
     studentNotificationSent: false,
-    unreadForStudent: false, // الطالب هو من أنشأها
-    unreadForSupervisor: true, // المشرفون لم يروها بعد
+    unreadForStudent: false,
+    unreadForSupervisor: true,
     bubbleDismissedByStudent: false,
     contactRequest: null,
     createdAt: serverTimestamp(),
@@ -71,6 +74,9 @@ export const createSupportTicket = async (data) => {
   return ref.id;
 };
 
+// =========================================================
+// جلب التذكرة المفتوحة للطالب (أو المغلقة مؤخراً)
+// =========================================================
 export const getStudentOpenTicket = async (studentId) => {
   const q = query(
     collection(db, SUPPORT_TICKETS_COLLECTION),
@@ -112,6 +118,9 @@ export const getStudentOpenTicket = async (studentId) => {
   return null;
 };
 
+// =========================================================
+// Subscriptions
+// =========================================================
 export const subscribeToTicket = (ticketId, callback) => {
   return onSnapshot(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), (snap) => {
     callback(snap.exists() ? { id: snap.id, ...snap.data() } : null);
@@ -141,7 +150,7 @@ export const subscribeToUnassignedTickets = (callback) => {
     where('status', '==', SUPPORT_TICKET_STATUS.OPEN),
     where('requiresManager', '==', false),
     orderBy('createdAt', 'asc'),
-    limit(100) // نزيد الحد لنتمكن من التحميل التدريجي
+    limit(100)
   );
   return onSnapshot(q, (snap) => {
     callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -173,6 +182,22 @@ export const subscribeToManagerOpenTickets = (callback) => {
   });
 };
 
+// ✅ جديد — طلبات الحصول على رقم الطالب (قيد المراجعة من المدير)
+export const subscribeToPendingContactRequests = (callback) => {
+  const q = query(
+    collection(db, SUPPORT_TICKETS_COLLECTION),
+    where('contactRequest.status', '==', CONTACT_REQUEST_STATUS.PENDING),
+    orderBy('updatedAt', 'desc'),
+    limit(50)
+  );
+  return onSnapshot(q, (snap) => {
+    callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+  });
+};
+
+// =========================================================
+// حجز التذكرة
+// =========================================================
 export const claimTicket = async (ticketId, supervisorId, supervisorName, managerMode = false) => {
   await runTransaction(db, async (transaction) => {
     const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
@@ -208,6 +233,9 @@ export const claimTicket = async (ticketId, supervisorId, supervisorName, manage
   });
 };
 
+// =========================================================
+// إرسال رسالة
+// =========================================================
 export const sendTicketMessage = async (ticketId, sender, text) => {
   const message = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
@@ -222,14 +250,15 @@ export const sendTicketMessage = async (ticketId, sender, text) => {
     messages: arrayUnion(message),
     updatedAt: serverTimestamp(),
     lastMessage: text,
-    // ✅ النقطة الحمراء تظهر للطالب فقط إذا كان المرسل مشرفاً
     unreadForStudent: isSupervisor ? true : false,
-    // ✅ النقطة الحمراء تظهر للمشرف فقط إذا كان المرسل طالباً
     unreadForSupervisor: isSupervisor ? false : true
   };
   await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), updates);
 };
 
+// =========================================================
+// تعليم كمقروء
+// =========================================================
 export const markTicketAsRead = async (ticketId, role) => {
   const updates = {};
   if (role === 'student') updates.unreadForStudent = false;
@@ -241,6 +270,9 @@ export const dismissClosedBubble = async (ticketId) => {
   await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), { bubbleDismissedByStudent: true });
 };
 
+// =========================================================
+// تحويل للمدير
+// =========================================================
 export const transferToManager = async (ticketId, supervisorName) => {
   await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
     status: SUPPORT_TICKET_STATUS.MANAGER_PENDING,
@@ -249,18 +281,59 @@ export const transferToManager = async (ticketId, supervisorName) => {
   });
 };
 
-export const requestContactInfo = async (ticketId, reason, supervisorId) => {
+// =========================================================
+// ✅ طلب رقم الطالب (مشرف أو مدير)
+// - المشرف: pending (بانتظار موافقة المدير)
+// - المدير: approved فوراً
+// =========================================================
+export const requestContactInfo = async (ticketId, reason, requesterId, options = {}) => {
+  const { mode = 'registered', customNumber = null, isManager = false } = options;
+  const status = isManager
+    ? CONTACT_REQUEST_STATUS.APPROVED
+    : CONTACT_REQUEST_STATUS.PENDING;
+
   await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
     contactRequest: {
       reason,
-      requestedBy: supervisorId,
+      requestedBy: requesterId,
       requestedAt: serverTimestamp(),
-      status: CONTACT_REQUEST_STATUS.PENDING
+      status,
+      mode,
+      customNumber: mode === 'other' ? customNumber : null,
+      autoApproved: isManager,
+      reviewedBy: isManager ? requesterId : null,
+      reviewedAt: isManager ? serverTimestamp() : null,
+      rejectionReason: null
     },
     updatedAt: serverTimestamp()
   });
 };
 
+// =========================================================
+// ✅ موافقة/رفض المدير على طلب الرقم من المشرف
+// =========================================================
+export const approveContactRequest = async (ticketId, managerId) => {
+  await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
+    'contactRequest.status': CONTACT_REQUEST_STATUS.APPROVED,
+    'contactRequest.reviewedBy': managerId,
+    'contactRequest.reviewedAt': serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
+};
+
+export const rejectContactRequest = async (ticketId, managerId, reason = '') => {
+  await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
+    'contactRequest.status': CONTACT_REQUEST_STATUS.REJECTED,
+    'contactRequest.reviewedBy': managerId,
+    'contactRequest.rejectionReason': reason,
+    'contactRequest.reviewedAt': serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
+};
+
+// =========================================================
+// إنهاء تذكرة (طلب من المشرف)
+// =========================================================
 export const requestTicketEnd = async (ticketId) => {
   const now = Date.now();
   await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
@@ -271,6 +344,9 @@ export const requestTicketEnd = async (ticketId) => {
   });
 };
 
+// =========================================================
+// تأكيدات الطالب
+// =========================================================
 export const studentConfirmSolved = async (ticketId) => {
   await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
     status: SUPPORT_TICKET_STATUS.AWAITING_RATING,
@@ -289,6 +365,9 @@ export const studentConfirmNotSolved = async (ticketId) => {
   });
 };
 
+// =========================================================
+// تقييم الطالب
+// =========================================================
 export const submitRating = async (ticketId, rating, ratingCategory, ratingReason) => {
   const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
   const snap = await getDoc(ticketRef);
@@ -325,6 +404,9 @@ export const submitRating = async (ticketId, rating, ratingCategory, ratingReaso
   return newStatus;
 };
 
+// =========================================================
+// قرار المدير (اعتذار/رفض شكوى)
+// =========================================================
 export const managerDecide = async (ticketId, decision, managerReason) => {
   const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
   const snap = await getDoc(ticketRef);
@@ -364,6 +446,45 @@ export const managerDecide = async (ticketId, decision, managerReason) => {
   return newStatus;
 };
 
+// =========================================================
+// ✅ إغلاق التذكرة نهائياً (حالة فقط — لا يحذف)
+// =========================================================
+export const managerCloseTicket = async (ticketId) => {
+  await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
+    status: SUPPORT_TICKET_STATUS.AUTO_CLOSED,
+    closedAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
+};
+
+// =========================================================
+// ✅ حذف التذكرة نهائياً من Firestore
+// (مع تصفير عداد المشرف)
+// =========================================================
+export const deleteTicketPermanently = async (ticketId) => {
+  const ref = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return;
+  const data = snap.data();
+
+  // تصفير عداد المشرف (إن وجد)
+  if (data.assignedSupervisorId) {
+    try {
+      const supRef = doc(db, 'profiles', data.assignedSupervisorId);
+      const supSnap = await getDoc(supRef);
+      if (supSnap.exists()) {
+        const current = supSnap.data().activeTicketCount || 0;
+        await updateDoc(supRef, { activeTicketCount: Math.max(0, current - 1) });
+      }
+    } catch (e) { console.warn('decrement failed:', e); }
+  }
+
+  await deleteDoc(ref);
+};
+
+// =========================================================
+// (Legacy) إنهاء وحذف التذكرة — مستخدمة في ManagerSupportReviewsSection
+// =========================================================
 export const finalizeAndDeleteTicket = async (ticketId) => {
   const ref = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
   const snap = await getDoc(ref);
@@ -381,45 +502,4 @@ export const finalizeAndDeleteTicket = async (ticketId) => {
     } catch (e) { console.warn('decrement failed:', e); }
   }
   await deleteDoc(ref);
-};
-// =========================================================
-// ✅ جديد — إدارة طلبات الحصول على رقم الطالب
-// =========================================================
-export const approveContactRequest = async (ticketId, managerId) => {
-  await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
-    'contactRequest.status': CONTACT_REQUEST_STATUS.APPROVED,
-    'contactRequest.reviewedBy': managerId,
-    'contactRequest.reviewedAt': serverTimestamp(),
-    updatedAt: serverTimestamp()
-  });
-};
-
-export const rejectContactRequest = async (ticketId, managerId, reason = '') => {
-  await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
-    'contactRequest.status': CONTACT_REQUEST_STATUS.REJECTED,
-    'contactRequest.reviewedBy': managerId,
-    'contactRequest.rejectionReason': reason,
-    'contactRequest.reviewedAt': serverTimestamp(),
-    updatedAt: serverTimestamp()
-  });
-};
-
-export const subscribeToPendingContactRequests = (callback) => {
-  const q = query(
-    collection(db, SUPPORT_TICKETS_COLLECTION),
-    where('contactRequest.status', '==', CONTACT_REQUEST_STATUS.PENDING),
-    orderBy('updatedAt', 'desc'),
-    limit(50)
-  );
-  return onSnapshot(q, (snap) => {
-    callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-  });
-};
-
-export const managerCloseTicket = async (ticketId) => {
-  await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
-    status: SUPPORT_TICKET_STATUS.AUTO_CLOSED,
-    closedAt: serverTimestamp(),
-    updatedAt: serverTimestamp()
-  });
 };

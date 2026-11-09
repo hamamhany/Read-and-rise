@@ -2,14 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import {
   FaTimes, FaPaperPlane, FaStar, FaCheckCircle, FaTimesCircle,
-  FaSpinner, FaUserCircle, FaInfoCircle, FaHeadset, FaPhone, FaLock,
-  FaWhatsapp, FaBan
+  FaSpinner, FaHeadset, FaPhone, FaLock, FaWhatsapp, FaTrashAlt, FaBan
 } from 'react-icons/fa';
 import {
   subscribeToTicket, sendTicketMessage, studentConfirmSolved,
   studentConfirmNotSolved, submitRating, requestTicketEnd,
   transferToManager, requestContactInfo, markTicketAsRead, claimTicket,
-  approveContactRequest, rejectContactRequest, managerCloseTicket
+  approveContactRequest, rejectContactRequest, deleteTicketPermanently
 } from '../../services/support';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
@@ -28,10 +27,13 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
   const [showContactModal, setShowContactModal] = useState(false);
   const [contactReason, setContactReason] = useState('');
   const [customReason, setCustomReason] = useState('');
+  const [contactMode, setContactMode] = useState('registered');
+  const [customContactNumber, setCustomContactNumber] = useState('');
   const [claiming, setClaiming] = useState(false);
   const [processingContact, setProcessingContact] = useState(false);
   const [showRejectContactModal, setShowRejectContactModal] = useState(false);
   const [rejectContactReason, setRejectContactReason] = useState('');
+  const [deleting, setDeleting] = useState(false);
   const scrollRef = useRef(null);
 
   const contactReasons = [
@@ -69,13 +71,11 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
     );
   }
 
-  // ✅ تعريف الأدوار
   const isStudent = viewerMode === 'student';
   const isSupervisor = viewerMode === 'supervisor';
   const isManager = viewerMode === 'manager';
   const isClaimedByMe = ticket.assignedSupervisorId === user.id;
 
-  // ✅ إرسال الرسائل مسموح فقط في حالات محددة
   const canSend = isStudent
     ? [SUPPORT_TICKET_STATUS.OPEN, SUPPORT_TICKET_STATUS.IN_PROGRESS].includes(ticket.status)
     : isClaimedByMe && [
@@ -85,8 +85,9 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
 
   const contactRequest = ticket.contactRequest;
   const contactStatus = contactRequest?.status;
+  const contactModeStored = contactRequest?.mode || 'registered';
 
-  // ============ دوال المشرف ============
+  // ============ إرسال ============
   const handleSend = async () => {
     const t = text.trim();
     if (!t) return;
@@ -111,6 +112,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
     }
   };
 
+  // ============ مشرف ============
   const handleEndTicket = async () => {
     if (!window.confirm('هل أنت متأكد من إنهاء المحادثة؟ سيتم إرسال طلب للطالب للتأكيد.')) return;
     try {
@@ -129,34 +131,47 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
     } catch (e) { toast.error(e.message); }
   };
 
+  // ============ طلب الرقم (مشرف + مدير) ============
   const handleRequestContact = async () => {
     const finalReason = contactReason === 'سبب آخر' ? customReason : contactReason;
     if (!finalReason) return toast.error('اختر السبب');
+
+    let phoneToStore = null;
+    if (contactMode === 'other') {
+      const phoneDigits = customContactNumber.replace(/[^\d]/g, '');
+      if (!phoneDigits) return toast.error('يرجى إدخال رقم التواصل');
+      if (phoneDigits.length < 10 || phoneDigits.length > 15) {
+        return toast.error('رقم التواصل غير صالح (10-15 رقماً)');
+      }
+      phoneToStore = phoneDigits;
+    }
+
     try {
-      await requestContactInfo(ticketId, finalReason, user.id);
-      toast.success('✅ تم إرسال طلب الرقم للمدير — بانتظار الموافقة');
+      await requestContactInfo(ticketId, finalReason, user.id, {
+        mode: contactMode,
+        customNumber: phoneToStore,
+        isManager
+      });
+      toast.success(
+        isManager
+          ? '✅ تم تسجيل طلب الرقم — سترى زر التواصل الآن'
+          : '✅ تم إرسال طلب الرقم للمدير — بانتظار الموافقة'
+      );
       setShowContactModal(false);
       setContactReason('');
       setCustomReason('');
+      setContactMode('registered');
+      setCustomContactNumber('');
     } catch (e) { toast.error(e.message); }
   };
 
-  // ============ دوال المدير ============
-  const handleManagerClose = async () => {
-    if (!window.confirm('إغلاق التذكرة نهائياً؟ لا يمكن التراجع.')) return;
-    try {
-      await managerCloseTicket(ticketId);
-      toast.success('✅ تم إغلاق التذكرة نهائياً');
-      onClose();
-    } catch (e) { toast.error(e.message); }
-  };
-
+  // ============ مدير ============
   const handleApproveContact = async () => {
-    if (!window.confirm('الموافقة على كشف رقم الطالب للمشرف؟')) return;
+    if (!window.confirm('الموافقة على طلب الرقم من المشرف؟')) return;
     setProcessingContact(true);
     try {
       await approveContactRequest(ticketId, user.id);
-      toast.success('✅ تمت الموافقة — المشرف يمكنه الآن رؤية الرقم');
+      toast.success('✅ تمت الموافقة');
     } catch (e) { toast.error(e.message); }
     finally { setProcessingContact(false); }
   };
@@ -172,7 +187,18 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
     finally { setProcessingContact(false); }
   };
 
-  // ============ دوال الطالب ============
+  const handlePermanentDelete = async () => {
+    if (!window.confirm('⚠️ سيتم حذف التذكرة نهائياً من السيرفر ولا يمكن استرجاعها. متأكد؟')) return;
+    setDeleting(true);
+    try {
+      await deleteTicketPermanently(ticketId);
+      toast.success('✅ تم حذف التذكرة نهائياً من السيرفر');
+      onClose();
+    } catch (e) { toast.error('فشل الحذف: ' + e.message); }
+    finally { setDeleting(false); }
+  };
+
+  // ============ طالب ============
   const handleSolved = async () => {
     try {
       await studentConfirmSolved(ticketId);
@@ -203,17 +229,47 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
     finally { setSubmittingRating(false); }
   };
 
+  // ✅ تحديد زر التواصل بناءً على خيار الطلب
+  const renderContactButton = () => {
+    if (contactStatus !== CONTACT_REQUEST_STATUS.APPROVED) return null;
+
+    if (contactModeStored === 'registered') {
+      const phone = ticket.studentPhone;
+      if (!phone) {
+        return <span className="text-xs text-gray-400">⚠️ رقم الطالب غير مسجل في المنصة</span>;
+      }
+      return (
+        <a href={`https://wa.me/${phone}`} target="_blank" rel="noopener noreferrer"
+          className="text-green-300 hover:text-green-200 flex items-center gap-1 font-bold">
+          <FaWhatsapp /> تواصل مع الطالب: <span dir="ltr">{phone}</span>
+        </a>
+      );
+    } else {
+      // رقم آخر — نخفي الرقم ونظهر زر تواصل فقط
+      const phone = contactRequest?.customNumber;
+      if (!phone) {
+        return <span className="text-xs text-gray-400">⚠️ لم يتم تحديد رقم</span>;
+      }
+      return (
+        <a href={`https://wa.me/${phone}`} target="_blank" rel="noopener noreferrer"
+          className="text-green-300 hover:text-green-200 flex items-center gap-1 font-bold bg-green-500/10 px-3 py-1 rounded-lg border border-green-500/30">
+          <FaWhatsapp /> تواصل عبر واتساب
+        </a>
+      );
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[70] flex items-center justify-center p-2 sm:p-4" onClick={onClose}>
       <div className="bg-gray-900 rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col border border-blue-500/30" onClick={e => e.stopPropagation()}>
 
-        {/* ================== الهيدر ================== */}
+        {/* ============ الهيدر ============ */}
         <div className="flex items-center justify-between p-3 border-b border-gray-700">
           <div className="flex items-center gap-2 min-w-0 flex-wrap">
             <FaHeadset className="text-blue-400 text-lg flex-shrink-0" />
             <p className="text-white font-bold text-sm truncate">الدعم الفني</p>
 
-            {/* أزرار المشرف فقط */}
+            {/* أزرار المشرف */}
             {isSupervisor && isClaimedByMe && ticket.status === SUPPORT_TICKET_STATUS.IN_PROGRESS && (
               <>
                 <button onClick={handleEndTicket} className="text-xs bg-red-500 hover:bg-red-600 px-2 py-0.5 rounded text-white">إنهاء</button>
@@ -221,17 +277,23 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
               </>
             )}
 
-            {/* زر الإغلاق النهائي للمدير فقط */}
-            {isManager && isClaimedByMe && ticket.status === SUPPORT_TICKET_STATUS.IN_PROGRESS && (
-              <button onClick={handleManagerClose} className="text-xs bg-red-600 hover:bg-red-700 px-2 py-0.5 rounded text-white flex items-center gap-1">
-                <FaBan size={10} /> إغلاق نهائي
-              </button>
+            {/* أزرار المدير */}
+            {isManager && (
+              <>
+                <button onClick={() => setShowContactModal(true)} className="text-xs bg-green-600 hover:bg-green-700 px-2 py-0.5 rounded text-white flex items-center gap-1">
+                  <FaPhone size={10} /> طلب الرقم
+                </button>
+                <button onClick={handlePermanentDelete} disabled={deleting} className="text-xs bg-red-700 hover:bg-red-800 px-2 py-0.5 rounded text-white flex items-center gap-1 disabled:opacity-50">
+                  {deleting ? <FaSpinner className="animate-spin" size={10} /> : <FaTrashAlt size={10} />}
+                  حذف نهائي
+                </button>
+              </>
             )}
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-white text-xl flex-shrink-0"><FaTimes /></button>
         </div>
 
-        {/* ================== طلب الرقم — للمشرف ================== */}
+        {/* ============ شريط طلب الرقم — للمشرف ============ */}
         {isSupervisor && isClaimedByMe && ticket.status === SUPPORT_TICKET_STATUS.IN_PROGRESS && (
           <div className="px-3 py-2 border-b border-gray-700 bg-gray-800/50 text-xs">
             {!contactStatus && (
@@ -241,35 +303,40 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
             )}
             {contactStatus === CONTACT_REQUEST_STATUS.PENDING && (
               <span className="text-yellow-300 flex items-center gap-1">
-                ⏳ طلب رقم الطالب قيد المراجعة من قبل المدير
+                ⏳ طلب الرقم قيد المراجعة من قبل المدير
               </span>
             )}
-            {contactStatus === CONTACT_REQUEST_STATUS.APPROVED && ticket.studentPhone && (
-              <a href={`https://wa.me/${ticket.studentPhone}`} target="_blank" rel="noopener noreferrer"
-                className="text-green-300 hover:text-green-200 flex items-center gap-1 font-bold">
-                <FaWhatsapp /> تواصل مع الطالب: <span dir="ltr">{ticket.studentPhone}</span>
-              </a>
-            )}
+            {contactStatus === CONTACT_REQUEST_STATUS.APPROVED && renderContactButton()}
             {contactStatus === CONTACT_REQUEST_STATUS.REJECTED && (
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-red-300">⚠️ تم رفض طلب الرقم</span>
+                <span className="text-red-300">⚠️ تم رفض الطلب{contactRequest.rejectionReason ? `: ${contactRequest.rejectionReason}` : ''}</span>
                 <button onClick={() => setShowContactModal(true)} className="text-xs bg-red-500/30 hover:bg-red-500/50 text-red-200 px-2 py-0.5 rounded">طلب مرة أخرى</button>
               </div>
             )}
           </div>
         )}
 
-        {/* ================== طلب الرقم — واجهة موافقة المدير ================== */}
+        {/* ============ شريط طلب الرقم — للمدير ============ */}
+        {isManager && contactStatus === CONTACT_REQUEST_STATUS.APPROVED && (
+          <div className="mx-3 mt-2 p-2 bg-green-500/10 border border-green-500/30 rounded-lg text-xs">
+            <span className="text-green-200 block mb-1">
+              ✅ تم تسجيل طلب الرقم — يمكنك التواصل الآن:
+            </span>
+            {renderContactButton()}
+          </div>
+        )}
+
+        {/* ============ موافقة/رفض المدير على طلب المشرف ============ */}
         {isManager && contactStatus === CONTACT_REQUEST_STATUS.PENDING && (
           <div className="m-3 p-3 bg-amber-500/10 border border-amber-500/40 rounded-xl">
-            <p className="text-amber-200 text-sm mb-1">
-              📞 طلب الحصول على رقم الطالب
-            </p>
+            <p className="text-amber-200 text-sm mb-1">📞 طلب الحصول على رقم الطالب</p>
             <p className="text-xs text-gray-300 mb-1">
               <strong>من:</strong> {supervisorInfo?.name || ticket.assignedSupervisorName || 'مشرف'}
             </p>
-            <p className="text-xs text-gray-300 mb-2">
-              <strong>السبب:</strong> {contactRequest.reason}
+            <p className="text-xs text-gray-300 mb-1"><strong>السبب:</strong> {contactRequest.reason}</p>
+            <p className="text-xs text-cyan-200 mb-2">
+              <strong>نوع الرقم المطلوب:</strong>{' '}
+              {contactModeStored === 'registered' ? 'الرقم المسجل في المنصة' : 'رقم آخر (مخفي)'}
             </p>
             <p className="text-sm text-white font-bold mb-2">هل توافق؟</p>
             <div className="flex gap-2">
@@ -286,19 +353,13 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           </div>
         )}
 
-        {/* حالة الموافقة السابقة */}
-        {isManager && contactStatus === CONTACT_REQUEST_STATUS.APPROVED && (
-          <div className="mx-3 mt-2 p-2 bg-green-500/10 border border-green-500/30 rounded-lg text-xs text-green-200">
-            ✅ تمت الموافقة على طلب الرقم — المشرف يستطيع الآن رؤيته.
-          </div>
-        )}
         {isManager && contactStatus === CONTACT_REQUEST_STATUS.REJECTED && (
           <div className="mx-3 mt-2 p-2 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-200">
-            ❌ تم رفض طلب الرقم. السبب: {contactRequest.rejectionReason || 'غير محدد'}
+            ❌ تم رفض طلب المشرف. السبب: {contactRequest.rejectionReason || 'غير محدد'}
           </div>
         )}
 
-        {/* ================== المحادثة ================== */}
+        {/* ============ المحادثة ============ */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-2" style={{ minHeight: 200 }}>
           {ticket.messages?.map((m) => {
             const isMe = m.senderId === user.id;
@@ -314,7 +375,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           })}
         </div>
 
-        {/* ================== شريط الحجز (لمن لم يحجز) ================== */}
+        {/* ============ حجز التذكرة ============ */}
         {!isStudent && !isClaimedByMe && (
           <div className="p-4 bg-gray-800 border-t border-gray-700 text-center">
             <p className="text-gray-300 text-sm mb-3">لم تقم بحجز هذه التذكرة بعد.</p>
@@ -325,26 +386,25 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           </div>
         )}
 
-        {/* ================== حالة إنهاء المشرف — للطالب ================== */}
+        {/* ============ حالة إنهاء المشرف — للطالب ============ */}
         {ticket.status === SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED && isStudent && (
           <div className="p-3 bg-yellow-500/10 border-t border-yellow-500/30">
             <p className="text-yellow-200 text-sm text-center mb-2">هل تم حل مشكلتك بنجاح؟</p>
             <div className="flex gap-2">
-              <button onClick={handleSolved} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg text-sm font-bold"><FaCheckCircle className="inline me-1" /> نعم، تم الحل</button>
+              <button onClick={handleSolved} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg text-sm font-bold"><FaCheckCircle className="inline me-1" /> نعم</button>
               <button onClick={handleNotSolved} className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg text-sm font-bold"><FaTimesCircle className="inline me-1" /> لم تُحل</button>
             </div>
           </div>
         )}
 
-        {/* ================== حالة التقييم — للطالب ================== */}
         {ticket.status === SUPPORT_TICKET_STATUS.AWAITING_RATING && isStudent && !showRating && (
           <div className="p-3 bg-green-500/10 border-t border-green-500/30 text-center">
-            <p className="text-green-200 text-sm mb-2">✅ شكراً لتأكيدك — يرجى تقييم الخدمة</p>
-            <button onClick={() => setShowRating(true)} className="bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-2 rounded-lg font-bold"><FaStar className="inline me-1" /> تقييم الخدمة</button>
+            <p className="text-green-200 text-sm mb-2">✅ يرجى تقييم الخدمة</p>
+            <button onClick={() => setShowRating(true)} className="bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-2 rounded-lg font-bold"><FaStar className="inline me-1" /> تقييم</button>
           </div>
         )}
 
-        {/* ================== مربع الإدخال ================== */}
+        {/* ============ مربع الإدخال ============ */}
         {canSend && (
           <div className="p-2 border-t border-gray-700 flex gap-2">
             <input type="text" value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && !sending && handleSend()} placeholder="اكتب رسالتك..." className="flex-1 bg-gray-800 text-white p-2 rounded-lg border border-gray-600 text-sm" maxLength={2000} />
@@ -352,26 +412,59 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           </div>
         )}
 
-        {/* ================== مودال طلب الرقم (للمشرف) ================== */}
+        {/* ============ مودال طلب الرقم ============ */}
         {showContactModal && (
           <div className="fixed inset-0 bg-black/90 z-[80] flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
             <div className="bg-gray-900 p-6 rounded-2xl max-w-sm w-full border border-green-500/30">
-              <h3 className="font-bold text-white mb-3">سبب طلب رقم الطالب</h3>
-              <select className="w-full bg-gray-800 text-white p-2 rounded mb-2" onChange={e => setContactReason(e.target.value)} value={contactReason}>
+              <h3 className="font-bold text-white mb-3">طلب رقم الطالب</h3>
+
+              <label className="text-sm text-gray-300 block mb-1">السبب</label>
+              <select className="w-full bg-gray-800 text-white p-2 rounded mb-3" onChange={e => setContactReason(e.target.value)} value={contactReason}>
                 <option value="">اختر السبب...</option>
                 {contactReasons.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
-              {contactReason === 'سبب آخر' && <input type="text" placeholder="اكتب السبب" className="w-full bg-gray-800 text-white p-2 rounded mb-2" onChange={e => setCustomReason(e.target.value)} />}
-              <p className="text-xs text-gray-400 mb-3">📌 سيصل الطلب إلى مدير النظام للموافقة أو الرفض.</p>
-              <div className="flex gap-2 justify-end mt-4">
+              {contactReason === 'سبب آخر' && (
+                <input type="text" placeholder="اكتب السبب" className="w-full bg-gray-800 text-white p-2 rounded mb-3" onChange={e => setCustomReason(e.target.value)} />
+              )}
+
+              <label className="text-sm text-gray-300 block mb-1">نوع الرقم</label>
+              <div className="space-y-1 mb-3">
+                <label className="flex items-center gap-2 text-sm text-gray-200 cursor-pointer">
+                  <input type="radio" value="registered" checked={contactMode === 'registered'} onChange={() => setContactMode('registered')} />
+                  الرقم المسجل في المنصة (يُعرض للجميع)
+                </label>
+                <label className="flex items-center gap-2 text-sm text-gray-200 cursor-pointer">
+                  <input type="radio" value="other" checked={contactMode === 'other'} onChange={() => setContactMode('other')} />
+                  إدخال رقم آخر (زر تواصل فقط بدون إظهار الرقم)
+                </label>
+              </div>
+
+              {contactMode === 'other' && (
+                <input
+                  type="text" inputMode="numeric"
+                  placeholder="أدخل رقم التواصل (مع رمز الدولة)"
+                  className="w-full bg-gray-800 text-white p-2 rounded mb-3"
+                  onChange={e => setCustomContactNumber(e.target.value)}
+                  value={customContactNumber}
+                />
+              )}
+
+              <p className="text-xs text-gray-400 mb-3">
+                {isManager
+                  ? '📌 كمدير: سيتم تسجيل الطلب والموافقة عليه فوراً.'
+                  : '📌 سيصل الطلب إلى مدير النظام للموافقة أو الرفض.'}
+              </p>
+              <div className="flex gap-2 justify-end">
                 <button onClick={() => setShowContactModal(false)} className="px-4 py-2 text-sm bg-gray-700 rounded text-white">إلغاء</button>
-                <button onClick={handleRequestContact} className="px-4 py-2 text-sm bg-green-600 rounded text-white font-bold">إرسال الطلب</button>
+                <button onClick={handleRequestContact} className="px-4 py-2 text-sm bg-green-600 rounded text-white font-bold">
+                  {isManager ? 'تأكيد وإظهار الرقم' : 'إرسال الطلب'}
+                </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* ================== مودال رفض طلب الرقم (للمدير) ================== */}
+        {/* ============ مودال رفض طلب الرقم ============ */}
         {showRejectContactModal && (
           <div className="fixed inset-0 bg-black/90 z-[80] flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
             <div className="bg-gray-900 p-6 rounded-2xl max-w-sm w-full border border-red-500/30">
@@ -391,7 +484,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           </div>
         )}
 
-        {/* ================== مودال التقييم (للطالب) ================== */}
+        {/* ============ مودال التقييم ============ */}
         {showRating && (
           <div className="fixed inset-0 bg-black/90 z-[80] flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
             <div className="bg-gray-900 p-6 rounded-2xl max-w-sm w-full border border-yellow-500/30">
@@ -411,7 +504,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
                     </select>
                   </div>
                   <div className="mb-3">
-                    <label className="text-sm text-gray-300 block mb-1">اذكر التفاصيل <span className="text-red-400">*</span></label>
+                    <label className="text-sm text-gray-300 block mb-1">التفاصيل <span className="text-red-400">*</span></label>
                     <textarea value={ratingReason} onChange={e => setRatingReason(e.target.value)} className="w-full bg-gray-800 text-white p-2 rounded border border-gray-600 text-sm resize-none h-20" placeholder="اكتب سبب التقييم..." />
                   </div>
                 </>

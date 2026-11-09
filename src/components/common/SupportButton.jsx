@@ -82,7 +82,10 @@ const SupportButton = ({ user }) => {
         studentClassIds: user.classIds || [],
         initialMessage: text
       });
-      toast.success('✅ تم إرسال طلبك — بانتظار مشرف');
+      const targetRole = (user.role === 'supervisor' || user.role === 'system_manager')
+        ? 'مدير النظام'
+        : 'مشرف';
+        toast.success(`✅ تم إرسال طلبك — بانتظار ${targetRole}`);
       const newTicket = await getStudentOpenTicket(user.id);
       setActiveTicket(newTicket);
       setShowNewForm(false);
