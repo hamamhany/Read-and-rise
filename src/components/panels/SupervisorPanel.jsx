@@ -495,7 +495,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
               onClick={() => setShowSerialManager(true)}
               className="bg-cyan-600 hover:bg-cyan-700 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2"
             >
-              <FaUserCog /> إدارة الطلاب (بالتسلسلي)
+              <FaUserCog /> إدارة الطلاب 
             </button>
           </div>
         </div>
