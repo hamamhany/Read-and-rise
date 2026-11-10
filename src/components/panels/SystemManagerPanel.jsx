@@ -30,7 +30,6 @@ import {
   sendPasswordResetApprovalMessage, sendPasswordResetRejectionMessage
 } from '../../utils/whatsapp';
 import SystemManagerReviewsSection from './SystemManagerReviewsSection';
-// ✅ جديد
 import ManagerSupportReviewsSection from './ManagerSupportReviewsSection';
 import SupervisorsManagerModal from './SupervisorsManagerModal';
 import StudentsManagerModal from './StudentsManagerModal';
@@ -426,7 +425,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
 
         <SystemManagerReviewsSection user={user} />
 
-        {/* ✅ جديد — مراجعة تقييمات الدعم الفني */}
         <ManagerSupportReviewsSection user={user} />
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -599,6 +597,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
       <StudentsManagerModal
         isOpen={showStudentsModal}
         onClose={() => setShowStudentsModal(false)}
+        user={user}
         onCountChange={setStudentsCount}
       />
       <BlacklistModal

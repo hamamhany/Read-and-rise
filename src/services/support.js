@@ -213,9 +213,20 @@ export const subscribeToPendingContactRequests = (callback) => {
 };
 
 // =========================================================
-// حجز التذكرة
+// ✅ حجز التذكرة + إشعار صاحب التذكرة تلقائياً
 // =========================================================
 export const claimTicket = async (ticketId, supervisorId, supervisorName, managerMode = false) => {
+  const systemMessage = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+    senderId: 'system',
+    senderName: 'النظام',
+    senderRole: 'system',
+    text: managerMode
+      ? `✅ تم استلام طلبك من قبل مدير النظام ${supervisorName}. سيتم الرد عليك في أقرب وقت.`
+      : `✅ تم استلام طلبك من قبل المشرف ${supervisorName}. سيتم الرد عليك في أقرب وقت.`,
+    createdAt: new Date().toISOString()
+  };
+
   await runTransaction(db, async (transaction) => {
     const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
     const supRef = doc(db, 'profiles', supervisorId);
@@ -244,7 +255,9 @@ export const claimTicket = async (ticketId, supervisorId, supervisorName, manage
       assignedAt: serverTimestamp(),
       status: SUPPORT_TICKET_STATUS.IN_PROGRESS,
       updatedAt: serverTimestamp(),
-      unreadForSupervisor: false
+      unreadForSupervisor: false,
+      unreadForStudent: true,
+      messages: arrayUnion(systemMessage)
     });
 
     if (!managerMode) {
@@ -377,7 +390,7 @@ export const rejectContactRequest = async (ticketId, reason = '') => {
 };
 
 // =========================================================
-// ✅ طلب حذف التذكرة — الحذف فوري عند موافقة الطرفين
+// طلب حذف التذكرة
 // =========================================================
 export const requestTicketDeletion = async (ticketId, managerId, managerName) => {
   const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
@@ -411,7 +424,6 @@ export const requestTicketDeletion = async (ticketId, managerId, managerName) =>
   });
 };
 
-// ✅ المشرف يوافق — إن كان الطالب قد وافق يُحذف فوراً
 export const approveDeletionBySupervisor = async (ticketId) => {
   const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
 
@@ -465,7 +477,6 @@ export const rejectDeletionBySupervisor = async (ticketId, reason = '') => {
   });
 };
 
-// ✅ الطالب يوافق — إن كان المشرف قد وافق يُحذف فوراً
 export const approveDeletionByStudent = async (ticketId) => {
   const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
 
@@ -520,14 +531,26 @@ export const rejectDeletionByStudent = async (ticketId, reason = '') => {
 };
 
 // =========================================================
-// إنهاء تذكرة (طلب من المشرف)
+// ✅ طلب إغلاق التذكرة من المشرف (مع رسالة نظام داخل المحادثة)
 // =========================================================
-export const requestTicketEnd = async (ticketId) => {
+export const requestTicketEnd = async (ticketId, supervisorName = '') => {
   const now = Date.now();
+
+  const systemMessage = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+    senderId: 'system',
+    senderName: 'النظام',
+    senderRole: 'system',
+    text: `📩 طلب ${supervisorName || 'المشرف'} إغلاق تذكرة المساعدة`,
+    createdAt: new Date().toISOString()
+  };
+
   await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
     status: SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED,
     endRequestedAt: serverTimestamp(),
     endRequestExpiresAt: new Date(now + SUPPORT_END_TIMEOUT_MS),
+    messages: arrayUnion(systemMessage),
+    unreadForStudent: true,
     updatedAt: serverTimestamp()
   });
 };
@@ -593,7 +616,7 @@ export const submitRating = async (ticketId, rating, ratingCategory, ratingReaso
 };
 
 // =========================================================
-// قرار المدير (اعتذار/رفض شكوى)
+// قرار المدير
 // =========================================================
 export const managerDecide = async (ticketId, decision, managerReason) => {
   const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
@@ -635,7 +658,7 @@ export const managerDecide = async (ticketId, decision, managerReason) => {
 };
 
 // =========================================================
-// ✅ حذف نهائي ذرّي (يمنع تكرار decrement العداد)
+// حذف نهائي ذرّي
 // =========================================================
 export const deleteTicketPermanently = async (ticketId) => {
   const ref = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);

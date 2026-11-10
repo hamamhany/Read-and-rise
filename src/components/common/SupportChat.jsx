@@ -152,10 +152,10 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
 
   // ============ مشرف ============
   const handleEndTicket = async () => {
-    if (!window.confirm('هل أنت متأكد من إنهاء المحادثة؟ ستتوقف الدردشة حتى يقرر صاحب التذكرة.')) return;
+    if (!window.confirm('هل أنت متأكد من إغلاق التذكرة؟ سيتم إظهار خيارات لصاحب التذكرة لتأكيد حل المشكلة.')) return;
     try {
-      await requestTicketEnd(ticketId);
-      toast.success('تم طلب الإنهاء — الدردشة متوقفة الآن');
+      await requestTicketEnd(ticketId, user.name || user.username || 'المشرف');
+      toast.success('تم طلب الإغلاق — بانتظار تأكيد صاحب التذكرة');
     } catch (e) { toast.error(e.message); }
   };
 
@@ -232,7 +232,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
     finally { setProcessing(false); }
   };
 
-  // ✅ الموافقة → حذف فوري عند موافقة الطرفين
   const handleApproveDeleteSupervisor = async () => {
     if (!window.confirm('الموافقة على حذف التذكرة نهائياً؟ لا يمكن التراجع.')) return;
     setProcessing(true);
@@ -575,13 +574,22 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           </div>
         )}
 
-        {/* SUPERVISOR_ENDED */}
+        {/* ✅ SUPERVISOR_ENDED — واجهة جديدة للطالب */}
         {ticket.status === SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED && isCreator && (
-          <div className="p-3 bg-yellow-500/10 border-t border-yellow-500/30">
-            <p className="text-yellow-200 text-sm text-center mb-2">هل تم حل مشكلتك بنجاح؟</p>
-            <div className="flex gap-2">
-              <button onClick={handleSolved} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg text-sm font-bold"><FaCheckCircle className="inline me-1" /> نعم</button>
-              <button onClick={handleNotSolved} className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg text-sm font-bold"><FaTimesCircle className="inline me-1" /> لم تُحل</button>
+          <div className="p-4 bg-yellow-500/10 border-t-2 border-yellow-500/40">
+            <p className="text-yellow-200 text-sm text-center mb-1 font-bold">
+              📩 طلب {ticket.assignedSupervisorName || 'المشرف'} إغلاق تذكرة المساعدة
+            </p>
+            <p className="text-xs text-gray-300 text-center mb-3">
+              هل حصلت على الدعم الذي تريده؟
+            </p>
+            <div className="flex flex-col gap-2">
+              <button onClick={handleSolved} className="w-full bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2">
+                <FaCheckCircle /> نعم شكراً، لقد حصلت على الدعم الذي أريده
+              </button>
+              <button onClick={handleNotSolved} className="w-full bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2">
+                <FaTimesCircle /> لا، ما زلت لدي بعض المشاكل
+              </button>
             </div>
           </div>
         )}

@@ -10,10 +10,13 @@ import {
   getDocs, getCountFromServer, doc, updateDoc, serverTimestamp
 } from 'firebase/firestore';
 import { deleteUserCompletely } from '../../services/accountDeletion';
+import { createMessageRequest } from '../../services/messageRequests';
+import { MESSAGE_REQUEST_TYPES } from '../../constants';
+import { fetchClassNames } from '../../utils/helpers';
 
 const PAGE_SIZE = 20;
 
-const StudentsManagerModal = ({ isOpen, onClose, onCountChange }) => {
+const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
   const [list, setList] = useState([]);
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -140,6 +143,7 @@ const StudentsManagerModal = ({ isOpen, onClose, onCountChange }) => {
     loadPage(0);
   };
 
+  // ✅ تحديث: عند التجميد → إنشاء طلب إشعار تلقائياً
   const toggleFreeze = async (s) => {
     const next = !s.isFrozen;
     try {
@@ -149,7 +153,32 @@ const StudentsManagerModal = ({ isOpen, onClose, onCountChange }) => {
         updatedAt: serverTimestamp()
       });
       setList(prev => prev.map(x => x.id === s.id ? { ...x, isFrozen: next } : x));
-      toast.success(next ? 'تم تجميد الطالب.' : 'تم فك التجميد.');
+
+      if (next) {
+        // ✅ إنشاء طلب إشعار لولي الأمر
+        try {
+          const classMap = s.classIds?.length ? await fetchClassNames(s.classIds) : {};
+          const classNames = (s.classIds || []).map(id => classMap[id]).filter(Boolean).join(', ');
+
+          await createMessageRequest({
+            type: MESSAGE_REQUEST_TYPES.FREEZE,
+            targetType: 'student',
+            targetId: s.id,
+            targetName: s.name || '',
+            targetPhone: s.phone || '',
+            targetClass: classNames || 'غير محدد',
+            requestedBy: user?.id || 'system_manager',
+            requestedByName: user?.name || user?.username || 'مدير النظام',
+            payload: { serialNumber: s.serialNumber || '' }
+          });
+          toast.success('✅ تم تجميد الطالب وحفظ طلب الإشعار في "طلبات التواصل".');
+        } catch (e) {
+          console.warn('createMessageRequest failed:', e);
+          toast.success('تم تجميد الطالب. (تعذّر إنشاء طلب الإشعار)');
+        }
+      } else {
+        toast.success('تم فك التجميد.');
+      }
     } catch (e) {
       toast.error('فشل: ' + e.message);
     }
