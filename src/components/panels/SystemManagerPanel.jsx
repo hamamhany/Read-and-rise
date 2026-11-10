@@ -282,7 +282,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
         case 'notice': success = sendNoticeMessage(studentObj, request.payload.description); break;
         case 'general': success = sendGeneralMessageToStudent(studentObj, request.payload.subject, request.payload.body); break;
         case 'report': success = sendReportMessage(studentObj, request.payload.reason, request.targetClass); break;
-        case 'freeze': success = sendFreezeMessage(studentObj); break;
+        case 'freeze': success = sendFreezeMessage(studentObj, request.payload?.reason || ''); break;
         case 'delete': success = sendDeleteMessage(studentObj); break;
         case 'reset_password': success = sendResetPasswordMessage(studentObj, request.payload.newPassword); break;
         case 'activation': success = sendActivationMessage(studentObj, request.payload.username, request.payload.password); break;

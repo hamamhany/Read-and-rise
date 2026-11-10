@@ -15,9 +15,6 @@ import {
   SUPPORT_REPORT_REASONS
 } from '../constants';
 
-// =========================================================
-// إنشاء تذكرة دعم جديدة
-// =========================================================
 export const createSupportTicket = async (data) => {
   const q = query(
     collection(db, SUPPORT_TICKETS_COLLECTION),
@@ -83,9 +80,6 @@ export const createSupportTicket = async (data) => {
   return ref.id;
 };
 
-// =========================================================
-// جلب التذكرة المفتوحة للطالب
-// =========================================================
 export const getStudentOpenTicket = async (studentId) => {
   const q = query(
     collection(db, SUPPORT_TICKETS_COLLECTION),
@@ -129,9 +123,6 @@ export const getStudentOpenTicket = async (studentId) => {
   return null;
 };
 
-// =========================================================
-// Subscriptions
-// =========================================================
 export const subscribeToTicket = (ticketId, callback) => {
   return onSnapshot(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), (snap) => {
     callback(snap.exists() ? { id: snap.id, ...snap.data() } : null);
@@ -212,21 +203,8 @@ export const subscribeToPendingContactRequests = (callback) => {
   return () => {};
 };
 
-// =========================================================
-// ✅ حجز التذكرة + إشعار صاحب التذكرة تلقائياً
-// =========================================================
+// ✅ حجز التذكرة — بدون رسالة نظام داخل المحادثة (تُعرض كشريط صغير في الواجهة)
 export const claimTicket = async (ticketId, supervisorId, supervisorName, managerMode = false) => {
-  const systemMessage = {
-    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
-    senderId: 'system',
-    senderName: 'النظام',
-    senderRole: 'system',
-    text: managerMode
-      ? `✅ تم استلام طلبك من قبل مدير النظام ${supervisorName}. سيتم الرد عليك في أقرب وقت.`
-      : `✅ تم استلام طلبك من قبل المشرف ${supervisorName}. سيتم الرد عليك في أقرب وقت.`,
-    createdAt: new Date().toISOString()
-  };
-
   await runTransaction(db, async (transaction) => {
     const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
     const supRef = doc(db, 'profiles', supervisorId);
@@ -256,8 +234,7 @@ export const claimTicket = async (ticketId, supervisorId, supervisorName, manage
       status: SUPPORT_TICKET_STATUS.IN_PROGRESS,
       updatedAt: serverTimestamp(),
       unreadForSupervisor: false,
-      unreadForStudent: true,
-      messages: arrayUnion(systemMessage)
+      unreadForStudent: true
     });
 
     if (!managerMode) {
@@ -266,9 +243,6 @@ export const claimTicket = async (ticketId, supervisorId, supervisorName, manage
   });
 };
 
-// =========================================================
-// إرسال رسالة
-// =========================================================
 export const sendTicketMessage = async (ticketId, sender, text) => {
   const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
   const ticketSnap = await getDoc(ticketRef);
@@ -315,9 +289,6 @@ export const sendTicketMessage = async (ticketId, sender, text) => {
   await updateDoc(ticketRef, updates);
 };
 
-// =========================================================
-// تعليم كمقروء
-// =========================================================
 export const markTicketAsRead = async (ticketId, role) => {
   const updates = {};
   if (role === 'student') updates.unreadForStudent = false;
@@ -337,9 +308,6 @@ export const transferToManager = async (ticketId, supervisorName) => {
   });
 };
 
-// =========================================================
-// طلب رقم صاحب التذكرة
-// =========================================================
 export const requestContactInfo = async (ticketId, reason, requesterId, requesterName = '') => {
   const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
   const snap = await getDoc(ticketRef);
@@ -389,9 +357,6 @@ export const rejectContactRequest = async (ticketId, reason = '') => {
   });
 };
 
-// =========================================================
-// طلب حذف التذكرة
-// =========================================================
 export const requestTicketDeletion = async (ticketId, managerId, managerName) => {
   const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
   const snap = await getDoc(ticketRef);
@@ -530,34 +495,18 @@ export const rejectDeletionByStudent = async (ticketId, reason = '') => {
   });
 };
 
-// =========================================================
-// ✅ طلب إغلاق التذكرة من المشرف (مع رسالة نظام داخل المحادثة)
-// =========================================================
+// ✅ طلب إغلاق التذكرة — بدون رسالة نظام داخل المحادثة (تُعرض كواجهة في الأسفل)
 export const requestTicketEnd = async (ticketId, supervisorName = '') => {
   const now = Date.now();
-
-  const systemMessage = {
-    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
-    senderId: 'system',
-    senderName: 'النظام',
-    senderRole: 'system',
-    text: `📩 طلب ${supervisorName || 'المشرف'} إغلاق تذكرة المساعدة`,
-    createdAt: new Date().toISOString()
-  };
-
   await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
     status: SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED,
     endRequestedAt: serverTimestamp(),
     endRequestExpiresAt: new Date(now + SUPPORT_END_TIMEOUT_MS),
-    messages: arrayUnion(systemMessage),
     unreadForStudent: true,
     updatedAt: serverTimestamp()
   });
 };
 
-// =========================================================
-// تأكيدات الطالب
-// =========================================================
 export const studentConfirmSolved = async (ticketId) => {
   await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
     status: SUPPORT_TICKET_STATUS.AWAITING_RATING,
@@ -576,9 +525,6 @@ export const studentConfirmNotSolved = async (ticketId) => {
   });
 };
 
-// =========================================================
-// تقييم الطالب
-// =========================================================
 export const submitRating = async (ticketId, rating, ratingCategory, ratingReason) => {
   const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
   const snap = await getDoc(ticketRef);
@@ -615,9 +561,6 @@ export const submitRating = async (ticketId, rating, ratingCategory, ratingReaso
   return newStatus;
 };
 
-// =========================================================
-// قرار المدير
-// =========================================================
 export const managerDecide = async (ticketId, decision, managerReason) => {
   const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
   const snap = await getDoc(ticketRef);
@@ -657,9 +600,6 @@ export const managerDecide = async (ticketId, decision, managerReason) => {
   return newStatus;
 };
 
-// =========================================================
-// حذف نهائي ذرّي
-// =========================================================
 export const deleteTicketPermanently = async (ticketId) => {
   const ref = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
 
@@ -696,9 +636,6 @@ export const deleteTicketPermanently = async (ticketId) => {
 
 export const finalizeAndDeleteTicket = deleteTicketPermanently;
 
-// =========================================================
-// نظام بلاغات الدعم الفني
-// =========================================================
 export const reportTicket = async (ticketId, reporterId, reporterName, reasonValue, reasonDetails) => {
   const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
   const snap = await getDoc(ticketRef);

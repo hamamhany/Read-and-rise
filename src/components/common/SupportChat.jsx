@@ -75,7 +75,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
     return () => unsub();
   }, [ticketId, viewerMode]);
 
-  // ✅ إغلاق تلقائي عند حذف التذكرة من السيرفر (بموافقة الطرفين)
+  // ✅ إغلاق تلقائي عند حذف التذكرة
   useEffect(() => {
     if (ticketWasLoaded && ticket === null) {
       setTimeout(() => onClose(), 600);
@@ -107,9 +107,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
     ? [SUPPORT_TICKET_STATUS.OPEN, SUPPORT_TICKET_STATUS.IN_PROGRESS].includes(ticket.status)
     : isWorkingOnTicket && isAssignedSupervisor && ticket.status === SUPPORT_TICKET_STATUS.IN_PROGRESS;
 
-  const canReport = isSupervisor && isAssignedSupervisor &&
-    ticket.status === SUPPORT_TICKET_STATUS.IN_PROGRESS;
-
   const contactRequest = ticket.contactRequest;
   const contactStatus = contactRequest?.status;
   const deleteRequest = ticket.deleteRequest;
@@ -124,6 +121,11 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
   const showContactBar = !closedStatuses.includes(ticket.status) && (
     (isSupervisor && isAssignedSupervisor) || isManager
   );
+
+  // ✅ إخفاء شريط الحذف عند SUPERVISOR_ENDED لتجنب التشتيت
+  const showDeleteBar = deleteStatus &&
+    deleteStatus !== DELETE_REQUEST_STATUS.CANCELLED &&
+    ticket.status !== SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED;
 
   // ============ إرسال ============
   const handleSend = async () => {
@@ -152,7 +154,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
 
   // ============ مشرف ============
   const handleEndTicket = async () => {
-    if (!window.confirm('هل أنت متأكد من إغلاق التذكرة؟ سيتم إظهار خيارات لصاحب التذكرة لتأكيد حل المشكلة.')) return;
+    if (!window.confirm('هل أنت متأكد من إغلاق التذكرة؟ سيظهر لصاحب التذكرة خياران لتأكيد حل المشكلة.')) return;
     try {
       await requestTicketEnd(ticketId, user.name || user.username || 'المشرف');
       toast.success('تم طلب الإغلاق — بانتظار تأكيد صاحب التذكرة');
@@ -309,7 +311,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
     finally { setSubmittingRating(false); }
   };
 
-  // ============ تقديم البلاغ (مشرف) ============
   const handleSubmitReport = async () => {
     if (!reportReason) return toast.error('اختر سبب البلاغ');
     if (!reportDetails.trim()) return toast.error('اكتب تفاصيل البلاغ');
@@ -331,7 +332,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
     finally { setProcessing(false); }
   };
 
-  // ============ زر التواصل بعد الموافقة ============
   const renderContactButton = () => {
     if (contactStatus !== CONTACT_REQUEST_STATUS.APPROVED) return null;
     const mode = contactRequest?.mode || 'registered';
@@ -399,7 +399,14 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           <button onClick={onClose} className="text-gray-400 hover:text-white text-xl flex-shrink-0"><FaTimes /></button>
         </div>
 
-        {/* شريط طلب الرقم */}
+        {/* ✅ شريط صغير: "تم استلام طلبك" — للطالب فقط */}
+        {isCreator && ticket.assignedSupervisorName && !closedStatuses.includes(ticket.status) && (
+          <div className="px-3 py-1.5 border-b border-gray-700 bg-green-900/20 text-xs text-green-300 flex items-center gap-1">
+            ✅ تم استلام طلبك من قبل {ticket.assignedSupervisorName}
+          </div>
+        )}
+
+        {/* شريط طلب الرقم — للمشرف/المدير */}
         {showContactBar && (
           <div className="px-3 py-2 border-b border-gray-700 bg-gray-800/50 text-xs">
             {!contactStatus && (
@@ -426,7 +433,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           </div>
         )}
 
-        {/* الموافقة على طلب الرقم */}
+        {/* الموافقة على طلب الرقم — للطالب */}
         {isCreator && contactStatus === CONTACT_REQUEST_STATUS.PENDING && (
           <div className="m-3 p-3 bg-amber-500/10 border border-amber-500/40 rounded-xl">
             <p className="text-amber-200 text-sm mb-1">
@@ -454,8 +461,8 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           </div>
         )}
 
-        {/* طلب الحذف — الحالة */}
-        {deleteStatus && deleteStatus !== DELETE_REQUEST_STATUS.CANCELLED && (
+        {/* شريط طلب الحذف — مخفي عند SUPERVISOR_ENDED */}
+        {showDeleteBar && (
           <div className={`m-3 p-3 border rounded-xl text-sm ${
             deleteStatus === DELETE_REQUEST_STATUS.BOTH_APPROVED
               ? 'bg-red-500/10 border-red-500/40'
@@ -470,21 +477,12 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
                 <p className="text-xs text-gray-300 mb-2">
                   طلب المدير <strong>{deleteRequest.requestedByName}</strong> حذف التذكرة.
                 </p>
-                <p className="text-xs text-gray-400 mb-2">
-                  حالة الموافقات:
-                  <span className={deleteRequest.supervisorApproved ? 'text-green-400' : 'text-red-400'}>
-                    {' '}المشرف {deleteRequest.supervisorApproved ? '✅' : '❌'}
-                  </span>
-                  <span className={deleteRequest.studentApproved ? 'text-green-400 ml-2' : 'text-red-400 ml-2'}>
-                    {' '}صاحب التذكرة {deleteRequest.studentApproved ? '✅' : '❌'}
-                  </span>
-                </p>
 
                 {isSupervisor && isAssignedSupervisor && !deleteRequest.supervisorApproved && (
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 mt-2">
                     <button onClick={handleApproveDeleteSupervisor} disabled={processing}
                       className="flex-1 bg-green-600 hover:bg-green-700 text-white py-1.5 rounded text-xs font-bold disabled:opacity-50">
-                      ✅ موافقة المشرف
+                      ✅ موافقة
                     </button>
                     <button onClick={handleRejectDeleteSupervisor} disabled={processing}
                       className="flex-1 bg-red-600 hover:bg-red-700 text-white py-1.5 rounded text-xs font-bold disabled:opacity-50">
@@ -494,10 +492,10 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
                 )}
 
                 {isCreator && !deleteRequest.studentApproved && (
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 mt-2">
                     <button onClick={handleApproveDeleteStudent} disabled={processing}
                       className="flex-1 bg-green-600 hover:bg-green-700 text-white py-1.5 rounded text-xs font-bold disabled:opacity-50">
-                      ✅ موافقة صاحب التذكرة
+                      ✅ موافقة
                     </button>
                     <button onClick={handleRejectDeleteStudent} disabled={processing}
                       className="flex-1 bg-red-600 hover:bg-red-700 text-white py-1.5 rounded text-xs font-bold disabled:opacity-50">
@@ -505,16 +503,12 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
                     </button>
                   </div>
                 )}
-
-                {isManager && (
-                  <p className="text-xs text-yellow-300 mt-1">⏳ بانتظار موافقة الطرفين...</p>
-                )}
               </>
             )}
 
             {deleteStatus === DELETE_REQUEST_STATUS.BOTH_APPROVED && (
               <p className="text-xs text-red-300 flex items-center gap-2">
-                <FaSpinner className="animate-spin" /> وافق الطرفان — جاري حذف التذكرة نهائياً...
+                <FaSpinner className="animate-spin" /> جاري حذف التذكرة نهائياً...
               </p>
             )}
           </div>
@@ -549,7 +543,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           })}
         </div>
 
-        {/* REPORTED — شريط بديل */}
+        {/* REPORTED */}
         {ticket.status === SUPPORT_TICKET_STATUS.REPORTED && (
           <div className="p-4 bg-red-500/10 border-t-2 border-red-500/40 text-center">
             <FaShieldAlt className="text-red-400 text-2xl mx-auto mb-2" />
@@ -574,14 +568,11 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           </div>
         )}
 
-        {/* ✅ SUPERVISOR_ENDED — واجهة جديدة للطالب */}
+        {/* ✅ SUPERVISOR_ENDED — واجهة نظيفة للطالب: نص + زرين فقط */}
         {ticket.status === SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED && isCreator && (
           <div className="p-4 bg-yellow-500/10 border-t-2 border-yellow-500/40">
-            <p className="text-yellow-200 text-sm text-center mb-1 font-bold">
-              📩 طلب {ticket.assignedSupervisorName || 'المشرف'} إغلاق تذكرة المساعدة
-            </p>
-            <p className="text-xs text-gray-300 text-center mb-3">
-              هل حصلت على الدعم الذي تريده؟
+            <p className="text-yellow-200 text-sm text-center mb-3 font-bold">
+              📩 طلب {ticket.assignedSupervisorName || 'المشرف'} إغلاق تذكرة الدعم الفني
             </p>
             <div className="flex flex-col gap-2">
               <button onClick={handleSolved} className="w-full bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2">
@@ -615,7 +606,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           </div>
         )}
 
-        {/* مربع الإدخال */}
+        {/* مربع الإدخال — يختفي عند SUPERVISOR_ENDED تلقائياً عبر canSend */}
         {canSend && (
           <div className="p-2 border-t border-gray-700 flex gap-2">
             <input type="text" value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && !sending && handleSend()} placeholder="اكتب رسالتك..." className="flex-1 bg-gray-800 text-white p-2 rounded-lg border border-gray-600 text-sm" maxLength={2000} />

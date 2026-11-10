@@ -27,6 +27,12 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
   const [pageDocs, setPageDocs] = useState([null]);
   const [hasMore, setHasMore] = useState(true);
 
+  // ✅ مودال سبب التجميد
+  const [showFreezeReasonModal, setShowFreezeReasonModal] = useState(false);
+  const [freezeTarget, setFreezeTarget] = useState(null);
+  const [freezeReason, setFreezeReason] = useState('');
+  const [submittingFreeze, setSubmittingFreeze] = useState(false);
+
   useEffect(() => {
     if (isOpen) {
       loadCount();
@@ -143,44 +149,81 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
     loadPage(0);
   };
 
-  // ✅ تحديث: عند التجميد → إنشاء طلب إشعار تلقائياً
-  const toggleFreeze = async (s) => {
-    const next = !s.isFrozen;
+  // ✅ فك التجميد فوراً
+  const handleUnfreeze = async (s) => {
     try {
       await updateDoc(doc(db, 'profiles', s.id), {
-        isFrozen: next,
-        frozenAt: next ? serverTimestamp() : null,
+        isFrozen: false,
+        frozenAt: null,
         updatedAt: serverTimestamp()
       });
-      setList(prev => prev.map(x => x.id === s.id ? { ...x, isFrozen: next } : x));
-
-      if (next) {
-        // ✅ إنشاء طلب إشعار لولي الأمر
-        try {
-          const classMap = s.classIds?.length ? await fetchClassNames(s.classIds) : {};
-          const classNames = (s.classIds || []).map(id => classMap[id]).filter(Boolean).join(', ');
-
-          await createMessageRequest({
-            type: MESSAGE_REQUEST_TYPES.FREEZE,
-            targetType: 'student',
-            targetId: s.id,
-            targetName: s.name || '',
-            targetPhone: s.phone || '',
-            targetClass: classNames || 'غير محدد',
-            requestedBy: user?.id || 'system_manager',
-            requestedByName: user?.name || user?.username || 'مدير النظام',
-            payload: { serialNumber: s.serialNumber || '' }
-          });
-          toast.success('✅ تم تجميد الطالب وحفظ طلب الإشعار في "طلبات التواصل".');
-        } catch (e) {
-          console.warn('createMessageRequest failed:', e);
-          toast.success('تم تجميد الطالب. (تعذّر إنشاء طلب الإشعار)');
-        }
-      } else {
-        toast.success('تم فك التجميد.');
-      }
+      setList(prev => prev.map(x => x.id === s.id ? { ...x, isFrozen: false } : x));
+      toast.success('تم فك التجميد.');
     } catch (e) {
       toast.error('فشل: ' + e.message);
+    }
+  };
+
+  // ✅ فتح مودال سبب التجميد
+  const handleFreezeClick = (s) => {
+    setFreezeTarget(s);
+    setFreezeReason('');
+    setShowFreezeReasonModal(true);
+  };
+
+  // ✅ تأكيد التجميد مع السبب
+  const confirmFreeze = async () => {
+    if (!freezeTarget) return;
+    if (!freezeReason.trim()) {
+      toast.error('يرجى كتابة سبب التجميد');
+      return;
+    }
+    setSubmittingFreeze(true);
+    try {
+      await updateDoc(doc(db, 'profiles', freezeTarget.id), {
+        isFrozen: true,
+        frozenAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      setList(prev => prev.map(x => x.id === freezeTarget.id ? { ...x, isFrozen: true } : x));
+
+      // ✅ إنشاء طلب الإشعار مع السبب
+      try {
+        const classMap = freezeTarget.classIds?.length
+          ? await fetchClassNames(freezeTarget.classIds)
+          : {};
+        const classNames = (freezeTarget.classIds || [])
+          .map(id => classMap[id])
+          .filter(Boolean)
+          .join(', ');
+
+        await createMessageRequest({
+          type: MESSAGE_REQUEST_TYPES.FREEZE,
+          targetType: 'student',
+          targetId: freezeTarget.id,
+          targetName: freezeTarget.name || '',
+          targetPhone: freezeTarget.phone || '',
+          targetClass: classNames || 'غير محدد',
+          requestedBy: user?.id || 'system_manager',
+          requestedByName: user?.name || user?.username || 'مدير النظام',
+          payload: {
+            reason: freezeReason.trim(),
+            serialNumber: freezeTarget.serialNumber || ''
+          }
+        });
+        toast.success('✅ تم تجميد الطالب وحفظ طلب الإشعار في "طلبات التواصل".');
+      } catch (e) {
+        console.warn('createMessageRequest failed:', e);
+        toast.success('تم تجميد الطالب. (تعذّر إنشاء طلب الإشعار)');
+      }
+
+      setShowFreezeReasonModal(false);
+      setFreezeTarget(null);
+      setFreezeReason('');
+    } catch (e) {
+      toast.error('فشل: ' + e.message);
+    } finally {
+      setSubmittingFreeze(false);
     }
   };
 
@@ -261,16 +304,21 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
                     {s.isFrozen && <span className="text-xs text-orange-400 bg-orange-500/10 px-2 py-0.5 rounded mt-1 inline-block">مجمد</span>}
                   </div>
                   <div className="flex gap-2 flex-wrap">
-                    <button
-                      onClick={() => toggleFreeze(s)}
-                      className={`inline-flex items-center gap-1 whitespace-nowrap text-xs px-3 py-1.5 rounded-lg ${
-                        s.isFrozen
-                          ? 'bg-green-500/20 hover:bg-green-500/30 text-green-300'
-                          : 'bg-orange-500/20 hover:bg-orange-500/30 text-orange-300'
-                      }`}
-                    >
-                      {s.isFrozen ? <><FaFire /> فك التجميد</> : <><FaSnowflake /> تجميد</>}
-                    </button>
+                    {s.isFrozen ? (
+                      <button
+                        onClick={() => handleUnfreeze(s)}
+                        className="inline-flex items-center gap-1 whitespace-nowrap text-xs px-3 py-1.5 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-300"
+                      >
+                        <FaFire /> فك التجميد
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleFreezeClick(s)}
+                        className="inline-flex items-center gap-1 whitespace-nowrap text-xs px-3 py-1.5 rounded-lg bg-orange-500/20 hover:bg-orange-500/30 text-orange-300"
+                      >
+                        <FaSnowflake /> تجميد
+                      </button>
+                    )}
                     <button
                       onClick={() => handleDelete(s)}
                       className="inline-flex items-center gap-1 whitespace-nowrap text-xs bg-red-500/20 hover:bg-red-500/30 text-red-300 px-3 py-1.5 rounded-lg"
@@ -305,6 +353,56 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
           </div>
         )}
       </div>
+
+      {/* ✅ مودال سبب التجميد */}
+      {showFreezeReasonModal && freezeTarget && (
+        <div
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[70] flex items-center justify-center p-4"
+          onClick={() => !submittingFreeze && setShowFreezeReasonModal(false)}
+        >
+          <div
+            className="bg-gray-900 p-6 rounded-2xl max-w-md w-full border border-orange-500/30"
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-orange-300 mb-2">❄️ تجميد حساب الطالب</h3>
+            <p className="text-sm text-gray-300 mb-3">
+              الطالب: <strong>{freezeTarget.name}</strong>
+            </p>
+
+            <label className="block text-sm text-gray-300 mb-1">
+              سبب التجميد <span className="text-red-400">*</span>
+            </label>
+            <textarea
+              value={freezeReason}
+              onChange={e => setFreezeReason(e.target.value)}
+              placeholder="اكتب سبب التجميد بالعربية الفصحى..."
+              className="w-full bg-gray-800 text-white p-2 rounded border border-gray-600 resize-none h-24 text-sm mb-2"
+              maxLength={500}
+              autoFocus
+            />
+            <p className="text-xs text-amber-300 mb-3">
+              ⚠️ سيُحفظ السبب في طلب الإشعار ليُرسل لولي الأمر عبر واتساب.
+            </p>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowFreezeReasonModal(false)}
+                disabled={submittingFreeze}
+                className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg text-sm disabled:opacity-50"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={confirmFreeze}
+                disabled={submittingFreeze || !freezeReason.trim()}
+                className="flex-1 bg-orange-600 hover:bg-orange-700 text-white py-2 rounded-lg text-sm font-bold disabled:opacity-50"
+              >
+                {submittingFreeze ? 'جاري التجميد...' : 'تأكيد التجميد'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
