@@ -912,3 +912,47 @@ export const sendReportWarningMessage = (student) => {
 
   return openWhatsApp(phone, message, `✅ تم فتح واتساب — اضغط "إرسال" لإرسال التنبيه الإداري للمُبلَّغ عنه.`);
 };
+// ✅ أضف هذه الدالة في نهاية ملف whatsapp.js
+
+/**
+ * فتح واتساب لإرسال إشعار فك التجميد للطالب
+ * @param {Object} student - كائن يحتوي على name, phone
+ * @returns {boolean} - true إذا تم فتح واتساب بنجاح
+ */
+export const sendUnfreezeMessage = (student) => {
+  const name = student?.name || 'الطالب';
+  const phone = student?.phone || '';
+
+  if (!phone) {
+    console.warn('sendUnfreezeMessage: لا يوجد رقم هاتف');
+    return false;
+  }
+
+  const today = new Date().toLocaleDateString('ar-EG', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+
+  const message =
+    `🔓 إشعار رسمي - فك تجميد الحساب\n\n` +
+    `إلى الطالب المحترم: ${name}\n\n` +
+    `تُحيطك إدارة الأكاديمية علماً بأنه تم فك تجميد حسابك وإعادة تفعيله بالكامل، ويمكنك الآن الوصول إلى كافة الحصص والخدمات الأكاديمية عبر المنصة.\n\n` +
+    `تفاصيل الإجراء:\n\n` +
+    `1. استعادة الصلاحيات: تم رفع كافة القيود المؤقتة المطبقة على حسابك وتحديث حالتك في النظام.\n\n` +
+    `2. الالتزام بالأنظمة: نؤكد على أهمية مواظبتك والتزامك التام بالقوانين والتعليمات الأكاديمية لضمان استمرار تفعيل الحساب وتجنب التعرض لأي إجراءات تأديبية مستقبلاً.\n\n` +
+    `نتمنى لك التوفيق والنجاح في رحلتك التعليمية.\n\n` +
+    `---\n\n` +
+    `صادر عن: قسم إدارة المعلومات بالأكاديمية\n\n` +
+    `التاريخ: ${today}`;
+
+  const normalizedPhone = String(phone).replace(/[^\d]/g, '');
+  if (!normalizedPhone) {
+    console.warn('sendUnfreezeMessage: رقم هاتف غير صالح');
+    return false;
+  }
+
+  const url = `https://wa.me/${normalizedPhone}?text=${encodeURIComponent(message)}`;
+  const win = window.open(url, '_blank');
+  return !!win;
+};

@@ -7,6 +7,7 @@ import { signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, updateDoc, query, collection, where, getDocs } from 'firebase/firestore';
 import { sanitizeInput, arabicToEnglishNumber } from '../../utils/helpers';
 import { createPasswordResetRequest } from '../../services/passwordReset';
+import LoginSupportButton from '../common/LoginSupportButton';
 
 const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [username, setUsername] = useState('');
@@ -74,7 +75,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
         return;
       }
 
-      // Handle System Manager
       if (profile.role === 'system_manager') {
         onLogin({
           id: docId,
@@ -120,7 +120,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
         return;
       }
 
-      // Student
       if (!profile.isProfileComplete) {
         onCompleteProfile({
           id: docId,
@@ -149,7 +148,6 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
 
     } catch (err) {
       console.error(err);
-      // ✅ رسالة موحّدة واضحة بالعربية لأي خطأ في بيانات الدخول
       if (
         err.code === 'auth/wrong-password' ||
         err.code === 'auth/user-not-found' ||
@@ -321,6 +319,9 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
           </div>
         </div>
       </div>
+
+      {/* ✅ زر الدعم الفني قبل تسجيل الدخول */}
+      <LoginSupportButton />
 
       {showResetModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowResetModal(false)}>
