@@ -137,3 +137,15 @@ export const SUPPORT_REPORT_REASONS = [
   { value: 'inappropriate',    label: 'سلوك غير لائق أو مسيء' },
   { value: 'other',            label: 'أخرى' }
 ];
+// ✅ إدارة الشعب - جنس الشعبة
+export const CLASS_GENDER = {
+  MALE: 'male',
+  FEMALE: 'female',
+  MIXED: 'mixed'
+};
+
+export const CLASS_GENDER_LABELS = {
+  male: 'ذكور فقط',
+  female: 'إناث فقط',
+  mixed: 'مختلطة'
+};

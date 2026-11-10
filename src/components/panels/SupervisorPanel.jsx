@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import {
   FaBell, FaSignOutAlt, FaBullhorn, FaPlus, FaEdit, FaTrashAlt,
-  FaSpinner, FaUpload, FaClock, FaUsers
+  FaSpinner, FaUpload, FaClock, FaUsers, FaGraduationCap, FaUserCog
 } from 'react-icons/fa';
 import { db, secondaryAuth, messaging } from '../../firebase';
 import {
@@ -16,12 +16,15 @@ import { getToken, onMessage } from 'firebase/messaging';
 import { createGeneralAnnouncement, updateAnnouncement, deleteAnnouncement } from '../../services/announcements';
 import { sendNotificationToAllStudents, sendNotificationToTeacher } from '../../utils/notifications';
 import { createMessageRequest } from '../../services/messageRequests';
+import { validateStudentEligibility } from '../../services/classes';
 import { ANNOUNCEMENTS_LIMIT, MESSAGE_REQUEST_TYPES } from '../../constants';
 import { sanitizeInput, arabicToEnglishNumber, generateId, fetchClassNames, formatSerial, generateNextSerialNumber } from '../../utils/helpers';
 import ReportsReviewSection from './ReportsReviewSection';
 import ReviewVotingSection from './ReviewVotingSection';
 import ResetRequestsSection from './ResetRequestsSection';
 import SupportTicketsSection from './SupportTicketsSection';
+import ClassesManagerModal from './ClassesManagerModal';
+import StudentSerialManagerModal from './StudentSerialManagerModal';
 import { COUNTRIES } from '../../utils/countries';
 import { useConfirm } from '../common/ConfirmContext';
 
@@ -58,6 +61,10 @@ const SupervisorPanel = ({ user, onLogout }) => {
   const [newStudentClassIds, setNewStudentClassIds] = useState([]);
   const [newStudentCountry, setNewStudentCountry] = useState('');
   const [studentLoading, setStudentLoading] = useState(false);
+
+  // ✅ مودالات جديدة
+  const [showClassesManager, setShowClassesManager] = useState(false);
+  const [showSerialManager, setShowSerialManager] = useState(false);
 
   const [permissions, setPermissions] = useState({ reports: true, resets: true, support: true });
   const [counts, setCounts] = useState({ reports: 0, resets: 0, support: 0 });
@@ -330,6 +337,24 @@ const SupervisorPanel = ({ user, onLogout }) => {
 
     setStudentLoading(true);
     try {
+      // ✅ التحقق من توافق جنس الطالب مع جنس كل شعبة مختارة
+      const classDocs = await Promise.all(
+        newStudentClassIds.map(id => getDoc(doc(db, 'classes', id)))
+      );
+      for (const classDoc of classDocs) {
+        if (!classDoc.exists()) continue;
+        const classData = classDoc.data();
+        const result = validateStudentEligibility(
+          { gender: sanitizedGender, age: parseInt(sanitizedAge) },
+          classData
+        );
+        if (!result.ok) {
+          toast.error(`الشعبة "${classData.name}": ${result.reason}`, { duration: 8000 });
+          setStudentLoading(false);
+          return;
+        }
+      }
+
       const startNumber = await generateNextUsernameNumber();
       const nextSerial = await generateNextSerialNumber();
       const serialNumber = formatSerial(nextSerial);
@@ -439,6 +464,27 @@ const SupervisorPanel = ({ user, onLogout }) => {
           >
             <FaPlus className="inline-block me-2" /> إضافة طالب جديد
           </button>
+        </div>
+
+        {/* ✅ قسم إدارة الشعب والطلاب بالرقم التسلسلي */}
+        <div className="bg-gray-800/60 p-6 rounded-2xl border border-indigo-500/20">
+          <h3 className="text-xl font-semibold text-indigo-200 flex items-center gap-2 mb-3">
+            <FaGraduationCap /> إدارة الشعب والطلاب
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <button
+              onClick={() => setShowClassesManager(true)}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2"
+            >
+              <FaGraduationCap /> إدارة الشعب ({classes.length})
+            </button>
+            <button
+              onClick={() => setShowSerialManager(true)}
+              className="bg-cyan-600 hover:bg-cyan-700 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2"
+            >
+              <FaUserCog /> إدارة الطلاب (بالرقم التسلسلي)
+            </button>
+          </div>
         </div>
 
         {permissions.reports && counts.reports > 0 && <ReportsReviewSection user={user} />}
@@ -621,6 +667,18 @@ const SupervisorPanel = ({ user, onLogout }) => {
           </div>
         </div>
       )}
+
+      {/* ✅ مودالات جديدة */}
+      <ClassesManagerModal
+        isOpen={showClassesManager}
+        onClose={() => setShowClassesManager(false)}
+        user={user}
+      />
+      <StudentSerialManagerModal
+        isOpen={showSerialManager}
+        onClose={() => setShowSerialManager(false)}
+        user={user}
+      />
     </div>
   );
 };
