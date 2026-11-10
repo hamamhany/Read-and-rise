@@ -1,9 +1,11 @@
 import { db } from '../firebase';
 import {
   collection, addDoc, doc, updateDoc, deleteDoc, getDoc, getDocs,
-  query, where, serverTimestamp
+  query, where, serverTimestamp, limit
 } from 'firebase/firestore';
-import { CLASS_GENDER, CLASS_GENDER_LABELS } from '../constants';
+import {
+  CLASS_GENDER, CLASS_GENDER_LABELS, CLASS_VISIBILITY
+} from '../constants';
 
 export const createClass = async ({ name, teacherId, gender }) => {
   if (!name || !name.trim()) throw new Error('اسم الشعبة مطلوب');
@@ -64,4 +66,45 @@ export const validateStudentEligibility = (student, classData) => {
 
 export const getClassGenderLabel = (gender) => {
   return CLASS_GENDER_LABELS[gender] || 'مختلطة';
+};
+
+// ✅ اسم المعلم المعروض (للمعلمات: اسم الشهرة فقط)
+export const getTeacherDisplayName = (teacher) => {
+  if (!teacher) return 'غير محدد';
+  if (teacher.gender === 'أنثى') {
+    return teacher.nickname || 'معلمة';
+  }
+  return teacher.name || teacher.username || 'معلم';
+};
+
+// ✅ فلترة الشعب حسب وضع رؤية المشرف
+export const filterClassesForSupervisor = (classes, supervisorGender, visibilityMode) => {
+  if (visibilityMode === CLASS_VISIBILITY.ALL || !visibilityMode) return classes;
+  if (!supervisorGender) return classes;
+
+  if (supervisorGender === 'ذكر') {
+    return classes.filter(c =>
+      c.gender === CLASS_GENDER.MALE || c.gender === CLASS_GENDER.MIXED || !c.gender
+    );
+  }
+  if (supervisorGender === 'أنثى') {
+    return classes.filter(c =>
+      c.gender === CLASS_GENDER.FEMALE || c.gender === CLASS_GENDER.MIXED || !c.gender
+    );
+  }
+  return classes;
+};
+
+// ✅ جنس الشعبة المسموح بإنشائه للمشرف حسب وضعه
+export const getAllowedClassGenders = (supervisorGender, visibilityMode) => {
+  if (visibilityMode === CLASS_VISIBILITY.ALL || !visibilityMode) {
+    return [CLASS_GENDER.MALE, CLASS_GENDER.FEMALE, CLASS_GENDER.MIXED];
+  }
+  if (supervisorGender === 'ذكر') {
+    return [CLASS_GENDER.MALE, CLASS_GENDER.MIXED];
+  }
+  if (supervisorGender === 'أنثى') {
+    return [CLASS_GENDER.FEMALE, CLASS_GENDER.MIXED];
+  }
+  return [CLASS_GENDER.MALE, CLASS_GENDER.FEMALE, CLASS_GENDER.MIXED];
 };

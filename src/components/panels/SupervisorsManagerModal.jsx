@@ -8,11 +8,12 @@ import {
 import { db } from '../../firebase';
 import {
   collection, query, where, orderBy, limit, startAfter,
-  getDocs, getCountFromServer
+  getDocs, getCountFromServer, doc, updateDoc
 } from 'firebase/firestore';
 import { createSupervisorAccount } from '../../services/supervisor';
 import { deleteUserCompletely } from '../../services/accountDeletion';
 import { sanitizeInput, arabicToEnglishNumber } from '../../utils/helpers';
+import { CLASS_VISIBILITY } from '../../constants';
 import { useConfirm } from '../common/ConfirmContext';
 
 const PAGE_SIZE = 20;
@@ -34,6 +35,7 @@ const SupervisorsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
   const [newGender, setNewGender] = useState('');
   const [newAge, setNewAge] = useState('');
   const [newPhone, setNewPhone] = useState('');
+  const [newClassVisibility, setNewClassVisibility] = useState(CLASS_VISIBILITY.ALL);
   const [permissions, setPermissions] = useState({ reports: true, resets: true, support: true });
   const [submitting, setSubmitting] = useState(false);
 
@@ -184,10 +186,18 @@ const SupervisorsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
         ageNum,
         normalizedPhone,
         user.id,
-        permissions
+        permissions,
+        newClassVisibility
       );
+      // حفظ classVisibility (fallback إذا لم يحفظه supervisor.js)
+      if (result?.id) {
+        try {
+          await updateDoc(doc(db, 'profiles', result.id), { classVisibility: newClassVisibility });
+        } catch (err) { /* ignore */ }
+      }
       toast.success(`✅ تم إضافة المشرف ${result.name}`);
       setNewName(''); setNewGender(''); setNewAge(''); setNewPhone('');
+      setNewClassVisibility(CLASS_VISIBILITY.ALL);
       setPermissions({ reports: true, resets: true, support: true });
       setShowAddForm(false);
       await loadCount();
@@ -274,6 +284,27 @@ const SupervisorsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
                 <input type="text" inputMode="numeric" placeholder="رقم الهاتف * (مع رمز الدولة)" value={newPhone} onChange={e => setNewPhone(arabicToEnglishNumber(e.target.value))} className="bg-gray-700 text-right p-2 rounded-lg text-white text-sm border border-gray-600" required />
               </div>
 
+              {/* ✅ وضع رؤية الشعب */}
+              <div className="bg-indigo-500/10 p-3 rounded-lg border border-indigo-500/30">
+                <p className="text-sm text-indigo-200 font-bold mb-2">إدارة الشعب:</p>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm text-gray-200 cursor-pointer">
+                    <input type="radio" name="classVisibility" value={CLASS_VISIBILITY.ALL}
+                      checked={newClassVisibility === CLASS_VISIBILITY.ALL}
+                      onChange={() => setNewClassVisibility(CLASS_VISIBILITY.ALL)}
+                      className="accent-indigo-500" />
+                    <span><strong>ذكور وإناث</strong> — يرى جميع الشعب</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-gray-200 cursor-pointer">
+                    <input type="radio" name="classVisibility" value={CLASS_VISIBILITY.OWN_GENDER}
+                      checked={newClassVisibility === CLASS_VISIBILITY.OWN_GENDER}
+                      onChange={() => setNewClassVisibility(CLASS_VISIBILITY.OWN_GENDER)}
+                      className="accent-indigo-500" />
+                    <span><strong>حسب جنس المشرف فقط</strong> — يرى شعب جنسه + المختلطة</span>
+                  </label>
+                </div>
+              </div>
+
               <div className="bg-gray-700/50 p-3 rounded-lg border border-gray-600">
                 <p className="text-sm text-gray-300 font-bold mb-2">الصلاحيات:</p>
                 <div className="space-y-2">
@@ -319,6 +350,9 @@ const SupervisorsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
                     </div>
                     <div className="flex gap-2 mt-1 flex-wrap">
                       {s.isFrozen && <span className="text-xs text-orange-400 bg-orange-500/10 px-2 py-0.5 rounded">مجمد</span>}
+                      {s.classVisibility === CLASS_VISIBILITY.OWN_GENDER
+                        ? <span className="text-xs text-cyan-300 bg-cyan-500/10 px-2 py-0.5 rounded">شعبه فقط</span>
+                        : <span className="text-xs text-purple-300 bg-purple-500/10 px-2 py-0.5 rounded">ذكور وإناث</span>}
                       {s.permissions?.reports && <span className="text-xs text-green-400 bg-green-500/10 px-2 py-0.5 rounded">بلاغات</span>}
                       {s.permissions?.resets && <span className="text-xs text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded">استعادة</span>}
                       {s.permissions?.support && <span className="text-xs text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded">دعم</span>}

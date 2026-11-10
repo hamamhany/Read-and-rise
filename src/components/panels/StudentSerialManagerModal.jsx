@@ -11,7 +11,10 @@ import {
 } from 'firebase/firestore';
 import { useConfirm } from '../common/ConfirmContext';
 import { fetchClassNames } from '../../utils/helpers';
-import { validateStudentEligibility, getClassGenderLabel } from '../../services/classes';
+import {
+  validateStudentEligibility, getClassGenderLabel,
+  filterClassesForSupervisor, getTeacherDisplayName
+} from '../../services/classes';
 import { createMessageRequest } from '../../services/messageRequests';
 import { createPasswordResetRequest, approvePasswordReset } from '../../services/passwordReset';
 import { MESSAGE_REQUEST_TYPES } from '../../constants';
@@ -31,6 +34,7 @@ const StudentSerialManagerModal = ({ isOpen, onClose, user }) => {
 
   const [showManageClasses, setShowManageClasses] = useState(false);
   const [allClasses, setAllClasses] = useState([]);
+  const [classVisibility, setClassVisibility] = useState('all');
   const [selectedClassIds, setSelectedClassIds] = useState([]);
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -97,8 +101,19 @@ const StudentSerialManagerModal = ({ isOpen, onClose, user }) => {
   };
 
   const openManageClasses = async () => {
+    let visibility = 'all';
+    if (user?.id) {
+      const userSnap = await getDoc(doc(db, 'profiles', user.id));
+      if (userSnap.exists()) visibility = userSnap.data().classVisibility || 'all';
+    }
+    setClassVisibility(visibility);
+
     const snap = await getDocs(collection(db, 'classes'));
-    setAllClasses(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    // فلترة حسب رؤية المشرف
+    const filtered = filterClassesForSupervisor(all, user?.gender, visibility);
+    setAllClasses(filtered);
     setSelectedClassIds([...studentClasses]);
     setShowManageClasses(true);
   };
@@ -228,7 +243,7 @@ const StudentSerialManagerModal = ({ isOpen, onClose, user }) => {
             </div>
             <div>
               <h3 className="text-xl font-bold text-white">إدارة الطلاب بالرقم التسلسلي</h3>
-              <p className="text-xs text-gray-400">بحث بالرقم التسلسلي فقط</p>
+              <p className="text-xs text-gray-400">بحث بالرقم التسلسلي فقط — تُعرض الشعب فقط</p>
             </div>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl"><FaTimes /></button>

@@ -6,10 +6,12 @@ import {
 } from 'react-icons/fa';
 import { db } from '../../firebase';
 import {
-  collection, query, where, getDocs
+  collection, query, where, getDocs, doc, getDoc
 } from 'firebase/firestore';
 import {
-  createClass, deleteClassById, getClassStudentCounts, getClassGenderLabel
+  createClass, deleteClassById, getClassStudentCounts,
+  getClassGenderLabel, getTeacherDisplayName,
+  filterClassesForSupervisor, getAllowedClassGenders
 } from '../../services/classes';
 import { CLASS_GENDER } from '../../constants';
 import { useConfirm } from '../common/ConfirmContext';
@@ -20,6 +22,8 @@ const ClassesManagerModal = ({ isOpen, onClose, user }) => {
   const [teachers, setTeachers] = useState([]);
   const [studentCounts, setStudentCounts] = useState({});
   const [loading, setLoading] = useState(false);
+  const [classVisibility, setClassVisibility] = useState('all');
+
   const [showAddForm, setShowAddForm] = useState(false);
   const [newName, setNewName] = useState('');
   const [newTeacherId, setNewTeacherId] = useState('');
@@ -34,6 +38,16 @@ const ClassesManagerModal = ({ isOpen, onClose, user }) => {
   const loadData = async () => {
     setLoading(true);
     try {
+      // جلب classVisibility للمشرف
+      let visibility = 'all';
+      if (user?.id) {
+        const userSnap = await getDoc(doc(db, 'profiles', user.id));
+        if (userSnap.exists()) {
+          visibility = userSnap.data().classVisibility || 'all';
+        }
+      }
+      setClassVisibility(visibility);
+
       const [classesSnap, teachersSnap, counts] = await Promise.all([
         getDocs(collection(db, 'classes')),
         getDocs(query(collection(db, 'profiles'), where('role', '==', 'teacher'))),
@@ -43,12 +57,20 @@ const ClassesManagerModal = ({ isOpen, onClose, user }) => {
       setClasses(classesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       setTeachers(teachersSnap.docs.map(d => ({
         id: d.id,
-        name: d.data().name || d.data().username || 'معلم'
+        name: d.data().name || '',
+        nickname: d.data().nickname || '',
+        gender: d.data().gender || '',
+        username: d.data().username || ''
       })));
       setStudentCounts(counts);
 
       if (teachersSnap.docs.length > 0) {
         setNewTeacherId(prev => prev || teachersSnap.docs[0].id);
+      }
+
+      const allowedGenders = getAllowedClassGenders(user?.gender, visibility);
+      if (!allowedGenders.includes(newGender)) {
+        setNewGender(allowedGenders[0]);
       }
     } catch (e) {
       toast.error('فشل التحميل: ' + e.message);
@@ -71,7 +93,7 @@ const ClassesManagerModal = ({ isOpen, onClose, user }) => {
       });
       toast.success('✅ تم إنشاء الشعبة');
       setNewName('');
-      setNewGender(CLASS_GENDER.MIXED);
+      setNewGender(getAllowedClassGenders(user?.gender, classVisibility)[0]);
       setShowAddForm(false);
       await loadData();
     } catch (e) {
@@ -98,7 +120,10 @@ const ClassesManagerModal = ({ isOpen, onClose, user }) => {
     }
   };
 
-  const getTeacherName = (id) => teachers.find(t => t.id === id)?.name || 'غير محدد';
+  const getTeacherById = (id) => teachers.find(t => t.id === id);
+
+  const visibleClasses = filterClassesForSupervisor(classes, user?.gender, classVisibility);
+  const allowedGenders = getAllowedClassGenders(user?.gender, classVisibility);
 
   if (!isOpen) return null;
 
@@ -112,7 +137,10 @@ const ClassesManagerModal = ({ isOpen, onClose, user }) => {
             </div>
             <div>
               <h3 className="text-xl font-bold text-white">إدارة الشعب</h3>
-              <p className="text-xs text-gray-400">إجمالي: {classes.length} شعبة</p>
+              <p className="text-xs text-gray-400">
+                {classVisibility === 'all' ? 'تعرض جميع الشعب' : `تعرض شعب ${user?.gender === 'أنثى' ? 'الإناث' : 'الذكور'} والمختلطة`}
+                {' • '}{visibleClasses.length} من {classes.length} شعبة
+              </p>
             </div>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl"><FaTimes /></button>
@@ -150,7 +178,7 @@ const ClassesManagerModal = ({ isOpen, onClose, user }) => {
                 >
                   <option value="">اختر المعلم</option>
                   {teachers.map(t => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
+                    <option key={t.id} value={t.id}>{getTeacherDisplayName(t)}</option>
                   ))}
                 </select>
               </div>
@@ -163,9 +191,9 @@ const ClassesManagerModal = ({ isOpen, onClose, user }) => {
                   className="w-full bg-gray-700 text-right p-2 rounded-lg text-white text-sm border border-gray-600"
                   required
                 >
-                  <option value={CLASS_GENDER.MALE}>ذكور فقط</option>
-                  <option value={CLASS_GENDER.FEMALE}>إناث فقط</option>
-                  <option value={CLASS_GENDER.MIXED}>مختلطة</option>
+                  {allowedGenders.includes(CLASS_GENDER.MALE) && <option value={CLASS_GENDER.MALE}>ذكور فقط</option>}
+                  {allowedGenders.includes(CLASS_GENDER.FEMALE) && <option value={CLASS_GENDER.FEMALE}>إناث فقط</option>}
+                  {allowedGenders.includes(CLASS_GENDER.MIXED) && <option value={CLASS_GENDER.MIXED}>مختلطة</option>}
                 </select>
                 <p className="text-[10px] text-amber-300 mt-1">
                   ⚠️ {newGender === CLASS_GENDER.MALE ? 'لن يُقبل أي طالب غير ذكر'
@@ -191,13 +219,15 @@ const ClassesManagerModal = ({ isOpen, onClose, user }) => {
               <FaSpinner className="animate-spin text-3xl mx-auto mb-2" />
               جاري التحميل...
             </div>
-          ) : classes.length === 0 ? (
-            <p className="text-gray-400 text-center py-8">لا توجد شعب مسجلة.</p>
+          ) : visibleClasses.length === 0 ? (
+            <p className="text-gray-400 text-center py-8">لا توجد شعب متاحة لعرضها.</p>
           ) : (
             <div className="space-y-2">
-              {classes.map(cls => {
+              {visibleClasses.map(cls => {
                 const count = studentCounts[cls.id] || 0;
                 const genderLabel = getClassGenderLabel(cls.gender);
+                const teacher = getTeacherById(cls.teacherId);
+                const teacherName = getTeacherDisplayName(teacher);
                 const genderColor = cls.gender === CLASS_GENDER.MALE
                   ? 'text-blue-300 bg-blue-500/10 border-blue-500/30'
                   : cls.gender === CLASS_GENDER.FEMALE
@@ -210,7 +240,7 @@ const ClassesManagerModal = ({ isOpen, onClose, user }) => {
                       <p className="text-white font-bold text-sm">{cls.name}</p>
                       <div className="flex flex-wrap gap-2 mt-1">
                         <span className="text-xs text-gray-400 flex items-center gap-1">
-                          <FaChalkboardTeacher /> {getTeacherName(cls.teacherId)}
+                          <FaChalkboardTeacher /> {teacherName}
                         </span>
                         <span className="text-xs text-cyan-300 flex items-center gap-1">
                           <FaUsers /> {count} طالب

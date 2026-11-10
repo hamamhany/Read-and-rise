@@ -3,7 +3,8 @@ import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import {
   FaBell, FaSignOutAlt, FaBullhorn, FaPlus, FaEdit, FaTrashAlt,
-  FaSpinner, FaUpload, FaClock, FaUsers, FaGraduationCap, FaUserCog
+  FaSpinner, FaUpload, FaClock, FaUsers, FaGraduationCap, FaUserCog,
+  FaChalkboardTeacher
 } from 'react-icons/fa';
 import { db, secondaryAuth, messaging } from '../../firebase';
 import {
@@ -16,7 +17,7 @@ import { getToken, onMessage } from 'firebase/messaging';
 import { createGeneralAnnouncement, updateAnnouncement, deleteAnnouncement } from '../../services/announcements';
 import { sendNotificationToAllStudents, sendNotificationToTeacher } from '../../utils/notifications';
 import { createMessageRequest } from '../../services/messageRequests';
-import { validateStudentEligibility } from '../../services/classes';
+import { validateStudentEligibility, filterClassesForSupervisor, getClassGenderLabel } from '../../services/classes';
 import { ANNOUNCEMENTS_LIMIT, MESSAGE_REQUEST_TYPES } from '../../constants';
 import { sanitizeInput, arabicToEnglishNumber, generateId, fetchClassNames, formatSerial, generateNextSerialNumber } from '../../utils/helpers';
 import ReportsReviewSection from './ReportsReviewSection';
@@ -25,6 +26,7 @@ import ResetRequestsSection from './ResetRequestsSection';
 import SupportTicketsSection from './SupportTicketsSection';
 import ClassesManagerModal from './ClassesManagerModal';
 import StudentSerialManagerModal from './StudentSerialManagerModal';
+import TeachersManagerModal from './TeachersManagerModal';
 import { COUNTRIES } from '../../utils/countries';
 import { useConfirm } from '../common/ConfirmContext';
 
@@ -53,6 +55,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
   const [editingAnnouncementId, setEditingAnnouncementId] = useState(null);
 
   const [classes, setClasses] = useState([]);
+  const [classVisibility, setClassVisibility] = useState('all');
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
   const [newStudentName, setNewStudentName] = useState('');
   const [newStudentGender, setNewStudentGender] = useState('');
@@ -62,9 +65,9 @@ const SupervisorPanel = ({ user, onLogout }) => {
   const [newStudentCountry, setNewStudentCountry] = useState('');
   const [studentLoading, setStudentLoading] = useState(false);
 
-  // ✅ مودالات جديدة
   const [showClassesManager, setShowClassesManager] = useState(false);
   const [showSerialManager, setShowSerialManager] = useState(false);
+  const [showTeachersManager, setShowTeachersManager] = useState(false);
 
   const [permissions, setPermissions] = useState({ reports: true, resets: true, support: true });
   const [counts, setCounts] = useState({ reports: 0, resets: 0, support: 0 });
@@ -72,8 +75,10 @@ const SupervisorPanel = ({ user, onLogout }) => {
   useEffect(() => {
     const fetchPerms = async () => {
       const snap = await getDoc(doc(db, 'profiles', user.id));
-      if (snap.exists() && snap.data().permissions) {
-        setPermissions(snap.data().permissions);
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.permissions) setPermissions(data.permissions);
+        setClassVisibility(data.classVisibility || 'all');
       }
     };
     fetchPerms();
@@ -337,7 +342,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
 
     setStudentLoading(true);
     try {
-      // ✅ التحقق من توافق جنس الطالب مع جنس كل شعبة مختارة
       const classDocs = await Promise.all(
         newStudentClassIds.map(id => getDoc(doc(db, 'classes', id)))
       );
@@ -432,6 +436,9 @@ const SupervisorPanel = ({ user, onLogout }) => {
   const hasMore = displayCount < announcements.length;
   const canPublish = user.canPublishAnnouncements !== false;
 
+  // ✅ الشعب المتاحة للمشرف (حسب وضعه)
+  const availableClasses = filterClassesForSupervisor(classes, user.gender, classVisibility);
+
   return (
     <div className="container-center min-h-screen p-4 relative" dir="rtl">
       <div className="bg-gray-900/80 p-8 max-w-4xl w-full space-y-6 z-10 border border-gray-700 rounded-3xl backdrop-blur-sm">
@@ -466,23 +473,29 @@ const SupervisorPanel = ({ user, onLogout }) => {
           </button>
         </div>
 
-        {/* ✅ قسم إدارة الشعب والطلاب بالرقم التسلسلي */}
+        {/* ✅ قسم إدارة الشعب والمعلمين والطلاب بالرقم التسلسلي */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-indigo-500/20">
           <h3 className="text-xl font-semibold text-indigo-200 flex items-center gap-2 mb-3">
-            <FaGraduationCap /> إدارة الشعب والطلاب
+            <FaGraduationCap /> إدارة الشعب والمعلمين
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <button
               onClick={() => setShowClassesManager(true)}
               className="bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2"
             >
-              <FaGraduationCap /> إدارة الشعب ({classes.length})
+              <FaGraduationCap /> إدارة الشعب ({availableClasses.length})
+            </button>
+            <button
+              onClick={() => setShowTeachersManager(true)}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2"
+            >
+              <FaChalkboardTeacher /> إضافة المعلمين
             </button>
             <button
               onClick={() => setShowSerialManager(true)}
               className="bg-cyan-600 hover:bg-cyan-700 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2"
             >
-              <FaUserCog /> إدارة الطلاب (بالرقم التسلسلي)
+              <FaUserCog /> إدارة الطلاب (بالتسلسلي)
             </button>
           </div>
         </div>
@@ -577,7 +590,11 @@ const SupervisorPanel = ({ user, onLogout }) => {
               <div>
                 <label className="text-xs text-gray-400 mb-1 block">الشعب الدراسية * (اضغط Ctrl لاختيار عدة شعب)</label>
                 <select multiple className="bg-gray-800 w-full h-24 text-right p-2 border border-gray-600 rounded-md text-white" value={newStudentClassIds} onChange={(e) => setNewStudentClassIds(Array.from(e.target.selectedOptions).map(o => o.value))} required>
-                  {classes.map(cls => <option key={cls.id} value={cls.id}>{cls.name}</option>)}
+                  {availableClasses.map(cls => (
+                    <option key={cls.id} value={cls.id}>
+                      {cls.name} ({getClassGenderLabel(cls.gender)})
+                    </option>
+                  ))}
                 </select>
               </div>
               <button type="submit" disabled={studentLoading} className="btn-primary w-full py-3 bg-blue-600 hover:bg-blue-700 rounded-md text-white">
@@ -677,6 +694,11 @@ const SupervisorPanel = ({ user, onLogout }) => {
       <StudentSerialManagerModal
         isOpen={showSerialManager}
         onClose={() => setShowSerialManager(false)}
+        user={user}
+      />
+      <TeachersManagerModal
+        isOpen={showTeachersManager}
+        onClose={() => setShowTeachersManager(false)}
         user={user}
       />
     </div>

@@ -7,9 +7,13 @@ import { doc, getDoc, setDoc, query, collection, where, getDocs, serverTimestamp
 import { sanitizeInput } from '../../utils/helpers';
 
 const CompleteProfile = ({ user, onSuccess, onCancel }) => {
+  const isFemaleTeacher = user.role === 'teacher' && user.gender === 'أنثى';
+
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [newName, setNewName] = useState(user.name || '');
+  const [newNickname, setNewNickname] = useState(user.nickname || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -44,10 +48,13 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
       setError('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
       return;
     }
+    if (isFemaleTeacher && !newNickname.trim()) {
+      setError('اسم الشهرة مطلوب');
+      return;
+    }
 
     const email = `${cleanUsername}@readandrise.com`;
 
-    // فحص التكرار في Firestore (تحقق مبكر عن اسم المستخدم)
     try {
       const q = query(collection(db, 'profiles'), where('username', '==', cleanUsername));
       const querySnap = await getDocs(q);
@@ -74,7 +81,6 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
 
       const idToken = await currentUser.getIdToken();
 
-      // ✅ استدعاء API (Admin SDK) — يتجاوز شرط التحقق من البريد
       const res = await fetch('/api/reset-password', {
         method: 'POST',
         headers: {
@@ -94,8 +100,8 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
         throw new Error(errBody.error || 'فشل تحديث بيانات الدخول');
       }
 
-      // تحديث Firestore مباشرة (احتياط إضافي — الـ API يفعلها أيضاً)
-      await setDoc(doc(db, 'profiles', user.id), {
+      // تحديث Firestore
+      const updateData = {
         username: cleanUsername,
         email: email,
         uid: user.uid,
@@ -103,9 +109,17 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
         infoVerified: true,
         tempPassword: null,
         updatedAt: serverTimestamp()
-      }, { merge: true });
+      };
 
-      // إعادة تسجيل الدخول بصمت بالبيانات الجديدة
+      // للمعلمة: تحديث الاسم واسم الشهرة
+      if (isFemaleTeacher) {
+        updateData.nickname = sanitizeInput(newNickname);
+        updateData.name = sanitizeInput(newName) || '';
+      }
+
+      await setDoc(doc(db, 'profiles', user.id), updateData, { merge: true });
+
+      // إعادة تسجيل الدخول بصمت
       try {
         await signOut(auth);
         await signInWithEmailAndPassword(auth, email, newPassword);
@@ -154,7 +168,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
             إكمال تفعيل الحساب
           </h2>
           <p className="text-gray-300 text-sm text-center mb-4">
-            مرحباً {user.name || 'المستخدم'}، يرجى اختيار اسم مستخدم وكلمة مرور جديدين لتأكيد حسابك.
+            مرحباً {user.name || user.nickname || 'المستخدم'}، يرجى اختيار اسم مستخدم وكلمة مرور جديدين لتأكيد حسابك.
           </p>
           <form onSubmit={handleSubmit} className="space-y-4 w-full">
             <div>
@@ -169,6 +183,33 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
                 title="أحرف إنجليزية وأرقام والرموز @ . _ -"
               />
             </div>
+
+            {isFemaleTeacher && (
+              <>
+                <div>
+                  <label className="text-sm text-gray-300 block mb-1">اسم الشهرة (مطلوب)</label>
+                  <input
+                    type="text"
+                    className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white"
+                    value={newNickname}
+                    onChange={(e) => setNewNickname(e.target.value)}
+                    placeholder="مثال: أم محمد"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-sm text-gray-300 block mb-1">الاسم الحقيقي (اختياري)</label>
+                  <input
+                    type="text"
+                    className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder="الاسم الحقيقي (لن يظهر للمشرفين)"
+                  />
+                </div>
+              </>
+            )}
+
             <div>
               <label className="text-sm text-gray-300 block mb-1">كلمة المرور الجديدة (6 أحرف على الأقل)</label>
               <input

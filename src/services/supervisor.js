@@ -1,75 +1,103 @@
-import toast from 'react-hot-toast';
-import { db, secondaryAuth } from '../firebase';
-import { collection, query, where, getDocs, doc, setDoc, serverTimestamp } from 'firebase/firestore';
+// src/services/supervisor.js
+import { secondaryAuth, db } from '../firebase';
 import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
-import { generateId, sanitizeInput } from '../utils/helpers';
-import { sendNotificationToTeacher } from '../utils/notifications';
-import { sendSupervisorActivationMessage } from '../utils/whatsapp';
-import { MAX_SUPERVISORS } from '../constants';
+import {
+  collection, doc, setDoc, getDocs, query, where, limit,
+  serverTimestamp
+} from 'firebase/firestore';
+import { generateId } from '../utils/helpers';
+import { CLASS_VISIBILITY } from '../constants';
 
-export const createSupervisorAccount = async (name, gender, age, phone, teacherId, permissions = { reports: true, resets: true, support: true }) => {
-  try {
-    const phoneDigits = String(phone || '').replace(/[^\d]/g, '');
-    const normalizedPhone = phoneDigits.startsWith('00') ? phoneDigits.substring(2) : phoneDigits;
-
-    if (!normalizedPhone) throw new Error('رقم الهاتف مطلوب.');
-    if (normalizedPhone.startsWith('0')) throw new Error('يرجى إدخال رقم الهاتف مع رمز الدولة بدون صفر بادئ.');
-    if (normalizedPhone.length < 10 || normalizedPhone.length > 15) throw new Error('رقم الهاتف غير صالح.');
-
-    const q = query(collection(db, 'profiles'), where('role', '==', 'supervisor'));
-    const snapshot = await getDocs(q);
-    if (snapshot.size >= MAX_SUPERVISORS) throw new Error(`لا يمكن إضافة أكثر من ${MAX_SUPERVISORS} مشرف.`);
-
-    let username = '';
-    let exists = true;
-    let attempts = 0;
-    while (exists && attempts < 20) {
-      const randomNum = Math.floor(Math.random() * 1000000).toString().padStart(6, '0');
-      username = `supervisor${randomNum}`;
-      const q2 = query(collection(db, 'profiles'), where('username', '==', username));
-      const snap = await getDocs(q2);
-      if (snap.empty) exists = false;
-      attempts++;
-    }
-    if (exists) throw new Error('تعذر إنشاء اسم مستخدم فريد.');
-
-    const tempPassword = Math.floor(Math.random() * 1000000000).toString().padStart(9, '0');
-    const email = `${username}@readandrise.com`;
-
-    let userCredential;
-    try {
-      userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, tempPassword);
-    } catch (authError) {
-      if (authError.code === 'auth/email-already-in-use') throw new Error('البريد الإلكتروني مستخدم بالفعل.');
-      throw new Error('فشل إنشاء حساب المصادقة: ' + authError.message);
-    }
-    const firebaseUser = userCredential.user;
-    await signOut(secondaryAuth);
-
-    const newId = generateId();
-    const ageNum = parseInt(age);
-
-    await setDoc(doc(db, 'profiles', newId), {
-      email, username, name: sanitizeInput(name), gender: sanitizeInput(gender),
-      age: ageNum, phone: normalizedPhone, role: 'supervisor',
-      isFrozen: false, infoVerified: false, isProfileComplete: false,
-      permissions, // ✅ حفظ الصلاحيات
-      createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
-      uid: firebaseUser.uid, warnings: []
-    });
-
-    await sendNotificationToTeacher(teacherId, '✅ تم إنشاء حساب مشرف جديد', `تم إنشاء حساب المشرف ${sanitizeInput(name)}.`, 'add_supervisor', newId);
-
-    const supervisorObj = { name: sanitizeInput(name), phone: normalizedPhone };
-    const waOpened = sendSupervisorActivationMessage(supervisorObj, username, tempPassword);
-
-    if (!waOpened) {
-      toast.error(`⚠️ تم إنشاء الحساب. اسم المستخدم: ${username} - كلمة المرور: ${tempPassword}`, { duration: 12000 });
-    }
-
-    return { id: newId, username, password: tempPassword, name: sanitizeInput(name) };
-  } catch (err) {
-    console.error('Error creating supervisor:', err);
-    throw err;
+/**
+ * توليد اسم مستخدم فريد للمشرف
+ * الصيغة: supXXXXXX (6 أرقام عشوائية)
+ */
+const generateUniqueSupervisorUsername = async () => {
+  for (let i = 0; i < 10; i++) {
+    const candidate = `sup${Math.floor(Math.random() * 900000) + 100000}`;
+    const snap = await getDocs(
+      query(collection(db, 'profiles'), where('username', '==', candidate), limit(1))
+    );
+    if (snap.empty) return candidate;
   }
+  throw new Error('تعذر إيجاد اسم مستخدم فريد — حاول مرة أخرى');
+};
+
+/**
+ * إنشاء حساب مشرف جديد
+ * @param {string} name - الاسم الكامل
+ * @param {string} gender - ذكر / أنثى
+ * @param {number} age - العمر
+ * @param {string} phone - رقم الهاتف (مع رمز الدولة)
+ * @param {string} createdBy - ID المدير المنشئ
+ * @param {Object} permissions - { reports, resets, support }
+ * @param {string} classVisibility - 'all' | 'own_gender'
+ * @returns {Object} { id, name, username, tempPassword, email }
+ */
+export const createSupervisorAccount = async (
+  name,
+  gender,
+  age,
+  phone,
+  createdBy,
+  permissions = { reports: true, resets: true, support: true },
+  classVisibility = CLASS_VISIBILITY.ALL
+) => {
+  if (!name || !name.trim()) throw new Error('الاسم مطلوب');
+  if (!gender) throw new Error('الجنس مطلوب');
+  if (!age) throw new Error('العمر مطلوب');
+  if (!phone) throw new Error('رقم الهاتف مطلوب');
+
+  const username = await generateUniqueSupervisorUsername();
+  const tempPassword = Math.floor(Math.random() * 1000000000).toString().padStart(9, '0');
+  const email = `${username}@readandrise.com`;
+
+  let userCredential;
+  try {
+    userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, tempPassword);
+  } catch (err) {
+    throw new Error('فشل إنشاء حساب المشرف: ' + err.message);
+  }
+
+  const firebaseUser = userCredential.user;
+  await signOut(secondaryAuth);
+
+  const newId = generateId();
+
+  await setDoc(doc(db, 'profiles', newId), {
+    uid: firebaseUser.uid,
+    email,
+    username,
+    name: name.trim(),
+    gender,
+    age: parseInt(age),
+    phone: String(phone),
+    role: 'supervisor',
+    isProfileComplete: false,
+    infoVerified: false,
+    tempPassword,
+    classIds: [],
+    permissions: {
+      reports: permissions.reports !== false,
+      resets: permissions.resets !== false,
+      support: permissions.support !== false
+    },
+    classVisibility: classVisibility || CLASS_VISIBILITY.ALL,
+    isFrozen: false,
+    activeTicketCount: 0,
+    ratingCount: 0,
+    ratingAverage: 0,
+    canPublishAnnouncements: true,
+    createdBy: createdBy || '',
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
+
+  return {
+    id: newId,
+    name: name.trim(),
+    username,
+    tempPassword,
+    email
+  };
 };

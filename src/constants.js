@@ -149,3 +149,13 @@ export const CLASS_GENDER_LABELS = {
   female: 'إناث فقط',
   mixed: 'مختلطة'
 };
+
+export const CLASS_VISIBILITY = {
+  ALL: 'all',
+  OWN_GENDER: 'own_gender'
+};
+
+export const CLASS_VISIBILITY_LABELS = {
+  all: 'ذكور وإناث',
+  own_gender: 'حسب جنس المشرف'
+};
