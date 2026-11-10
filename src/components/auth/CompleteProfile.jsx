@@ -47,7 +47,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
 
     const email = `${cleanUsername}@readandrise.com`;
 
-    // فحص التكرار في Firestore
+    // فحص التكرار في Firestore (تحقق مبكر عن اسم المستخدم)
     try {
       const q = query(collection(db, 'profiles'), where('username', '==', cleanUsername));
       const querySnap = await getDocs(q);
@@ -82,6 +82,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
           'Authorization': `Bearer ${idToken}`
         },
         body: JSON.stringify({
+          action: 'complete_profile',
           userId: user.id,
           newUsername: cleanUsername,
           newPassword: newPassword
@@ -93,7 +94,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
         throw new Error(errBody.error || 'فشل تحديث بيانات الدخول');
       }
 
-      // تحديث Firestore
+      // تحديث Firestore مباشرة (احتياط إضافي — الـ API يفعلها أيضاً)
       await setDoc(doc(db, 'profiles', user.id), {
         username: cleanUsername,
         email: email,

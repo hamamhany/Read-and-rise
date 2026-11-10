@@ -1,18 +1,17 @@
 // api/cron-support-close.js
-// - يحذف فقط التذاكر التي وافق الطرفان على حذفها وانقضت 24 ساعة
+// - يحذف التذاكر التي وافق الطرفان على حذفها وانقضت 24 ساعة (شبكة أمان — الحذف الفوري يتم client-side)
 // - يلغي طلبات الحذف المعلقة بعد 24 ساعة بدون اكتمال (لا حذف)
 // - يغلق تلقائياً التذاكر المعلّقة (فقط تغيير حالة، لا حذف)
 
 import admin from 'firebase-admin';
 
 if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
-    })
-  });
+  try {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || '{}');
+    if (serviceAccount.project_id) {
+      admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+    }
+  } catch (e) { console.error('Admin init failed:', e.message); }
 }
 
 const db = admin.firestore();
@@ -22,6 +21,10 @@ export default async function handler(req, res) {
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret && authHeader !== `Bearer ${cronSecret}` && req.headers['x-vercel-cron'] !== '1') {
     return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  if (!admin.apps.length) {
+    return res.status(500).json({ error: 'Firebase Admin not configured' });
   }
 
   const now = Date.now();
@@ -37,8 +40,9 @@ export default async function handler(req, res) {
     const ticketsRef = db.collection('supportTickets');
 
     // =========================================
-    // 1) حذف التذاكر التي وافق الطرفان وانقضت 24 ساعة
-    // ⚠️ فقط عند موافقة الاثنين (both_approved) + انقضاء 24 ساعة
+    // 1) شبكة أمان: حذف التذاكر العالقة في "both_approved"
+    //    (الحذف الفوري يتم client-side عند الموافقة الثانية)
+    //    هذا يمسك فقط الحالات التي فشل فيها الحذف من المتصفح
     // =========================================
     const q1 = ticketsRef.where('deleteRequest.status', '==', 'both_approved');
     const snap1 = await q1.get();
@@ -127,8 +131,8 @@ export default async function handler(req, res) {
       }
     }
 
-    // ⚠️ تم إزالة الجزء القديم الذي كان يحذف التذاكر المغلقة بعد 7 أيام
-    // الحذف الآن فقط عند موافقة الاثنين + 24 ساعة
+    // ملاحظة: الحذف الفوري عند موافقة الطرفين يتم client-side
+    // هذا الـ cron يعمل كشبكة أمان للحالات العالقة فقط
 
     return res.status(200).json({
       success: true,

@@ -79,7 +79,8 @@ export default async function handler(req, res) {
       }
     }
 
-    // 4. إضافة للقائمة السوداء
+    // 4. ✅ إضافة للقائمة السوداء — حظر دائم (بدون expiresAt)
+    // لا يُرفع إلا يدوياً من لوحة المدير عبر زر الإزالة
     if (blacklistReason && phone) {
       await admin.firestore().collection('blacklist').add({
         phone: String(phone).replace(/[^\d]/g, ''),
@@ -87,6 +88,7 @@ export default async function handler(req, res) {
         addedBy: requesterUid,
         addedByName: requesterProfile.name || '',
         addedAt: admin.firestore.FieldValue.serverTimestamp()
+        // ⚠️ لا expiresAt — حظر دائم
       });
     }
 
