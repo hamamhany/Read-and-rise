@@ -1,7 +1,7 @@
 {
   "crons": [
     { "path": "/api/cron-absence", "schedule": "0 0 * * *" },
-    { "path": "/api/cron-support-close", "schedule": "0 * * * *" },
+    { "path": "/api/cron-support-close", "schedule": "0 1 * * *" },
     { "path": "/api/cron-unactivated-accounts", "schedule": "0 2 * * *" },
     { "path": "/api/cron-annual-age", "schedule": "0 3 * * *" }
   ]
