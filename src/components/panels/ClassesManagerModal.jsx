@@ -162,7 +162,7 @@ const ClassesManagerModal = ({ isOpen, onClose, user }) => {
                   type="text"
                   value={newName}
                   onChange={e => setNewName(e.target.value)}
-                  placeholder="مثال: الصف الأول - أ"
+                  placeholder="مثال: علم التجويد المستوى الأول"
                   className="w-full bg-gray-700 text-right p-2 rounded-lg text-white text-sm border border-gray-600"
                   required
                 />
