@@ -1,15 +1,28 @@
 import { db } from '../firebase';
-import { collection, addDoc, doc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import {
+  collection, addDoc, doc, updateDoc, deleteDoc,
+  serverTimestamp, getDoc
+} from 'firebase/firestore';
 import { sanitizeInput } from '../utils/helpers';
 
-export const createGeneralAnnouncement = async (title, body, scheduledFor = null) => {
+/**
+ * ✅ إنشاء إعلان — لكن بانتظار موافقة المدير
+ * (لا يُنشر تلقائياً، يُحفظ بحالة pending_approval)
+ * هذي الدالة تُستدعى من المشرف/المدير عند إنشاء إعلان جديد
+ */
+export const createGeneralAnnouncement = async (title, body, scheduledFor = null, requestedBy = '', requestedByName = '') => {
   try {
     const announcement = {
       title: sanitizeInput(title),
       body: sanitizeInput(body),
       createdAt: serverTimestamp(),
       scheduledFor: scheduledFor || null,
-      status: scheduledFor ? 'scheduled' : 'active',
+      status: 'pending_approval', // ✅ بانتظار موافقة المدير
+      requestedBy,
+      requestedByName,
+      approvedAt: null,
+      approvedBy: null,
+      approvedByName: null,
       updatedAt: serverTimestamp()
     };
     const docRef = await addDoc(collection(db, 'announcements'), announcement);
@@ -18,6 +31,36 @@ export const createGeneralAnnouncement = async (title, body, scheduledFor = null
     console.error('Error creating announcement:', err);
     throw err;
   }
+};
+
+/**
+ * ✅ اعتماد الإعلان — يستدعى فقط من المدير
+ * يغيّر الحالة إلى active أو scheduled
+ */
+export const approveAnnouncement = async (id, approvedBy, approvedByName) => {
+  const ref = doc(db, 'announcements', id);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) throw new Error('الإعلان غير موجود');
+  const data = snap.data();
+  const newStatus = data.scheduledFor ? 'scheduled' : 'active';
+  await updateDoc(ref, {
+    status: newStatus,
+    approvedAt: serverTimestamp(),
+    approvedBy,
+    approvedByName,
+    updatedAt: serverTimestamp()
+  });
+};
+
+/**
+ * ✅ رفض الإعلان
+ */
+export const rejectAnnouncement = async (id, reason = '') => {
+  await updateDoc(doc(db, 'announcements', id), {
+    status: 'rejected',
+    rejectionReason: reason,
+    updatedAt: serverTimestamp()
+  });
 };
 
 export const updateAnnouncement = async (id, data) => {

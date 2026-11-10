@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import {
   FaTimes, FaPlus, FaSpinner, FaGraduationCap, FaUsers,
-  FaChalkboardTeacher, FaTrashAlt, FaVenusMars
+  FaChalkboardTeacher, FaTrashAlt, FaVenusMars, FaExchangeAlt
 } from 'react-icons/fa';
 import { db } from '../../firebase';
 import {
@@ -11,9 +11,12 @@ import {
 import {
   createClass, deleteClassById, getClassStudentCounts,
   getClassGenderLabel, getTeacherDisplayName,
-  filterClassesForSupervisor, getAllowedClassGenders
+  filterClassesForSupervisor, getAllowedClassGenders,
+  findAffectedStudents, getEligibleClassesForStudent
 } from '../../services/classes';
-import { CLASS_GENDER } from '../../constants';
+import { createMessageRequest } from '../../services/messageRequests';
+import { CLASS_GENDER, MESSAGE_REQUEST_TYPES } from '../../constants';
+import { fetchClassNames } from '../../utils/helpers';
 import { useConfirm } from '../common/ConfirmContext';
 
 const ClassesManagerModal = ({ isOpen, onClose, user }) => {
@@ -30,6 +33,13 @@ const ClassesManagerModal = ({ isOpen, onClose, user }) => {
   const [newGender, setNewGender] = useState(CLASS_GENDER.MIXED);
   const [submitting, setSubmitting] = useState(false);
 
+  // ✅ حالات تغيير الجنس
+  const [showGenderChangeModal, setShowGenderChangeModal] = useState(false);
+  const [genderChangeClass, setGenderChangeClass] = useState(null);
+  const [newGenderForChange, setNewGenderForChange] = useState('');
+  const [affectedStudents, setAffectedStudents] = useState([]);
+  const [checkingAffected, setCheckingAffected] = useState(false);
+
   useEffect(() => {
     if (isOpen) loadData();
     // eslint-disable-next-line
@@ -38,13 +48,10 @@ const ClassesManagerModal = ({ isOpen, onClose, user }) => {
   const loadData = async () => {
     setLoading(true);
     try {
-      // جلب classVisibility للمشرف
       let visibility = 'all';
       if (user?.id) {
         const userSnap = await getDoc(doc(db, 'profiles', user.id));
-        if (userSnap.exists()) {
-          visibility = userSnap.data().classVisibility || 'all';
-        }
+        if (userSnap.exists()) visibility = userSnap.data().classVisibility || 'all';
       }
       setClassVisibility(visibility);
 
@@ -64,14 +71,10 @@ const ClassesManagerModal = ({ isOpen, onClose, user }) => {
       })));
       setStudentCounts(counts);
 
-      if (teachersSnap.docs.length > 0) {
-        setNewTeacherId(prev => prev || teachersSnap.docs[0].id);
-      }
+      if (teachersSnap.docs.length > 0) setNewTeacherId(prev => prev || teachersSnap.docs[0].id);
 
       const allowedGenders = getAllowedClassGenders(user?.gender, visibility);
-      if (!allowedGenders.includes(newGender)) {
-        setNewGender(allowedGenders[0]);
-      }
+      if (!allowedGenders.includes(newGender)) setNewGender(allowedGenders[0]);
     } catch (e) {
       toast.error('فشل التحميل: ' + e.message);
     } finally {
@@ -86,11 +89,7 @@ const ClassesManagerModal = ({ isOpen, onClose, user }) => {
 
     setSubmitting(true);
     try {
-      await createClass({
-        name: newName,
-        teacherId: newTeacherId,
-        gender: newGender
-      });
+      await createClass({ name: newName, teacherId: newTeacherId, gender: newGender });
       toast.success('✅ تم إنشاء الشعبة');
       setNewName('');
       setNewGender(getAllowedClassGenders(user?.gender, classVisibility)[0]);
@@ -111,10 +110,80 @@ const ClassesManagerModal = ({ isOpen, onClose, user }) => {
     }
     const ok = await confirm('حذف الشعبة', `حذف الشعبة "${cls.name}" نهائياً؟`);
     if (!ok) return;
+
     try {
-      await deleteClassById(cls.id);
-      toast.success('تم الحذف');
-      await loadData();
+      // ✅ إنشاء طلب للمدير
+      await createMessageRequest({
+        type: MESSAGE_REQUEST_TYPES.CLASS_DELETE,
+        targetType: 'class',
+        targetId: cls.id,
+        targetName: cls.name,
+        targetPhone: '',
+        targetClass: cls.name,
+        requestedBy: user.id,
+        requestedByName: user.name || user.username || 'مشرف',
+        payload: { className: cls.name, classId: cls.id }
+      });
+      toast.success('✅ تم إرسال طلب الحذف للمدير للموافقة');
+    } catch (e) {
+      toast.error('فشل: ' + e.message);
+    }
+  };
+
+  // ✅ فتح مودال تغيير الجنس
+  const openGenderChange = (cls) => {
+    setGenderChangeClass(cls);
+    setNewGenderForChange(cls.gender || CLASS_GENDER.MIXED);
+    setAffectedStudents([]);
+    setShowGenderChangeModal(true);
+  };
+
+  // ✅ التحقق عند تغيير الجنس
+  const handleGenderChange = async () => {
+    if (!genderChangeClass) return;
+    if (newGenderForChange === genderChangeClass.gender) {
+      toast.error('اختر جنساً مختلفاً');
+      return;
+    }
+    setCheckingAffected(true);
+    try {
+      const affected = await findAffectedStudents(genderChangeClass.id, newGenderForChange);
+      setAffectedStudents(affected);
+      if (affected.length === 0) {
+        // ما في طلاب متضررين — إنشاء طلب مباشر للمدير
+        await submitGenderChangeRequest([]);
+      }
+    } catch (e) {
+      toast.error('فشل الفحص: ' + e.message);
+    } finally {
+      setCheckingAffected(false);
+    }
+  };
+
+  // ✅ إرسال طلب تغيير الجنس للمدير
+  const submitGenderChangeRequest = async (transfers) => {
+    try {
+      await createMessageRequest({
+        type: MESSAGE_REQUEST_TYPES.CLASS_GENDER_CHANGE,
+        targetType: 'class',
+        targetId: genderChangeClass.id,
+        targetName: genderChangeClass.name,
+        targetPhone: '',
+        targetClass: genderChangeClass.name,
+        requestedBy: user.id,
+        requestedByName: user.name || user.username || 'مشرف',
+        payload: {
+          classId: genderChangeClass.id,
+          className: genderChangeClass.name,
+          oldGender: genderChangeClass.gender || CLASS_GENDER.MIXED,
+          newGender: newGenderForChange,
+          transfers // [{ studentId, studentName, toClassId, toClassName }]
+        }
+      });
+      toast.success('✅ تم إرسال طلب التغيير للمدير للموافقة');
+      setShowGenderChangeModal(false);
+      setGenderChangeClass(null);
+      setAffectedStudents([]);
     } catch (e) {
       toast.error('فشل: ' + e.message);
     }
@@ -250,12 +319,20 @@ const ClassesManagerModal = ({ isOpen, onClose, user }) => {
                         </span>
                       </div>
                     </div>
-                    <button
-                      onClick={() => handleDelete(cls)}
-                      className="text-xs bg-red-500/20 hover:bg-red-500/30 text-red-300 px-3 py-1.5 rounded-lg inline-flex items-center gap-1"
-                    >
-                      <FaTrashAlt /> حذف
-                    </button>
+                    <div className="flex gap-2 flex-wrap">
+                      <button
+                        onClick={() => openGenderChange(cls)}
+                        className="text-xs bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 px-3 py-1.5 rounded-lg inline-flex items-center gap-1"
+                      >
+                        <FaExchangeAlt /> تغيير الجنس
+                      </button>
+                      <button
+                        onClick={() => handleDelete(cls)}
+                        className="text-xs bg-red-500/20 hover:bg-red-500/30 text-red-300 px-3 py-1.5 rounded-lg inline-flex items-center gap-1"
+                      >
+                        <FaTrashAlt /> حذف
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -263,6 +340,63 @@ const ClassesManagerModal = ({ isOpen, onClose, user }) => {
           )}
         </div>
       </div>
+
+      {/* ✅ مودال تغيير جنس الشعبة */}
+      {showGenderChangeModal && genderChangeClass && (
+        <div className="fixed inset-0 bg-black/90 z-[80] flex items-center justify-center p-4" onClick={() => !checkingAffected && setShowGenderChangeModal(false)}>
+          <div className="bg-gray-900 p-6 rounded-2xl max-w-lg w-full border border-purple-500/30 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-purple-300">تغيير جنس الشعبة</h3>
+              <button onClick={() => setShowGenderChangeModal(false)} className="text-gray-400 hover:text-white"><FaTimes /></button>
+            </div>
+
+            <p className="text-sm text-gray-300 mb-3">الشعبة: <strong>{genderChangeClass.name}</strong></p>
+
+            <label className="block text-sm text-gray-300 mb-1">الجنس الجديد</label>
+            <select
+              value={newGenderForChange}
+              onChange={e => setNewGenderForChange(e.target.value)}
+              className="w-full bg-gray-800 text-right p-2 rounded-lg text-white border border-gray-600 mb-3"
+            >
+              <option value={CLASS_GENDER.MALE}>ذكور فقط</option>
+              <option value={CLASS_GENDER.FEMALE}>إناث فقط</option>
+              <option value={CLASS_GENDER.MIXED}>مختلطة</option>
+            </select>
+
+            {affectedStudents.length === 0 ? (
+              <button
+                onClick={handleGenderChange}
+                disabled={checkingAffected}
+                className="w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white py-2 rounded-lg font-bold"
+              >
+                {checkingAffected ? 'جاري الفحص...' : 'فحص وإرسال الطلب للمدير'}
+              </button>
+            ) : (
+              <div>
+                <div className="bg-amber-500/10 border border-amber-500/30 p-3 rounded-xl mb-3">
+                  <p className="text-amber-200 text-sm font-bold mb-2">⚠️ طلاب متضررين ({affectedStudents.length}):</p>
+                  <div className="space-y-1 max-h-40 overflow-y-auto">
+                    {affectedStudents.map(s => (
+                      <p key={s.id} className="text-xs text-gray-200">
+                        • {s.name} — {s.reason}
+                      </p>
+                    ))}
+                  </div>
+                  <p className="text-xs text-amber-300 mt-2">
+                    سيُطلب منك نقلهم لشعب متوافقة قبل إتمام التغيير.
+                  </p>
+                </div>
+                <button
+                  onClick={() => submitGenderChangeRequest(affectedStudents.map(s => ({ studentId: s.id, studentName: s.name })))}
+                  className="w-full bg-amber-600 hover:bg-amber-700 text-white py-2 rounded-lg font-bold"
+                >
+                  إرسال طلب التغيير للمدير (مع النقل التلقائي)
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

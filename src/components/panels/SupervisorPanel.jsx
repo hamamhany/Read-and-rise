@@ -1,4 +1,3 @@
-// src/components/panels/SupervisorPanel.jsx
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import {
@@ -15,7 +14,6 @@ import {
 import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
 import { createGeneralAnnouncement, updateAnnouncement, deleteAnnouncement } from '../../services/announcements';
-import { sendNotificationToAllStudents, sendNotificationToTeacher } from '../../utils/notifications';
 import { createMessageRequest } from '../../services/messageRequests';
 import { validateStudentEligibility, filterClassesForSupervisor, getClassGenderLabel } from '../../services/classes';
 import { ANNOUNCEMENTS_LIMIT, MESSAGE_REQUEST_TYPES } from '../../constants';
@@ -129,7 +127,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
           getToken(messaging, { vapidKey }),
           new Promise((_, rej) => setTimeout(() => rej(new Error('getToken timeout')), 10000))
         ]);
-      } catch (e) { console.warn('FCM token fetch failed:', e.message); return true; }
+      } catch (e) { return true; }
       if (token) {
         try { await updateDoc(doc(db, 'profiles', user.id), { fcmTokens: arrayUnion(token) }); }
         catch (e) { console.warn('Save token failed:', e.message); }
@@ -159,6 +157,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const now = new Date();
       const filtered = list.filter(item => {
+        if (item.status === 'rejected') return false;
         if (item.status === 'scheduled') {
           if (!item.scheduledFor) return false;
           const scheduled = new Date(item.scheduledFor.seconds * 1000);
@@ -215,31 +214,21 @@ const SupervisorPanel = ({ user, onLogout }) => {
 
     try {
       if (editingAnnouncementId) {
-        const updates = { title, body, scheduledFor: scheduledFor || null, status: scheduledFor ? 'scheduled' : 'active', updatedAt: serverTimestamp() };
+        const updates = { title, body, scheduledFor: scheduledFor || null, status: 'pending_approval', updatedAt: serverTimestamp() };
         await updateAnnouncement(editingAnnouncementId, updates);
-        toast.success('تم تحديث الإشعار بنجاح.');
+        toast.success('تم تحديث الإعلان. سيراجعه المدير قبل النشر.');
       } else {
-        const id = await createGeneralAnnouncement(title, body, scheduledFor);
-        if (!scheduledFor) {
-          await sendNotificationToAllStudents(title, body, 'general_announcement', id);
-          await sendNotificationToTeacher(user.id, title, body, 'general_announcement', id);
-          const supervisorQuery = query(collection(db, 'profiles'), where('role', '==', 'supervisor'));
-          const supervisorSnap = await getDocs(supervisorQuery);
-          for (const docSnap of supervisorSnap.docs) {
-            const supervisorId = docSnap.id;
-            if (supervisorId === user.id) continue;
-            await setDoc(doc(collection(db, 'notifications', supervisorId, 'userNotifications')), {
-              title, body, type: 'general_announcement', relatedId: id,
-              createdAt: serverTimestamp(), read: false, readAt: null
-            });
-          }
-        }
-        toast.success('تم نشر الإشعار بنجاح.');
+        // ✅ إنشاء بحالة pending_approval (بانتظار موافقة المدير)
+        await createGeneralAnnouncement(
+          title, body, scheduledFor,
+          user.id, user.name || user.username || 'مشرف'
+        );
+        toast.success('✅ تم إرسال الإعلان للمدير للموافقة قبل النشر.');
       }
       setAnnouncementTitle(''); setAnnouncementBody(''); setCharCount(0);
       setPublishType('now'); setDelayHours(''); setDelayMinutes('');
       setDelayError(''); setEditingAnnouncementId(null); setShowAnnouncementModal(false);
-    } catch (err) { toast.error('فشل حفظ الإشعار: ' + err.message); }
+    } catch (err) { toast.error('فشل حفظ الإعلان: ' + err.message); }
   };
 
   const handleEditAnnouncement = (item) => {
@@ -260,10 +249,10 @@ const SupervisorPanel = ({ user, onLogout }) => {
   };
 
   const handleDeleteAnnouncement = async (id) => {
-    const ok = await confirm('حذف الإشعار', 'هل أنت متأكد من حذف هذا الإشعار نهائياً؟');
+    const ok = await confirm('حذف الإعلان', 'هل أنت متأكد من حذف هذا الإعلان نهائياً؟');
     if (!ok) return;
-    try { await deleteAnnouncement(id); toast.success('تم حذف الإشعار.'); }
-    catch (err) { toast.error('فشل حذف الإشعار: ' + err.message); }
+    try { await deleteAnnouncement(id); toast.success('تم حذف الإعلان.'); }
+    catch (err) { toast.error('فشل حذف الإعلان: ' + err.message); }
   };
 
   const handleLoadMore = () => {
@@ -436,8 +425,20 @@ const SupervisorPanel = ({ user, onLogout }) => {
   const hasMore = displayCount < announcements.length;
   const canPublish = user.canPublishAnnouncements !== false;
 
-  // ✅ الشعب المتاحة للمشرف (حسب وضعه)
   const availableClasses = filterClassesForSupervisor(classes, user.gender, classVisibility);
+
+  const getAnnouncementStatusBadge = (item) => {
+    if (item.status === 'pending_approval') {
+      return <span className="text-xs text-amber-300 bg-amber-950/40 px-2 py-0.5 rounded-full">⏳ بانتظار موافقة المدير</span>;
+    }
+    if (item.status === 'scheduled') {
+      return <span className="text-xs text-yellow-400 bg-yellow-950/40 px-2 py-0.5 rounded-full">📅 مجدول</span>;
+    }
+    if (item.status === 'active') {
+      return <span className="text-xs text-green-400 bg-green-950/40 px-2 py-0.5 rounded-full">✅ منشور</span>;
+    }
+    return null;
+  };
 
   return (
     <div className="container-center min-h-screen p-4 relative" dir="rtl">
@@ -473,7 +474,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
           </button>
         </div>
 
-        {/* ✅ قسم إدارة الشعب والمعلمين والطلاب بالرقم التسلسلي */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-indigo-500/20">
           <h3 className="text-xl font-semibold text-indigo-200 flex items-center gap-2 mb-3">
             <FaGraduationCap /> إدارة الشعب والمعلمين
@@ -489,13 +489,13 @@ const SupervisorPanel = ({ user, onLogout }) => {
               onClick={() => setShowTeachersManager(true)}
               className="bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2"
             >
-              <FaChalkboardTeacher /> إضافة المعلمين
+              <FaChalkboardTeacher /> إضافة معلم جديد
             </button>
             <button
               onClick={() => setShowSerialManager(true)}
               className="bg-cyan-600 hover:bg-cyan-700 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2"
             >
-              <FaUserCog /> إدارة الطلاب 
+              <FaUserCog /> إدارة الطلاب بالرقم التسلسلي
             </button>
           </div>
         </div>
@@ -525,6 +525,9 @@ const SupervisorPanel = ({ user, onLogout }) => {
                 <FaPlus className="inline-block me-2" /> إشعار جديد
               </button>
             </div>
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-2 text-xs text-amber-200 mb-3">
+              ℹ️ جميع الإعلانات الجديدة تُرسل للمدير للموافقة قبل النشر.
+            </div>
             {announcements.length === 0 ? (
               <p className="text-gray-400 text-center py-4">لا توجد إشعارات حالياً.</p>
             ) : (
@@ -532,10 +535,9 @@ const SupervisorPanel = ({ user, onLogout }) => {
                 {visibleAnnouncements.map((item) => (
                   <div key={item.id} className="p-4 bg-black/30 rounded-xl border border-gray-700 cursor-pointer hover:bg-gray-700/40 transition flex justify-between items-start" onClick={() => handleAnnouncementClick(item)}>
                     <div className="flex-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-white font-medium">{item.title}</span>
-                        {item.status === 'scheduled' && <span className="text-xs text-yellow-400 bg-yellow-950/40 px-2 py-0.5 rounded-full">📅 مجدول</span>}
-                        {item.status === 'active' && <span className="text-xs text-green-400 bg-green-950/40 px-2 py-0.5 rounded-full">✅ منشور</span>}
+                        {getAnnouncementStatusBadge(item)}
                       </div>
                       <div className="text-xs text-gray-400 mt-1">
                         {item.createdAt?.toDate?.() ? new Date(item.createdAt.toDate()).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' }) : ''}
@@ -612,6 +614,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
               <h3 className="text-xl font-bold text-purple-300">{selectedAnnouncement.title}</h3>
               <button onClick={() => setShowDetailsModal(false)} className="text-gray-400 hover:text-white text-2xl">✕</button>
             </div>
+            <div className="mb-3">{getAnnouncementStatusBadge(selectedAnnouncement)}</div>
             <div className="text-gray-300 whitespace-pre-wrap break-words max-h-96 overflow-y-auto">{selectedAnnouncement.body}</div>
           </div>
         </div>
@@ -621,6 +624,9 @@ const SupervisorPanel = ({ user, onLogout }) => {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowAnnouncementModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-2xl w-full border border-yellow-500/30" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-xl font-semibold text-yellow-300 mb-4"><FaBullhorn className="inline-block me-2" /> {editingAnnouncementId ? 'تعديل الإشعار' : 'إشعار جديد'}</h3>
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-2 text-xs text-amber-200 mb-3">
+              ℹ️ سيُرسل الإعلان إلى المدير للموافقة قبل النشر.
+            </div>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm text-gray-300 mb-1">العنوان <span className="text-red-400">*</span></label>
@@ -634,11 +640,11 @@ const SupervisorPanel = ({ user, onLogout }) => {
               <div className="flex flex-wrap gap-4 items-center">
                 <label className="flex items-center gap-2 text-gray-300">
                   <input type="radio" value="now" checked={publishType === 'now'} onChange={() => setPublishType('now')} className="accent-yellow-500" />
-                  <FaUpload className="inline-block me-1" /> نشر فوراً
+                  <FaUpload className="inline-block me-1" /> نشر فوراً بعد الموافقة
                 </label>
                 <label className="flex items-center gap-2 text-gray-300">
                   <input type="radio" value="schedule" checked={publishType === 'schedule'} onChange={() => setPublishType('schedule')} className="accent-yellow-500" />
-                  <FaClock className="inline-block me-1" /> نشر بعد وقت
+                  <FaClock className="inline-block me-1" /> نشر مجدول بعد الموافقة
                 </label>
               </div>
               {publishType === 'schedule' && (
@@ -650,7 +656,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
                 </div>
               )}
               <div className="flex gap-3">
-                <button onClick={handleCreateAnnouncement} className="btn-primary bg-yellow-600 hover:bg-yellow-700 px-6 py-2 rounded-md text-white">{editingAnnouncementId ? 'تحديث' : 'نشر'}</button>
+                <button onClick={handleCreateAnnouncement} className="btn-primary bg-yellow-600 hover:bg-yellow-700 px-6 py-2 rounded-md text-white">{editingAnnouncementId ? 'إرسال للمراجعة' : 'إرسال للموافقة'}</button>
                 <button onClick={() => { setShowAnnouncementModal(false); setEditingAnnouncementId(null); setAnnouncementTitle(''); setAnnouncementBody(''); setCharCount(0); setPublishType('now'); setDelayHours(''); setDelayMinutes(''); setDelayError(''); }} className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-md text-white">إلغاء</button>
               </div>
             </div>
@@ -685,7 +691,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ✅ مودالات جديدة */}
       <ClassesManagerModal
         isOpen={showClassesManager}
         onClose={() => setShowClassesManager(false)}

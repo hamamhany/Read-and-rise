@@ -5,15 +5,20 @@ import { db } from '../../firebase';
 import { signOut, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc, setDoc, query, collection, where, getDocs, serverTimestamp } from 'firebase/firestore';
 import { sanitizeInput } from '../../utils/helpers';
+import { COUNTRIES } from '../../utils/countries';
 
 const CompleteProfile = ({ user, onSuccess, onCancel }) => {
   const isFemaleTeacher = user.role === 'teacher' && user.gender === 'أنثى';
+
+  // ✅ البلد إجباري لكل المستخدمين (طالب، معلم، مشرف)
+  const requiresCountry = ['student', 'teacher', 'supervisor'].includes(user.role);
 
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [newName, setNewName] = useState(user.name || '');
   const [newNickname, setNewNickname] = useState(user.nickname || '');
+  const [newCountry, setNewCountry] = useState(user.country || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -24,34 +29,15 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
     const usernameRegex = /^[a-zA-Z0-9@._-]+$/;
     const cleanUsername = sanitizeInput(newUsername).toLowerCase();
 
-    if (!cleanUsername) {
-      setError('يرجى إدخال اسم المستخدم');
-      return;
-    }
-    if (!usernameRegex.test(cleanUsername)) {
-      setError('اسم المستخدم يجب أن يحتوي على أحرف إنجليزية وأرقام والرموز (@ . _ -) فقط');
-      return;
-    }
-    if (!newPassword) {
-      setError('يرجى إدخال كلمة المرور');
-      return;
-    }
-    if (!usernameRegex.test(newPassword)) {
-      setError('كلمة المرور يجب أن تحتوي على أحرف إنجليزية وأرقام والرموز (@ . _ -) فقط');
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setError('كلمة المرور غير متطابقة مع تأكيدها');
-      return;
-    }
-    if (newPassword.length < 6) {
-      setError('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
-      return;
-    }
-    if (isFemaleTeacher && !newNickname.trim()) {
-      setError('اسم الشهرة مطلوب');
-      return;
-    }
+    if (!cleanUsername) { setError('يرجى إدخال اسم المستخدم'); return; }
+    if (!usernameRegex.test(cleanUsername)) { setError('اسم المستخدم يجب أن يحتوي على أحرف إنجليزية وأرقام والرموز (@ . _ -) فقط'); return; }
+    if (!newPassword) { setError('يرجى إدخال كلمة المرور'); return; }
+    if (!usernameRegex.test(newPassword)) { setError('كلمة المرور يجب أن تحتوي على أحرف إنجليزية وأرقام والرموز (@ . _ -) فقط'); return; }
+    if (newPassword !== confirmPassword) { setError('كلمة المرور غير متطابقة مع تأكيدها'); return; }
+    if (newPassword.length < 6) { setError('كلمة المرور يجب أن تكون 6 أحرف على الأقل'); return; }
+    if (isFemaleTeacher && !newNickname.trim()) { setError('اسم الشهرة مطلوب'); return; }
+    // ✅ البلد إجباري
+    if (requiresCountry && !newCountry) { setError('يرجى اختيار البلد'); return; }
 
     const email = `${cleanUsername}@readandrise.com`;
 
@@ -59,13 +45,8 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
       const q = query(collection(db, 'profiles'), where('username', '==', cleanUsername));
       const querySnap = await getDocs(q);
       let exists = false;
-      querySnap.forEach(doc => {
-        if (doc.id !== user.id) exists = true;
-      });
-      if (exists) {
-        setError('اسم المستخدم هذا مستخدم بالفعل، يرجى اختيار آخر');
-        return;
-      }
+      querySnap.forEach(doc => { if (doc.id !== user.id) exists = true; });
+      if (exists) { setError('اسم المستخدم هذا مستخدم بالفعل، يرجى اختيار آخر'); return; }
     } catch (err) {
       console.warn('خطأ في التحقق:', err);
       setError('حدث خطأ أثناء التحقق، حاول مرة أخرى.');
@@ -75,9 +56,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
     setLoading(true);
     try {
       const currentUser = auth.currentUser;
-      if (!currentUser) {
-        throw new Error('انتهت الجلسة — يرجى تسجيل الدخول مرة أخرى');
-      }
+      if (!currentUser) throw new Error('انتهت الجلسة — يرجى تسجيل الدخول مرة أخرى');
 
       const idToken = await currentUser.getIdToken();
 
@@ -100,7 +79,6 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
         throw new Error(errBody.error || 'فشل تحديث بيانات الدخول');
       }
 
-      // تحديث Firestore
       const updateData = {
         username: cleanUsername,
         email: email,
@@ -111,7 +89,11 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
         updatedAt: serverTimestamp()
       };
 
-      // للمعلمة: تحديث الاسم واسم الشهرة
+      // ✅ حفظ البلد (إجباري)
+      if (requiresCountry) {
+        updateData.country = newCountry;
+      }
+
       if (isFemaleTeacher) {
         updateData.nickname = sanitizeInput(newNickname);
         updateData.name = sanitizeInput(newName) || '';
@@ -119,7 +101,6 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
 
       await setDoc(doc(db, 'profiles', user.id), updateData, { merge: true });
 
-      // إعادة تسجيل الدخول بصمت
       try {
         await signOut(auth);
         await signInWithEmailAndPassword(auth, email, newPassword);
@@ -208,6 +189,25 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
                   />
                 </div>
               </>
+            )}
+
+            {/* ✅ اختيار البلد — إجباري للطالب والمعلم والمشرف */}
+            {requiresCountry && (
+              <div>
+                <label className="text-sm text-gray-300 block mb-1">البلد <span className="text-red-400">*</span></label>
+                <select
+                  className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white"
+                  value={newCountry}
+                  onChange={(e) => setNewCountry(e.target.value)}
+                  required
+                >
+                  <option value="">اختر البلد</option>
+                  {COUNTRIES.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-gray-500 mt-1">لا يمكن تغيير البلد لاحقاً</p>
+              </div>
             )}
 
             <div>

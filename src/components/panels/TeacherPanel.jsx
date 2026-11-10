@@ -6,9 +6,8 @@ import {
   FaPlus, FaVideo, FaUsers, FaTrashAlt, FaPrint, FaPaperPlane
 } from 'react-icons/fa';
 import { db, messaging } from '../../firebase';
-import { auth } from '../../services/firebaseAuth';
 import { 
-  doc, getDoc, setDoc, updateDoc, deleteDoc, collection, query,
+  doc, getDoc, setDoc, updateDoc, collection, query,
   where, getDocs, onSnapshot, serverTimestamp, arrayUnion, orderBy, writeBatch
 } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
@@ -25,7 +24,6 @@ import {
   fetchClassNames, getActiveWarnings 
 } from '../../utils/helpers';
 import { createMessageRequest } from '../../services/messageRequests';
-import { deleteUserCompletely } from '../../services/accountDeletion';
 import { MESSAGE_REQUEST_TYPES } from '../../constants';
 
 const TeacherPanel = ({ user, onLogout }) => {
@@ -55,9 +53,6 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [generalMessageSubject, setGeneralMessageSubject] = useState('');
   const [generalMessageText, setGeneralMessageText] = useState('');
   const [selectedStudentForMessage, setSelectedStudentForMessage] = useState(null);
-  const [showClassSelectionModal, setShowClassSelectionModal] = useState(false);
-  const [selectedStudentForClass, setSelectedStudentForClass] = useState(null);
-  const [tempClassIds, setTempClassIds] = useState([]);
   const [selectedClassForLesson, setSelectedClassForLesson] = useState('');
   const [showWarningModal, setShowWarningModal] = useState(false);
   const [selectedStudentForWarning, setSelectedStudentForWarning] = useState(null);
@@ -80,13 +75,8 @@ const TeacherPanel = ({ user, onLogout }) => {
         } catch (e) { console.warn('SW register skipped:', e.message); }
       }
       let permission = Notification.permission;
-      if (permission === 'denied') {
-        toast.error('الإشعارات محظورة من إعدادات المتصفح');
-        return false;
-      }
-      if (permission === 'default') {
-        permission = await Notification.requestPermission();
-      }
+      if (permission === 'denied') { toast.error('الإشعارات محظورة من إعدادات المتصفح'); return false; }
+      if (permission === 'default') { permission = await Notification.requestPermission(); }
       if (permission !== 'granted') return false;
       if (!messaging) return true;
       const vapidKey = import.meta.env.VITE_VAPID_KEY;
@@ -97,22 +87,14 @@ const TeacherPanel = ({ user, onLogout }) => {
           getToken(messaging, { vapidKey }),
           new Promise((_, rej) => setTimeout(() => rej(new Error('getToken timeout')), 10000))
         ]);
-      } catch (e) {
-        console.warn('FCM token fetch failed:', e.message);
-        return true;
-      }
+      } catch (e) { return true; }
       if (token) {
         try {
-          await updateDoc(doc(db, 'profiles', user.id), {
-            fcmTokens: arrayUnion(token)
-          });
+          await updateDoc(doc(db, 'profiles', user.id), { fcmTokens: arrayUnion(token) });
         } catch (e) { console.warn('Save token failed:', e.message); }
       }
       return true;
-    } catch (err) {
-      console.error('Notification error:', err);
-      return false;
-    }
+    } catch (err) { console.error('Notification error:', err); return false; }
   };
 
   useEffect(() => {
@@ -127,9 +109,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         ), { duration: 5000 });
       });
       return () => unsub();
-    } catch (err) {
-      console.warn('onMessage setup failed:', err);
-    }
+    } catch (err) { console.warn('onMessage setup failed:', err); }
   }, []);
 
   const handleOpenNotifications = () => {
@@ -152,16 +132,13 @@ const TeacherPanel = ({ user, onLogout }) => {
         });
         await batch.commit();
       }
-    } catch (err) {
-      console.warn('فشل حذف الإشعارات:', err);
-    }
+    } catch (err) { console.warn('فشل حذف الإشعارات:', err); }
     setNotificationIdsAtOpen([]);
   };
 
   const openWarningModal = (s) => {
     const active = getActiveWarnings(s.warnings || []);
-    const studentWithActive = { ...s, warnings: active };
-    setSelectedStudentForWarning(studentWithActive);
+    setSelectedStudentForWarning({ ...s, warnings: active });
     setWarningDescription('');
     setShowWarningModal(true);
   };
@@ -187,33 +164,12 @@ const TeacherPanel = ({ user, onLogout }) => {
         requestedByName: user.name || user.username || 'معلم',
         payload: {
           warningNumber: newWarningNumber,
-          description: desc.trim()
+          description: desc.trim(),
+          serialNumber: student.serialNumber || ''
         }
       });
 
-      const warningObj = {
-        id: generateId(),
-        issuedAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + 120 * 24 * 60 * 60 * 1000).toISOString(),
-        type: newWarningNumber,
-        description: desc.trim()
-      };
-
-      const studentRef = doc(db, 'profiles', student.id);
-      await updateDoc(studentRef, {
-        warnings: [...activeWarnings, warningObj],
-        updatedAt: serverTimestamp()
-      });
-
-      if (newWarningNumber === 3) {
-        await updateDoc(studentRef, {
-          isFrozen: true,
-          frozenAt: serverTimestamp(),
-          freezeReason: 'تجاوز عدد الإنذارات'
-        });
-      }
-
-      toast.success(`✅ تم حفظ طلب الإنذار رقم ${newWarningNumber}. سيتم إرساله بعد تدقيق مدير النظام.`);
+      toast.success(`✅ تم إرسال طلب الإنذار رقم ${newWarningNumber} للمدير للموافقة.`);
       setShowWarningModal(false);
       setSelectedStudentForWarning(null);
     } catch (err) {
@@ -221,24 +177,22 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
+  // ✅ إعادة تعيين — فقط إنشاء طلب
   const handleResetStudent = async (studentId) => {
-    const ok = await confirm('إعادة تعيين الحساب', 'هل تريد المتابعة؟');
+    const ok = await confirm('إعادة تعيين الحساب', 'سيُنشأ طلب إعادة تعيين يُرسل للمدير للموافقة. متابعة؟');
     if (!ok) return;
     try {
       const docSnap = await getDoc(doc(db, 'profiles', studentId));
       if (!docSnap.exists()) return;
       const student = docSnap.data();
+      const newUsername = `knight${Math.floor(Math.random() * 900000) + 100000}`;
       const newPassword = Math.floor(Math.random() * 1000000000).toString().padStart(9, '0');
-      await updateDoc(doc(db, 'profiles', studentId), {
-        infoVerified: false, isFrozen: false, isProfileComplete: false,
-        pendingChanges: null, reviewResult: null, reviewExpiry: null,
-        tempPassword: newPassword, updatedAt: serverTimestamp()
-      });
 
       const classMap = student.classIds ? await fetchClassNames(student.classIds) : {};
       const classNames = (student.classIds || []).map(id => classMap[id]).filter(Boolean).join(', ');
+
       await createMessageRequest({
-        type: MESSAGE_REQUEST_TYPES.RESET_PASSWORD,
+        type: MESSAGE_REQUEST_TYPES.PASSWORD_RESET_APPROVAL,
         targetType: 'student',
         targetId: studentId,
         targetName: student.name || '',
@@ -247,105 +201,72 @@ const TeacherPanel = ({ user, onLogout }) => {
         requestedBy: user.id,
         requestedByName: user.name || user.username || 'معلم',
         payload: {
-          username: student.username || '',
-          newPassword: newPassword
+          username: newUsername,
+          password: newPassword,
+          serialNumber: student.serialNumber || ''
         }
       });
 
-      toast.success('✅ تم إعادة تعيين الحساب وحفظ طلب إرسال البيانات.');
+      toast.success('✅ تم إرسال طلب إعادة التعيين للمدير.');
     } catch (err) {
-      toast.error('فشل إعادة التعيين: ' + err.message);
+      toast.error('فشل: ' + err.message);
     }
   };
 
+  // ✅ حذف — فقط إنشاء طلب
   const handleDeleteStudentPermanently = async (student) => {
     const ok = await confirm(
-      'حذف دائم',
-      `سيتم حذف الملف الشخصي للطالب "${student.name}" نهائياً من النظام (Auth + Firestore). هل تريد المتابعة؟`
+      'طلب حذف الطالب',
+      `سيُنشأ طلب حذف للطالب "${student.name}" يرسل للمدير للموافقة. متابعة؟`
     );
     if (!ok) return;
 
-    const notifyParent = await confirm(
-      'إخطار ولي الأمر بالحذف',
-      'هل تريد إرسال إشعار حذف الحساب لولي الأمر؟\n\n📨 سيُحفظ كطلب ويُرسل رسمياً بعد تدقيق مدير النظام.'
-    );
-
     try {
-      if (notifyParent) {
-        await createMessageRequest({
-          type: MESSAGE_REQUEST_TYPES.DELETE,
-          targetType: 'student',
-          targetId: student.id,
-          targetName: student.name || '',
-          targetPhone: student.phone || '',
-          targetClass: student.classes?.map(c => c.name).join(', ') || 'غير محدد',
-          requestedBy: user.id,
-          requestedByName: user.name || user.username || 'معلم',
-          payload: {}
-        });
-      }
-
-      const toastId = toast.loading('جاري حذف الحساب...');
-      try {
-        await deleteUserCompletely(student.id);
-        toast.success(
-          notifyParent ? '✅ تم حذف الطالب وحفظ طلب إشعار ولي الأمر.' : '✅ تم حذف الطالب نهائياً.',
-          { id: toastId }
-        );
-      } catch (e) {
-        toast.error('فشل الحذف: ' + e.message, { id: toastId });
-      }
-    } catch (err) {
-      toast.error('فشل الحذف: ' + err.message);
-    }
-  };
-
-  const toggleFreezeStudent = async (student) => {
-    const nextStatus = !student.isFrozen;
-    try {
-      await updateDoc(doc(db, 'profiles', student.id), {
-        isFrozen: nextStatus,
-        frozenAt: nextStatus ? serverTimestamp() : null,
-        updatedAt: serverTimestamp()
+      await createMessageRequest({
+        type: MESSAGE_REQUEST_TYPES.DELETE,
+        targetType: 'student',
+        targetId: student.id,
+        targetName: student.name || '',
+        targetPhone: student.phone || '',
+        targetClass: student.classes?.map(c => c.name).join(', ') || 'غير محدد',
+        requestedBy: user.id,
+        requestedByName: user.name || user.username || 'معلم',
+        payload: { serialNumber: student.serialNumber || '' }
       });
 
-      if (nextStatus) {
-        const notifyParent = await confirm(
-          'إخطار ولي الأمر بالتجميد',
-          `تم تجميد حساب الطالب "${student.name}".\n\nهل تريد إرسال إشعار تجميد لولي الأمر؟`
-        );
-        if (notifyParent) {
-          await createMessageRequest({
-            type: MESSAGE_REQUEST_TYPES.FREEZE,
-            targetType: 'student',
-            targetId: student.id,
-            targetName: student.name || '',
-            targetPhone: student.phone || '',
-            targetClass: student.classes?.map(c => c.name).join(', ') || 'غير محدد',
-            requestedBy: user.id,
-            requestedByName: user.name || user.username || 'معلم',
-            payload: {}
-          });
-          toast.success('⏳ تم تجميد الطالب وحفظ طلب إشعار ولي الأمر.');
-        } else {
-          toast.success('تم تجميد الطالب.');
-        }
-      } else {
-        toast.success('تم فك التجميد.');
-      }
+      toast.success('✅ تم إرسال طلب الحذف للمدير.');
     } catch (err) {
-      toast.error('فشل التحديث: ' + err.message);
+      toast.error('فشل: ' + err.message);
     }
   };
 
-  const openClassSelection = (s) => { setSelectedStudentForClass(s); setTempClassIds(s.classIds || []); setShowClassSelectionModal(true); };
-  const saveClassSelection = async () => {
-    if (!selectedStudentForClass) return;
+  // ✅ تبديل التجميد — فقط إنشاء طلب
+  const toggleFreezeStudent = async (student) => {
+    const nextStatus = !student.isFrozen;
+    const actionType = nextStatus ? 'تجميد' : 'فك تجميد';
+    const ok = await confirm(`طلب ${actionType}`, `سيُنشأ طلب ${actionType} للطالب "${student.name}" يرسل للمدير للموافقة. متابعة؟`);
+    if (!ok) return;
+
     try {
-      await updateDoc(doc(db, 'profiles', selectedStudentForClass.id), { classIds: tempClassIds, updatedAt: serverTimestamp() });
-      toast.success('تم تحديث الشعبة');
-      setShowClassSelectionModal(false);
-    } catch (err) { toast.error('فشل التحديث: ' + err.message); }
+      await createMessageRequest({
+        type: nextStatus ? MESSAGE_REQUEST_TYPES.FREEZE : MESSAGE_REQUEST_TYPES.UNFREEZE,
+        targetType: 'student',
+        targetId: student.id,
+        targetName: student.name || '',
+        targetPhone: student.phone || '',
+        targetClass: student.classes?.map(c => c.name).join(', ') || 'غير محدد',
+        requestedBy: user.id,
+        requestedByName: user.name || user.username || 'معلم',
+        payload: {
+          reason: nextStatus ? 'تجميد من المعلم' : '',
+          serialNumber: student.serialNumber || ''
+        }
+      });
+
+      toast.success(`✅ تم إرسال طلب ${actionType} للمدير.`);
+    } catch (err) {
+      toast.error('فشل: ' + err.message);
+    }
   };
 
   const openReviewModal = (s) => { setSelectedReviewStudent(s); setShowReviewModal(true); };
@@ -380,7 +301,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         payload: {}
       });
 
-      toast.success('✅ تم قبول التغييرات وحفظ طلب إشعار الموافقة.');
+      toast.success('✅ تم قبول التغييرات.');
       setShowReviewModal(false);
     } catch (err) { toast.error('فشل القبول: ' + err.message); }
   };
@@ -409,11 +330,11 @@ const TeacherPanel = ({ user, onLogout }) => {
         requestedBy: user.id,
         requestedByName: user.name || user.username || 'معلم',
         payload: {
-          reason: 'عدم مطابقة الوثائق الرسمية / الحاجة لتقديم إثبات رسمي آخر / عدم استيفاء الشروط المطلوبة'
+          reason: 'عدم مطابقة الوثائق الرسمية / الحاجة لتقديم إثبات رسمي آخر'
         }
       });
 
-      toast.success('✅ تم رفض التغييرات وحفظ طلب إشعار الرفض.');
+      toast.success('✅ تم رفض التغييرات.');
       setShowReviewModal(false);
     } catch (err) { toast.error('فشل الرفض: ' + err.message); }
   };
@@ -637,13 +558,17 @@ const TeacherPanel = ({ user, onLogout }) => {
             <p className="text-gray-400 text-sm mt-1">مرحباً: {user.name || user.username}</p>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={handleOpenNotifications} className="relative bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-full text-2xl transition shadow-lg" title={notificationsActive ? 'الإشعارات مفعلة' : 'تفعيل الإشعارات'}>
+            <button onClick={handleOpenNotifications} className="relative bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-full text-2xl transition shadow-lg">
               <FaBell />
               {unreadCount > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">{unreadCount}</span>}
               {notificationsActive && <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-400 rounded-full border-2 border-gray-900 animate-pulse" />}
             </button>
             <button onClick={onLogout} className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-full text-2xl transition shadow-lg"><FaSignOutAlt /></button>
           </div>
+        </div>
+
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-sm text-amber-200">
+          ℹ️ جميع الإجراءات (تجميد، حذف، إنذار، إعادة تعيين) تُرسل كطلبات للمدير للموافقة قبل التنفيذ.
         </div>
 
         {errorMsg && <p className="text-red-400 text-sm bg-red-500/10 p-3 rounded-xl border border-red-500/20">{errorMsg}</p>}
@@ -669,44 +594,26 @@ const TeacherPanel = ({ user, onLogout }) => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="flex flex-col gap-4">
-            <div className="flex-1 relative overflow-hidden bg-gradient-to-br from-indigo-900/60 via-purple-900/40 to-purple-900/20 p-4 rounded-2xl border border-purple-500/30 shadow-xl group hover:shadow-purple-500/20 hover:border-purple-400/50 transition-all duration-300">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-purple-500/20 transition" />
+            <div className="flex-1 relative overflow-hidden bg-gradient-to-br from-indigo-900/60 via-purple-900/40 to-purple-900/20 p-4 rounded-2xl border border-purple-500/30 shadow-xl group">
               <div className="relative z-10">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-purple-500/30">
-                      <FaUsers className="text-white text-lg" />
-                    </div>
-                    <div>
-                      <p className="text-xs text-purple-300 uppercase tracking-widest font-semibold">الإجمالي</p>
-                      <h3 className="text-sm font-bold text-purple-100">عدد الطلاب</h3>
-                    </div>
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center shadow-lg"><FaUsers className="text-white text-lg" /></div>
+                    <div><p className="text-xs text-purple-300 uppercase tracking-widest font-semibold">الإجمالي</p><h3 className="text-sm font-bold text-purple-100">عدد الطلاب</h3></div>
                   </div>
                   <div className="flex items-baseline gap-2">
                     <p className="text-4xl font-black bg-gradient-to-r from-white via-purple-100 to-purple-200 bg-clip-text text-transparent">{students.length}</p>
                     <span className="text-purple-300 text-sm font-medium">طالب</span>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 h-1.5 bg-purple-900/50 rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-purple-500 to-indigo-400 rounded-full transition-all" style={{ width: `${Math.min(students.length * 5, 100)}%` }} />
-                  </div>
-                  <span className="text-xs text-purple-400">نشط</span>
-                </div>
               </div>
             </div>
 
-            <div className="flex-1 relative overflow-hidden bg-gradient-to-br from-pink-900/60 via-fuchsia-900/40 to-fuchsia-900/20 p-4 rounded-2xl border border-pink-500/30 shadow-xl group hover:shadow-pink-500/20 hover:border-pink-400/50 transition-all duration-300 flex flex-col justify-center">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-pink-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-pink-500/20 transition" />
+            <div className="flex-1 relative overflow-hidden bg-gradient-to-br from-pink-900/60 via-fuchsia-900/40 to-fuchsia-900/20 p-4 rounded-2xl border border-pink-500/30 shadow-xl group">
               <div className="relative z-10 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-fuchsia-600 flex items-center justify-center shadow-lg shadow-pink-500/30">
-                    <FaClipboardList className="text-white text-lg" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-pink-300 uppercase tracking-widest font-semibold">الإجمالي</p>
-                    <h3 className="text-sm font-bold text-pink-100">الشعب الدراسية</h3>
-                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-fuchsia-600 flex items-center justify-center shadow-lg"><FaClipboardList className="text-white text-lg" /></div>
+                  <div><p className="text-xs text-pink-300 uppercase tracking-widest font-semibold">الإجمالي</p><h3 className="text-sm font-bold text-pink-100">الشعب الدراسية</h3></div>
                 </div>
                 <div className="flex items-baseline gap-2">
                   <p className="text-4xl font-black bg-gradient-to-r from-white via-pink-100 to-pink-200 bg-clip-text text-transparent">{classes.length}</p>
@@ -727,7 +634,7 @@ const TeacherPanel = ({ user, onLogout }) => {
             </div>
             <CountdownTimer targetDate={nextLesson ? nextLesson.date : null} />
             {nextLesson && (
-              <button onClick={() => toast.success(' تم إنشاء الحصة!')} className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl text-lg font-bold shadow-lg w-full mt-2">
+              <button onClick={() => toast.success('تم إنشاء الحصة!')} className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl text-lg font-bold shadow-lg w-full mt-2">
                 <FaVideo className="inline-block me-2" /> إنشاء غرفة للحصة
               </button>
             )}
@@ -764,7 +671,6 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* ✅ زر إدارة المواعيد المحدث */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700 space-y-4">
           <h3 className="text-xl font-semibold text-purple-200"><FaClock className="inline-block me-2" /> جدولة المواعيد</h3>
           <button onClick={() => setShowLessonModal(true)} className="btn-primary bg-gradient-to-r from-indigo-500 to-blue-600 py-3 px-6 rounded-md text-white font-bold shadow-lg hover:scale-105 transition-transform">
@@ -799,6 +705,7 @@ const TeacherPanel = ({ user, onLogout }) => {
                   <div key={s.id} className={`p-3 rounded-xl border flex flex-wrap justify-between items-center gap-3 ${s.isFrozen ? 'bg-gray-800/60 border-gray-700 opacity-80' : 'bg-gray-800/30 border-gray-700'}`}>
                     <div className="flex items-center gap-3 flex-wrap flex-1">
                       <span className="text-white text-sm font-medium">{s.name || s.username}</span>
+                      {s.serialNumber && <span className="text-xs text-cyan-300 font-mono" dir="ltr">#{s.serialNumber}</span>}
                       <span className="text-xs text-blue-300 bg-blue-950/40 px-2 py-0.5 rounded border border-blue-500/20">الشعب: {classNames}</span>
                       {s.isFrozen && <span className="text-xs text-orange-400 bg-orange-950/40 px-2 py-0.5 rounded">⏳ مجمد</span>}
                       <span className="text-xs text-yellow-300 bg-yellow-950/40 px-2 py-0.5 rounded border border-yellow-500/30">الإنذارات: {warningCount}/3</span>
@@ -807,7 +714,6 @@ const TeacherPanel = ({ user, onLogout }) => {
                       <button onClick={() => openWarningModal(s)} className="text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-2 py-1 rounded-lg">إنذار</button>
                       <button onClick={() => { setSelectedStudentForReport(s); setShowReportModal(true); }} className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg">بلاغ</button>
                       <button onClick={() => { setSelectedStudentForMessage(s); setShowGeneralMessageModal(true); }} className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-lg">رسالة</button>
-                      <button onClick={() => openClassSelection(s)} className="text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-1 rounded-lg">الشعبة</button>
                       <button onClick={() => handleResetStudent(s.id)} className="text-xs bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-1 rounded-lg">إعادة تعيين</button>
                       <button onClick={() => handleDeleteStudentPermanently(s)} className="text-xs bg-red-600/30 text-red-200 border border-red-500/40 px-2 py-1 rounded-lg">حذف</button>
                       <div className="flex items-center gap-2">
@@ -834,7 +740,7 @@ const TeacherPanel = ({ user, onLogout }) => {
             <div className="space-y-4">
               <textarea className="bg-gray-800 w-full h-24 text-right p-2 border border-gray-600 rounded-md text-white resize-none" placeholder="اكتب وصف المخالفة..." value={warningDescription} onChange={(e) => setWarningDescription(e.target.value)} />
               <div className="bg-yellow-500/10 p-3 rounded-xl border border-yellow-500/20 text-xs text-yellow-300">
-                سيتم حفظ طلب الإنذار وإرساله رسمياً إلى ولي الأمر بعد مراجعة واعتماد <strong>مدير النظام</strong>.
+                سيتم حفظ طلب الإنذار وإرساله رسمياً إلى ولي الأمر بعد مراجعة <strong>مدير النظام</strong>.
               </div>
               <div className="flex gap-3">
                 <button onClick={confirmWarning} className="btn-primary bg-yellow-600 hover:bg-yellow-700 px-6 py-2 rounded-md text-white">حفظ الطلب</button>
@@ -859,28 +765,6 @@ const TeacherPanel = ({ user, onLogout }) => {
                 <button onClick={handleSaveGeneralMessage} className="btn-primary bg-green-600 hover:bg-green-700 px-6 py-2 rounded-md text-white"><FaPaperPlane className="inline-block me-2" /> حفظ الطلب</button>
                 <button onClick={() => setShowGeneralMessageModal(false)} className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-md text-white">إلغاء</button>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showClassSelectionModal && selectedStudentForClass && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowClassSelectionModal(false)}>
-          <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-semibold text-blue-300 mb-4">تحديد شعبة الطالب</h3>
-            <p className="text-gray-300 text-sm mb-3">{selectedStudentForClass.name}</p>
-            {classes.map(cls => (
-              <label key={cls.id} className="flex items-center gap-2 text-gray-200 mb-2">
-                <input type="checkbox" checked={tempClassIds.includes(cls.id)} onChange={(e) => {
-                  if (e.target.checked) setTempClassIds([...tempClassIds, cls.id]);
-                  else setTempClassIds(tempClassIds.filter(id => id !== cls.id));
-                }} />
-                {cls.name}
-              </label>
-            ))}
-            <div className="flex gap-3 mt-4">
-              <button onClick={saveClassSelection} className="btn-primary bg-green-600 px-4 py-2 rounded-md text-white">حفظ</button>
-              <button onClick={() => setShowClassSelectionModal(false)} className="btn-primary bg-gray-600 px-4 py-2 rounded-md text-white">إلغاء</button>
             </div>
           </div>
         </div>
@@ -941,7 +825,6 @@ const TeacherPanel = ({ user, onLogout }) => {
 
       <AddAssignmentModal isOpen={showAssignmentModal} onClose={() => { setShowAssignmentModal(false); setSelectedAssignmentType(null); }} onSubmit={saveHomeworkFromModal} classesList={classes} initialMode={selectedAssignmentType || 'now'} />
       
-      {/* ✅ تم تمرير initialTimes هنا لفتح التعديل مباشرة */}
       <AddLessonModal isOpen={showLessonModal} onClose={() => setShowLessonModal(false)} onSubmit={saveLessonTimesFromModal} initialTimes={lessonTimes} classesList={classes} />
     </div>
   );

@@ -21,6 +21,9 @@ export const createClass = async ({ name, teacherId, gender }) => {
   return ref.id;
 };
 
+/**
+ * ✅ تحديث جنس الشعبة — مباشر (يُستخدم من قبل المدير فقط بعد الموافقة)
+ */
 export const updateClassGender = async (classId, gender) => {
   await updateDoc(doc(db, 'classes', classId), {
     gender,
@@ -68,7 +71,6 @@ export const getClassGenderLabel = (gender) => {
   return CLASS_GENDER_LABELS[gender] || 'مختلطة';
 };
 
-// ✅ اسم المعلم المعروض (للمعلمات: اسم الشهرة فقط)
 export const getTeacherDisplayName = (teacher) => {
   if (!teacher) return 'غير محدد';
   if (teacher.gender === 'أنثى') {
@@ -77,7 +79,6 @@ export const getTeacherDisplayName = (teacher) => {
   return teacher.name || teacher.username || 'معلم';
 };
 
-// ✅ فلترة الشعب حسب وضع رؤية المشرف
 export const filterClassesForSupervisor = (classes, supervisorGender, visibilityMode) => {
   if (visibilityMode === CLASS_VISIBILITY.ALL || !visibilityMode) return classes;
   if (!supervisorGender) return classes;
@@ -95,7 +96,6 @@ export const filterClassesForSupervisor = (classes, supervisorGender, visibility
   return classes;
 };
 
-// ✅ جنس الشعبة المسموح بإنشائه للمشرف حسب وضعه
 export const getAllowedClassGenders = (supervisorGender, visibilityMode) => {
   if (visibilityMode === CLASS_VISIBILITY.ALL || !visibilityMode) {
     return [CLASS_GENDER.MALE, CLASS_GENDER.FEMALE, CLASS_GENDER.MIXED];
@@ -107,4 +107,66 @@ export const getAllowedClassGenders = (supervisorGender, visibilityMode) => {
     return [CLASS_GENDER.FEMALE, CLASS_GENDER.MIXED];
   }
   return [CLASS_GENDER.MALE, CLASS_GENDER.FEMALE, CLASS_GENDER.MIXED];
+};
+
+/**
+ * ✅ كشف الطلاب المتضررين من تغيير جنس الشعبة
+ * يعيد قائمة الطلاب اللي ما يتوافقوا مع الجنس الجديد
+ */
+export const findAffectedStudents = async (classId, newGender) => {
+  const classDoc = await getDoc(doc(db, 'classes', classId));
+  if (!classDoc.exists()) throw new Error('الشعبة غير موجودة');
+  const classData = classDoc.data();
+
+  const studentsSnap = await getDocs(query(
+    collection(db, 'profiles'),
+    where('role', '==', 'student')
+  ));
+
+  const affected = [];
+  studentsSnap.docs.forEach(d => {
+    const data = d.data();
+    const classIds = data.classIds || [];
+    if (!classIds.includes(classId)) return;
+    const result = validateStudentEligibility(data, { ...classData, gender: newGender });
+    if (!result.ok) {
+      affected.push({ id: d.id, ...data, reason: result.reason });
+    }
+  });
+  return affected;
+};
+
+/**
+ * ✅ نقل طالب من شعبة إلى أخرى — مباشر (يستخدمه المدير بعد الموافقة)
+ */
+export const moveStudentToClass = async (studentId, fromClassId, toClassId) => {
+  const studentRef = doc(db, 'profiles', studentId);
+  const snap = await getDoc(studentRef);
+  if (!snap.exists()) throw new Error('الطالب غير موجود');
+  const data = snap.data();
+  const currentClassIds = data.classIds || [];
+  const newClassIds = currentClassIds
+    .filter(id => id !== fromClassId);
+  if (!newClassIds.includes(toClassId)) {
+    newClassIds.push(toClassId);
+  }
+  await updateDoc(studentRef, {
+    classIds: newClassIds,
+    updatedAt: serverTimestamp()
+  });
+};
+
+/**
+ * ✅ البحث عن الشعب المتوافقة مع طالب (لنقله)
+ */
+export const getEligibleClassesForStudent = async (student, excludeClassId = null) => {
+  const snap = await getDocs(collection(db, 'classes'));
+  const eligible = [];
+  snap.docs.forEach(d => {
+    if (d.id === excludeClassId) return;
+    const classData = { id: d.id, ...d.data() };
+    const result = validateStudentEligibility(student, classData);
+    if (result.ok) eligible.push(classData);
+  });
+  return eligible;
 };

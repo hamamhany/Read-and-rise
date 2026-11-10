@@ -16,13 +16,15 @@ const generateUniqueUsername = async () => {
   throw new Error('تعذر إيجاد اسم مستخدم فريد');
 };
 
+/**
+ * ✅ إنشاء حساب معلم — بدون بلد (البلد يختاره المعلم عند إكمال حسابه)
+ */
 export const createTeacherAccount = async ({
   name,
   nickname,
   gender,
   age,
   phone,
-  country,
   createdBy
 }) => {
   if (!gender) throw new Error('الجنس مطلوب');
@@ -56,7 +58,7 @@ export const createTeacherAccount = async ({
     gender,
     age: parseInt(age),
     phone,
-    country: country || '',
+    country: '', // ✅ يختاره المعلم عند إكمال الحساب
     role: 'teacher',
     isProfileComplete: false,
     infoVerified: false,

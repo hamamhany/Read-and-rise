@@ -7,9 +7,8 @@ import {
 import { db } from '../../firebase';
 import {
   collection, query, where, orderBy, limit, startAfter,
-  getDocs, getCountFromServer, doc, updateDoc, serverTimestamp
+  getDocs, getCountFromServer
 } from 'firebase/firestore';
-import { deleteUserCompletely } from '../../services/accountDeletion';
 import { createMessageRequest } from '../../services/messageRequests';
 import { MESSAGE_REQUEST_TYPES } from '../../constants';
 import { fetchClassNames } from '../../utils/helpers';
@@ -150,44 +149,30 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
     loadPage(0);
   };
 
-  // ✅ فك التجميد + إنشاء طلب إشعار عند المدير (بدل فتح واتساب مباشرة)
+  // ✅ فك تجميد — إنشاء طلب فقط
   const handleUnfreeze = async (s) => {
+    const ok = await confirm(
+      'طلب فك تجميد',
+      `سيُنشأ طلب فك تجميد للطالب "${s.name}" يُرسل للمدير للموافقة. متابعة؟`
+    );
+    if (!ok) return;
+
     try {
-      await updateDoc(doc(db, 'profiles', s.id), {
-        isFrozen: false,
-        frozenAt: null,
-        updatedAt: serverTimestamp()
+      const classMap = s.classIds?.length ? await fetchClassNames(s.classIds) : {};
+      const classNames = (s.classIds || []).map(id => classMap[id]).filter(Boolean).join(', ');
+
+      await createMessageRequest({
+        type: MESSAGE_REQUEST_TYPES.UNFREEZE,
+        targetType: 'student',
+        targetId: s.id,
+        targetName: s.name || '',
+        targetPhone: s.phone || '',
+        targetClass: classNames || 'غير محدد',
+        requestedBy: user?.id || 'system_manager',
+        requestedByName: user?.name || user?.username || 'مدير النظام',
+        payload: { serialNumber: s.serialNumber || '' }
       });
-      setList(prev => prev.map(x => x.id === s.id ? { ...x, isFrozen: false } : x));
-
-      // ✅ إنشاء طلب إشعار فك تجميد يظهر عند المدير
-      try {
-        const classMap = s.classIds?.length
-          ? await fetchClassNames(s.classIds)
-          : {};
-        const classNames = (s.classIds || [])
-          .map(id => classMap[id])
-          .filter(Boolean)
-          .join(', ');
-
-        await createMessageRequest({
-          type: MESSAGE_REQUEST_TYPES.UNFREEZE,
-          targetType: 'student',
-          targetId: s.id,
-          targetName: s.name || '',
-          targetPhone: s.phone || '',
-          targetClass: classNames || 'غير محدد',
-          requestedBy: user?.id || 'system_manager',
-          requestedByName: user?.name || user?.username || 'مدير النظام',
-          payload: {
-            serialNumber: s.serialNumber || ''
-          }
-        });
-        toast.success('✅ تم فك التجميد وحفظ إشعار فك التجميد في "طلبات الرسائل".');
-      } catch (e) {
-        console.warn('createMessageRequest failed:', e);
-        toast.success('تم فك التجميد. (تعذّر إنشاء إشعار فك التجميد)');
-      }
+      toast.success('✅ تم إرسال طلب فك التجميد للمدير');
     } catch (e) {
       toast.error('فشل: ' + e.message);
     }
@@ -199,6 +184,7 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
     setShowFreezeReasonModal(true);
   };
 
+  // ✅ تجميد — إنشاء طلب فقط
   const confirmFreeze = async () => {
     if (!freezeTarget) return;
     if (!freezeReason.trim()) {
@@ -207,42 +193,25 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
     }
     setSubmittingFreeze(true);
     try {
-      await updateDoc(doc(db, 'profiles', freezeTarget.id), {
-        isFrozen: true,
-        frozenAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
+      const classMap = freezeTarget.classIds?.length ? await fetchClassNames(freezeTarget.classIds) : {};
+      const classNames = (freezeTarget.classIds || []).map(id => classMap[id]).filter(Boolean).join(', ');
+
+      await createMessageRequest({
+        type: MESSAGE_REQUEST_TYPES.FREEZE,
+        targetType: 'student',
+        targetId: freezeTarget.id,
+        targetName: freezeTarget.name || '',
+        targetPhone: freezeTarget.phone || '',
+        targetClass: classNames || 'غير محدد',
+        requestedBy: user?.id || 'system_manager',
+        requestedByName: user?.name || user?.username || 'مدير النظام',
+        payload: {
+          reason: freezeReason.trim(),
+          serialNumber: freezeTarget.serialNumber || ''
+        }
       });
-      setList(prev => prev.map(x => x.id === freezeTarget.id ? { ...x, isFrozen: true } : x));
 
-      try {
-        const classMap = freezeTarget.classIds?.length
-          ? await fetchClassNames(freezeTarget.classIds)
-          : {};
-        const classNames = (freezeTarget.classIds || [])
-          .map(id => classMap[id])
-          .filter(Boolean)
-          .join(', ');
-
-        await createMessageRequest({
-          type: MESSAGE_REQUEST_TYPES.FREEZE,
-          targetType: 'student',
-          targetId: freezeTarget.id,
-          targetName: freezeTarget.name || '',
-          targetPhone: freezeTarget.phone || '',
-          targetClass: classNames || 'غير محدد',
-          requestedBy: user?.id || 'system_manager',
-          requestedByName: user?.name || user?.username || 'مدير النظام',
-          payload: {
-            reason: freezeReason.trim(),
-            serialNumber: freezeTarget.serialNumber || ''
-          }
-        });
-        toast.success('✅ تم تجميد الطالب وحفظ طلب الإشعار في "طلبات التواصل".');
-      } catch (e) {
-        console.warn('createMessageRequest failed:', e);
-        toast.success('تم تجميد الطالب. (تعذّر إنشاء طلب الإشعار)');
-      }
-
+      toast.success('✅ تم إرسال طلب التجميد للمدير');
       setShowFreezeReasonModal(false);
       setFreezeTarget(null);
       setFreezeReason('');
@@ -253,18 +222,34 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
     }
   };
 
+  // ✅ حذف — إنشاء طلب فقط
   const handleDelete = async (s) => {
-    const ok = await confirm('حذف الطالب', `حذف الطالب "${s.name}" نهائياً من Auth + Firestore؟`);
+    const ok = await confirm(
+      'طلب حذف الطالب',
+      `سيُنشأ طلب حذف للطالب "${s.name}" يُرسل للمدير للموافقة. متابعة؟`
+    );
     if (!ok) return;
+
     try {
-      const tid = toast.loading('جاري الحذف...');
-      await deleteUserCompletely(s.id);
-      toast.success('✅ تم الحذف نهائياً', { id: tid });
-      const newList = list.filter(x => x.id !== s.id);
-      setList(newList);
-      const newCount = Math.max(0, count - 1);
-      setCount(newCount);
-      onCountChange?.(newCount);
+      const classMap = s.classIds?.length ? await fetchClassNames(s.classIds) : {};
+      const classNames = (s.classIds || []).map(id => classMap[id]).filter(Boolean).join(', ');
+
+      await createMessageRequest({
+        type: MESSAGE_REQUEST_TYPES.DELETE,
+        targetType: 'student',
+        targetId: s.id,
+        targetName: s.name || '',
+        targetPhone: s.phone || '',
+        targetClass: classNames || 'غير محدد',
+        requestedBy: user?.id || 'system_manager',
+        requestedByName: user?.name || user?.username || 'مدير النظام',
+        payload: {
+          reason: 'حذف بموافقة المدير',
+          serialNumber: s.serialNumber || ''
+        }
+      });
+
+      toast.success('✅ تم إرسال طلب الحذف للمدير');
     } catch (e) {
       toast.error('فشل: ' + e.message);
     }
@@ -286,6 +271,12 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
             </div>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl"><FaTimes /></button>
+        </div>
+
+        <div className="px-5 pt-3 pb-1">
+          <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-2 text-xs text-amber-200">
+            ℹ️ جميع الإجراءات (تجميد، فك تجميد، حذف) تُرسل كطلبات للمدير للموافقة.
+          </div>
         </div>
 
         <div className="p-5 border-b border-gray-700">
@@ -333,21 +324,21 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
                         onClick={() => handleUnfreeze(s)}
                         className="inline-flex items-center gap-1 whitespace-nowrap text-xs px-3 py-1.5 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-300"
                       >
-                        <FaFire /> فك التجميد
+                        <FaFire /> طلب فك تجميد
                       </button>
                     ) : (
                       <button
                         onClick={() => handleFreezeClick(s)}
                         className="inline-flex items-center gap-1 whitespace-nowrap text-xs px-3 py-1.5 rounded-lg bg-orange-500/20 hover:bg-orange-500/30 text-orange-300"
                       >
-                        <FaSnowflake /> تجميد
+                        <FaSnowflake /> طلب تجميد
                       </button>
                     )}
                     <button
                       onClick={() => handleDelete(s)}
                       className="inline-flex items-center gap-1 whitespace-nowrap text-xs bg-red-500/20 hover:bg-red-500/30 text-red-300 px-3 py-1.5 rounded-lg"
                     >
-                      <FaTrashAlt /> حذف
+                      <FaTrashAlt /> طلب حذف
                     </button>
                   </div>
                 </div>
@@ -386,7 +377,7 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
             className="bg-gray-900 p-6 rounded-2xl max-w-md w-full border border-orange-500/30"
             onClick={e => e.stopPropagation()}
           >
-            <h3 className="text-lg font-bold text-orange-300 mb-2">❄️ تجميد حساب الطالب</h3>
+            <h3 className="text-lg font-bold text-orange-300 mb-2">❄️ طلب تجميد الطالب</h3>
             <p className="text-sm text-gray-300 mb-3">
               الطالب: <strong>{freezeTarget.name}</strong>
             </p>
@@ -403,7 +394,7 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
               autoFocus
             />
             <p className="text-xs text-amber-300 mb-3">
-              ⚠️ سيُحفظ السبب في طلب الإشعار ليُرسل لولي الأمر عبر واتساب.
+              ⚠️ سيُرسل الطلب للمدير. عند "تم الإرسال" يُجمّد الطالب.
             </p>
 
             <div className="flex gap-2">
@@ -419,7 +410,7 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
                 disabled={submittingFreeze || !freezeReason.trim()}
                 className="flex-1 bg-orange-600 hover:bg-orange-700 text-white py-2 rounded-lg text-sm font-bold disabled:opacity-50"
               >
-                {submittingFreeze ? 'جاري التجميد...' : 'تأكيد التجميد'}
+                {submittingFreeze ? 'جاري الإرسال...' : 'إرسال الطلب'}
               </button>
             </div>
           </div>

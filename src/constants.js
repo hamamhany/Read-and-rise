@@ -19,6 +19,10 @@ export const ABSENCE_FREEZE_THRESHOLD = 13;
 export const ABSENCE_DELETE_DAYS = 7;
 export const BLACKLIST_DURATION_DAYS = 180;
 
+// ✅ تنبيه وحذف الحسابات غير المفعّلة
+export const UNACTIVATED_ACCOUNT_REMINDER_DAYS = 21;   // بعد 3 أسابيع → تنبيه
+export const UNACTIVATED_ACCOUNT_DELETE_DAYS = 7;      // بعد أسبوع من التنبيه → حذف
+
 export const MESSAGE_REQUEST_STATUS = {
   PENDING: 'pending',
   APPROVED: 'approved',
@@ -31,7 +35,7 @@ export const MESSAGE_REQUEST_TYPES = {
   GENERAL: 'general',
   REPORT: 'report',
   FREEZE: 'freeze',
-  UNFREEZE: 'unfreeze',   // ✅ جديد
+  UNFREEZE: 'unfreeze',
   DELETE: 'delete',
   RESET_PASSWORD: 'reset_password',
   ACTIVATION: 'activation',
@@ -43,7 +47,14 @@ export const MESSAGE_REQUEST_TYPES = {
   PASSWORD_RESET_APPROVAL: 'password_reset_approval',
   PASSWORD_RESET_REJECTION: 'password_reset_rejection',
   SUPPORT_APOLOGY: 'support_apology',
-  SUPPORT_REJECTION: 'support_rejection'
+  SUPPORT_REJECTION: 'support_rejection',
+  // ✅ جديدة
+  CLASS_GENDER_CHANGE: 'class_gender_change',
+  CLASS_DELETE: 'class_delete',
+  STUDENT_CLASS_TRANSFER: 'student_class_transfer',
+  ANNOUNCEMENT_PUBLISH: 'announcement_publish',
+  UNACTIVATED_ACCOUNT_REMINDER: 'unactivated_account_reminder',
+  UNACTIVATED_ACCOUNT_DELETED: 'unactivated_account_deleted'
 };
 
 export const MESSAGE_REQUEST_TYPE_LABELS = {
@@ -52,7 +63,7 @@ export const MESSAGE_REQUEST_TYPE_LABELS = {
   general: 'رسالة عامة',
   report: 'بلاغ',
   freeze: 'إشعار تجميد',
-  unfreeze: 'إشعار فك تجميد',   // ✅ جديد
+  unfreeze: 'إشعار فك تجميد',
   delete: 'إشعار حذف',
   reset_password: 'إعادة تعيين كلمة مرور',
   activation: 'تفعيل حساب',
@@ -64,7 +75,13 @@ export const MESSAGE_REQUEST_TYPE_LABELS = {
   password_reset_approval: 'موافقة على إعادة تعيين بيانات الدخول',
   password_reset_rejection: 'رفض طلب إعادة تعيين بيانات الدخول',
   support_apology: 'اعتذار رسمي — تقييم دعم',
-  support_rejection: 'رفض شكوى — تقييم دعم'
+  support_rejection: 'رفض شكوى — تقييم دعم',
+  class_gender_change: 'تغيير جنس شعبة',
+  class_delete: 'حذف شعبة',
+  student_class_transfer: 'نقل طالب لشعبة أخرى',
+  announcement_publish: 'نشر إشعار عام',
+  unactivated_account_reminder: 'تنبيه عدم تفعيل الحساب',
+  unactivated_account_deleted: 'حذف حساب غير مفعّل'
 };
 
 export const REPORT_STATUS = { PENDING: 'pending', RESOLVED: 'resolved' };
@@ -137,6 +154,7 @@ export const SUPPORT_REPORT_REASONS = [
   { value: 'inappropriate',    label: 'سلوك غير لائق أو مسيء' },
   { value: 'other',            label: 'أخرى' }
 ];
+
 // ✅ إدارة الشعب - جنس الشعبة
 export const CLASS_GENDER = {
   MALE: 'male',

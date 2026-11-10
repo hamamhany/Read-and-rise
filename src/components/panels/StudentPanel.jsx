@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import { 
   FaUser, FaBell, FaSignOutAlt, FaPen, FaUsers, FaVideo, FaEdit, 
   FaUpload, FaClock, FaCheckCircle, FaTimesCircle, FaEnvelope, 
-  FaComment
+  FaComment, FaIdCard
 } from 'react-icons/fa';
 import { db, messaging } from '../../firebase';
 import { auth } from '../../services/firebaseAuth';
@@ -51,17 +51,12 @@ const StudentPanel = ({ user, onLogout }) => {
 
   const [classStudentCount, setClassStudentCount] = useState({});
 
-  // ✅ حالة تسجيل الحضور
   const [isRecordingAttendance, setIsRecordingAttendance] = useState(false);
   const absenceProcessedRef = useRef(false);
 
   const requestNotificationPermission = async () => {
     try {
-      if (!('Notification' in window)) {
-        console.warn('Notification API not supported');
-        return false;
-      }
-
+      if (!('Notification' in window)) return false;
       if ('serviceWorker' in navigator) {
         try {
           await Promise.race([
@@ -70,49 +65,26 @@ const StudentPanel = ({ user, onLogout }) => {
           ]);
         } catch (e) { console.warn('SW register skipped:', e.message); }
       }
-
       let permission = Notification.permission;
-      if (permission === 'denied') {
-        toast.error('الإشعارات محظورة من إعدادات المتصفح');
-        return false;
-      }
-      if (permission === 'default') {
-        permission = await Notification.requestPermission();
-      }
-      if (permission !== 'granted') {
-        return false;
-      }
-
+      if (permission === 'denied') { toast.error('الإشعارات محظورة من إعدادات المتصفح'); return false; }
+      if (permission === 'default') { permission = await Notification.requestPermission(); }
+      if (permission !== 'granted') return false;
       if (!messaging) return true;
       const vapidKey = import.meta.env.VITE_VAPID_KEY;
-      if (!vapidKey) {
-        console.warn('VAPID key missing');
-        return true;
-      }
-
+      if (!vapidKey) return true;
       let token = null;
       try {
         token = await Promise.race([
           getToken(messaging, { vapidKey }),
           new Promise((_, rej) => setTimeout(() => rej(new Error('getToken timeout')), 10000))
         ]);
-      } catch (e) {
-        console.warn('FCM token fetch failed:', e.message);
-        return true;
-      }
-
+      } catch (e) { return true; }
       if (token) {
-        try {
-          await updateDoc(doc(db, 'profiles', user.id), {
-            fcmTokens: arrayUnion(token)
-          });
-        } catch (e) { console.warn('Save token failed:', e.message); }
+        try { await updateDoc(doc(db, 'profiles', user.id), { fcmTokens: arrayUnion(token) }); }
+        catch (e) { console.warn('Save token failed:', e.message); }
       }
       return true;
-    } catch (err) {
-      console.error('Notification error:', err);
-      return false;
-    }
+    } catch (err) { console.error('Notification error:', err); return false; }
   };
 
   useEffect(() => {
@@ -127,9 +99,7 @@ const StudentPanel = ({ user, onLogout }) => {
         ), { duration: 5000 });
       });
       return () => unsub();
-    } catch (err) {
-      console.warn('onMessage setup failed:', err);
-    }
+    } catch (err) { console.warn('onMessage setup failed:', err); }
   }, []);
 
   useEffect(() => {
@@ -153,6 +123,7 @@ const StudentPanel = ({ user, onLogout }) => {
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const now = new Date();
       const filtered = list.filter(item => {
+        if (item.status === 'pending_approval' || item.status === 'rejected') return false;
         if (item.status === 'scheduled') {
           if (!item.scheduledFor) return false;
           const scheduled = new Date(item.scheduledFor.seconds * 1000);
@@ -185,9 +156,7 @@ const StudentPanel = ({ user, onLogout }) => {
         });
         await batch.commit();
       }
-    } catch (err) {
-      console.warn('فشل حذف الإشعارات:', err);
-    }
+    } catch (err) { console.warn('فشل حذف الإشعارات:', err); }
     setNotificationIdsAtOpen([]);
   };
 
@@ -299,11 +268,7 @@ const StudentPanel = ({ user, onLogout }) => {
       setUnreadCount(list.filter(n => !n.read).length);
     });
 
-    return () => {
-      unsubscribeTeacher();
-      unsubscribeProfile();
-      unsubscribeNotif();
-    };
+    return () => { unsubscribeTeacher(); unsubscribeProfile(); unsubscribeNotif(); };
   }, [user.id]);
 
   useEffect(() => {
@@ -317,7 +282,6 @@ const StudentPanel = ({ user, onLogout }) => {
     return () => clearInterval(interval);
   }, [teacherData?.homeworks]);
 
-  // ✅ معالجة الغياب عند توفر بيانات المعلم والملف الشخصي
   useEffect(() => {
     if (absenceProcessedRef.current) return;
     if (!teacherData?.lessonTimes || !profile) return;
@@ -369,9 +333,7 @@ const StudentPanel = ({ user, onLogout }) => {
       if (lt.type === 'once') {
         const date = new Date(lt.date);
         if (!isNaN(date.getTime()) && date > now) {
-          if (!nearest || date < new Date(nearest.date)) {
-            nearest = { ...lt, date: date.toISOString() };
-          }
+          if (!nearest || date < new Date(nearest.date)) nearest = { ...lt, date: date.toISOString() };
         }
       } else if (lt.type === 'recurring') {
         const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -388,9 +350,7 @@ const StudentPanel = ({ user, onLogout }) => {
         const nextDate = new Date(now);
         nextDate.setDate(now.getDate() + diff);
         nextDate.setHours(lt.time.hours, lt.time.minutes, 0, 0);
-        if (!nearest || nextDate < new Date(nearest.date)) {
-          nearest = { ...lt, date: nextDate.toISOString() };
-        }
+        if (!nearest || nextDate < new Date(nearest.date)) nearest = { ...lt, date: nextDate.toISOString() };
       } else if (lt.type === 'monthly') {
         const monthDay = parseInt(lt.monthDay);
         if (!monthDay) continue;
@@ -400,9 +360,7 @@ const StudentPanel = ({ user, onLogout }) => {
           nextDate = new Date(now.getFullYear(), now.getMonth() + 1, monthDay);
           nextDate.setHours(lt.time.hours, lt.time.minutes, 0, 0);
         }
-        if (!nearest || nextDate < new Date(nearest.date)) {
-          nearest = { ...lt, date: nextDate.toISOString() };
-        }
+        if (!nearest || nextDate < new Date(nearest.date)) nearest = { ...lt, date: nextDate.toISOString() };
       }
     }
     return nearest;
@@ -410,7 +368,6 @@ const StudentPanel = ({ user, onLogout }) => {
 
   const nextLesson = getNextLessonTime();
 
-  // ✅ تسجيل الحضور عند الضغط على زر الانضمام
   const handleJoinLesson = async () => {
     setIsRecordingAttendance(true);
     try {
@@ -524,6 +481,24 @@ const StudentPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
+        {/* ✅ عرض الرقم التسلسلي + البلد + العمر */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="bg-gradient-to-br from-cyan-900/40 to-blue-900/20 p-4 rounded-2xl border border-cyan-500/30 text-center">
+            <p className="text-xs text-cyan-300 uppercase tracking-widest font-semibold mb-1">الرقم التسلسلي</p>
+            <p className="text-2xl font-bold text-cyan-100 font-mono tracking-widest" dir="ltr">
+              {profile?.serialNumber || '—'}
+            </p>
+          </div>
+          <div className="bg-gradient-to-br from-emerald-900/40 to-green-900/20 p-4 rounded-2xl border border-emerald-500/30 text-center">
+            <p className="text-xs text-emerald-300 uppercase tracking-widest font-semibold mb-1">العمر</p>
+            <p className="text-2xl font-bold text-emerald-100">{profile?.age || '—'} <span className="text-xs">سنة</span></p>
+          </div>
+          <div className="bg-gradient-to-br from-amber-900/40 to-orange-900/20 p-4 rounded-2xl border border-amber-500/30 text-center">
+            <p className="text-xs text-amber-300 uppercase tracking-widest font-semibold mb-1">البلد</p>
+            <p className="text-2xl font-bold text-amber-100">{profile?.country || '—'}</p>
+          </div>
+        </div>
+
         {errorMsg && <p className="text-red-400 text-sm bg-red-500/10 p-3 rounded-xl border border-red-500/20">{errorMsg}</p>}
 
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-green-500/20">
@@ -566,7 +541,6 @@ const StudentPanel = ({ user, onLogout }) => {
               {isRecordingAttendance ? 'جاري تسجيل الحضور...' : '🎯 انضم إلى غرفة الصف الآن (تسجيل حضور)'}
             </button>
 
-            {/* ✅ عرض حالة الغياب */}
             {profile?.consecutiveAbsences > 0 && (
               <div className={`mt-3 p-3 rounded-xl border text-sm text-center w-full ${
                 profile.consecutiveAbsences >= 13
@@ -605,6 +579,21 @@ const StudentPanel = ({ user, onLogout }) => {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowProfileModal(false)}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-blue-500/30" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-xl font-semibold text-blue-300 mb-4"><FaUser className="inline-block me-2" /> معلوماتي الشخصية</h3>
+
+            {/* ✅ عرض الرقم التسلسلي (غير قابل للتعديل) */}
+            <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-xl p-3 mb-4 text-center">
+              <p className="text-xs text-cyan-300 mb-1"><FaIdCard className="inline me-1" /> الرقم التسلسلي (ثابت)</p>
+              <p className="text-lg font-bold text-cyan-100 font-mono tracking-widest" dir="ltr">
+                {profile?.serialNumber || '—'}
+              </p>
+            </div>
+
+            {/* ✅ البلد (غير قابل للتعديل) */}
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 mb-4 text-center">
+              <p className="text-xs text-amber-300 mb-1">البلد (ثابت — لا يمكن تغييره)</p>
+              <p className="text-lg font-bold text-amber-100">{profile?.country || '—'}</p>
+            </div>
+
             <div className="space-y-4">
               {['name', 'gender', 'age', 'phone'].map(field => {
                 const labels = { name: 'الاسم الكامل', gender: 'الجنس', age: 'العمر', phone: 'رقم الهاتف' };

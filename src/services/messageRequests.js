@@ -11,7 +11,6 @@ import {
 
 /**
  * إنشاء طلب رسالة جديد (يُحفظ بحالة pending)
- * ⚠️ لا يُرسل أي إشعار لمدير النظام — الطلب يظهر مباشرة في لوحته
  */
 export const createMessageRequest = async (data) => {
   try {
@@ -54,6 +53,23 @@ export const updateMessageRequestStatus = async (
 };
 
 /**
+ * ✅ إعادة طلب مرفوض إلى قائمة الانتظار (pending)
+ */
+export const resendRejectedRequest = async (id) => {
+  try {
+    await updateDoc(doc(db, MESSAGE_REQUESTS_COLLECTION, id), {
+      status: MESSAGE_REQUEST_STATUS.PENDING,
+      processedAt: null,
+      processedBy: null,
+      rejectionReason: null
+    });
+  } catch (err) {
+    console.error('خطأ في إعادة الطلب:', err);
+    throw err;
+  }
+};
+
+/**
  * حذف طلب واحد
  */
 export const deleteMessageRequest = async (id) => {
@@ -67,8 +83,6 @@ export const deleteMessageRequest = async (id) => {
 
 /**
  * حذف الطلبات المعتمدة التي مضى عليها أكثر من 48 ساعة
- * (يتم استدعاؤها دورياً من لوحة مدير النظام)
- * @returns {Promise<number>} عدد الطلبات المحذوفة
  */
 export const cleanupOldApprovedRequests = async () => {
   try {
