@@ -6,10 +6,12 @@ import {
   collection, query, where, orderBy, limit, startAfter,
   getDocs, doc, deleteDoc, getCountFromServer
 } from 'firebase/firestore';
+import { useConfirm } from '../common/ConfirmContext';
 
 const PAGE_SIZE = 20;
 
 const BlacklistSection = () => {
+  const confirm = useConfirm();
   const [list, setList] = useState([]);
   const [count, setCount] = useState(0);
   const [hasLoaded, setHasLoaded] = useState(false);
@@ -92,7 +94,8 @@ const BlacklistSection = () => {
   };
 
   const handleRemove = async (id, phone) => {
-    if (!window.confirm(`إزالة الرقم ${phone} من القائمة السوداء؟`)) return;
+    const ok = await confirm('إزالة من القائمة السوداء', `إزالة الرقم ${phone} من القائمة السوداء؟`);
+    if (!ok) return;
     try {
       await deleteDoc(doc(db, 'blacklist', id));
       setList(prev => prev.filter(i => i.id !== id));

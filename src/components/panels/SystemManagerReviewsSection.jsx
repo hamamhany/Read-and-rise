@@ -7,8 +7,10 @@ import { subscribeReviewRequests } from '../../services/reviewRequests';
 import { deleteUserCompletely } from '../../services/accountDeletion';
 import { sendPermanentBanMessage } from '../../utils/whatsapp';
 import { REVIEW_REQUEST_STATUS } from '../../constants';
+import { useConfirm } from '../common/ConfirmContext';
 
 const SystemManagerReviewsSection = ({ user }) => {
+  const confirm = useConfirm();
   const [reviews, setReviews] = useState([]);
   const [selected, setSelected] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -29,7 +31,8 @@ const SystemManagerReviewsSection = ({ user }) => {
 
   const handleApprove = async () => {
     if (!selected) return;
-    if (!window.confirm('⚠️ هذا سيؤدي إلى حظر الطالب ورقمه نهائياً. متأكد؟')) return;
+    const ok = await confirm('حظر الطالب نهائياً', 'هذا سيؤدي إلى حظر الطالب ورقمه نهائياً. متأكد؟');
+    if (!ok) return;
     setProcessing(true);
     try {
       const studentObj = {
@@ -56,7 +59,8 @@ const SystemManagerReviewsSection = ({ user }) => {
 
   const handleReject = async () => {
     if (!selected) return;
-    if (!window.confirm('رفض هذا القرار وإلغاء حظر الطالب؟')) return;
+    const ok = await confirm('رفض القرار', 'رفض هذا القرار وإلغاء حظر الطالب؟');
+    if (!ok) return;
     setProcessing(true);
     try {
       await deleteDoc(doc(db, 'reviewRequests', selected.id));
@@ -73,7 +77,6 @@ const SystemManagerReviewsSection = ({ user }) => {
         <FaClipboardList /> قرارات تحتاج تدخلك ({reviews.length})
       </h3>
 
-      {/* ✅ الحالة الفارغة — يظهر دائماً */}
       {reviews.length === 0 ? (
         <div className="bg-black/20 p-4 rounded-xl border border-gray-700 text-center">
           <p className="text-green-300 text-sm">✅ لا توجد قرارات معلّقة تحتاج تدخلك حالياً.</p>

@@ -12,10 +12,12 @@ import { createAccountClosureRequest } from '../../services/reviewRequests';
 import { issueWarning } from '../../services/warnings';
 import { getActiveWarnings } from '../../utils/helpers';
 import { sendNotificationToTeacher } from '../../utils/notifications';
+import { useConfirm } from '../common/ConfirmContext';
 
 const CLAIM_DURATION_MS = 10 * 60 * 1000;
 
 const ReportsReviewSection = ({ user }) => {
+  const confirm = useConfirm();
   const [reports, setReports] = useState([]);
   const [selected, setSelected] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -24,7 +26,7 @@ const ReportsReviewSection = ({ user }) => {
   const [closureReason, setClosureReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [hasEverLoaded, setHasEverLoaded] = useState(false); // ✅ حالة الإخفاء
+  const [hasEverLoaded, setHasEverLoaded] = useState(false);
 
   useEffect(() => {
     const q = query(
@@ -83,7 +85,7 @@ const ReportsReviewSection = ({ user }) => {
         } catch (e) { /* skip */ }
       }
 
-      setHasEverLoaded(true); // ✅ تم التحميل
+      setHasEverLoaded(true);
       if (claimedCount === 0) {
         toast('لا توجد بلاغات جديدة متاحة حالياً — قد يكون حجزها مشرف آخر.', { icon: 'ℹ️' });
       } else {
@@ -182,7 +184,8 @@ const ReportsReviewSection = ({ user }) => {
 
   const handleClosure = async () => {
     if (!closureReason.trim()) return toast.error('يرجى كتابة سبب الإغلاق بالعربية الفصحى');
-    if (!window.confirm('⚠️ هذا الطلب سيُحوّل إلى 4 مشرفين للتصويت. هل تريد المتابعة؟')) return;
+    const ok = await confirm('تحويل للتصويت', 'هذا الطلب سيُحوّل إلى 4 مشرفين للتصويت. هل تريد المتابعة؟');
+    if (!ok) return;
     setIsSubmitting(true);
     try {
       await createAccountClosureRequest({
@@ -202,7 +205,8 @@ const ReportsReviewSection = ({ user }) => {
   };
 
   const handleIgnore = async () => {
-    if (!window.confirm('تجاهل هذا البلاغ وإغلاقه؟')) return;
+    const ok = await confirm('تجاهل البلاغ', 'تجاهل هذا البلاغ وإغلاقه؟');
+    if (!ok) return;
     setIsSubmitting(true);
     try {
       await resolveReport('تم تجاهل البلاغ من قبل المشرف');
@@ -219,10 +223,8 @@ const ReportsReviewSection = ({ user }) => {
     ? getActiveWarnings(selected.targetActiveWarnings || [])
     : [];
 
-  // ✅ إخفاء القسم بالكامل إذا تم التحميل ولم توجد بلاغات
   if (hasEverLoaded && reports.length === 0) return null;
 
-  // ✅ عرض زر التحميل في البداية فقط
   if (!hasEverLoaded && reports.length === 0) {
     return (
       <div className="bg-gray-800/60 p-6 rounded-2xl border border-red-500/20 text-center">

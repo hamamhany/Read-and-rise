@@ -35,6 +35,7 @@ import SupervisorsManagerModal from './SupervisorsManagerModal';
 import StudentsManagerModal from './StudentsManagerModal';
 import BlacklistModal from './BlacklistModal';
 import CountUp from '../common/CountUp';
+import { useConfirm, usePrompt } from '../common/ConfirmContext';
 
 const computeNextGlobalLesson = (allTimes) => {
   const now = new Date();
@@ -103,6 +104,9 @@ const computeActiveLectures = (allTimes) => {
 };
 
 const SystemManagerPanel = ({ user, onLogout }) => {
+  const confirm = useConfirm();
+  const prompt = usePrompt();
+
   const [messageRequests, setMessageRequests] = useState([]);
   const [allLessonTimes, setAllLessonTimes] = useState([]);
   const [nextGlobalLesson, setNextGlobalLesson] = useState(null);
@@ -315,15 +319,17 @@ const SystemManagerPanel = ({ user, onLogout }) => {
   };
 
   const handleRejectRequest = async (requestId) => {
-    const reason = window.prompt('سبب الرفض (اختياري):', '') || '';
+    const reason = await prompt('رفض الطلب', 'سبب الرفض (اختياري):', '');
+    if (reason === null) return;
     try {
-      await updateMessageRequestStatus(requestId, MESSAGE_REQUEST_STATUS.REJECTED, user.id, reason);
+      await updateMessageRequestStatus(requestId, MESSAGE_REQUEST_STATUS.REJECTED, user.id, reason || '');
       toast.success('تم رفض الطلب.');
     } catch (err) { toast.error('فشل الرفض: ' + err.message); }
   };
 
   const handleDeleteRequest = async (requestId) => {
-    if (!window.confirm('هل أنت متأكد من حذف هذا الطلب نهائياً؟')) return;
+    const ok = await confirm('حذف الطلب', 'هل أنت متأكد من حذف هذا الطلب نهائياً؟');
+    if (!ok) return;
     try {
       await deleteMessageRequest(requestId);
       toast.success('تم حذف الطلب.');

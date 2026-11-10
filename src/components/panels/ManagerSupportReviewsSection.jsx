@@ -27,8 +27,10 @@ import {
   SUPPORT_RATING_CATEGORIES, SUPPORT_TICKET_STATUS, SUPPORT_REPORT_REASONS
 } from '../../constants';
 import SupportChat from '../common/SupportChat';
+import { useConfirm } from '../common/ConfirmContext';
 
 const ManagerSupportReviewsSection = ({ user }) => {
+  const confirm = useConfirm();
   const [reviews, setReviews] = useState([]);
   const [openTickets, setOpenTickets] = useState([]);
   const [myManagerTickets, setMyManagerTickets] = useState([]);
@@ -41,7 +43,6 @@ const ManagerSupportReviewsSection = ({ user }) => {
   const [processing, setProcessing] = useState(false);
   const [openChatId, setOpenChatId] = useState(null);
 
-  // ✅ جديد: بلاغات
   const [selectedReport, setSelectedReport] = useState(null);
   const [reportedStudent, setReportedStudent] = useState(null);
   const [reportedSupervisor, setReportedSupervisor] = useState(null);
@@ -94,7 +95,6 @@ const ManagerSupportReviewsSection = ({ user }) => {
     setMode(null); setReason('');
   };
 
-  // ✅ فتح بلاغ للمراجعة
   const openReportedTicket = async (ticket) => {
     setSelectedReport(ticket);
     setReportedStudent(null);
@@ -143,7 +143,8 @@ const ManagerSupportReviewsSection = ({ user }) => {
   };
 
   const handleReject = async () => {
-    if (!window.confirm('سيتم إلغاء الشكوى وإعطاء المشرف 5 نجوم وإرسال تحذير حازم للطالب. متابعة؟')) return;
+    const ok = await confirm('رفض الشكوى', 'سيتم إلغاء الشكوى وإعطاء المشرف 5 نجوم وإرسال تحذير حازم للطالب. متابعة؟');
+    if (!ok) return;
     setProcessing(true);
     try {
       if (student) {
@@ -166,7 +167,8 @@ const ManagerSupportReviewsSection = ({ user }) => {
   };
 
   const handleFinalize = async () => {
-    if (!window.confirm('سيتم حذف التذكرة نهائياً من السيرفر. تأكد من إرسال جميع الرسائل أولاً. متابعة؟')) return;
+    const ok = await confirm('حذف التذكرة نهائياً', 'سيتم حذف التذكرة نهائياً من السيرفر. تأكد من إرسال جميع الرسائل أولاً. متابعة؟');
+    if (!ok) return;
     setProcessing(true);
     try {
       await finalizeAndDeleteTicket(selected.id);
@@ -176,10 +178,10 @@ const ManagerSupportReviewsSection = ({ user }) => {
     finally { setProcessing(false); }
   };
 
-  // ✅ إجراءات البلاغ
   const handleCancelReportAndDelete = async () => {
     if (!selectedReport) return;
-    if (!window.confirm('⚠️ سيتم رفض البلاغ وحذف التذكرة نهائياً. متابعة؟')) return;
+    const ok = await confirm('رفض البلاغ وحذف التذكرة', 'سيتم رفض البلاغ وحذف التذكرة نهائياً. متابعة؟');
+    if (!ok) return;
     setProcessing(true);
     try {
       if (reportedSupervisor) sendReportRejectedMessage(reportedSupervisor);
@@ -192,7 +194,8 @@ const ManagerSupportReviewsSection = ({ user }) => {
 
   const handleCancelReportAndReopen = async () => {
     if (!selectedReport) return;
-    if (!window.confirm('سيتم رفض البلاغ وإعادة فتح المحادثة لمشرف آخر. متابعة؟')) return;
+    const ok = await confirm('إعادة فتح المحادثة', 'سيتم رفض البلاغ وإعادة فتح المحادثة لمشرف آخر. متابعة؟');
+    if (!ok) return;
     setProcessing(true);
     try {
       if (reportedSupervisor) sendReportRejectedMessage(reportedSupervisor);
@@ -205,7 +208,8 @@ const ManagerSupportReviewsSection = ({ user }) => {
 
   const handleCloseReportedAccount = async () => {
     if (!selectedReport) return;
-    if (!window.confirm('⚠️ سيتم حذف حساب المُبلَّغ عنه نهائياً وإدراجه في القائمة السوداء. متأكد؟')) return;
+    const ok = await confirm('إغلاق الحساب نهائياً', 'سيتم حذف حساب المُبلَّغ عنه نهائياً وإدراجه في القائمة السوداء. متأكد؟');
+    if (!ok) return;
     setProcessing(true);
     try {
       const studentObj = {
@@ -231,10 +235,10 @@ const ManagerSupportReviewsSection = ({ user }) => {
 
   const handleWarnReported = async () => {
     if (!selectedReport) return;
-    if (!window.confirm('سيتم إرسال تنبيه إداري للمُبلَّغ عنه وحذف التذكرة. متابعة؟')) return;
+    const ok = await confirm('إرسال تنبيه إداري', 'سيتم إرسال تنبيه إداري للمُبلَّغ عنه وحذف التذكرة. متابعة؟');
+    if (!ok) return;
     setProcessing(true);
     try {
-      // 1. محاولة فتح واتساب بالتنبيه
       const studentObj = {
         name: selectedReport.studentName,
         phone: selectedReport.studentPhone,
@@ -246,7 +250,6 @@ const ManagerSupportReviewsSection = ({ user }) => {
         setProcessing(false);
         return;
       }
-      // 2. إصدار إنذار في النظام
       try {
         await issueWarning(selectedReport.studentId, 'مخالفة سلوك أثناء التواصل مع الدعم الفني');
       } catch (warnErr) {
@@ -257,7 +260,6 @@ const ManagerSupportReviewsSection = ({ user }) => {
         }
         throw warnErr;
       }
-      // 3. حذف التذكرة
       await finalizeReportWithWarning(selectedReport.id, user.id);
       toast.success('✅ تم إرسال التنبيه وإصدار إنذار وحذف التذكرة');
       closeReportModal();
@@ -279,7 +281,6 @@ const ManagerSupportReviewsSection = ({ user }) => {
         <FaExclamationTriangle /> مراجعات الدعم الفني
       </h3>
 
-      {/* ========== بلاغات الدعم الفني (جديد) ========== */}
       {reportedTickets.length > 0 && (
         <div className="border border-red-500/30 rounded-xl p-3 bg-red-900/10">
           <p className="text-sm text-red-200 font-bold mb-2 flex items-center gap-2">
@@ -305,7 +306,6 @@ const ManagerSupportReviewsSection = ({ user }) => {
         </div>
       )}
 
-      {/* ========== مراجعات تقييمات (قديم) ========== */}
       {reviews.length > 0 && (
         <div className="space-y-2 max-h-96 overflow-y-auto">
           {reviews.map(t => {
@@ -385,7 +385,6 @@ const ManagerSupportReviewsSection = ({ user }) => {
         />
       )}
 
-      {/* ============ مودال مراجعة البلاغ (جديد) ============ */}
       {selectedReport && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] p-4" onClick={closeReportModal}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-red-500/30" onClick={e => e.stopPropagation()}>
@@ -469,7 +468,6 @@ const ManagerSupportReviewsSection = ({ user }) => {
         </div>
       )}
 
-      {/* ============ مودال مراجعة تقييم سلبي (قديم) ============ */}
       {selected && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] p-4" onClick={closeModal}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-rose-500/30" onClick={e => e.stopPropagation()}>

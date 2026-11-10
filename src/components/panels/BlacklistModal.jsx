@@ -9,10 +9,12 @@ import {
   collection, query, where, orderBy, limit, startAfter,
   getDocs, doc, deleteDoc, getCountFromServer
 } from 'firebase/firestore';
+import { useConfirm } from '../common/ConfirmContext';
 
 const PAGE_SIZE = 20;
 
 const BlacklistModal = ({ isOpen, onClose, onCountChange }) => {
+  const confirm = useConfirm();
   const [list, setList] = useState([]);
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -100,7 +102,8 @@ const BlacklistModal = ({ isOpen, onClose, onCountChange }) => {
   };
 
   const handleRemove = async (item) => {
-    if (!window.confirm(`إزالة الرقم ${item.phone} من القائمة السوداء؟`)) return;
+    const ok = await confirm('إزالة من القائمة السوداء', `إزالة الرقم ${item.phone} من القائمة السوداء؟`);
+    if (!ok) return;
     try {
       await deleteDoc(doc(db, 'blacklist', item.id));
       setList(prev => prev.filter(i => i.id !== item.id));
@@ -118,7 +121,6 @@ const BlacklistModal = ({ isOpen, onClose, onCountChange }) => {
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60] p-4" onClick={onClose}>
       <div className="bg-gray-900 rounded-3xl w-full max-w-3xl max-h-[90vh] flex flex-col border border-red-500/30" onClick={e => e.stopPropagation()}>
-        {/* Header */}
         <div className="flex justify-between items-center p-5 border-b border-gray-700">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center">
@@ -132,7 +134,6 @@ const BlacklistModal = ({ isOpen, onClose, onCountChange }) => {
           <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl"><FaTimes /></button>
         </div>
 
-        {/* Search */}
         <div className="p-5 border-b border-gray-700">
           <div className="flex gap-2 flex-wrap">
             <input
@@ -153,7 +154,6 @@ const BlacklistModal = ({ isOpen, onClose, onCountChange }) => {
           </div>
         </div>
 
-        {/* List */}
         <div className="flex-1 overflow-y-auto p-5">
           {loading ? (
             <div className="text-center py-8 text-gray-400">
@@ -188,7 +188,6 @@ const BlacklistModal = ({ isOpen, onClose, onCountChange }) => {
           )}
         </div>
 
-        {/* Pagination */}
         {!searchMode && (
           <div className="p-4 border-t border-gray-700 flex justify-between items-center gap-2">
             <button

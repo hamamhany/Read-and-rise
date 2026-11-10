@@ -13,10 +13,12 @@ import {
 import { createSupervisorAccount } from '../../services/supervisor';
 import { deleteUserCompletely } from '../../services/accountDeletion';
 import { sanitizeInput, arabicToEnglishNumber } from '../../utils/helpers';
+import { useConfirm } from '../common/ConfirmContext';
 
 const PAGE_SIZE = 20;
 
 const SupervisorsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
+  const confirm = useConfirm();
   const [list, setList] = useState([]);
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -27,13 +29,11 @@ const SupervisorsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
   const [pageDocs, setPageDocs] = useState([null]);
   const [hasMore, setHasMore] = useState(true);
 
-  // Form
   const [showAddForm, setShowAddForm] = useState(false);
   const [newName, setNewName] = useState('');
   const [newGender, setNewGender] = useState('');
   const [newAge, setNewAge] = useState('');
   const [newPhone, setNewPhone] = useState('');
-  // ✅ الصلاحيات الجديدة
   const [permissions, setPermissions] = useState({ reports: true, resets: true, support: true });
   const [submitting, setSubmitting] = useState(false);
 
@@ -184,7 +184,7 @@ const SupervisorsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
         ageNum,
         normalizedPhone,
         user.id,
-        permissions // ✅ تمرير الصلاحيات
+        permissions
       );
       toast.success(`✅ تم إضافة المشرف ${result.name}`);
       setNewName(''); setNewGender(''); setNewAge(''); setNewPhone('');
@@ -201,7 +201,8 @@ const SupervisorsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
   };
 
   const handleDelete = async (s) => {
-    if (!window.confirm(`حذف المشرف "${s.name}" نهائياً؟`)) return;
+    const ok = await confirm('حذف المشرف', `حذف المشرف "${s.name}" نهائياً؟`);
+    if (!ok) return;
     try {
       const tid = toast.loading('جاري الحذف...');
       await deleteUserCompletely(s.id);
@@ -221,7 +222,6 @@ const SupervisorsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60] p-4" onClick={onClose}>
       <div className="bg-gray-900 rounded-3xl w-full max-w-3xl max-h-[90vh] flex flex-col border border-indigo-500/30" onClick={e => e.stopPropagation()}>
-        {/* Header */}
         <div className="flex justify-between items-center p-5 border-b border-gray-700">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center">
@@ -235,7 +235,6 @@ const SupervisorsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
           <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl"><FaTimes /></button>
         </div>
 
-        {/* Toolbar */}
         <div className="p-5 border-b border-gray-700 space-y-3">
           <div className="flex gap-2 flex-wrap">
             <button
@@ -274,8 +273,7 @@ const SupervisorsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
                 <input type="text" inputMode="numeric" placeholder="العمر *" value={newAge} onChange={e => setNewAge(arabicToEnglishNumber(e.target.value))} className="bg-gray-700 text-right p-2 rounded-lg text-white text-sm border border-gray-600" required />
                 <input type="text" inputMode="numeric" placeholder="رقم الهاتف * (مع رمز الدولة)" value={newPhone} onChange={e => setNewPhone(arabicToEnglishNumber(e.target.value))} className="bg-gray-700 text-right p-2 rounded-lg text-white text-sm border border-gray-600" required />
               </div>
-              
-              {/* ✅ خيارات الصلاحيات */}
+
               <div className="bg-gray-700/50 p-3 rounded-lg border border-gray-600">
                 <p className="text-sm text-gray-300 font-bold mb-2">الصلاحيات:</p>
                 <div className="space-y-2">
@@ -301,7 +299,6 @@ const SupervisorsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
           )}
         </div>
 
-        {/* List */}
         <div className="flex-1 overflow-y-auto p-5">
           {loading ? (
             <div className="text-center py-8 text-gray-400">
@@ -339,7 +336,6 @@ const SupervisorsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
           )}
         </div>
 
-        {/* Pagination */}
         {!searchMode && (
           <div className="p-4 border-t border-gray-700 flex justify-between items-center gap-2">
             <button

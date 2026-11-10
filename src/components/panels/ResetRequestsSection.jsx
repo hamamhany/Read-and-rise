@@ -18,10 +18,12 @@ import {
 } from '../../services/passwordReset';
 import { createMessageRequest } from '../../services/messageRequests';
 import { fetchClassNames } from '../../utils/helpers';
+import { useConfirm } from '../common/ConfirmContext';
 
 const CLAIM_DURATION_MS = 10 * 60 * 1000;
 
 const ResetRequestsSection = ({ user }) => {
+  const confirm = useConfirm();
   const [requests, setRequests] = useState([]);
   const [selected, setSelected] = useState(null);
   const [resolvedUser, setResolvedUser] = useState(null);
@@ -112,7 +114,8 @@ const ResetRequestsSection = ({ user }) => {
 
   const handleApprove = async () => {
     if (!resolvedUser) return toast.error('لا يمكن الموافقة بدون مطابقة الرقم التسلسلي.');
-    if (!window.confirm('سيتم تحديث بيانات دخول الطالب وإرسال رسالة عبر واتساب. متابعة؟')) return;
+    const ok = await confirm('الموافقة على الطلب', 'سيتم تحديث بيانات دخول الطالب وإرسال رسالة عبر واتساب. متابعة؟');
+    if (!ok) return;
     setSubmitting(true);
     try {
       const randomNum = Math.floor(Math.random() * 900000) + 100000;

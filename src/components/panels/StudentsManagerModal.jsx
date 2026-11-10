@@ -13,10 +13,12 @@ import { deleteUserCompletely } from '../../services/accountDeletion';
 import { createMessageRequest } from '../../services/messageRequests';
 import { MESSAGE_REQUEST_TYPES } from '../../constants';
 import { fetchClassNames } from '../../utils/helpers';
+import { useConfirm } from '../common/ConfirmContext';
 
 const PAGE_SIZE = 20;
 
 const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
+  const confirm = useConfirm();
   const [list, setList] = useState([]);
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -27,7 +29,6 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
   const [pageDocs, setPageDocs] = useState([null]);
   const [hasMore, setHasMore] = useState(true);
 
-  // ✅ مودال سبب التجميد
   const [showFreezeReasonModal, setShowFreezeReasonModal] = useState(false);
   const [freezeTarget, setFreezeTarget] = useState(null);
   const [freezeReason, setFreezeReason] = useState('');
@@ -149,7 +150,6 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
     loadPage(0);
   };
 
-  // ✅ فك التجميد فوراً
   const handleUnfreeze = async (s) => {
     try {
       await updateDoc(doc(db, 'profiles', s.id), {
@@ -164,14 +164,12 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
     }
   };
 
-  // ✅ فتح مودال سبب التجميد
   const handleFreezeClick = (s) => {
     setFreezeTarget(s);
     setFreezeReason('');
     setShowFreezeReasonModal(true);
   };
 
-  // ✅ تأكيد التجميد مع السبب
   const confirmFreeze = async () => {
     if (!freezeTarget) return;
     if (!freezeReason.trim()) {
@@ -187,7 +185,6 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
       });
       setList(prev => prev.map(x => x.id === freezeTarget.id ? { ...x, isFrozen: true } : x));
 
-      // ✅ إنشاء طلب الإشعار مع السبب
       try {
         const classMap = freezeTarget.classIds?.length
           ? await fetchClassNames(freezeTarget.classIds)
@@ -228,7 +225,8 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
   };
 
   const handleDelete = async (s) => {
-    if (!window.confirm(`حذف الطالب "${s.name}" نهائياً من Auth + Firestore؟`)) return;
+    const ok = await confirm('حذف الطالب', `حذف الطالب "${s.name}" نهائياً من Auth + Firestore؟`);
+    if (!ok) return;
     try {
       const tid = toast.loading('جاري الحذف...');
       await deleteUserCompletely(s.id);
@@ -248,7 +246,6 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60] p-4" onClick={onClose}>
       <div className="bg-gray-900 rounded-3xl w-full max-w-3xl max-h-[90vh] flex flex-col border border-blue-500/30" onClick={e => e.stopPropagation()}>
-        {/* Header */}
         <div className="flex justify-between items-center p-5 border-b border-gray-700">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center">
@@ -262,7 +259,6 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
           <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl"><FaTimes /></button>
         </div>
 
-        {/* Search */}
         <div className="p-5 border-b border-gray-700">
           <div className="flex gap-2 flex-wrap">
             <input
@@ -282,7 +278,6 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
           </div>
         </div>
 
-        {/* List */}
         <div className="flex-1 overflow-y-auto p-5">
           {loading ? (
             <div className="text-center py-8 text-gray-400">
@@ -332,7 +327,6 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
           )}
         </div>
 
-        {/* Pagination */}
         {!searchMode && (
           <div className="p-4 border-t border-gray-700 flex justify-between items-center gap-2">
             <button
@@ -354,7 +348,6 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
         )}
       </div>
 
-      {/* ✅ مودال سبب التجميد */}
       {showFreezeReasonModal && freezeTarget && (
         <div
           className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[70] flex items-center justify-center p-4"

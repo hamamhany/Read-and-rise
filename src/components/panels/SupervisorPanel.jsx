@@ -23,8 +23,11 @@ import ReviewVotingSection from './ReviewVotingSection';
 import ResetRequestsSection from './ResetRequestsSection';
 import SupportTicketsSection from './SupportTicketsSection';
 import { COUNTRIES } from '../../utils/countries';
+import { useConfirm } from '../common/ConfirmContext';
 
 const SupervisorPanel = ({ user, onLogout }) => {
+  const confirm = useConfirm();
+
   const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [displayCount, setDisplayCount] = useState(ANNOUNCEMENTS_LIMIT);
@@ -56,7 +59,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
   const [newStudentCountry, setNewStudentCountry] = useState('');
   const [studentLoading, setStudentLoading] = useState(false);
 
-  // ✅ الصلاحيات والعدادات
   const [permissions, setPermissions] = useState({ reports: true, resets: true, support: true });
   const [counts, setCounts] = useState({ reports: 0, resets: 0, support: 0 });
 
@@ -70,7 +72,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
     fetchPerms();
   }, [user.id]);
 
-  // عدادات مباشرة
   useEffect(() => {
     if (!permissions.support) return;
     const q = query(collection(db, 'supportTickets'), where('status', '==', 'open'));
@@ -247,7 +248,8 @@ const SupervisorPanel = ({ user, onLogout }) => {
   };
 
   const handleDeleteAnnouncement = async (id) => {
-    if (!window.confirm('هل أنت متأكد من حذف هذا الإشعار نهائياً؟')) return;
+    const ok = await confirm('حذف الإشعار', 'هل أنت متأكد من حذف هذا الإشعار نهائياً؟');
+    if (!ok) return;
     try { await deleteAnnouncement(id); toast.success('تم حذف الإشعار.'); }
     catch (err) { toast.error('فشل حذف الإشعار: ' + err.message); }
   };
@@ -439,14 +441,12 @@ const SupervisorPanel = ({ user, onLogout }) => {
           </button>
         </div>
 
-        {/* ✅ إخفاء الأقسام إذا لم يكن هناك عناصر جديدة */}
         {permissions.reports && counts.reports > 0 && <ReportsReviewSection user={user} />}
 
         <ReviewVotingSection user={user} />
 
         {permissions.resets && counts.resets > 0 && <ResetRequestsSection user={user} />}
 
-        {/* ✅ الدعم الفني — بدون شرط counts.support (المكوّن يدير ظهوره بنفسه) */}
         {permissions.support && <SupportTicketsSection user={user} />}
 
         {canPublish && (
