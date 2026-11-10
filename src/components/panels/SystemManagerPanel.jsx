@@ -24,6 +24,7 @@ import {
 } from '../../services/messageRequests';
 import {
   sendWarningMessage, sendNoticeMessage, sendActivationMessage, sendFreezeMessage,
+  sendUnfreezeMessage,
   sendDeleteMessage, sendResetPasswordMessage, sendDataUpdateApprovalMessage,
   sendDataUpdateRejectionMessage, sendGeneralMessageToStudent, sendReportMessage,
   sendAbsenceWarningMessage, sendAutoFreezeMessage, sendAutoDeleteMessage,
@@ -287,6 +288,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
         case 'general': success = sendGeneralMessageToStudent(studentObj, request.payload.subject, request.payload.body); break;
         case 'report': success = sendReportMessage(studentObj, request.payload.reason, request.targetClass); break;
         case 'freeze': success = sendFreezeMessage(studentObj, request.payload?.reason || ''); break;
+        case 'unfreeze': success = sendUnfreezeMessage(studentObj); break;
         case 'delete': success = sendDeleteMessage(studentObj); break;
         case 'reset_password': success = sendResetPasswordMessage(studentObj, request.payload.newPassword); break;
         case 'activation': success = sendActivationMessage(studentObj, request.payload.username, request.payload.password); break;
@@ -549,6 +551,9 @@ const SystemManagerPanel = ({ user, onLogout }) => {
                         )}
                         {request.type === 'reset_password' && (
                           <p className="text-xs text-indigo-200 mt-1">اسم المستخدم: {request.payload?.username}</p>
+                        )}
+                        {request.type === 'unfreeze' && (
+                          <p className="text-xs text-green-200 mt-1">🔓 إشعار فك تجميد — سيُرسل عبر واتساب للطالب</p>
                         )}
                         {request.type === 'password_reset_approval' && (
                           <div className="mt-1 text-xs text-cyan-200">

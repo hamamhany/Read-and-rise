@@ -13,7 +13,6 @@ import { deleteUserCompletely } from '../../services/accountDeletion';
 import { createMessageRequest } from '../../services/messageRequests';
 import { MESSAGE_REQUEST_TYPES } from '../../constants';
 import { fetchClassNames } from '../../utils/helpers';
-import { sendUnfreezeMessage } from '../../utils/whatsapp';
 import { useConfirm } from '../common/ConfirmContext';
 
 const PAGE_SIZE = 20;
@@ -151,7 +150,7 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
     loadPage(0);
   };
 
-  // ✅ فك التجميد + إرسال إشعار واتساب
+  // ✅ فك التجميد + إنشاء طلب إشعار عند المدير (بدل فتح واتساب مباشرة)
   const handleUnfreeze = async (s) => {
     try {
       await updateDoc(doc(db, 'profiles', s.id), {
@@ -161,17 +160,33 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
       });
       setList(prev => prev.map(x => x.id === s.id ? { ...x, isFrozen: false } : x));
 
-      // فتح واتساب برسالة فك التجميد
-      const opened = sendUnfreezeMessage({
-        name: s.name,
-        phone: s.phone,
-        serialNumber: s.serialNumber
-      });
+      // ✅ إنشاء طلب إشعار فك تجميد يظهر عند المدير
+      try {
+        const classMap = s.classIds?.length
+          ? await fetchClassNames(s.classIds)
+          : {};
+        const classNames = (s.classIds || [])
+          .map(id => classMap[id])
+          .filter(Boolean)
+          .join(', ');
 
-      if (opened) {
-        toast.success('✅ تم فك التجميد وفتح واتساب لإرسال الإشعار.');
-      } else {
-        toast.success('تم فك التجميد. (لم يُفتح واتساب — يمكنك إبلاغ الطالب يدوياً)');
+        await createMessageRequest({
+          type: MESSAGE_REQUEST_TYPES.UNFREEZE,
+          targetType: 'student',
+          targetId: s.id,
+          targetName: s.name || '',
+          targetPhone: s.phone || '',
+          targetClass: classNames || 'غير محدد',
+          requestedBy: user?.id || 'system_manager',
+          requestedByName: user?.name || user?.username || 'مدير النظام',
+          payload: {
+            serialNumber: s.serialNumber || ''
+          }
+        });
+        toast.success('✅ تم فك التجميد وحفظ إشعار فك التجميد في "طلبات الرسائل".');
+      } catch (e) {
+        console.warn('createMessageRequest failed:', e);
+        toast.success('تم فك التجميد. (تعذّر إنشاء إشعار فك التجميد)');
       }
     } catch (e) {
       toast.error('فشل: ' + e.message);

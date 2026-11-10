@@ -31,6 +31,7 @@ export const MESSAGE_REQUEST_TYPES = {
   GENERAL: 'general',
   REPORT: 'report',
   FREEZE: 'freeze',
+  UNFREEZE: 'unfreeze',   // ✅ جديد
   DELETE: 'delete',
   RESET_PASSWORD: 'reset_password',
   ACTIVATION: 'activation',
@@ -51,6 +52,7 @@ export const MESSAGE_REQUEST_TYPE_LABELS = {
   general: 'رسالة عامة',
   report: 'بلاغ',
   freeze: 'إشعار تجميد',
+  unfreeze: 'إشعار فك تجميد',   // ✅ جديد
   delete: 'إشعار حذف',
   reset_password: 'إعادة تعيين كلمة مرور',
   activation: 'تفعيل حساب',
@@ -80,9 +82,6 @@ export const REVIEW_REQUIRED_VOTES = 4;
 
 export const PASSWORD_RESET_STATUS = { PENDING: 'pending', APPROVED: 'approved', REJECTED: 'rejected' };
 
-// =========================================================
-// ✅ نظام الدعم الفني (دردشة داخلية)
-// =========================================================
 export const SUPPORT_TICKET_STATUS = {
   OPEN: 'open',
   IN_PROGRESS: 'in_progress',
@@ -94,8 +93,8 @@ export const SUPPORT_TICKET_STATUS = {
   MANAGER_REJECTED: 'manager_rejected',
   AUTO_CLOSED: 'auto_closed',
   MANAGER_PENDING: 'manager_pending',
-  REPORTED: 'reported',                 // ✅ جديد
-  NEEDS_COMPLETION: 'needs_completion'  // ✅ جديد
+  REPORTED: 'reported',
+  NEEDS_COMPLETION: 'needs_completion'
 };
 
 export const CONTACT_REQUEST_STATUS = {
@@ -129,9 +128,6 @@ export const CONTACT_PREFERENCE_MODES = {
   NONE: 'none'
 };
 
-// =========================================================
-// ✅ جديد: أسباب البلاغ في محادثة الدعم الفني
-// =========================================================
 export const SUPPORT_REPORT_REASONS = [
   { value: 'verbal_abuse',     label: 'إساءة لفظية' },
   { value: 'threats',          label: 'تهديد أو ترويع' },
