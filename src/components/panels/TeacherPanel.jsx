@@ -190,32 +190,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  const handleDeleteStudentPermanently = async (student) => {
-    const ok = await confirm(
-      'طلب حذف الطالب',
-      `سيُنشأ طلب حذف للطالب "${student.name}" يرسل للمدير للموافقة. متابعة؟`
-    );
-    if (!ok) return;
-
-    try {
-      await createMessageRequest({
-        type: MESSAGE_REQUEST_TYPES.DELETE,
-        targetType: 'student',
-        targetId: student.id,
-        targetName: student.name || '',
-        targetPhone: student.phone || '',
-        targetClass: student.classes?.map(c => c.name).join(', ') || 'غير محدد',
-        requestedBy: user.id,
-        requestedByName: user.name || user.username || 'معلم',
-        payload: { serialNumber: student.serialNumber || '' }
-      });
-
-      toast.success('✅ تم إرسال طلب الحذف للمدير.');
-    } catch (err) {
-      toast.error('فشل: ' + err.message);
-    }
-  };
-
   const openReviewModal = (s) => { setSelectedReviewStudent(s); setShowReviewModal(true); };
 
   const acceptReview = async (studentId) => {
@@ -777,7 +751,6 @@ const TeacherPanel = ({ user, onLogout }) => {
                       <button onClick={() => openWarningModal(s)} className="text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-2 py-1 rounded-lg">إنذار</button>
                       <button onClick={() => { setSelectedStudentForReport(s); setShowReportModal(true); }} className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg">بلاغ</button>
                       <button onClick={() => { setSelectedStudentForMessage(s); setShowGeneralMessageModal(true); }} className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-lg">رسالة</button>
-                      <button onClick={() => handleDeleteStudentPermanently(s)} className="text-xs bg-red-600/30 text-red-200 border border-red-500/40 px-2 py-1 rounded-lg">حذف</button>
                     </div>
                   </div>
                 );
