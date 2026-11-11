@@ -11,8 +11,11 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
     "crypto-js": "^4.2.0",
+    "exceljs": "^4.4.0",
     "firebase": "^12.17.1",
     "firebase-admin": "^12.7.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^2.5.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hot-toast": "^2.6.0",

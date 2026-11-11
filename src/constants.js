@@ -177,3 +177,23 @@ export const CLASS_VISIBILITY_LABELS = {
   all: 'ذكور وإناث',
   own_gender: 'حسب جنس المشرف'
 };
+// =========================================================
+// ✅ إدارة الاختبارات — طرق التصحيح
+// =========================================================
+export const EXAM_CORRECTION_MODE = {
+  AUTO: 'auto',
+  MANUAL: 'manual'
+};
+
+export const EXAM_CORRECTION_MODE_LABELS = {
+  auto: 'تصحيح تلقائي (النظام يصحح)',
+  manual: 'تصحيح شخصي (المعلم يصحح)'
+};
+
+export const EXAM_RESULT_STATUS = {
+  PENDING_CORRECTION: 'pending_correction',
+  AUTO_CORRECTED: 'auto_corrected',
+  MANUALLY_CORRECTED: 'manually_corrected'
+};
+
+export const MAX_EXAM_ATTEMPTS = 1; // ✅ محاولة واحدة فقط

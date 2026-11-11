@@ -1,14 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { FaPrint, FaTimes, FaSpinner, FaSave } from 'react-icons/fa';
+import {
+  FaPrint, FaTimes, FaSpinner, FaSave, FaFileExcel, FaFilePdf
+} from 'react-icons/fa';
 import { db } from '../../firebase';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { sortStudentsAlphabetically } from '../../utils/helpers';
+import { downloadExcel, downloadPDFFromHTML } from '../../utils/exporters';
 
 const PrintStudentsModal = ({ isOpen, onClose, students }) => {
   const [notes, setNotes] = useState({});
   const [sortedStudents, setSortedStudents] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -24,7 +28,7 @@ const PrintStudentsModal = ({ isOpen, onClose, students }) => {
     setNotes(prev => ({ ...prev, [studentId]: value }));
   };
 
-  const buildPrintHtml = () => {
+  const buildHtmlString = () => {
     const escapeHtml = (str) => {
       const div = document.createElement('div');
       div.textContent = str || '';
@@ -46,7 +50,6 @@ const PrintStudentsModal = ({ isOpen, onClose, students }) => {
       <html dir="rtl" lang="ar">
       <head>
         <meta charset="UTF-8">
-        <title>طباعة جدول الطلاب</title>
         <style>
           @page { size: A4 landscape; margin: 10mm; }
           body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; padding: 10px; color: #000; background: #fff; }
@@ -78,20 +81,32 @@ const PrintStudentsModal = ({ isOpen, onClose, students }) => {
     `;
   };
 
+  const saveNotesIfNeeded = async () => {
+    const promises = [];
+    for (const s of sortedStudents) {
+      const oldNote = (s.notes || '').trim();
+      const newNote = (notes[s.id] || '').trim();
+      if (oldNote !== newNote) {
+        promises.push(updateDoc(doc(db, 'profiles', s.id), {
+          notes: notes[s.id] || '',
+          updatedAt: serverTimestamp()
+        }));
+      }
+    }
+    if (promises.length > 0) {
+      await Promise.all(promises);
+      toast.success('تم حفظ الملاحظات ✓');
+    }
+  };
+
   const triggerPrint = () => {
     const iframe = document.createElement('iframe');
-    iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = '0';
-    iframe.style.opacity = '0';
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;';
     document.body.appendChild(iframe);
 
     const doc = iframe.contentWindow.document;
     doc.open();
-    doc.write(buildPrintHtml());
+    doc.write(buildHtmlString());
     doc.close();
 
     setTimeout(() => {
@@ -107,40 +122,69 @@ const PrintStudentsModal = ({ isOpen, onClose, students }) => {
     }, 300);
   };
 
-  const handlePrint = async (saveNotes) => {
-    if (saveNotes) {
+  const handlePrint = async () => {
+    try {
       setIsSaving(true);
-      try {
-        const promises = [];
-        for (const s of sortedStudents) {
-          const oldNote = (s.notes || '').trim();
-          const newNote = (notes[s.id] || '').trim();
-          if (oldNote !== newNote) {
-            promises.push(updateDoc(doc(db, 'profiles', s.id), {
-              notes: notes[s.id] || '',
-              updatedAt: serverTimestamp()
-            }));
-          }
-        }
-        if (promises.length > 0) {
-          await Promise.all(promises);
-          toast.success('تم حفظ الملاحظات في النظام ✓');
-        } else {
-          toast.info('لا توجد ملاحظات جديدة للحفظ.');
-        }
-      } catch (err) {
-        console.error('فشل حفظ الملاحظات:', err);
-        toast.error('فشل حفظ الملاحظات، لكن سيتم الطباعة');
-      } finally {
-        setIsSaving(false);
-      }
+      await saveNotesIfNeeded();
+    } catch (err) {
+      console.warn('Save notes failed:', err);
+    } finally {
+      setIsSaving(false);
     }
-
     try {
       triggerPrint();
     } catch (err) {
-      console.error('Print trigger failed:', err);
       toast.error('فشلت الطباعة: ' + err.message);
+    }
+  };
+
+  const handleExcel = async () => {
+    try {
+      setIsExporting(true);
+      await saveNotesIfNeeded();
+
+      const headers = [
+        { header: 'الرقم', key: 'num', width: 8 },
+        { header: 'اسم الطالب', key: 'name', width: 30 },
+        { header: 'الشعبة', key: 'class', width: 25 },
+        { header: 'الإنذارات', key: 'warnings', width: 12 },
+        { header: 'الملاحظات', key: 'notes', width: 45 }
+      ];
+
+      const rows = sortedStudents.map((s, i) => ({
+        num: i + 1,
+        name: s.name || '',
+        class: (s.classes || []).map(c => c.name).filter(Boolean).join(', '),
+        warnings: (s.warnings || []).length,
+        notes: notes[s.id] || ''
+      }));
+
+      await downloadExcel({
+        headers,
+        rows,
+        sheetName: 'الطلاب',
+        filename: `students_${new Date().toISOString().slice(0, 10)}.xlsx`
+      });
+    } catch (err) {
+      toast.error('فشل تحميل Excel: ' + err.message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handlePDF = async () => {
+    try {
+      setIsExporting(true);
+      await saveNotesIfNeeded();
+      await downloadPDFFromHTML({
+        html: buildHtmlString(),
+        filename: `students_${new Date().toISOString().slice(0, 10)}.pdf`,
+        orientation: 'landscape'
+      });
+    } catch (err) {
+      toast.error('فشل تحميل PDF: ' + err.message);
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -197,28 +241,42 @@ const PrintStudentsModal = ({ isOpen, onClose, students }) => {
           </table>
         </div>
 
-        <div className="mt-6 flex flex-wrap gap-3 justify-end">
+        <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
           <button
-            onClick={() => handlePrint(true)}
-            disabled={isSaving}
-            className="bg-blue-600 hover:bg-blue-700 px-5 py-3 rounded-xl text-white flex items-center gap-2 font-bold shadow-lg disabled:opacity-60"
+            onClick={handlePrint}
+            disabled={isSaving || isExporting}
+            className="bg-green-600 hover:bg-green-700 disabled:opacity-60 px-4 py-3 rounded-xl text-white flex items-center justify-center gap-2 font-bold shadow-lg"
           >
-            {isSaving ? <FaSpinner className="animate-spin" /> : <FaSave />}
-            {isSaving ? 'جاري الحفظ...' : 'حفظ الملاحظات والطباعة'}
+            {isSaving ? <FaSpinner className="animate-spin" /> : <FaPrint />}
+            طباعة
           </button>
           <button
-            onClick={() => handlePrint(false)}
-            className="bg-green-600 hover:bg-green-700 px-5 py-3 rounded-xl text-white flex items-center gap-2 font-bold shadow-lg"
+            onClick={handleExcel}
+            disabled={isSaving || isExporting}
+            className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 px-4 py-3 rounded-xl text-white flex items-center justify-center gap-2 font-bold shadow-lg"
           >
-            <FaPrint /> اكتفاء بالطباعة فقط
+            {isExporting ? <FaSpinner className="animate-spin" /> : <FaFileExcel />}
+            تحميل Excel
+          </button>
+          <button
+            onClick={handlePDF}
+            disabled={isSaving || isExporting}
+            className="bg-red-600 hover:bg-red-700 disabled:opacity-60 px-4 py-3 rounded-xl text-white flex items-center justify-center gap-2 font-bold shadow-lg"
+          >
+            {isExporting ? <FaSpinner className="animate-spin" /> : <FaFilePdf />}
+            تحميل PDF
           </button>
           <button
             onClick={onClose}
-            className="bg-gray-600 hover:bg-gray-700 px-5 py-3 rounded-xl text-white"
+            className="bg-gray-600 hover:bg-gray-700 px-4 py-3 rounded-xl text-white font-bold"
           >
             إلغاء
           </button>
         </div>
+
+        <p className="text-xs text-gray-500 text-center mt-3">
+          💡 سيتم حفظ الملاحظات تلقائياً قبل الطباعة أو التحميل
+        </p>
       </div>
     </div>
   );

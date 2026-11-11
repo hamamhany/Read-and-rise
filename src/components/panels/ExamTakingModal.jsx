@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { FaClock, FaExclamationTriangle } from 'react-icons/fa';
+import { FaClock, FaTimes } from 'react-icons/fa';
 import { submitExamResult } from '../../services/exams';
+import { useConfirm } from '../common/ConfirmContext';
 
 const formatDuration = (seconds) => {
   if (!seconds || seconds < 0) return '—';
@@ -11,7 +12,8 @@ const formatDuration = (seconds) => {
   return `${m} د${s > 0 ? ` ${s} ث` : ''}`;
 };
 
-const ExamTakingModal = ({ exam, student, attemptNumber, onClose }) => {
+const ExamTakingModal = ({ exam, student, onClose }) => {
+  const confirm = useConfirm();
   const [answers, setAnswers] = useState({});
   const [timeLeft, setTimeLeft] = useState(exam.duration ? exam.duration * 60 : null);
   const [elapsed, setElapsed] = useState(0);
@@ -31,7 +33,7 @@ const ExamTakingModal = ({ exam, student, attemptNumber, onClose }) => {
         if (remaining <= 0) {
           setTimeLeft(0);
           clearInterval(timerRef.current);
-          if (!submitted) handleSubmit(true);
+          if (!submitted) handleSubmit(true, true);
         } else {
           setTimeLeft(remaining);
         }
@@ -58,7 +60,8 @@ const ExamTakingModal = ({ exam, student, attemptNumber, onClose }) => {
       clearInterval(timerRef.current);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, []); // eslint-disable-line
+    // eslint-disable-next-line
+  }, []);
 
   const handleAnswer = (qId, answer) => {
     setAnswers({ ...answers, [qId]: answer });
@@ -66,62 +69,59 @@ const ExamTakingModal = ({ exam, student, attemptNumber, onClose }) => {
 
   const handleSubmit = async (autoSubmit = false, forceSubmit = false) => {
     if (submitting || submitted) return;
+
     if (!autoSubmit && !forceSubmit) {
       const unanswered = exam.questions.length - Object.keys(answers).length;
-      const confirmMsg = unanswered > 0
-        ? `لديك ${unanswered} سؤال بدون إجابة. هل أنت متأكد من تسليم الاختبار؟`
-        : 'هل أنت متأكد من تسليم الاختبار؟ لن تتمكن من التعديل بعد التسليم.';
-      if (!window.confirm(confirmMsg)) return;
+      const msg = unanswered > 0
+        ? `لديك ${unanswered} سؤال بدون إجابة.\nهل أنت متأكد من تسليم الاختبار؟\nلن تتمكن من التعديل أو إعادة المحاولة بعد التسليم.`
+        : 'هل أنت متأكد من تسليم الاختبار؟\nلن تتمكن من التعديل أو إعادة المحاولة بعد التسليم.';
+      const ok = await confirm('تأكيد التسليم', msg);
+      if (!ok) return;
     }
 
     setSubmitting(true);
     setSubmitted(true);
     clearInterval(timerRef.current);
 
-    let score = 0;
-    const detailedAnswers = exam.questions.map(q => {
-      const studentAnswer = answers[q.id] ?? '';
-      const normalized = String(studentAnswer).trim().toLowerCase();
-      const correctNormalized = String(q.correctAnswer ?? '').trim().toLowerCase();
-      const isCorrect = normalized !== '' && normalized === correctNormalized;
-      if (isCorrect) score++;
-      return {
-        questionId: q.id || '',
-        questionText: q.text || '',
-        questionType: q.type || 'mcq',
-        options: Array.isArray(q.options) ? q.options : [],
-        studentAnswer: studentAnswer,
-        correctAnswer: q.correctAnswer ?? '',
-        isCorrect
-      };
-    });
-
     const timeTakenSeconds = Math.floor((Date.now() - startTimestampRef.current) / 1000);
 
     try {
-      // ✅ جميع الحقول آمنة ومحمية
-      await submitExamResult({
-        examId: exam.id || '',
-        examTitle: exam.title || '',
-        studentId: student.id || '',
-        studentName: student.name || student.username || 'طالب',
-        studentSerial: student.serialNumber ?? '',
-        score,
-        totalQuestions: exam.questions.length,
-        answers: detailedAnswers,
-        tabSwitchCount: tabSwitches,
-        autoSubmitted: !!autoSubmit,
-        attemptNumber: attemptNumber || 1,
-        timeTakenSeconds: timeTakenSeconds || 0
-      });
+      const detailedAnswers = exam.questions.map(q => ({
+        questionId: q.id || '',
+        studentAnswer: answers[q.id] ?? ''
+      }));
 
-      const percent = Math.round((score / exam.questions.length) * 100);
-      toast.success(
-        autoSubmit
-          ? `⏱️ تم إنهاء الاختبار تلقائياً! نتيجتك: ${score}/${exam.questions.length} (${percent}%)`
-          : `✅ تم التسليم! نتيجتك: ${score}/${exam.questions.length} (${percent}%)`,
-        { duration: 6000 }
+      const result = await submitExamResult(
+        {
+          examId: exam.id || '',
+          examTitle: exam.title || '',
+          studentId: student.id || '',
+          studentName: student.name || student.username || 'طالب',
+          studentSerial: student.serialNumber ?? '',
+          answers: detailedAnswers,
+          tabSwitchCount: tabSwitches,
+          autoSubmitted: !!autoSubmit,
+          timeTakenSeconds: timeTakenSeconds || 0
+        },
+        exam
       );
+
+      const isManual = (exam.correctionMode || 'auto') === 'manual';
+
+      if (isManual) {
+        toast.success(
+          `✅ تم تسليم الاختبار!\nسيتم تصحيحه من قِبل المعلم قريباً.`,
+          { duration: 5000 }
+        );
+      } else {
+        const percent = result.totalPoints > 0 ? Math.round((result.score / result.totalPoints) * 100) : 0;
+        toast.success(
+          autoSubmit
+            ? `⏱️ تم إنهاء الاختبار تلقائياً!\nنتيجتك: ${result.score}/${result.totalPoints} (${percent}%)`
+            : `✅ تم التسليم!\nنتيجتك: ${result.score}/${result.totalPoints} (${percent}%)`,
+          { duration: 6000 }
+        );
+      }
       setTimeout(() => onClose(), 1200);
     } catch (err) {
       console.error('Submit exam error:', err);
@@ -139,26 +139,32 @@ const ExamTakingModal = ({ exam, student, attemptNumber, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/95 backdrop-blur-md flex items-center justify-center z-[100] p-4">
-      <div className="bg-gray-900 rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col border border-red-500/30">
-        <div className="flex justify-between items-center p-4 border-b border-gray-700 bg-gray-800 rounded-t-3xl">
-          <div>
-            <h3 className="text-xl font-bold text-white">{exam.title}</h3>
-            <p className="text-sm text-gray-400">
-              الطالب: {student.name || student.username}
-              {attemptNumber > 1 && <span className="text-amber-300"> (محاولة #{attemptNumber})</span>}
-            </p>
-          </div>
-          <div className="text-right">
-            {exam.duration ? (
-              <div className={`text-2xl font-mono px-4 py-2 rounded-xl border ${timeLeft < 60 ? 'bg-red-500/20 text-red-300 border-red-500/50 animate-pulse' : 'bg-blue-500/20 text-blue-300 border-blue-500/50'}`}>
-                <FaClock className="inline me-2" /> {formatTime(timeLeft)}
-              </div>
-            ) : (
-              <div className="text-sm font-mono px-4 py-2 rounded-xl border bg-gray-700/50 text-gray-300 border-gray-600">
-                <FaClock className="inline me-2" /> مرت: {formatDuration(elapsed)}
-              </div>
-            )}
+    <div className="fixed inset-0 z-[100] bg-gray-950 overflow-y-auto" dir="rtl">
+      <div className="min-h-screen flex flex-col max-w-3xl mx-auto">
+        {/* Header */}
+        <div className="sticky top-0 z-10 bg-gray-900 border-b-2 border-blue-500/40 p-4 shadow-xl">
+          <div className="flex justify-between items-center flex-wrap gap-3">
+            <div>
+              <h2 className="text-xl font-bold text-white">{exam.title}</h2>
+              <p className="text-sm text-gray-400">
+                الطالب: {student.name || student.username}
+              </p>
+            </div>
+            <div className="text-right">
+              {exam.duration ? (
+                <div className={`text-2xl font-mono px-4 py-2 rounded-xl border ${
+                  timeLeft < 60
+                    ? 'bg-red-500/20 text-red-300 border-red-500/50 animate-pulse'
+                    : 'bg-blue-500/20 text-blue-300 border-blue-500/50'
+                }`}>
+                  <FaClock className="inline me-2" /> {formatTime(timeLeft)}
+                </div>
+              ) : (
+                <div className="text-sm font-mono px-4 py-2 rounded-xl border bg-gray-700/50 text-gray-300 border-gray-600">
+                  <FaClock className="inline me-2" /> مرت: {formatDuration(elapsed)}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -168,27 +174,62 @@ const ExamTakingModal = ({ exam, student, attemptNumber, onClose }) => {
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto p-5 space-y-6">
+        <div className="flex-1 p-4 md:p-6 space-y-5">
           {exam.questions.map((q, idx) => (
-            <div key={q.id} className="bg-gray-800/50 p-4 rounded-xl border border-gray-700">
-              <p className="text-white font-bold mb-3">{idx + 1}. {q.text}</p>
-              
+            <div key={q.id} className="bg-gray-900 p-4 rounded-2xl border-2 border-gray-700">
+              <div className="flex justify-between items-start mb-3 gap-2">
+                <p className="text-white font-bold flex-1 text-base">
+                  {idx + 1}. {q.text}
+                </p>
+                <span className="text-xs bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded">
+                  {Number(q.points) || 1} علامة
+                </span>
+              </div>
+
               {q.type === 'mcq' && (
                 <div className="space-y-2">
                   {q.options.filter(o => o && o.trim()).map((opt, i) => (
-                    <label key={i} className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition ${answers[q.id] === opt ? 'bg-blue-900/40 border border-blue-500/50' : 'hover:bg-gray-700'} text-gray-200`}>
-                      <input type="radio" name={`q-${q.id}`} value={opt} checked={answers[q.id] === opt} onChange={() => handleAnswer(q.id, opt)} className="w-4 h-4 accent-blue-500" />
-                      {opt}
+                    <label
+                      key={i}
+                      className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition ${
+                        answers[q.id] === opt
+                          ? 'bg-blue-900/40 border-2 border-blue-500/60 text-white'
+                          : 'bg-gray-800 border border-gray-700 hover:border-gray-500 text-gray-200'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name={`q-${q.id}`}
+                        value={opt}
+                        checked={answers[q.id] === opt}
+                        onChange={() => handleAnswer(q.id, opt)}
+                        className="w-5 h-5 accent-blue-500"
+                      />
+                      <span className="flex-1">{opt}</span>
                     </label>
                   ))}
                 </div>
               )}
 
               {q.type === 'true_false' && (
-                <div className="flex gap-4">
+                <div className="grid grid-cols-2 gap-3">
                   {['صح', 'خطأ'].map(opt => (
-                    <label key={opt} className={`flex items-center gap-2 text-gray-200 p-2 rounded-lg cursor-pointer transition ${answers[q.id] === opt ? 'bg-blue-900/40 border border-blue-500/50' : 'hover:bg-gray-700'}`}>
-                      <input type="radio" name={`q-${q.id}`} value={opt} checked={answers[q.id] === opt} onChange={() => handleAnswer(q.id, opt)} className="w-4 h-4 accent-blue-500" />
+                    <label
+                      key={opt}
+                      className={`flex items-center justify-center gap-2 p-3 rounded-lg cursor-pointer transition font-bold ${
+                        answers[q.id] === opt
+                          ? 'bg-blue-900/40 border-2 border-blue-500/60 text-white'
+                          : 'bg-gray-800 border border-gray-700 hover:border-gray-500 text-gray-200'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name={`q-${q.id}`}
+                        value={opt}
+                        checked={answers[q.id] === opt}
+                        onChange={() => handleAnswer(q.id, opt)}
+                        className="w-4 h-4 accent-blue-500"
+                      />
                       {opt}
                     </label>
                   ))}
@@ -196,14 +237,32 @@ const ExamTakingModal = ({ exam, student, attemptNumber, onClose }) => {
               )}
 
               {q.type === 'short_text' && (
-                <input type="text" value={answers[q.id] || ''} onChange={e => handleAnswer(q.id, e.target.value)} placeholder="اكتب إجابتك هنا..." className="w-full bg-gray-700 text-white p-2 rounded border border-gray-600" />
+                <input
+                  type="text"
+                  value={answers[q.id] || ''}
+                  onChange={e => handleAnswer(q.id, e.target.value)}
+                  placeholder="اكتب إجابتك هنا..."
+                  className="w-full bg-gray-800 text-white p-3 rounded-lg border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 outline-none"
+                />
               )}
             </div>
           ))}
         </div>
 
-        <div className="p-4 border-t border-gray-700">
-          <button onClick={() => handleSubmit(false)} disabled={submitting} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-bold disabled:opacity-50">
+        {/* Footer */}
+        <div className="sticky bottom-0 bg-gray-900 border-t-2 border-gray-700 p-4 flex gap-3">
+          <button
+            onClick={onClose}
+            disabled={submitting}
+            className="flex-1 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-white py-3 rounded-xl font-bold"
+          >
+            <FaTimes className="inline me-2" /> إلغاء
+          </button>
+          <button
+            onClick={() => handleSubmit(false)}
+            disabled={submitting}
+            className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white py-3 rounded-xl font-bold"
+          >
             {submitting ? 'جاري التسليم...' : 'تسليم الاختبار'}
           </button>
         </div>

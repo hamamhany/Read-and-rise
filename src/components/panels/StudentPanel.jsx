@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { 
-  FaUser, FaBell, FaSignOutAlt, FaPen, FaUsers, FaVideo, FaEdit, 
-  FaUpload, FaClock, FaCheckCircle, FaTimesCircle, FaEnvelope, 
-  FaComment, FaIdCard, FaFileAlt
+import {
+  FaUser, FaBell, FaSignOutAlt, FaPen, FaUsers, FaVideo, FaEdit,
+  FaUpload, FaClock, FaCheckCircle, FaTimesCircle, FaEnvelope,
+  FaComment, FaIdCard, FaFileAlt, FaEye
 } from 'react-icons/fa';
 import { db, messaging } from '../../firebase';
 import { auth } from '../../services/firebaseAuth';
-import { 
-  doc, getDoc, updateDoc, collection, query, where, getDocs, 
+import {
+  doc, getDoc, updateDoc, collection, query, where, getDocs,
   onSnapshot, orderBy, serverTimestamp, writeBatch, arrayUnion
 } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
@@ -18,7 +18,8 @@ import { sanitizeInput, arabicToEnglishNumber, fetchClassNames } from '../../uti
 import { recordAttendance, processStudentAbsences } from '../../services/attendance';
 import { sendUrgentReminderMessage, sendContactTeacherMessage } from '../../utils/whatsapp';
 import ExamTakingModal from './ExamTakingModal';
-import { getActiveExamsForStudent, getStudentAttemptsCount } from '../../services/exams';
+import ExamAnswersDetailModal from './ExamAnswersDetailModal';
+import { getActiveExamsForStudent, getStudentAttemptsCount, getStudentExamResult } from '../../services/exams';
 
 const StudentPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -60,6 +61,9 @@ const StudentPanel = ({ user, onLogout }) => {
   const [activeExams, setActiveExams] = useState([]);
   const [selectedExam, setSelectedExam] = useState(null);
   const [showExamModal, setShowExamModal] = useState(false);
+  const [studentResults, setStudentResults] = useState({});
+  const [reviewingExam, setReviewingExam] = useState(null);
+  const [showReviewAnswers, setShowReviewAnswers] = useState(false);
 
   const requestNotificationPermission = async () => {
     try {
@@ -278,7 +282,7 @@ const StudentPanel = ({ user, onLogout }) => {
     return () => { unsubscribeTeacher(); unsubscribeProfile(); unsubscribeNotif(); };
   }, [user.id]);
 
-  // ✅ Fetch Active Exams with attempt counting (max 2 attempts)
+  // ✅ تحميل الاختبارات المتاحة + نتائج الطالب (محاولة واحدة)
   useEffect(() => {
     if (!profile?.classIds || profile.classIds.length === 0) return;
 
@@ -288,26 +292,31 @@ const StudentPanel = ({ user, onLogout }) => {
       try {
         const exams = await getActiveExamsForStudent(profile.classIds);
         const available = [];
+        const resultsMap = {};
 
         for (const exam of exams) {
           const attempts = await getStudentAttemptsCount(exam.id, user.id);
-          if (attempts < 2) {
-            available.push({
-              ...exam,
-              attemptsUsed: attempts,
-              attemptsRemaining: 2 - attempts
-            });
+          const existingResult = await getStudentExamResult(exam.id, user.id);
+
+          if (existingResult) {
+            resultsMap[exam.id] = { ...existingResult, _examData: exam };
+          }
+
+          if (attempts < 1) {
+            available.push({ ...exam, attemptsUsed: attempts });
           }
         }
 
-        if (isMounted) setActiveExams(available);
+        if (isMounted) {
+          setActiveExams(available);
+          setStudentResults(resultsMap);
+        }
       } catch (err) {
         console.warn('Failed to load exams:', err);
       }
     };
 
     loadExams();
-
     return () => { isMounted = false; };
   }, [profile?.classIds, user.id, showExamModal]);
 
@@ -487,15 +496,16 @@ const StudentPanel = ({ user, onLogout }) => {
     toast.success('تم إرسال رسالة الاستعجال للمعلم.');
   };
 
-  // ✅ Start exam with attempt validation
-  const handleStartExam = (exam) => {
+  // ✅ بدء اختبار — محاولة واحدة فقط
+  const handleStartExam = async (exam) => {
     const used = exam.attemptsUsed || 0;
-    if (used >= 2) {
-      toast.error('لقد استنفدت جميع المحاولات المتاحة لهذا الاختبار (الحد الأقصى محاولتان).');
+    if (used >= 1) {
+      toast.error('لقد قدمت هذا الاختبار بالفعل. لا يمكنك إعادة المحاولة.');
       return;
     }
-    const ok = window.confirm(
-      `سيتم بدء المحاولة رقم ${used + 1} من أصل 2.\nبعد التسليم لا يمكنك التراجع.\nهل تريد المتابعة؟`
+    const ok = await confirm(
+      'بدء الاختبار',
+      `هل أنت متأكد من بدء الاختبار "${exam.title}"؟\nلديك محاولة واحدة فقط. بعد التسليم لا يمكنك التراجع أو إعادة المحاولة.`
     );
     if (!ok) return;
     setSelectedExam(exam);
@@ -536,7 +546,6 @@ const StudentPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* ✅ عرض الرقم التسلسلي + البلد + العمر */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="bg-gradient-to-br from-cyan-900/40 to-blue-900/20 p-4 rounded-2xl border border-cyan-500/30 text-center">
             <p className="text-xs text-cyan-300 uppercase tracking-widest font-semibold mb-1">الرقم التسلسلي</p>
@@ -629,65 +638,100 @@ const StudentPanel = ({ user, onLogout }) => {
           )}
         </div>
 
-        {/* ✅ قسم الاختبارات المتاحة مع حد المحاولات */}
+        {/* ✅ قسم الاختبارات المتاحة — محاولة واحدة */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-orange-500/20">
           <h3 className="text-xl font-semibold text-orange-300 mb-4">
             <FaFileAlt className="inline-block me-2" /> الاختبارات المتاحة
           </h3>
           <div className="space-y-3">
-            {activeExams.map(exam => {
-              const used = exam.attemptsUsed || 0;
-              const remaining = exam.attemptsRemaining ?? (2 - used);
-              const isLastAttempt = remaining === 1;
-
-              return (
-                <div
-                  key={exam.id}
-                  className="flex justify-between items-center p-4 bg-black/30 rounded-xl border border-orange-500/20 flex-wrap gap-3"
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white font-bold">{exam.title}</p>
-                    <p className="text-xs text-gray-400 mt-1">
-                      المدة: {exam.duration ? `${exam.duration} دقيقة` : 'غير محددة'} |
-                      الأسئلة: {exam.questions?.length || 0} |
-                      المحاولات المتبقية: <span className={`font-bold ${isLastAttempt ? 'text-red-300' : 'text-yellow-300'}`}>
-                        {remaining}/2
-                      </span>
+            {activeExams.map(exam => (
+              <div
+                key={exam.id}
+                className="flex justify-between items-center p-4 bg-black/30 rounded-xl border border-orange-500/20 flex-wrap gap-3"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-white font-bold">{exam.title}</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    المدة: {exam.duration ? `${exam.duration} دقيقة` : 'غير محددة'} |
+                    الأسئلة: {exam.questions?.length || 0} |
+                    التصحيح: {exam.correctionMode === 'manual' ? 'يدوي' : 'تلقائي'}
+                  </p>
+                  {exam.startTime && (
+                    <p className="text-[10px] text-cyan-300 mt-1">
+                      متاح من: {new Date(exam.startTime).toLocaleString('ar-EG')}
                     </p>
-                    {exam.startTime && (
-                      <p className="text-[10px] text-cyan-300 mt-1">
-                        متاح من: {new Date(exam.startTime).toLocaleString('ar-EG')}
-                      </p>
-                    )}
-                    {exam.endTime && (
-                      <p className="text-[10px] text-red-300 mt-0.5">
-                        ينتهي في: {new Date(exam.endTime).toLocaleString('ar-EG')}
-                      </p>
-                    )}
-                    {isLastAttempt && (
-                      <p className="text-[10px] text-red-300 mt-1 bg-red-500/10 px-2 py-1 rounded inline-block border border-red-500/30">
-                        ⚠️ هذه هي محاولتك الأخيرة
-                      </p>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => handleStartExam(exam)}
-                    className={`${
-                      isLastAttempt
-                        ? 'bg-red-600 hover:bg-red-700'
-                        : 'bg-orange-600 hover:bg-orange-700'
-                    } text-white px-4 py-2 rounded font-bold whitespace-nowrap`}
-                  >
-                    {used === 0 ? 'بدء الاختبار' : `بدء المحاولة #${used + 1}`}
-                  </button>
+                  )}
+                  {exam.endTime && (
+                    <p className="text-[10px] text-red-300 mt-0.5">
+                      ينتهي في: {new Date(exam.endTime).toLocaleString('ar-EG')}
+                    </p>
+                  )}
+                  <p className="text-[10px] text-red-300 mt-1 bg-red-500/10 px-2 py-1 rounded inline-block border border-red-500/30">
+                    ⚠️ محاولة واحدة فقط
+                  </p>
                 </div>
-              );
-            })}
+                <button
+                  onClick={() => handleStartExam(exam)}
+                  className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded font-bold whitespace-nowrap"
+                >
+                  بدء الاختبار
+                </button>
+              </div>
+            ))}
             {activeExams.length === 0 && (
               <p className="text-gray-400 text-center py-4">لا توجد اختبارات متاحة حالياً.</p>
             )}
           </div>
         </div>
+
+        {/* ✅ اختباراتك المقدمة — مراجعة الإجابات */}
+        {Object.keys(studentResults).length > 0 && (
+          <div className="bg-gray-800/60 p-6 rounded-2xl border border-green-500/20">
+            <h3 className="text-xl font-semibold text-green-300 mb-4">
+              <FaCheckCircle className="inline-block me-2" /> اختباراتك المقدمة
+            </h3>
+            <div className="space-y-3">
+              {Object.entries(studentResults).map(([examId, result]) => {
+                const isCorrected = result.correctionStatus === 'auto_corrected' || result.correctionStatus === 'manually_corrected';
+                const isPending = result.correctionStatus === 'pending_correction';
+
+                return (
+                  <div
+                    key={examId}
+                    className="flex justify-between items-center p-4 bg-black/30 rounded-xl border border-green-500/20 flex-wrap gap-3"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white font-bold">{result.examTitle}</p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        العلامة: <span className={isCorrected ? 'text-green-400 font-bold' : 'text-gray-400'}>
+                          {isCorrected ? `${result.score}/${result.totalPoints || result.totalQuestions}` : 'قيد التصحيح'}
+                        </span>
+                        {' | '}
+                        الوقت: {result.timeTakenSeconds ? `${Math.floor(result.timeTakenSeconds / 60)}د ${result.timeTakenSeconds % 60}ث` : '—'}
+                      </p>
+                      {isPending && (
+                        <p className="text-[10px] text-yellow-300 mt-1 bg-yellow-500/10 px-2 py-1 rounded inline-block border border-yellow-500/30">
+                          ⏳ سيتم التصحيح من قبل المعلم
+                        </p>
+                      )}
+                    </div>
+                    {isCorrected && (
+                      <button
+                        onClick={() => {
+                          setReviewingExam({ result, exam: result._examData });
+                          setShowReviewAnswers(true);
+                        }}
+                        className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-bold whitespace-nowrap"
+                      >
+                        <FaEye className="inline me-1" /> مراجعة الإجابات
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
       </div>
 
@@ -696,7 +740,6 @@ const StudentPanel = ({ user, onLogout }) => {
           <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-blue-500/30" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-xl font-semibold text-blue-300 mb-4"><FaUser className="inline-block me-2" /> معلوماتي الشخصية</h3>
 
-            {/* ✅ عرض الرقم التسلسلي (غير قابل للتعديل) */}
             <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-xl p-3 mb-4 text-center">
               <p className="text-xs text-cyan-300 mb-1"><FaIdCard className="inline me-1" /> الرقم التسلسلي (ثابت)</p>
               <p className="text-lg font-bold text-cyan-100 font-mono tracking-widest" dir="ltr">
@@ -704,7 +747,6 @@ const StudentPanel = ({ user, onLogout }) => {
               </p>
             </div>
 
-            {/* ✅ البلد (غير قابل للتعديل) */}
             <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 mb-4 text-center">
               <p className="text-xs text-amber-300 mb-1">البلد (ثابت — لا يمكن تغييره)</p>
               <p className="text-lg font-bold text-amber-100">{profile?.country || '—'}</p>
@@ -843,7 +885,6 @@ const StudentPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ✅ مودال الاختبار — مع تمرير serialNumber الآمن */}
       {selectedExam && showExamModal && (
         <ExamTakingModal
           exam={selectedExam}
@@ -852,11 +893,20 @@ const StudentPanel = ({ user, onLogout }) => {
             serialNumber: profile?.serialNumber || user?.serialNumber || '',
             name: profile?.name || user?.name || user?.username || 'طالب'
           }}
-          attemptNumber={(selectedExam.attemptsUsed || 0) + 1}
           onClose={() => {
             setShowExamModal(false);
             setSelectedExam(null);
           }}
+        />
+      )}
+
+      {showReviewAnswers && reviewingExam && (
+        <ExamAnswersDetailModal
+          isOpen={showReviewAnswers}
+          onClose={() => { setShowReviewAnswers(false); setReviewingExam(null); }}
+          result={reviewingExam.result}
+          exam={reviewingExam.exam}
+          viewerMode="student"
         />
       )}
     </div>

@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { 
+import {
   FaPen, FaClock, FaClipboardList, FaUser, FaBell, FaSignOutAlt,
   FaExclamationTriangle, FaCheckCircle, FaTimesCircle, FaEye,
-  FaPlus, FaVideo, FaUsers, FaTrashAlt, FaPrint, FaPaperPlane, FaFileAlt
+  FaPlus, FaVideo, FaUsers, FaTrashAlt, FaPrint, FaPaperPlane, FaFileAlt,
+  FaFileExcel, FaFilePdf
 } from 'react-icons/fa';
 import { db, messaging } from '../../firebase';
-import { 
+import {
   doc, getDoc, setDoc, updateDoc, collection, query,
   where, getDocs, onSnapshot, serverTimestamp, arrayUnion, orderBy, writeBatch
 } from 'firebase/firestore';
@@ -21,12 +22,14 @@ import PrintStudentsModal from '../common/PrintStudentsModal';
 import ReportModal from '../common/ReportModal';
 import ExamManagerModal from './ExamManagerModal';
 import ExamResultsModal from './ExamResultsModal';
-import { 
-  generateId, sanitizeInput, arabicToEnglishNumber, 
-  fetchClassNames, getActiveWarnings 
+import ExamManualCorrectionModal from './ExamManualCorrectionModal';
+import {
+  generateId, sanitizeInput, arabicToEnglishNumber,
+  fetchClassNames, getActiveWarnings
 } from '../../utils/helpers';
 import { createMessageRequest } from '../../services/messageRequests';
-import { getExamsByTeacher } from '../../services/exams';
+import { getExamsByTeacher, deleteExam, getExamResults } from '../../services/exams';
+import { downloadExcel, downloadPDFFromHTML } from '../../utils/exporters';
 import { MESSAGE_REQUEST_TYPES } from '../../constants';
 
 const TeacherPanel = ({ user, onLogout }) => {
@@ -68,9 +71,16 @@ const TeacherPanel = ({ user, onLogout }) => {
 
   // Exam states
   const [showExamManager, setShowExamManager] = useState(false);
+  const [editingExam, setEditingExam] = useState(null);
   const [showExamResults, setShowExamResults] = useState(false);
+  const [showManualCorrection, setShowManualCorrection] = useState(false);
   const [exams, setExams] = useState([]);
   const [selectedExam, setSelectedExam] = useState(null);
+
+  // Download/Print states
+  const [showDownloadChoice, setShowDownloadChoice] = useState(false);
+  const [downloadExam, setDownloadExam] = useState(null);
+  const [downloadResults, setDownloadResults] = useState([]);
 
   const requestNotificationPermission = async () => {
     try {
@@ -562,6 +572,135 @@ const TeacherPanel = ({ user, onLogout }) => {
 
   const nextLesson = getNextLessonTime(selectedClassForLesson);
 
+  // ============================
+  // ✅ Exam handlers
+  // ============================
+  const handleDeleteExam = async (exam) => {
+    const ok = await confirm(
+      'إغلاق الاختبار نهائياً',
+      `سيتم حذف الاختبار "${exam.title}" وكل نتائجه نهائياً. لا يمكن التراجع. هل أنت متأكد؟`
+    );
+    if (!ok) return;
+    try {
+      await deleteExam(exam.id);
+      toast.success('✅ تم حذف الاختبار وكل نتائجه');
+      const list = await getExamsByTeacher(user.id);
+      setExams(list);
+      if (selectedExam?.id === exam.id) {
+        setShowExamResults(false);
+        setSelectedExam(null);
+      }
+    } catch (e) {
+      toast.error('فشل: ' + e.message);
+    }
+  };
+
+  const handleDownloadExam = async (exam) => {
+    try {
+      const data = await getExamResults(exam.id);
+      if (data.length === 0) {
+        toast.error('لا توجد نتائج لتحميلها');
+        return;
+      }
+      setDownloadExam(exam);
+      setDownloadResults(data);
+      setShowDownloadChoice(true);
+    } catch (e) {
+      toast.error('فشل: ' + e.message);
+    }
+  };
+
+  const handlePrintExam = async (exam) => {
+    try {
+      const data = await getExamResults(exam.id);
+      if (data.length === 0) {
+        toast.error('لا توجد نتائج للطباعة');
+        return;
+      }
+      const escapeHtml = (str) => {
+        const div = document.createElement('div');
+        div.textContent = str || '';
+        return div.innerHTML;
+      };
+      const rows = data.map((r, i) => {
+        const total = r.totalPoints || r.totalQuestions || 1;
+        const pct = total > 0 ? Math.round(((r.score || 0) / total) * 100) : 0;
+        return `
+          <tr>
+            <td style="text-align:center;">${i + 1}</td>
+            <td>${escapeHtml(r.studentName || '')}</td>
+            <td style="text-align:center;font-family:monospace;">${escapeHtml(r.studentSerial || '—')}</td>
+            <td style="text-align:center;">${r.timeTakenSeconds ? Math.floor(r.timeTakenSeconds / 60) + 'د ' + (r.timeTakenSeconds % 60) + 'ث' : '—'}</td>
+            <td style="text-align:center;font-weight:bold;">${r.score || 0}/${total} (${pct}%)</td>
+            <td style="text-align:center;">${r.correctionStatus === 'pending_correction' ? '⏳ قيد التصحيح' : r.correctionStatus === 'manually_corrected' ? '✅ مصحح يدوياً' : '✓ تلقائي'}</td>
+          </tr>
+        `;
+      }).join('');
+
+      const html = `
+        <!DOCTYPE html>
+        <html dir="rtl" lang="ar">
+        <head>
+          <meta charset="UTF-8">
+          <style>
+            @page { size: A4 landscape; margin: 10mm; }
+            body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; padding: 10px; color: #000; background: #fff; }
+            h1 { text-align: center; font-size: 20px; margin: 0 0 5px 0; }
+            .date { text-align: center; font-size: 12px; color: #555; margin-bottom: 15px; }
+            table { width: 100%; border-collapse: collapse; font-size: 12px; }
+            th, td { border: 1px solid #333; padding: 8px 6px; text-align: right; }
+            th { background: #e5e5e5; font-weight: bold; font-size: 13px; }
+            tr:nth-child(even) td { background: #f9f9f9; }
+          </style>
+        </head>
+        <body>
+          <h1>نتائج الاختبار: ${escapeHtml(exam.title)}</h1>
+          <p class="date">التاريخ: ${new Date().toLocaleDateString('ar-EG')} — عدد المتقدمين: ${data.length} — التصحيح: ${exam.correctionMode === 'manual' ? 'يدوي' : 'تلقائي'}</p>
+          <table>
+            <thead>
+              <tr>
+                <th style="width:50px;">#</th>
+                <th>اسم الطالب</th>
+                <th style="width:100px;">الرقم التسلسلي</th>
+                <th style="width:120px;">الوقت المستغرق</th>
+                <th style="width:140px;">العلامة</th>
+                <th style="width:120px;">الحالة</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </body>
+        </html>
+      `;
+
+      const iframe = document.createElement('iframe');
+      iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;';
+      document.body.appendChild(iframe);
+      const doc = iframe.contentWindow.document;
+      doc.open(); doc.write(html); doc.close();
+      setTimeout(() => {
+        try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch (e) { /* ignore */ }
+        setTimeout(() => { if (document.body.contains(iframe)) document.body.removeChild(iframe); }, 1500);
+      }, 300);
+    } catch (e) {
+      toast.error('فشل: ' + e.message);
+    }
+  };
+
+  const handleExamModalClose = async (wasSaved) => {
+    setShowExamManager(false);
+    const wasEdit = !!editingExam;
+    setEditingExam(null);
+
+    try {
+      const list = await getExamsByTeacher(user.id);
+      setExams(list);
+    } catch (e) { console.warn(e); }
+
+    // eslint-disable-next-line no-unused-vars
+    const _unused = wasSaved || wasEdit;
+  };
+
   if (loading) return <div className="text-center text-gray-400 p-8">جاري التحميل...</div>;
 
   return (
@@ -678,21 +817,78 @@ const TeacherPanel = ({ user, onLogout }) => {
 
         {/* ✅ قسم الاختبارات الإلكترونية */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-orange-500/20">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-xl font-semibold text-orange-300"><FaFileAlt className="inline-block me-2" /> الاختبارات الإلكترونية</h3>
-            <button onClick={() => setShowExamManager(true)} className="btn-primary bg-orange-600 hover:bg-orange-700 py-2 px-4 text-sm rounded-md text-white">إنشاء اختبار جديد</button>
+          <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
+            <h3 className="text-xl font-semibold text-orange-300">
+              <FaFileAlt className="inline-block me-2" /> الاختبارات الإلكترونية
+            </h3>
+            <button
+              onClick={() => { setEditingExam(null); setShowExamManager(true); }}
+              className="btn-primary bg-orange-600 hover:bg-orange-700 py-2 px-4 text-sm rounded-md text-white"
+            >
+              + إنشاء اختبار جديد
+            </button>
           </div>
-          <div className="space-y-2 max-h-60 overflow-y-auto">
-            {exams.map(exam => (
-              <div key={exam.id} className="flex justify-between items-center p-3 bg-black/30 rounded-xl border border-gray-700">
-                <div>
-                  <p className="text-white font-bold">{exam.title}</p>
-                  <p className="text-xs text-gray-400">المدة: {exam.duration} دقيقة | عدد الأسئلة: {exam.questions?.length || 0}</p>
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {exams.map(exam => {
+              const isManual = exam.correctionMode === 'manual';
+              return (
+                <div key={exam.id} className="p-3 bg-black/30 rounded-xl border border-gray-700">
+                  <div className="mb-2">
+                    <p className="text-white font-bold">{exam.title}</p>
+                    <p className="text-xs text-gray-400">
+                      المدة: {exam.duration ? `${exam.duration} دقيقة` : 'غير محددة'} |
+                      الأسئلة: {exam.questions?.length || 0} |
+                      التصحيح: <span className={isManual ? 'text-amber-300' : 'text-green-300'}>
+                        {isManual ? 'يدوي' : 'تلقائي'}
+                      </span>
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      onClick={() => { setSelectedExam(exam); setShowExamResults(true); }}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs font-bold"
+                    >
+                      عرض النتائج
+                    </button>
+                    {isManual && (
+                      <button
+                        onClick={() => { setSelectedExam(exam); setShowManualCorrection(true); }}
+                        className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded text-xs font-bold"
+                      >
+                        تصحيح
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleDownloadExam(exam)}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded text-xs font-bold"
+                    >
+                      تحميل النتائج
+                    </button>
+                    <button
+                      onClick={() => handlePrintExam(exam)}
+                      className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded text-xs font-bold"
+                    >
+                      طباعة
+                    </button>
+                    <button
+                      onClick={() => { setEditingExam(exam); setShowExamManager(true); }}
+                      className="bg-cyan-600 hover:bg-cyan-700 text-white px-3 py-1.5 rounded text-xs font-bold"
+                    >
+                      تعديل
+                    </button>
+                    <button
+                      onClick={() => handleDeleteExam(exam)}
+                      className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded text-xs font-bold"
+                    >
+                      إغلاق الاختبار
+                    </button>
+                  </div>
                 </div>
-                <button onClick={() => { setSelectedExam(exam); setShowExamResults(true); }} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm">عرض النتائج</button>
-              </div>
-            ))}
-            {exams.length === 0 && <p className="text-gray-400 text-center py-4">لا توجد اختبارات بعد.</p>}
+              );
+            })}
+            {exams.length === 0 && (
+              <p className="text-gray-400 text-center py-4">لا توجد اختبارات بعد.</p>
+            )}
           </div>
         </div>
 
@@ -856,15 +1052,166 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      <ChoiceModal isOpen={showAssignmentChoice} onClose={() => { setShowAssignmentChoice(false); setSelectedAssignmentType(null); }} onSelect={(type) => { setSelectedAssignmentType(type); setShowAssignmentChoice(false); setShowAssignmentModal(true); }} title="نوع الواجب" options={[{ value: 'now', label: 'نشر فوراً' }, { value: 'schedule', label: 'جدولة' }, { value: 'draft', label: 'حفظ كمسودة' }, { value: 'delay', label: 'نشر بعد وقت' }]} />
+      <ChoiceModal
+        isOpen={showAssignmentChoice}
+        onClose={() => { setShowAssignmentChoice(false); setSelectedAssignmentType(null); }}
+        onSelect={(type) => { setSelectedAssignmentType(type); setShowAssignmentChoice(false); setShowAssignmentModal(true); }}
+        title="نوع الواجب"
+        options={[
+          { value: 'now', label: 'نشر فوراً' },
+          { value: 'schedule', label: 'جدولة' },
+          { value: 'draft', label: 'حفظ كمسودة' },
+          { value: 'delay', label: 'نشر بعد وقت' }
+        ]}
+      />
 
-      <AddAssignmentModal isOpen={showAssignmentModal} onClose={() => { setShowAssignmentModal(false); setSelectedAssignmentType(null); }} onSubmit={saveHomeworkFromModal} classesList={classes} initialMode={selectedAssignmentType || 'now'} />
-      
-      <AddLessonModal isOpen={showLessonModal} onClose={() => setShowLessonModal(false)} onSubmit={saveLessonTimesFromModal} initialTimes={lessonTimes} classesList={classes} />
-      
-      <ExamManagerModal isOpen={showExamManager} onClose={() => setShowExamManager(false)} classes={classes} teacherId={user.id} />
-      
-      {selectedExam && <ExamResultsModal isOpen={showExamResults} onClose={() => { setShowExamResults(false); setSelectedExam(null); }} exam={selectedExam} />}
+      <AddAssignmentModal
+        isOpen={showAssignmentModal}
+        onClose={() => { setShowAssignmentModal(false); setSelectedAssignmentType(null); }}
+        onSubmit={saveHomeworkFromModal}
+        classesList={classes}
+        initialMode={selectedAssignmentType || 'now'}
+      />
+
+      <AddLessonModal
+        isOpen={showLessonModal}
+        onClose={() => setShowLessonModal(false)}
+        onSubmit={saveLessonTimesFromModal}
+        initialTimes={lessonTimes}
+        classesList={classes}
+      />
+
+      <ExamManagerModal
+        isOpen={showExamManager}
+        onClose={handleExamModalClose}
+        classes={classes}
+        teacherId={user.id}
+        exam={editingExam}
+      />
+
+      {selectedExam && (
+        <ExamResultsModal
+          isOpen={showExamResults}
+          onClose={() => { setShowExamResults(false); setSelectedExam(null); }}
+          exam={selectedExam}
+        />
+      )}
+
+      {selectedExam && showManualCorrection && (
+        <ExamManualCorrectionModal
+          isOpen={showManualCorrection}
+          onClose={() => { setShowManualCorrection(false); setSelectedExam(null); }}
+          exam={selectedExam}
+        />
+      )}
+
+      {showDownloadChoice && downloadExam && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[120] p-4">
+          <div className="bg-gray-900 p-6 rounded-2xl max-w-md w-full border border-emerald-500/40">
+            <h3 className="text-xl font-bold text-emerald-300 mb-3 text-center">
+              تحميل نتائج "{downloadExam.title}"
+            </h3>
+            <p className="text-sm text-gray-300 text-center mb-4">
+              كيف تريد تحميل النتائج؟
+            </p>
+            <div className="space-y-2">
+              <button
+                onClick={async () => {
+                  try {
+                    const headers = [
+                      { header: 'اسم الطالب', key: 'name', width: 25 },
+                      { header: 'الرقم التسلسلي', key: 'serial', width: 15 },
+                      { header: 'الوقت المستغرق', key: 'time', width: 15 },
+                      { header: 'العلامة', key: 'score', width: 12 },
+                      { header: 'المجموع', key: 'total', width: 10 },
+                      { header: 'النسبة', key: 'percent', width: 10 },
+                      { header: 'الحالة', key: 'status', width: 18 }
+                    ];
+                    const rows = downloadResults.map(r => {
+                      const total = r.totalPoints || r.totalQuestions || 1;
+                      const pct = total > 0 ? Math.round(((r.score || 0) / total) * 100) : 0;
+                      return {
+                        name: r.studentName || '',
+                        serial: r.studentSerial || '—',
+                        time: r.timeTakenSeconds ? `${Math.floor(r.timeTakenSeconds / 60)}د ${r.timeTakenSeconds % 60}ث` : '—',
+                        score: r.score || 0,
+                        total: total,
+                        percent: pct + '%',
+                        status: r.correctionStatus === 'pending_correction' ? 'قيد التصحيح'
+                          : r.correctionStatus === 'manually_corrected' ? 'مصحح يدوياً' : 'تلقائي'
+                      };
+                    });
+                    await downloadExcel({
+                      headers, rows,
+                      sheetName: 'النتائج',
+                      filename: `results_${downloadExam.title}_${Date.now()}.xlsx`
+                    });
+                    setShowDownloadChoice(false);
+                  } catch (e) { toast.error('فشل: ' + e.message); }
+                }}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2"
+              >
+                <FaFileExcel /> ملف Excel (قابل للتعديل)
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    const escapeHtml = (str) => {
+                      const d = document.createElement('div');
+                      d.textContent = str || '';
+                      return d.innerHTML;
+                    };
+                    const rows = downloadResults.map((r, i) => {
+                      const total = r.totalPoints || r.totalQuestions || 1;
+                      const pct = total > 0 ? Math.round(((r.score || 0) / total) * 100) : 0;
+                      return `<tr>
+                        <td style="text-align:center;">${i + 1}</td>
+                        <td>${escapeHtml(r.studentName)}</td>
+                        <td style="text-align:center;font-family:monospace;">${escapeHtml(r.studentSerial || '—')}</td>
+                        <td style="text-align:center;">${r.timeTakenSeconds ? Math.floor(r.timeTakenSeconds / 60) + 'د ' + (r.timeTakenSeconds % 60) + 'ث' : '—'}</td>
+                        <td style="text-align:center;font-weight:bold;">${r.score || 0}/${total} (${pct}%)</td>
+                        <td style="text-align:center;">${r.correctionStatus === 'pending_correction' ? '⏳ قيد التصحيح' : r.correctionStatus === 'manually_corrected' ? '✅ مصحح يدوياً' : '✓ تلقائي'}</td>
+                      </tr>`;
+                    }).join('');
+                    const html = `<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><style>
+                      @page { size: A4 landscape; margin: 10mm; }
+                      body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; padding: 10px; color: #000; background: #fff; }
+                      h1 { text-align: center; font-size: 20px; margin: 0 0 5px 0; }
+                      .date { text-align: center; font-size: 12px; color: #555; margin-bottom: 15px; }
+                      table { width: 100%; border-collapse: collapse; font-size: 12px; }
+                      th, td { border: 1px solid #333; padding: 8px 6px; text-align: right; }
+                      th { background: #e5e5e5; font-weight: bold; font-size: 13px; }
+                      tr:nth-child(even) td { background: #f9f9f9; }
+                    </style></head><body>
+                      <h1>نتائج الاختبار: ${escapeHtml(downloadExam.title)}</h1>
+                      <p class="date">التاريخ: ${new Date().toLocaleDateString('ar-EG')} — عدد المتقدمين: ${downloadResults.length}</p>
+                      <table><thead><tr>
+                        <th style="width:50px;">#</th><th>اسم الطالب</th><th style="width:100px;">الرقم التسلسلي</th>
+                        <th style="width:120px;">الوقت المستغرق</th><th style="width:140px;">العلامة</th><th style="width:120px;">الحالة</th>
+                      </tr></thead><tbody>${rows}</tbody></table>
+                    </body></html>`;
+                    await downloadPDFFromHTML({
+                      html,
+                      filename: `results_${downloadExam.title}_${Date.now()}.pdf`,
+                      orientation: 'landscape'
+                    });
+                    setShowDownloadChoice(false);
+                  } catch (e) { toast.error('فشل: ' + e.message); }
+                }}
+                className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2"
+              >
+                <FaFilePdf /> ملف PDF (أسرع، غير قابل للتعديل)
+              </button>
+              <button
+                onClick={() => { setShowDownloadChoice(false); setDownloadExam(null); setDownloadResults([]); }}
+                className="w-full bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-xl text-sm"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
