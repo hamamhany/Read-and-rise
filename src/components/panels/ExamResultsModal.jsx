@@ -153,8 +153,10 @@ const ExamResultsModal = ({ isOpen, onClose, exam, onEdit, onDelete }) => {
 
   return (
     <>
-      <div className="fixed inset-0 z-[100] bg-gray-950 overflow-y-auto" dir="rtl">
-        <div className="min-h-screen flex flex-col max-w-5xl mx-auto">
+      {/* ✅ تم تعديل الحاوية الرئيسية لتكون بعرض الشاشة max-w-7xl */}
+      <div className="fixed inset-0 z-[100] bg-gray-950 overflow-y-auto overflow-x-hidden" dir="rtl">
+        <div className="min-h-screen flex flex-col w-full max-w-7xl mx-auto px-2 md:px-6">
+          
           <div className="sticky top-0 z-10 bg-gray-900 border-b-2 border-blue-500/40 p-4 shadow-xl">
             <div className="flex justify-between items-center flex-wrap gap-2">
               <div>
@@ -200,7 +202,7 @@ const ExamResultsModal = ({ isOpen, onClose, exam, onEdit, onDelete }) => {
             </div>
           </div>
 
-          <div className="flex-1 p-4">
+          <div className="flex-1 p-4 w-full">
             {loading ? (
               <div className="text-center py-8">
                 <FaSpinner className="animate-spin text-3xl text-gray-400 mx-auto" />
@@ -210,17 +212,17 @@ const ExamResultsModal = ({ isOpen, onClose, exam, onEdit, onDelete }) => {
                 <p className="text-gray-400">لم يتقدم أي طالب لهذا الاختبار بعد.</p>
               </div>
             ) : (
-              <div className="overflow-x-auto rounded-xl border-2 border-gray-700 mb-6">
+              <div className="overflow-x-auto rounded-xl border-2 border-gray-700 mb-6 w-full">
                 <table className="w-full text-right border-collapse text-sm">
                   <thead className="bg-gray-800 text-gray-300 sticky top-0">
                     <tr>
-                      <th className="p-2 border border-gray-700">#</th>
-                      <th className="p-2 border border-gray-700">اسم الطالب</th>
-                      <th className="p-2 border border-gray-700">الرقم التسلسلي</th>
-                      <th className="p-2 border border-gray-700">الوقت المستغرق</th>
-                      <th className="p-2 border border-gray-700">العلامة</th>
-                      <th className="p-2 border border-gray-700">الحالة</th>
-                      <th className="p-2 border border-gray-700">الإجراء</th>
+                      <th className="p-3 border border-gray-700">#</th>
+                      <th className="p-3 border border-gray-700">اسم الطالب</th>
+                      <th className="p-3 border border-gray-700">الرقم التسلسلي</th>
+                      <th className="p-3 border border-gray-700">الوقت المستغرق</th>
+                      <th className="p-3 border border-gray-700">العلامة</th>
+                      <th className="p-3 border border-gray-700">الحالة</th>
+                      <th className="p-3 border border-gray-700">الإجراء</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -252,8 +254,8 @@ const ExamResultsModal = ({ isOpen, onClose, exam, onEdit, onDelete }) => {
 
                       return (
                         <tr key={r.id} className="hover:bg-gray-800/50">
-                          <td className="p-2 border border-gray-700 text-gray-300">{i + 1}</td>
-                          <td className="p-2 border border-gray-700 text-white">
+                          <td className="p-3 border border-gray-700 text-gray-300">{i + 1}</td>
+                          <td className="p-3 border border-gray-700 text-white">
                             {r.studentName}
                             {r.totalAttempts > 1 && (
                               <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded mr-2">
@@ -261,23 +263,23 @@ const ExamResultsModal = ({ isOpen, onClose, exam, onEdit, onDelete }) => {
                               </span>
                             )}
                           </td>
-                          <td className="p-2 border border-gray-700 text-cyan-300 font-mono text-xs" dir="ltr">
+                          <td className="p-3 border border-gray-700 text-cyan-300 font-mono text-xs" dir="ltr">
                             {r.studentSerial || '—'}
                           </td>
-                          <td className="p-2 border border-gray-700 text-gray-300">
+                          <td className="p-3 border border-gray-700 text-gray-300">
                             {formatDuration(r.timeTakenSeconds)}
                           </td>
-                          <td className="p-2 border border-gray-700">
+                          <td className="p-3 border border-gray-700">
                             <span className={`font-bold ${percent >= 50 ? 'text-green-400' : 'text-red-400'}`}>
                               {r.score || 0}/{total}
                             </span>
                             <span className="text-xs text-gray-400"> ({percent}%)</span>
                           </td>
-                          <td className="p-2 border border-gray-700">{statusBadge}</td>
-                          <td className="p-2 border border-gray-700">
+                          <td className="p-3 border border-gray-700">{statusBadge}</td>
+                          <td className="p-3 border border-gray-700">
                             <button
                               onClick={() => setExploringResult(r)}
-                              className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded inline-flex items-center gap-1"
+                              className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg inline-flex items-center gap-1"
                             >
                               <FaEye /> استكشف
                             </button>
@@ -291,7 +293,7 @@ const ExamResultsModal = ({ isOpen, onClose, exam, onEdit, onDelete }) => {
             )}
           </div>
 
-          <div className="sticky bottom-0 bg-gray-900 border-t-2 border-gray-700 p-4 flex flex-wrap justify-between gap-3">
+          <div className="sticky bottom-0 bg-gray-900 border-t-2 border-gray-700 p-4 flex flex-wrap justify-between gap-3 mt-auto">
             <button
               onClick={handleDeleteExam}
               className="bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2"
