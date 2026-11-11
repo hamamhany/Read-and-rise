@@ -80,18 +80,18 @@ const ExamTakingModal = ({ exam, student, attemptNumber, onClose }) => {
 
     let score = 0;
     const detailedAnswers = exam.questions.map(q => {
-      const studentAnswer = answers[q.id] || '';
+      const studentAnswer = answers[q.id] ?? '';
       const normalized = String(studentAnswer).trim().toLowerCase();
-      const correctNormalized = String(q.correctAnswer).trim().toLowerCase();
+      const correctNormalized = String(q.correctAnswer ?? '').trim().toLowerCase();
       const isCorrect = normalized !== '' && normalized === correctNormalized;
       if (isCorrect) score++;
       return {
-        questionId: q.id,
-        questionText: q.text,
-        questionType: q.type,
-        options: q.options || [],
-        studentAnswer,
-        correctAnswer: q.correctAnswer,
+        questionId: q.id || '',
+        questionText: q.text || '',
+        questionType: q.type || 'mcq',
+        options: Array.isArray(q.options) ? q.options : [],
+        studentAnswer: studentAnswer,
+        correctAnswer: q.correctAnswer ?? '',
         isCorrect
       };
     });
@@ -99,19 +99,20 @@ const ExamTakingModal = ({ exam, student, attemptNumber, onClose }) => {
     const timeTakenSeconds = Math.floor((Date.now() - startTimestampRef.current) / 1000);
 
     try {
+      // ✅ جميع الحقول آمنة ومحمية
       await submitExamResult({
-        examId: exam.id,
-        examTitle: exam.title,
-        studentId: student.id,
-        studentName: student.name,
-        studentSerial: student.serialNumber,
+        examId: exam.id || '',
+        examTitle: exam.title || '',
+        studentId: student.id || '',
+        studentName: student.name || student.username || 'طالب',
+        studentSerial: student.serialNumber ?? '',
         score,
         totalQuestions: exam.questions.length,
         answers: detailedAnswers,
         tabSwitchCount: tabSwitches,
-        autoSubmitted: autoSubmit,
+        autoSubmitted: !!autoSubmit,
         attemptNumber: attemptNumber || 1,
-        timeTakenSeconds
+        timeTakenSeconds: timeTakenSeconds || 0
       });
 
       const percent = Math.round((score / exam.questions.length) * 100);
@@ -123,6 +124,7 @@ const ExamTakingModal = ({ exam, student, attemptNumber, onClose }) => {
       );
       setTimeout(() => onClose(), 1200);
     } catch (err) {
+      console.error('Submit exam error:', err);
       toast.error('فشل حفظ النتيجة: ' + err.message);
       setSubmitting(false);
       setSubmitted(false);
@@ -142,7 +144,10 @@ const ExamTakingModal = ({ exam, student, attemptNumber, onClose }) => {
         <div className="flex justify-between items-center p-4 border-b border-gray-700 bg-gray-800 rounded-t-3xl">
           <div>
             <h3 className="text-xl font-bold text-white">{exam.title}</h3>
-            <p className="text-sm text-gray-400">الطالب: {student.name} {attemptNumber > 1 && <span className="text-amber-300">(محاولة #{attemptNumber})</span>}</p>
+            <p className="text-sm text-gray-400">
+              الطالب: {student.name || student.username}
+              {attemptNumber > 1 && <span className="text-amber-300"> (محاولة #{attemptNumber})</span>}
+            </p>
           </div>
           <div className="text-right">
             {exam.duration ? (
@@ -170,7 +175,7 @@ const ExamTakingModal = ({ exam, student, attemptNumber, onClose }) => {
               
               {q.type === 'mcq' && (
                 <div className="space-y-2">
-                  {q.options.filter(o => o.trim()).map((opt, i) => (
+                  {q.options.filter(o => o && o.trim()).map((opt, i) => (
                     <label key={i} className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition ${answers[q.id] === opt ? 'bg-blue-900/40 border border-blue-500/50' : 'hover:bg-gray-700'} text-gray-200`}>
                       <input type="radio" name={`q-${q.id}`} value={opt} checked={answers[q.id] === opt} onChange={() => handleAnswer(q.id, opt)} className="w-4 h-4 accent-blue-500" />
                       {opt}

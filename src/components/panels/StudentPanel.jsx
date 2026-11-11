@@ -60,7 +60,6 @@ const StudentPanel = ({ user, onLogout }) => {
   const [activeExams, setActiveExams] = useState([]);
   const [selectedExam, setSelectedExam] = useState(null);
   const [showExamModal, setShowExamModal] = useState(false);
-  const [examAttemptsCache, setExamAttemptsCache] = useState({});
 
   const requestNotificationPermission = async () => {
     try {
@@ -289,11 +288,9 @@ const StudentPanel = ({ user, onLogout }) => {
       try {
         const exams = await getActiveExamsForStudent(profile.classIds);
         const available = [];
-        const cache = {};
 
         for (const exam of exams) {
           const attempts = await getStudentAttemptsCount(exam.id, user.id);
-          cache[exam.id] = attempts;
           if (attempts < 2) {
             available.push({
               ...exam,
@@ -303,10 +300,7 @@ const StudentPanel = ({ user, onLogout }) => {
           }
         }
 
-        if (isMounted) {
-          setActiveExams(available);
-          setExamAttemptsCache(cache);
-        }
+        if (isMounted) setActiveExams(available);
       } catch (err) {
         console.warn('Failed to load exams:', err);
       }
@@ -635,7 +629,7 @@ const StudentPanel = ({ user, onLogout }) => {
           )}
         </div>
 
-        {/* ✅ قسم الاختبارات المتاحة مع حد المحاولات (2 كحد أقصى) */}
+        {/* ✅ قسم الاختبارات المتاحة مع حد المحاولات */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-orange-500/20">
           <h3 className="text-xl font-semibold text-orange-300 mb-4">
             <FaFileAlt className="inline-block me-2" /> الاختبارات المتاحة
@@ -849,11 +843,15 @@ const StudentPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ✅ مودال الاختبار — يتم تمرير رقم المحاولة */}
+      {/* ✅ مودال الاختبار — مع تمرير serialNumber الآمن */}
       {selectedExam && showExamModal && (
         <ExamTakingModal
           exam={selectedExam}
-          student={user}
+          student={{
+            ...user,
+            serialNumber: profile?.serialNumber || user?.serialNumber || '',
+            name: profile?.name || user?.name || user?.username || 'طالب'
+          }}
           attemptNumber={(selectedExam.attemptsUsed || 0) + 1}
           onClose={() => {
             setShowExamModal(false);

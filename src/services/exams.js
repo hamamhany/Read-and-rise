@@ -3,21 +3,74 @@ import { collection, addDoc, doc, updateDoc, deleteDoc, getDoc, getDocs, query, 
 
 export const MAX_EXAM_ATTEMPTS = 2;
 
+// ✅ دالة تنقية شاملة: تحويل undefined إلى قيم آمنة، وحذف الحقول غير الصالحة
+const sanitizeForFirestore = (data) => {
+  const cleaned = {};
+  Object.entries(data).forEach(([key, value]) => {
+    if (value === undefined) {
+      cleaned[key] = '';
+    } else if (value === null) {
+      cleaned[key] = null;
+    } else if (Array.isArray(value)) {
+      // تنظيف المصفوفات من undefined
+      cleaned[key] = value.map(item => {
+        if (item === undefined) return '';
+        if (item === null) return null;
+        if (typeof item === 'object') return sanitizeForFirestore(item);
+        return item;
+      });
+    } else if (typeof value === 'object' && value !== null && !(value instanceof Date)) {
+      cleaned[key] = sanitizeForFirestore(value);
+    } else {
+      cleaned[key] = value;
+    }
+  });
+  return cleaned;
+};
+
+// ✅ تنظيف الأسئلة قبل الحفظ (لضمان عدم وجود undefined)
+const sanitizeQuestions = (questions) => {
+  if (!Array.isArray(questions)) return [];
+  return questions.map(q => ({
+    id: q.id || '',
+    type: q.type || 'mcq',
+    text: q.text || '',
+    options: Array.isArray(q.options) ? q.options.map(o => o || '') : [],
+    correctAnswer: q.correctAnswer || ''
+  }));
+};
+
 export const createExam = async (examData) => {
-  const ref = await addDoc(collection(db, 'exams'), {
-    ...examData,
+  const sanitized = {
+    teacherId: examData.teacherId || '',
+    title: (examData.title || '').trim(),
     duration: examData.duration ?? null,
+    classIds: Array.isArray(examData.classIds) ? examData.classIds : [],
     startTime: examData.startTime ?? null,
     endTime: examData.endTime ?? null,
+    questions: sanitizeQuestions(examData.questions),
+    status: 'published',
     createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-    status: 'published'
-  });
+    updatedAt: serverTimestamp()
+  };
+
+  const ref = await addDoc(collection(db, 'exams'), sanitized);
   return ref.id;
 };
 
 export const updateExam = async (examId, examData) => {
-  await updateDoc(doc(db, 'exams', examId), { ...examData, updatedAt: serverTimestamp() });
+  const sanitized = {};
+  if (examData.title !== undefined) sanitized.title = (examData.title || '').trim();
+  if (examData.duration !== undefined) sanitized.duration = examData.duration ?? null;
+  if (examData.classIds !== undefined) sanitized.classIds = Array.isArray(examData.classIds) ? examData.classIds : [];
+  if (examData.startTime !== undefined) sanitized.startTime = examData.startTime ?? null;
+  if (examData.endTime !== undefined) sanitized.endTime = examData.endTime ?? null;
+  if (examData.questions !== undefined) sanitized.questions = sanitizeQuestions(examData.questions);
+  if (examData.status !== undefined) sanitized.status = examData.status;
+
+  sanitized.updatedAt = serverTimestamp();
+
+  await updateDoc(doc(db, 'exams', examId), sanitized);
 };
 
 export const deleteExam = async (examId) => {
@@ -50,11 +103,39 @@ export const getActiveExamsForStudent = async (classIds) => {
   });
 };
 
+// ✅ حفظ نتيجة الاختبار مع حماية كاملة ضد undefined
 export const submitExamResult = async (resultData) => {
-  const ref = await addDoc(collection(db, 'examResults'), {
-    ...resultData,
+  // تنظيف الإجابات التفصيلية (كل حقل داخلي)
+  const cleanedAnswers = Array.isArray(resultData.answers)
+    ? resultData.answers.map(ans => ({
+        questionId: ans.questionId || '',
+        questionText: ans.questionText || '',
+        questionType: ans.questionType || 'mcq',
+        options: Array.isArray(ans.options) ? ans.options.map(o => o || '') : [],
+        studentAnswer: ans.studentAnswer ?? '',
+        correctAnswer: ans.correctAnswer ?? '',
+        isCorrect: !!ans.isCorrect
+      }))
+    : [];
+
+  // بناء كائن نظيف بالكامل
+  const cleanedResult = {
+    examId: resultData.examId || '',
+    examTitle: resultData.examTitle || '',
+    studentId: resultData.studentId || '',
+    studentName: resultData.studentName || 'طالب',
+    studentSerial: resultData.studentSerial ?? '',          // ✅ آمن
+    score: typeof resultData.score === 'number' ? resultData.score : 0,
+    totalQuestions: typeof resultData.totalQuestions === 'number' ? resultData.totalQuestions : 0,
+    answers: cleanedAnswers,
+    tabSwitchCount: typeof resultData.tabSwitchCount === 'number' ? resultData.tabSwitchCount : 0,
+    autoSubmitted: !!resultData.autoSubmitted,
+    attemptNumber: typeof resultData.attemptNumber === 'number' ? resultData.attemptNumber : 1,
+    timeTakenSeconds: typeof resultData.timeTakenSeconds === 'number' ? resultData.timeTakenSeconds : 0,
     submittedAt: serverTimestamp()
-  });
+  };
+
+  const ref = await addDoc(collection(db, 'examResults'), cleanedResult);
   return ref.id;
 };
 
