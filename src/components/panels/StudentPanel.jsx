@@ -803,7 +803,7 @@ const StudentPanel = ({ user, onLogout }) => {
               <h3 className="text-xl font-semibold text-purple-300"><FaBell className="inline-block me-2" /> الإشعارات</h3>
               <button onClick={handleCloseNotifications} className="text-gray-400 hover:text-white text-2xl">✕</button>
             </div>
-            <p className="text-xs text-gray-500 mb-3">📌 ستُحذف الإشعارات الشخصية تلقائياً عند إغلاق النافذة (باستثناء الإعلانات العامة).</p>
+            <p className="text-xs text-gray-500 mb-3">📌 ستُحذف الإشعارات تلقائياً عند إغلاق النافذة .</p>
             {!notificationsActive && (
               <div className="mb-4 p-3 bg-yellow-500/10 rounded-xl border border-yellow-500/20 text-yellow-200 text-sm">
                 ⚠️ الإشعارات غير مفعلة. اضغط على زر الجرس لتفعيلها.
