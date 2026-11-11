@@ -124,15 +124,44 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
     deleteStatus !== DELETE_REQUEST_STATUS.CANCELLED &&
     ticket.status !== SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED;
 
+  // ✅ تعديل: دالة الإرسال المربوطة بجوجل جمني
   const handleSend = async () => {
     const t = text.trim();
     if (!t) return;
     setSending(true);
     try {
+      // 1. إرسال رسالة الطالب لقاعدة البيانات (فايربيس) كالعادة
       await sendTicketMessage(ticketId, { id: user.id, name: user.name || user.username || 'مستخدم', role: user.role }, t);
       setText('');
-    } catch (e) { toast.error('فشل: ' + e.message); }
-    finally { setSending(false); }
+
+      // 2. إذا كان المرسل هو الطالب، ننادي المساعد الذكي (Gemini)
+      if (isCreator) {
+        try {
+          const response = await fetch('/api/gemini', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: t })
+          });
+          
+          const data = await response.json();
+          
+          if (data.text) {
+            // 3. إرسال رد المساعد الذكي لقاعدة البيانات عشان يظهر بالشات
+            await sendTicketMessage(
+              ticketId, 
+              { id: 'ai-assistant', name: 'المساعد الذكي', role: 'system' }, 
+              data.text
+            );
+          }
+        } catch (aiError) {
+          console.error("خطأ في الاتصال بالمساعد الذكي:", aiError);
+        }
+      }
+    } catch (e) { 
+      toast.error('فشل: ' + e.message); 
+    } finally { 
+      setSending(false); 
+    }
   };
 
   const handleClaim = async () => {
@@ -372,7 +401,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
     return false;
   };
 
-  // ✅ إظهار زر طلب الحذف للمشرف والمدير
   const canInitiateDelete =
     ((isManager && isAssignedSupervisor) || (isSupervisor && isAssignedSupervisor)) &&
     [SUPPORT_TICKET_STATUS.IN_PROGRESS, SUPPORT_TICKET_STATUS.MANAGER_PENDING].includes(ticket.status) &&
