@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import { 
   FaPen, FaClock, FaClipboardList, FaUser, FaBell, FaSignOutAlt,
   FaExclamationTriangle, FaCheckCircle, FaTimesCircle, FaEye,
-  FaPlus, FaVideo, FaUsers, FaTrashAlt, FaPrint, FaPaperPlane
+  FaPlus, FaVideo, FaUsers, FaTrashAlt, FaPrint, FaPaperPlane, FaFileAlt
 } from 'react-icons/fa';
 import { db, messaging } from '../../firebase';
 import { 
@@ -19,11 +19,14 @@ import { AddAssignmentModal } from '../common/AddAssignmentModal';
 import { AddLessonModal } from '../common/AddLessonModal';
 import PrintStudentsModal from '../common/PrintStudentsModal';
 import ReportModal from '../common/ReportModal';
+import ExamManagerModal from './ExamManagerModal';
+import ExamResultsModal from './ExamResultsModal';
 import { 
   generateId, sanitizeInput, arabicToEnglishNumber, 
   fetchClassNames, getActiveWarnings 
 } from '../../utils/helpers';
 import { createMessageRequest } from '../../services/messageRequests';
+import { getExamsByTeacher } from '../../services/exams';
 import { MESSAGE_REQUEST_TYPES } from '../../constants';
 
 const TeacherPanel = ({ user, onLogout }) => {
@@ -62,6 +65,12 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [selectedStudentForReport, setSelectedStudentForReport] = useState(null);
+
+  // Exam states
+  const [showExamManager, setShowExamManager] = useState(false);
+  const [showExamResults, setShowExamResults] = useState(false);
+  const [exams, setExams] = useState([]);
+  const [selectedExam, setSelectedExam] = useState(null);
 
   const requestNotificationPermission = async () => {
     try {
@@ -177,7 +186,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ✅ إعادة تعيين — فقط إنشاء طلب
   const handleResetStudent = async (studentId) => {
     const ok = await confirm('إعادة تعيين الحساب', 'سيُنشأ طلب إعادة تعيين يُرسل للمدير للموافقة. متابعة؟');
     if (!ok) return;
@@ -213,7 +221,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ✅ حذف — فقط إنشاء طلب
   const handleDeleteStudentPermanently = async (student) => {
     const ok = await confirm(
       'طلب حذف الطالب',
@@ -240,7 +247,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ✅ تبديل التجميد — فقط إنشاء طلب
   const toggleFreezeStudent = async (student) => {
     const nextStatus = !student.isFrozen;
     const actionType = nextStatus ? 'تجميد' : 'فك تجميد';
@@ -503,6 +509,15 @@ const TeacherPanel = ({ user, onLogout }) => {
     return () => { unsubTeacher(); unsubStudents(); unsubClasses(); unsubPending(); unsubNotif(); };
   }, [user.id]);
 
+  // Fetch Exams
+  useEffect(() => {
+    if (user.id) {
+      getExamsByTeacher(user.id)
+        .then(setExams)
+        .catch(err => console.error("Error fetching exams:", err));
+    }
+  }, [user.id, showExamManager]);
+
   const getNextLessonTime = (classId) => {
     if (!lessonTimes || lessonTimes.length === 0) return null;
     const now = new Date();
@@ -659,6 +674,26 @@ const TeacherPanel = ({ user, onLogout }) => {
               ))}
             </div>
           ) : <p className="text-gray-400 text-center py-4">لا توجد واجبات.</p>}
+        </div>
+
+        {/* ✅ قسم الاختبارات الإلكترونية */}
+        <div className="bg-gray-800/60 p-6 rounded-2xl border border-orange-500/20">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xl font-semibold text-orange-300"><FaFileAlt className="inline-block me-2" /> الاختبارات الإلكترونية</h3>
+            <button onClick={() => setShowExamManager(true)} className="btn-primary bg-orange-600 hover:bg-orange-700 py-2 px-4 text-sm rounded-md text-white">إنشاء اختبار جديد</button>
+          </div>
+          <div className="space-y-2 max-h-60 overflow-y-auto">
+            {exams.map(exam => (
+              <div key={exam.id} className="flex justify-between items-center p-3 bg-black/30 rounded-xl border border-gray-700">
+                <div>
+                  <p className="text-white font-bold">{exam.title}</p>
+                  <p className="text-xs text-gray-400">المدة: {exam.duration} دقيقة | عدد الأسئلة: {exam.questions?.length || 0}</p>
+                </div>
+                <button onClick={() => { setSelectedExam(exam); setShowExamResults(true); }} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm">عرض النتائج</button>
+              </div>
+            ))}
+            {exams.length === 0 && <p className="text-gray-400 text-center py-4">لا توجد اختبارات بعد.</p>}
+          </div>
         </div>
 
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700">
@@ -826,6 +861,10 @@ const TeacherPanel = ({ user, onLogout }) => {
       <AddAssignmentModal isOpen={showAssignmentModal} onClose={() => { setShowAssignmentModal(false); setSelectedAssignmentType(null); }} onSubmit={saveHomeworkFromModal} classesList={classes} initialMode={selectedAssignmentType || 'now'} />
       
       <AddLessonModal isOpen={showLessonModal} onClose={() => setShowLessonModal(false)} onSubmit={saveLessonTimesFromModal} initialTimes={lessonTimes} classesList={classes} />
+      
+      <ExamManagerModal isOpen={showExamManager} onClose={() => setShowExamManager(false)} classes={classes} teacherId={user.id} />
+      
+      {selectedExam && <ExamResultsModal isOpen={showExamResults} onClose={() => { setShowExamResults(false); setSelectedExam(null); }} exam={selectedExam} />}
     </div>
   );
 };

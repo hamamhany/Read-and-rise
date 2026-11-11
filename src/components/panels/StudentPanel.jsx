@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import { 
   FaUser, FaBell, FaSignOutAlt, FaPen, FaUsers, FaVideo, FaEdit, 
   FaUpload, FaClock, FaCheckCircle, FaTimesCircle, FaEnvelope, 
-  FaComment, FaIdCard
+  FaComment, FaIdCard, FaFileAlt
 } from 'react-icons/fa';
 import { db, messaging } from '../../firebase';
 import { auth } from '../../services/firebaseAuth';
@@ -17,6 +17,8 @@ import { CountdownTimer, HomeworkTextCountdown } from '../common/CountdownTimer'
 import { sanitizeInput, arabicToEnglishNumber, fetchClassNames } from '../../utils/helpers';
 import { recordAttendance, processStudentAbsences } from '../../services/attendance';
 import { sendUrgentReminderMessage, sendContactTeacherMessage } from '../../utils/whatsapp';
+import ExamTakingModal from './ExamTakingModal';
+import { getActiveExamsForStudent, getStudentExamResult } from '../../services/exams';
 
 const StudentPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -53,6 +55,11 @@ const StudentPanel = ({ user, onLogout }) => {
 
   const [isRecordingAttendance, setIsRecordingAttendance] = useState(false);
   const absenceProcessedRef = useRef(false);
+
+  // Exam states
+  const [activeExams, setActiveExams] = useState([]);
+  const [selectedExam, setSelectedExam] = useState(null);
+  const [showExamModal, setShowExamModal] = useState(false);
 
   const requestNotificationPermission = async () => {
     try {
@@ -270,6 +277,20 @@ const StudentPanel = ({ user, onLogout }) => {
 
     return () => { unsubscribeTeacher(); unsubscribeProfile(); unsubscribeNotif(); };
   }, [user.id]);
+
+  // Fetch Active Exams
+  useEffect(() => {
+    if (profile?.classIds && profile.classIds.length > 0) {
+      getActiveExamsForStudent(profile.classIds).then(async (exams) => {
+        const available = [];
+        for (const exam of exams) {
+          const result = await getStudentExamResult(exam.id, user.id);
+          if (!result) available.push(exam);
+        }
+        setActiveExams(available);
+      }).catch(console.error);
+    }
+  }, [profile?.classIds, user.id]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -573,6 +594,24 @@ const StudentPanel = ({ user, onLogout }) => {
             </div>
           )}
         </div>
+
+        {/* ✅ قسم الاختبارات المتاحة */}
+        <div className="bg-gray-800/60 p-6 rounded-2xl border border-orange-500/20">
+          <h3 className="text-xl font-semibold text-orange-300 mb-4"><FaFileAlt className="inline-block me-2" /> الاختبارات المتاحة</h3>
+          <div className="space-y-3">
+            {activeExams.map(exam => (
+              <div key={exam.id} className="flex justify-between items-center p-4 bg-black/30 rounded-xl border border-orange-500/20">
+                <div>
+                  <p className="text-white font-bold">{exam.title}</p>
+                  <p className="text-xs text-gray-400">المدة: {exam.duration} دقيقة | عدد الأسئلة: {exam.questions?.length || 0}</p>
+                </div>
+                <button onClick={() => { setSelectedExam(exam); setShowExamModal(true); }} className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded font-bold">بدء الاختبار</button>
+              </div>
+            ))}
+            {activeExams.length === 0 && <p className="text-gray-400 text-center py-4">لا توجد اختبارات متاحة حالياً.</p>}
+          </div>
+        </div>
+
       </div>
 
       {showProfileModal && (
@@ -725,6 +764,10 @@ const StudentPanel = ({ user, onLogout }) => {
             <button onClick={() => setShowReviewResultModal(false)} className="mt-4 btn-primary bg-gray-600 hover:bg-gray-700 w-full py-3 rounded-md text-white">إغلاق</button>
           </div>
         </div>
+      )}
+
+      {selectedExam && (
+        <ExamTakingModal exam={selectedExam} student={user} onClose={() => { setShowExamModal(false); setSelectedExam(null); }} />
       )}
     </div>
   );
