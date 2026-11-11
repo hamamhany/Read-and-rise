@@ -3,23 +3,39 @@ import toast from 'react-hot-toast';
 import { FaClock, FaExclamationTriangle } from 'react-icons/fa';
 import { submitExamResult } from '../../services/exams';
 
-const ExamTakingModal = ({ exam, student, onClose }) => {
+const formatDuration = (seconds) => {
+  if (!seconds || seconds < 0) return '—';
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  if (m === 0) return `${s} ث`;
+  return `${m} د${s > 0 ? ` ${s} ث` : ''}`;
+};
+
+const ExamTakingModal = ({ exam, student, attemptNumber, onClose }) => {
   const [answers, setAnswers] = useState({});
-  const [timeLeft, setTimeLeft] = useState(exam.duration * 60);
+  const [timeLeft, setTimeLeft] = useState(exam.duration ? exam.duration * 60 : null);
+  const [elapsed, setElapsed] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [tabSwitches, setTabSwitches] = useState(0);
+  const [submitted, setSubmitted] = useState(false);
   const timerRef = useRef(null);
+  const startTimestampRef = useRef(Date.now());
 
   useEffect(() => {
     timerRef.current = setInterval(() => {
-      setTimeLeft(prev => {
-        if (prev <= 1) {
+      const elapsedSec = Math.floor((Date.now() - startTimestampRef.current) / 1000);
+      setElapsed(elapsedSec);
+
+      if (exam.duration) {
+        const remaining = exam.duration * 60 - elapsedSec;
+        if (remaining <= 0) {
+          setTimeLeft(0);
           clearInterval(timerRef.current);
-          handleSubmit(true);
-          return 0;
+          if (!submitted) handleSubmit(true);
+        } else {
+          setTimeLeft(remaining);
         }
-        return prev - 1;
-      });
+      }
     }, 1000);
 
     const handleVisibilityChange = () => {
@@ -29,7 +45,7 @@ const ExamTakingModal = ({ exam, student, onClose }) => {
           if (newCount === 1) toast.error('⚠️ تم رصد مغادرة الصفحة! سيتم تسجيل ذلك.');
           if (newCount >= 3) {
             toast.error('❌ تم إنهاء الاختبار بسبب مغادرة الصفحة المتكررة!');
-            handleSubmit(true);
+            if (!submitted) handleSubmit(true, true);
           }
           return newCount;
         });
@@ -48,18 +64,39 @@ const ExamTakingModal = ({ exam, student, onClose }) => {
     setAnswers({ ...answers, [qId]: answer });
   };
 
-  const handleSubmit = async (autoSubmit = false) => {
-    if (submitting) return;
+  const handleSubmit = async (autoSubmit = false, forceSubmit = false) => {
+    if (submitting || submitted) return;
+    if (!autoSubmit && !forceSubmit) {
+      const unanswered = exam.questions.length - Object.keys(answers).length;
+      const confirmMsg = unanswered > 0
+        ? `لديك ${unanswered} سؤال بدون إجابة. هل أنت متأكد من تسليم الاختبار؟`
+        : 'هل أنت متأكد من تسليم الاختبار؟ لن تتمكن من التعديل بعد التسليم.';
+      if (!window.confirm(confirmMsg)) return;
+    }
+
     setSubmitting(true);
+    setSubmitted(true);
     clearInterval(timerRef.current);
 
     let score = 0;
     const detailedAnswers = exam.questions.map(q => {
       const studentAnswer = answers[q.id] || '';
-      const isCorrect = studentAnswer.toString().trim() === q.correctAnswer.toString().trim();
+      const normalized = String(studentAnswer).trim().toLowerCase();
+      const correctNormalized = String(q.correctAnswer).trim().toLowerCase();
+      const isCorrect = normalized !== '' && normalized === correctNormalized;
       if (isCorrect) score++;
-      return { questionId: q.id, studentAnswer, isCorrect };
+      return {
+        questionId: q.id,
+        questionText: q.text,
+        questionType: q.type,
+        options: q.options || [],
+        studentAnswer,
+        correctAnswer: q.correctAnswer,
+        isCorrect
+      };
     });
+
+    const timeTakenSeconds = Math.floor((Date.now() - startTimestampRef.current) / 1000);
 
     try {
       await submitExamResult({
@@ -72,18 +109,28 @@ const ExamTakingModal = ({ exam, student, onClose }) => {
         totalQuestions: exam.questions.length,
         answers: detailedAnswers,
         tabSwitchCount: tabSwitches,
-        autoSubmitted: autoSubmit
+        autoSubmitted: autoSubmit,
+        attemptNumber: attemptNumber || 1,
+        timeTakenSeconds
       });
-      toast.success(autoSubmit ? 'تم إنهاء الاختبار تلقائياً!' : 'تم تسليم الاختبار بنجاح!');
-      onClose();
+
+      const percent = Math.round((score / exam.questions.length) * 100);
+      toast.success(
+        autoSubmit
+          ? `⏱️ تم إنهاء الاختبار تلقائياً! نتيجتك: ${score}/${exam.questions.length} (${percent}%)`
+          : `✅ تم التسليم! نتيجتك: ${score}/${exam.questions.length} (${percent}%)`,
+        { duration: 6000 }
+      );
+      setTimeout(() => onClose(), 1200);
     } catch (err) {
       toast.error('فشل حفظ النتيجة: ' + err.message);
-    } finally {
       setSubmitting(false);
+      setSubmitted(false);
     }
   };
 
   const formatTime = (secs) => {
+    if (secs === null) return '—';
     const m = Math.floor(secs / 60);
     const s = secs % 60;
     return `${m}:${s < 10 ? '0' : ''}${s}`;
@@ -95,10 +142,18 @@ const ExamTakingModal = ({ exam, student, onClose }) => {
         <div className="flex justify-between items-center p-4 border-b border-gray-700 bg-gray-800 rounded-t-3xl">
           <div>
             <h3 className="text-xl font-bold text-white">{exam.title}</h3>
-            <p className="text-sm text-gray-400">الطالب: {student.name}</p>
+            <p className="text-sm text-gray-400">الطالب: {student.name} {attemptNumber > 1 && <span className="text-amber-300">(محاولة #{attemptNumber})</span>}</p>
           </div>
-          <div className={`text-2xl font-mono px-4 py-2 rounded-xl border ${timeLeft < 60 ? 'bg-red-500/20 text-red-300 border-red-500/50 animate-pulse' : 'bg-blue-500/20 text-blue-300 border-blue-500/50'}`}>
-            <FaClock className="inline me-2" /> {formatTime(timeLeft)}
+          <div className="text-right">
+            {exam.duration ? (
+              <div className={`text-2xl font-mono px-4 py-2 rounded-xl border ${timeLeft < 60 ? 'bg-red-500/20 text-red-300 border-red-500/50 animate-pulse' : 'bg-blue-500/20 text-blue-300 border-blue-500/50'}`}>
+                <FaClock className="inline me-2" /> {formatTime(timeLeft)}
+              </div>
+            ) : (
+              <div className="text-sm font-mono px-4 py-2 rounded-xl border bg-gray-700/50 text-gray-300 border-gray-600">
+                <FaClock className="inline me-2" /> مرت: {formatDuration(elapsed)}
+              </div>
+            )}
           </div>
         </div>
 
@@ -116,8 +171,8 @@ const ExamTakingModal = ({ exam, student, onClose }) => {
               {q.type === 'mcq' && (
                 <div className="space-y-2">
                   {q.options.filter(o => o.trim()).map((opt, i) => (
-                    <label key={i} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-700 cursor-pointer text-gray-200">
-                      <input type="radio" name={`q-${q.id}`} value={opt} onChange={() => handleAnswer(q.id, opt)} className="w-4 h-4 accent-blue-500" />
+                    <label key={i} className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition ${answers[q.id] === opt ? 'bg-blue-900/40 border border-blue-500/50' : 'hover:bg-gray-700'} text-gray-200`}>
+                      <input type="radio" name={`q-${q.id}`} value={opt} checked={answers[q.id] === opt} onChange={() => handleAnswer(q.id, opt)} className="w-4 h-4 accent-blue-500" />
                       {opt}
                     </label>
                   ))}
@@ -127,8 +182,8 @@ const ExamTakingModal = ({ exam, student, onClose }) => {
               {q.type === 'true_false' && (
                 <div className="flex gap-4">
                   {['صح', 'خطأ'].map(opt => (
-                    <label key={opt} className="flex items-center gap-2 text-gray-200 p-2 rounded-lg hover:bg-gray-700 cursor-pointer">
-                      <input type="radio" name={`q-${q.id}`} value={opt} onChange={() => handleAnswer(q.id, opt)} className="w-4 h-4 accent-blue-500" />
+                    <label key={opt} className={`flex items-center gap-2 text-gray-200 p-2 rounded-lg cursor-pointer transition ${answers[q.id] === opt ? 'bg-blue-900/40 border border-blue-500/50' : 'hover:bg-gray-700'}`}>
+                      <input type="radio" name={`q-${q.id}`} value={opt} checked={answers[q.id] === opt} onChange={() => handleAnswer(q.id, opt)} className="w-4 h-4 accent-blue-500" />
                       {opt}
                     </label>
                   ))}
@@ -136,7 +191,7 @@ const ExamTakingModal = ({ exam, student, onClose }) => {
               )}
 
               {q.type === 'short_text' && (
-                <input type="text" placeholder="اكتب إجابتك هنا..." onChange={e => handleAnswer(q.id, e.target.value)} className="w-full bg-gray-700 text-white p-2 rounded border border-gray-600" />
+                <input type="text" value={answers[q.id] || ''} onChange={e => handleAnswer(q.id, e.target.value)} placeholder="اكتب إجابتك هنا..." className="w-full bg-gray-700 text-white p-2 rounded border border-gray-600" />
               )}
             </div>
           ))}

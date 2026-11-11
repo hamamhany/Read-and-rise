@@ -1,9 +1,14 @@
 import { db } from '../firebase';
 import { collection, addDoc, doc, updateDoc, deleteDoc, getDoc, getDocs, query, where, orderBy, serverTimestamp } from 'firebase/firestore';
 
+export const MAX_EXAM_ATTEMPTS = 2;
+
 export const createExam = async (examData) => {
   const ref = await addDoc(collection(db, 'exams'), {
     ...examData,
+    duration: examData.duration ?? null,
+    startTime: examData.startTime ?? null,
+    endTime: examData.endTime ?? null,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
     status: 'published'
@@ -12,10 +17,7 @@ export const createExam = async (examData) => {
 };
 
 export const updateExam = async (examId, examData) => {
-  await updateDoc(doc(db, 'exams', examId), {
-    ...examData,
-    updatedAt: serverTimestamp()
-  });
+  await updateDoc(doc(db, 'exams', examId), { ...examData, updatedAt: serverTimestamp() });
 };
 
 export const deleteExam = async (examId) => {
@@ -36,10 +38,15 @@ export const getActiveExamsForStudent = async (classIds) => {
   const snap = await getDocs(q);
   return snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(exam => {
     if (exam.status !== 'published') return false;
-    if (!exam.startTime || !exam.endTime) return true;
-    const start = new Date(exam.startTime);
-    const end = new Date(exam.endTime);
-    return now >= start && now <= end;
+    if (exam.startTime) {
+      const start = new Date(exam.startTime);
+      if (!isNaN(start.getTime()) && now < start) return false;
+    }
+    if (exam.endTime) {
+      const end = new Date(exam.endTime);
+      if (!isNaN(end.getTime()) && now > end) return false;
+    }
+    return true;
   });
 };
 
@@ -57,9 +64,19 @@ export const getExamResults = async (examId) => {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 };
 
-export const getStudentExamResult = async (examId, studentId) => {
+export const getStudentExamResults = async (examId, studentId) => {
   const q = query(collection(db, 'examResults'), where('examId', '==', examId), where('studentId', '==', studentId));
   const snap = await getDocs(q);
-  if (snap.empty) return null;
-  return { id: snap.docs[0].id, ...snap.docs[0].data() };
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+};
+
+export const getStudentExamResult = async (examId, studentId) => {
+  const results = await getStudentExamResults(examId, studentId);
+  if (results.length === 0) return null;
+  return results.reduce((best, current) => current.score > best.score ? current : best, results[0]);
+};
+
+export const getStudentAttemptsCount = async (examId, studentId) => {
+  const results = await getStudentExamResults(examId, studentId);
+  return results.length;
 };

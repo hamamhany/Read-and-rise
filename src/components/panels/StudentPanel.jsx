@@ -18,7 +18,7 @@ import { sanitizeInput, arabicToEnglishNumber, fetchClassNames } from '../../uti
 import { recordAttendance, processStudentAbsences } from '../../services/attendance';
 import { sendUrgentReminderMessage, sendContactTeacherMessage } from '../../utils/whatsapp';
 import ExamTakingModal from './ExamTakingModal';
-import { getActiveExamsForStudent, getStudentExamResult } from '../../services/exams';
+import { getActiveExamsForStudent, getStudentAttemptsCount } from '../../services/exams';
 
 const StudentPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -60,6 +60,7 @@ const StudentPanel = ({ user, onLogout }) => {
   const [activeExams, setActiveExams] = useState([]);
   const [selectedExam, setSelectedExam] = useState(null);
   const [showExamModal, setShowExamModal] = useState(false);
+  const [examAttemptsCache, setExamAttemptsCache] = useState({});
 
   const requestNotificationPermission = async () => {
     try {
@@ -278,19 +279,43 @@ const StudentPanel = ({ user, onLogout }) => {
     return () => { unsubscribeTeacher(); unsubscribeProfile(); unsubscribeNotif(); };
   }, [user.id]);
 
-  // Fetch Active Exams
+  // ✅ Fetch Active Exams with attempt counting (max 2 attempts)
   useEffect(() => {
-    if (profile?.classIds && profile.classIds.length > 0) {
-      getActiveExamsForStudent(profile.classIds).then(async (exams) => {
+    if (!profile?.classIds || profile.classIds.length === 0) return;
+
+    let isMounted = true;
+
+    const loadExams = async () => {
+      try {
+        const exams = await getActiveExamsForStudent(profile.classIds);
         const available = [];
+        const cache = {};
+
         for (const exam of exams) {
-          const result = await getStudentExamResult(exam.id, user.id);
-          if (!result) available.push(exam);
+          const attempts = await getStudentAttemptsCount(exam.id, user.id);
+          cache[exam.id] = attempts;
+          if (attempts < 2) {
+            available.push({
+              ...exam,
+              attemptsUsed: attempts,
+              attemptsRemaining: 2 - attempts
+            });
+          }
         }
-        setActiveExams(available);
-      }).catch(console.error);
-    }
-  }, [profile?.classIds, user.id]);
+
+        if (isMounted) {
+          setActiveExams(available);
+          setExamAttemptsCache(cache);
+        }
+      } catch (err) {
+        console.warn('Failed to load exams:', err);
+      }
+    };
+
+    loadExams();
+
+    return () => { isMounted = false; };
+  }, [profile?.classIds, user.id, showExamModal]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -468,6 +493,21 @@ const StudentPanel = ({ user, onLogout }) => {
     toast.success('تم إرسال رسالة الاستعجال للمعلم.');
   };
 
+  // ✅ Start exam with attempt validation
+  const handleStartExam = (exam) => {
+    const used = exam.attemptsUsed || 0;
+    if (used >= 2) {
+      toast.error('لقد استنفدت جميع المحاولات المتاحة لهذا الاختبار (الحد الأقصى محاولتان).');
+      return;
+    }
+    const ok = window.confirm(
+      `سيتم بدء المحاولة رقم ${used + 1} من أصل 2.\nبعد التسليم لا يمكنك التراجع.\nهل تريد المتابعة؟`
+    );
+    if (!ok) return;
+    setSelectedExam(exam);
+    setShowExamModal(true);
+  };
+
   if (loading) return <div className="text-center text-gray-400 p-8">جاري التحميل...</div>;
 
   return (
@@ -595,20 +635,63 @@ const StudentPanel = ({ user, onLogout }) => {
           )}
         </div>
 
-        {/* ✅ قسم الاختبارات المتاحة */}
+        {/* ✅ قسم الاختبارات المتاحة مع حد المحاولات (2 كحد أقصى) */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-orange-500/20">
-          <h3 className="text-xl font-semibold text-orange-300 mb-4"><FaFileAlt className="inline-block me-2" /> الاختبارات المتاحة</h3>
+          <h3 className="text-xl font-semibold text-orange-300 mb-4">
+            <FaFileAlt className="inline-block me-2" /> الاختبارات المتاحة
+          </h3>
           <div className="space-y-3">
-            {activeExams.map(exam => (
-              <div key={exam.id} className="flex justify-between items-center p-4 bg-black/30 rounded-xl border border-orange-500/20">
-                <div>
-                  <p className="text-white font-bold">{exam.title}</p>
-                  <p className="text-xs text-gray-400">المدة: {exam.duration} دقيقة | عدد الأسئلة: {exam.questions?.length || 0}</p>
+            {activeExams.map(exam => {
+              const used = exam.attemptsUsed || 0;
+              const remaining = exam.attemptsRemaining ?? (2 - used);
+              const isLastAttempt = remaining === 1;
+
+              return (
+                <div
+                  key={exam.id}
+                  className="flex justify-between items-center p-4 bg-black/30 rounded-xl border border-orange-500/20 flex-wrap gap-3"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-bold">{exam.title}</p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      المدة: {exam.duration ? `${exam.duration} دقيقة` : 'غير محددة'} |
+                      الأسئلة: {exam.questions?.length || 0} |
+                      المحاولات المتبقية: <span className={`font-bold ${isLastAttempt ? 'text-red-300' : 'text-yellow-300'}`}>
+                        {remaining}/2
+                      </span>
+                    </p>
+                    {exam.startTime && (
+                      <p className="text-[10px] text-cyan-300 mt-1">
+                        متاح من: {new Date(exam.startTime).toLocaleString('ar-EG')}
+                      </p>
+                    )}
+                    {exam.endTime && (
+                      <p className="text-[10px] text-red-300 mt-0.5">
+                        ينتهي في: {new Date(exam.endTime).toLocaleString('ar-EG')}
+                      </p>
+                    )}
+                    {isLastAttempt && (
+                      <p className="text-[10px] text-red-300 mt-1 bg-red-500/10 px-2 py-1 rounded inline-block border border-red-500/30">
+                        ⚠️ هذه هي محاولتك الأخيرة
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => handleStartExam(exam)}
+                    className={`${
+                      isLastAttempt
+                        ? 'bg-red-600 hover:bg-red-700'
+                        : 'bg-orange-600 hover:bg-orange-700'
+                    } text-white px-4 py-2 rounded font-bold whitespace-nowrap`}
+                  >
+                    {used === 0 ? 'بدء الاختبار' : `بدء المحاولة #${used + 1}`}
+                  </button>
                 </div>
-                <button onClick={() => { setSelectedExam(exam); setShowExamModal(true); }} className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded font-bold">بدء الاختبار</button>
-              </div>
-            ))}
-            {activeExams.length === 0 && <p className="text-gray-400 text-center py-4">لا توجد اختبارات متاحة حالياً.</p>}
+              );
+            })}
+            {activeExams.length === 0 && (
+              <p className="text-gray-400 text-center py-4">لا توجد اختبارات متاحة حالياً.</p>
+            )}
           </div>
         </div>
 
@@ -766,8 +849,17 @@ const StudentPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {selectedExam && (
-        <ExamTakingModal exam={selectedExam} student={user} onClose={() => { setShowExamModal(false); setSelectedExam(null); }} />
+      {/* ✅ مودال الاختبار — يتم تمرير رقم المحاولة */}
+      {selectedExam && showExamModal && (
+        <ExamTakingModal
+          exam={selectedExam}
+          student={user}
+          attemptNumber={(selectedExam.attemptsUsed || 0) + 1}
+          onClose={() => {
+            setShowExamModal(false);
+            setSelectedExam(null);
+          }}
+        />
       )}
     </div>
   );
