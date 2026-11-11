@@ -3,8 +3,7 @@ import toast from 'react-hot-toast';
 import {
   FaPen, FaClock, FaClipboardList, FaUser, FaBell, FaSignOutAlt,
   FaExclamationTriangle, FaCheckCircle, FaTimesCircle, FaEye,
-  FaPlus, FaVideo, FaUsers, FaTrashAlt, FaPrint, FaPaperPlane, FaFileAlt,
-  FaFileExcel, FaFilePdf
+  FaPlus, FaVideo, FaUsers, FaTrashAlt, FaPrint, FaPaperPlane, FaFileAlt
 } from 'react-icons/fa';
 import { db, messaging } from '../../firebase';
 import {
@@ -22,14 +21,12 @@ import PrintStudentsModal from '../common/PrintStudentsModal';
 import ReportModal from '../common/ReportModal';
 import ExamManagerModal from './ExamManagerModal';
 import ExamResultsModal from './ExamResultsModal';
-import ExamManualCorrectionModal from './ExamManualCorrectionModal';
 import {
-  generateId, sanitizeInput, arabicToEnglishNumber,
-  fetchClassNames, getActiveWarnings
+  generateId, sanitizeInput, fetchClassNames, getActiveWarnings
 } from '../../utils/helpers';
 import { createMessageRequest } from '../../services/messageRequests';
-import { getExamsByTeacher, deleteExam, getExamResults } from '../../services/exams';
-import { downloadExcel, downloadPDFFromHTML } from '../../utils/exporters';
+import { getExamsByTeacher } from '../../services/exams';
+import { sendNotificationToStudents } from '../../utils/notifications';
 import { MESSAGE_REQUEST_TYPES } from '../../constants';
 
 const TeacherPanel = ({ user, onLogout }) => {
@@ -69,18 +66,15 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [showReportModal, setShowReportModal] = useState(false);
   const [selectedStudentForReport, setSelectedStudentForReport] = useState(null);
 
+  // Apology states
+  const [showApologyModal, setShowApologyModal] = useState(false);
+
   // Exam states
   const [showExamManager, setShowExamManager] = useState(false);
   const [editingExam, setEditingExam] = useState(null);
   const [showExamResults, setShowExamResults] = useState(false);
-  const [showManualCorrection, setShowManualCorrection] = useState(false);
   const [exams, setExams] = useState([]);
   const [selectedExam, setSelectedExam] = useState(null);
-
-  // Download/Print states
-  const [showDownloadChoice, setShowDownloadChoice] = useState(false);
-  const [downloadExam, setDownloadExam] = useState(null);
-  const [downloadResults, setDownloadResults] = useState([]);
 
   const requestNotificationPermission = async () => {
     try {
@@ -169,7 +163,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     const student = selectedStudentForWarning;
     const activeWarnings = getActiveWarnings(student.warnings || []);
     const newWarningNumber = activeWarnings.length + 1;
-    if (newWarningNumber > 3) return toast.error('الطالب لديه 3 إنذارات نشطة بالفعل. استخدم خيار الحظر.');
+    if (newWarningNumber > 3) return toast.error('الطالب لديه 3 إنذارات نشطة بالفعل.');
 
     try {
       await createMessageRequest({
@@ -196,41 +190,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  const handleResetStudent = async (studentId) => {
-    const ok = await confirm('إعادة تعيين الحساب', 'سيُنشأ طلب إعادة تعيين يُرسل للمدير للموافقة. متابعة؟');
-    if (!ok) return;
-    try {
-      const docSnap = await getDoc(doc(db, 'profiles', studentId));
-      if (!docSnap.exists()) return;
-      const student = docSnap.data();
-      const newUsername = `knight${Math.floor(Math.random() * 900000) + 100000}`;
-      const newPassword = Math.floor(Math.random() * 1000000000).toString().padStart(9, '0');
-
-      const classMap = student.classIds ? await fetchClassNames(student.classIds) : {};
-      const classNames = (student.classIds || []).map(id => classMap[id]).filter(Boolean).join(', ');
-
-      await createMessageRequest({
-        type: MESSAGE_REQUEST_TYPES.PASSWORD_RESET_APPROVAL,
-        targetType: 'student',
-        targetId: studentId,
-        targetName: student.name || '',
-        targetPhone: student.phone || '',
-        targetClass: classNames || 'غير محدد',
-        requestedBy: user.id,
-        requestedByName: user.name || user.username || 'معلم',
-        payload: {
-          username: newUsername,
-          password: newPassword,
-          serialNumber: student.serialNumber || ''
-        }
-      });
-
-      toast.success('✅ تم إرسال طلب إعادة التعيين للمدير.');
-    } catch (err) {
-      toast.error('فشل: ' + err.message);
-    }
-  };
-
   const handleDeleteStudentPermanently = async (student) => {
     const ok = await confirm(
       'طلب حذف الطالب',
@@ -252,34 +211,6 @@ const TeacherPanel = ({ user, onLogout }) => {
       });
 
       toast.success('✅ تم إرسال طلب الحذف للمدير.');
-    } catch (err) {
-      toast.error('فشل: ' + err.message);
-    }
-  };
-
-  const toggleFreezeStudent = async (student) => {
-    const nextStatus = !student.isFrozen;
-    const actionType = nextStatus ? 'تجميد' : 'فك تجميد';
-    const ok = await confirm(`طلب ${actionType}`, `سيُنشأ طلب ${actionType} للطالب "${student.name}" يرسل للمدير للموافقة. متابعة؟`);
-    if (!ok) return;
-
-    try {
-      await createMessageRequest({
-        type: nextStatus ? MESSAGE_REQUEST_TYPES.FREEZE : MESSAGE_REQUEST_TYPES.UNFREEZE,
-        targetType: 'student',
-        targetId: student.id,
-        targetName: student.name || '',
-        targetPhone: student.phone || '',
-        targetClass: student.classes?.map(c => c.name).join(', ') || 'غير محدد',
-        requestedBy: user.id,
-        requestedByName: user.name || user.username || 'معلم',
-        payload: {
-          reason: nextStatus ? 'تجميد من المعلم' : '',
-          serialNumber: student.serialNumber || ''
-        }
-      });
-
-      toast.success(`✅ تم إرسال طلب ${actionType} للمدير.`);
     } catch (err) {
       toast.error('فشل: ' + err.message);
     }
@@ -551,9 +482,16 @@ const TeacherPanel = ({ user, onLogout }) => {
           const t = new Date(now); t.setHours(lt.time.hours, lt.time.minutes, 0, 0);
           if (t <= now) diff = 7;
         }
-        const next = new Date(now);
+        let next = new Date(now);
         next.setDate(now.getDate() + diff);
         next.setHours(lt.time.hours, lt.time.minutes, 0, 0);
+        
+        let dateStr = next.toISOString().split('T')[0];
+        while (lt.cancelledDates?.includes(dateStr)) {
+          next.setDate(next.getDate() + 7);
+          dateStr = next.toISOString().split('T')[0];
+        }
+        
         if (!nearest || next < new Date(nearest.date)) nearest = { ...lt, date: next.toISOString() };
       } else if (lt.type === 'monthly') {
         const md = parseInt(lt.monthDay);
@@ -564,6 +502,13 @@ const TeacherPanel = ({ user, onLogout }) => {
           next = new Date(now.getFullYear(), now.getMonth() + 1, md);
           next.setHours(lt.time.hours, lt.time.minutes, 0, 0);
         }
+        
+        let dateStr = next.toISOString().split('T')[0];
+        while (lt.cancelledDates?.includes(dateStr)) {
+          next.setMonth(next.getMonth() + 1);
+          dateStr = next.toISOString().split('T')[0];
+        }
+        
         if (!nearest || next < new Date(nearest.date)) nearest = { ...lt, date: next.toISOString() };
       }
     }
@@ -572,116 +517,44 @@ const TeacherPanel = ({ user, onLogout }) => {
 
   const nextLesson = getNextLessonTime(selectedClassForLesson);
 
-  // ============================
-  // ✅ Exam handlers
-  // ============================
-  const handleDeleteExam = async (exam) => {
-    const ok = await confirm(
-      'إغلاق الاختبار نهائياً',
-      `سيتم حذف الاختبار "${exam.title}" وكل نتائجه نهائياً. لا يمكن التراجع. هل أنت متأكد؟`
-    );
-    if (!ok) return;
-    try {
-      await deleteExam(exam.id);
-      toast.success('✅ تم حذف الاختبار وكل نتائجه');
-      const list = await getExamsByTeacher(user.id);
-      setExams(list);
-      if (selectedExam?.id === exam.id) {
-        setShowExamResults(false);
-        setSelectedExam(null);
-      }
-    } catch (e) {
-      toast.error('فشل: ' + e.message);
+  const handlePostponeLesson = async () => {
+    if (!nextLesson) return toast.error('لا توجد حصة قادمة');
+    setShowApologyModal(false);
+    
+    const nextDate = new Date(nextLesson.date);
+    const followingDate = new Date(nextDate);
+    
+    if (nextLesson.type === 'recurring') {
+      followingDate.setDate(followingDate.getDate() + 7);
+    } else if (nextLesson.type === 'monthly') {
+      followingDate.setMonth(followingDate.getMonth() + 1);
+    } else {
+      followingDate.setDate(followingDate.getDate() + 7);
     }
-  };
 
-  const handleDownloadExam = async (exam) => {
     try {
-      const data = await getExamResults(exam.id);
-      if (data.length === 0) {
-        toast.error('لا توجد نتائج لتحميلها');
-        return;
+      const teacherRef = doc(db, 'teachers', user.id);
+      const teacherDoc = await getDoc(teacherRef);
+      if (teacherDoc.exists()) {
+        const data = teacherDoc.data();
+        const updatedTimes = (data.lessonTimes || []).map(lt => {
+          if (lt.id === nextLesson.id) {
+            const cancelled = lt.cancelledDates || [];
+            const dateStr = nextDate.toISOString().split('T')[0];
+            if (!cancelled.includes(dateStr)) cancelled.push(dateStr);
+            return { ...lt, cancelledDates: cancelled };
+          }
+          return lt;
+        });
+        await updateDoc(teacherRef, { lessonTimes: updatedTimes });
       }
-      setDownloadExam(exam);
-      setDownloadResults(data);
-      setShowDownloadChoice(true);
-    } catch (e) {
-      toast.error('فشل: ' + e.message);
-    }
-  };
 
-  const handlePrintExam = async (exam) => {
-    try {
-      const data = await getExamResults(exam.id);
-      if (data.length === 0) {
-        toast.error('لا توجد نتائج للطباعة');
-        return;
-      }
-      const escapeHtml = (str) => {
-        const div = document.createElement('div');
-        div.textContent = str || '';
-        return div.innerHTML;
-      };
-      const rows = data.map((r, i) => {
-        const total = r.totalPoints || r.totalQuestions || 1;
-        const pct = total > 0 ? Math.round(((r.score || 0) / total) * 100) : 0;
-        return `
-          <tr>
-            <td style="text-align:center;">${i + 1}</td>
-            <td>${escapeHtml(r.studentName || '')}</td>
-            <td style="text-align:center;font-family:monospace;">${escapeHtml(r.studentSerial || '—')}</td>
-            <td style="text-align:center;">${r.timeTakenSeconds ? Math.floor(r.timeTakenSeconds / 60) + 'د ' + (r.timeTakenSeconds % 60) + 'ث' : '—'}</td>
-            <td style="text-align:center;font-weight:bold;">${r.score || 0}/${total} (${pct}%)</td>
-            <td style="text-align:center;">${r.correctionStatus === 'pending_correction' ? '⏳ قيد التصحيح' : r.correctionStatus === 'manually_corrected' ? '✅ مصحح يدوياً' : '✓ تلقائي'}</td>
-          </tr>
-        `;
-      }).join('');
-
-      const html = `
-        <!DOCTYPE html>
-        <html dir="rtl" lang="ar">
-        <head>
-          <meta charset="UTF-8">
-          <style>
-            @page { size: A4 landscape; margin: 10mm; }
-            body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; padding: 10px; color: #000; background: #fff; }
-            h1 { text-align: center; font-size: 20px; margin: 0 0 5px 0; }
-            .date { text-align: center; font-size: 12px; color: #555; margin-bottom: 15px; }
-            table { width: 100%; border-collapse: collapse; font-size: 12px; }
-            th, td { border: 1px solid #333; padding: 8px 6px; text-align: right; }
-            th { background: #e5e5e5; font-weight: bold; font-size: 13px; }
-            tr:nth-child(even) td { background: #f9f9f9; }
-          </style>
-        </head>
-        <body>
-          <h1>نتائج الاختبار: ${escapeHtml(exam.title)}</h1>
-          <p class="date">التاريخ: ${new Date().toLocaleDateString('ar-EG')} — عدد المتقدمين: ${data.length} — التصحيح: ${exam.correctionMode === 'manual' ? 'يدوي' : 'تلقائي'}</p>
-          <table>
-            <thead>
-              <tr>
-                <th style="width:50px;">#</th>
-                <th>اسم الطالب</th>
-                <th style="width:100px;">الرقم التسلسلي</th>
-                <th style="width:120px;">الوقت المستغرق</th>
-                <th style="width:140px;">العلامة</th>
-                <th style="width:120px;">الحالة</th>
-              </tr>
-            </thead>
-            <tbody>${rows}</tbody>
-          </table>
-        </body>
-        </html>
-      `;
-
-      const iframe = document.createElement('iframe');
-      iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;';
-      document.body.appendChild(iframe);
-      const doc = iframe.contentWindow.document;
-      doc.open(); doc.write(html); doc.close();
-      setTimeout(() => {
-        try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch (e) { /* ignore */ }
-        setTimeout(() => { if (document.body.contains(iframe)) document.body.removeChild(iframe); }, 1500);
-      }, 300);
+      const dayNames = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+      const body = `تم إلغاء الحصة القادمة التي كانت بتاريخ ${nextDate.toLocaleDateString('ar-EG')} الموافق يوم ${dayNames[nextDate.getDay()]} وتحويلها إلى تاريخ ${followingDate.toLocaleDateString('ar-EG')}. يتمنا كادر الأكاديمية لكم التوفيق والنجاح`;
+      
+      await sendNotificationToStudents([selectedClassForLesson], 'إلغاء الحصة القادمة', body, 'class_cancellation');
+      
+      toast.success('✅ تم تأجيل الحصة وإرسال الإشعار للطلاب');
     } catch (e) {
       toast.error('فشل: ' + e.message);
     }
@@ -689,16 +562,11 @@ const TeacherPanel = ({ user, onLogout }) => {
 
   const handleExamModalClose = async (wasSaved) => {
     setShowExamManager(false);
-    const wasEdit = !!editingExam;
     setEditingExam(null);
-
     try {
       const list = await getExamsByTeacher(user.id);
       setExams(list);
     } catch (e) { console.warn(e); }
-
-    // eslint-disable-next-line no-unused-vars
-    const _unused = wasSaved || wasEdit;
   };
 
   if (loading) return <div className="text-center text-gray-400 p-8">جاري التحميل...</div>;
@@ -719,10 +587,6 @@ const TeacherPanel = ({ user, onLogout }) => {
             </button>
             <button onClick={onLogout} className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-full text-2xl transition shadow-lg"><FaSignOutAlt /></button>
           </div>
-        </div>
-
-        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-sm text-amber-200">
-          ℹ️ جميع الإجراءات (تجميد، حذف، إنذار، إعادة تعيين) تُرسل كطلبات للمدير للموافقة قبل التنفيذ.
         </div>
 
         {errorMsg && <p className="text-red-400 text-sm bg-red-500/10 p-3 rounded-xl border border-red-500/20">{errorMsg}</p>}
@@ -788,9 +652,14 @@ const TeacherPanel = ({ user, onLogout }) => {
             </div>
             <CountdownTimer targetDate={nextLesson ? nextLesson.date : null} />
             {nextLesson && (
-              <button onClick={() => toast.success('تم إنشاء الحصة!')} className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl text-lg font-bold shadow-lg w-full mt-2">
-                <FaVideo className="inline-block me-2" /> إنشاء غرفة للحصة
-              </button>
+              <div className="flex gap-2 mt-2">
+                <button onClick={() => toast.success('تم إنشاء الحصة!')} className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-xl text-sm font-bold shadow-lg">
+                  <FaVideo className="inline-block me-2" /> إنشاء غرفة
+                </button>
+                <button onClick={() => setShowApologyModal(true)} className="flex-1 bg-orange-600 hover:bg-orange-700 text-white px-4 py-3 rounded-xl text-sm font-bold shadow-lg">
+                  <FaExclamationTriangle className="inline-block me-2" /> اعتذار عن الحصة
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -829,63 +698,26 @@ const TeacherPanel = ({ user, onLogout }) => {
             </button>
           </div>
           <div className="space-y-2 max-h-96 overflow-y-auto">
-            {exams.map(exam => {
-              const isManual = exam.correctionMode === 'manual';
-              return (
-                <div key={exam.id} className="p-3 bg-black/30 rounded-xl border border-gray-700">
-                  <div className="mb-2">
-                    <p className="text-white font-bold">{exam.title}</p>
-                    <p className="text-xs text-gray-400">
-                      المدة: {exam.duration ? `${exam.duration} دقيقة` : 'غير محددة'} |
-                      الأسئلة: {exam.questions?.length || 0} |
-                      التصحيح: <span className={isManual ? 'text-amber-300' : 'text-green-300'}>
-                        {isManual ? 'يدوي' : 'تلقائي'}
-                      </span>
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    <button
-                      onClick={() => { setSelectedExam(exam); setShowExamResults(true); }}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs font-bold"
-                    >
-                      عرض النتائج
-                    </button>
-                    {isManual && (
-                      <button
-                        onClick={() => { setSelectedExam(exam); setShowManualCorrection(true); }}
-                        className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded text-xs font-bold"
-                      >
-                        تصحيح
-                      </button>
-                    )}
-                    <button
-                      onClick={() => handleDownloadExam(exam)}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded text-xs font-bold"
-                    >
-                      تحميل النتائج
-                    </button>
-                    <button
-                      onClick={() => handlePrintExam(exam)}
-                      className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded text-xs font-bold"
-                    >
-                      طباعة
-                    </button>
-                    <button
-                      onClick={() => { setEditingExam(exam); setShowExamManager(true); }}
-                      className="bg-cyan-600 hover:bg-cyan-700 text-white px-3 py-1.5 rounded text-xs font-bold"
-                    >
-                      تعديل
-                    </button>
-                    <button
-                      onClick={() => handleDeleteExam(exam)}
-                      className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded text-xs font-bold"
-                    >
-                      إغلاق الاختبار
-                    </button>
-                  </div>
+            {exams.map(exam => (
+              <div key={exam.id} className="p-3 bg-black/30 rounded-xl border border-gray-700 flex justify-between items-center flex-wrap gap-3">
+                <div>
+                  <p className="text-white font-bold">{exam.title}</p>
+                  <p className="text-xs text-gray-400">
+                    المدة: {exam.duration ? `${exam.duration} دقيقة` : 'غير محددة'} |
+                    الأسئلة: {exam.questions?.length || 0} |
+                    التصحيح: <span className={exam.correctionMode === 'manual' ? 'text-amber-300' : 'text-green-300'}>
+                      {exam.correctionMode === 'manual' ? 'يدوي' : 'تلقائي'}
+                    </span>
+                  </p>
                 </div>
-              );
-            })}
+                <button
+                  onClick={() => { setSelectedExam(exam); setShowExamResults(true); }}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold"
+                >
+                  عرض النتائج
+                </button>
+              </div>
+            ))}
             {exams.length === 0 && (
               <p className="text-gray-400 text-center py-4">لا توجد اختبارات بعد.</p>
             )}
@@ -945,14 +777,7 @@ const TeacherPanel = ({ user, onLogout }) => {
                       <button onClick={() => openWarningModal(s)} className="text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-2 py-1 rounded-lg">إنذار</button>
                       <button onClick={() => { setSelectedStudentForReport(s); setShowReportModal(true); }} className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg">بلاغ</button>
                       <button onClick={() => { setSelectedStudentForMessage(s); setShowGeneralMessageModal(true); }} className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-lg">رسالة</button>
-                      <button onClick={() => handleResetStudent(s.id)} className="text-xs bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-1 rounded-lg">إعادة تعيين</button>
                       <button onClick={() => handleDeleteStudentPermanently(s)} className="text-xs bg-red-600/30 text-red-200 border border-red-500/40 px-2 py-1 rounded-lg">حذف</button>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-400">{s.isFrozen ? 'مجمد' : 'مفعل'}</span>
-                        <div onClick={() => toggleFreezeStudent(s)} className={`w-10 h-5 flex items-center rounded-full p-0.5 cursor-pointer transition-colors ${s.isFrozen ? 'bg-gray-600' : 'bg-green-500'}`}>
-                          <div className={`bg-white w-3.5 h-3.5 rounded-full shadow-md transform transition-transform ${s.isFrozen ? 'translate-x-0' : 'translate-x-5'}`} />
-                        </div>
-                      </div>
                     </div>
                   </div>
                 );
@@ -1013,6 +838,24 @@ const TeacherPanel = ({ user, onLogout }) => {
               <button onClick={() => acceptReview(selectedReviewStudent.id)} className="btn-primary bg-green-600 px-6 py-2 rounded-md text-white"><FaCheckCircle className="inline-block me-2" /> قبول</button>
               <button onClick={() => rejectReview(selectedReviewStudent.id)} className="btn-primary bg-red-600 px-6 py-2 rounded-md text-white"><FaTimesCircle className="inline-block me-2" /> رفض</button>
               <button onClick={() => setShowReviewModal(false)} className="btn-primary bg-gray-600 px-6 py-2 rounded-md text-white">إلغاء</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showApologyModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowApologyModal(false)}>
+          <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-orange-500/30" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-semibold text-orange-300 mb-4">اعتذار عن الحصة القادمة</h3>
+            <p className="text-gray-300 text-sm mb-4">اختر الإجراء المناسب:</p>
+            <div className="space-y-3">
+              <button onClick={() => { setShowApologyModal(false); setShowLessonModal(true); }} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold">
+                تحديد حصة تعويض عن الإلغاء
+              </button>
+              <button onClick={handlePostponeLesson} className="w-full bg-orange-600 hover:bg-orange-700 text-white py-3 rounded-xl font-bold">
+                تأجيل إلى الحصة التي تليها
+              </button>
+              <button onClick={() => setShowApologyModal(false)} className="w-full bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-xl text-sm">إلغاء</button>
             </div>
           </div>
         </div>
@@ -1094,123 +937,18 @@ const TeacherPanel = ({ user, onLogout }) => {
           isOpen={showExamResults}
           onClose={() => { setShowExamResults(false); setSelectedExam(null); }}
           exam={selectedExam}
+          onEdit={(exam) => {
+            setShowExamResults(false);
+            setEditingExam(exam);
+            setShowExamManager(true);
+          }}
+          onDelete={async () => {
+            setShowExamResults(false);
+            setSelectedExam(null);
+            const list = await getExamsByTeacher(user.id);
+            setExams(list);
+          }}
         />
-      )}
-
-      {selectedExam && showManualCorrection && (
-        <ExamManualCorrectionModal
-          isOpen={showManualCorrection}
-          onClose={() => { setShowManualCorrection(false); setSelectedExam(null); }}
-          exam={selectedExam}
-        />
-      )}
-
-      {showDownloadChoice && downloadExam && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[120] p-4">
-          <div className="bg-gray-900 p-6 rounded-2xl max-w-md w-full border border-emerald-500/40">
-            <h3 className="text-xl font-bold text-emerald-300 mb-3 text-center">
-              تحميل نتائج "{downloadExam.title}"
-            </h3>
-            <p className="text-sm text-gray-300 text-center mb-4">
-              كيف تريد تحميل النتائج؟
-            </p>
-            <div className="space-y-2">
-              <button
-                onClick={async () => {
-                  try {
-                    const headers = [
-                      { header: 'اسم الطالب', key: 'name', width: 25 },
-                      { header: 'الرقم التسلسلي', key: 'serial', width: 15 },
-                      { header: 'الوقت المستغرق', key: 'time', width: 15 },
-                      { header: 'العلامة', key: 'score', width: 12 },
-                      { header: 'المجموع', key: 'total', width: 10 },
-                      { header: 'النسبة', key: 'percent', width: 10 },
-                      { header: 'الحالة', key: 'status', width: 18 }
-                    ];
-                    const rows = downloadResults.map(r => {
-                      const total = r.totalPoints || r.totalQuestions || 1;
-                      const pct = total > 0 ? Math.round(((r.score || 0) / total) * 100) : 0;
-                      return {
-                        name: r.studentName || '',
-                        serial: r.studentSerial || '—',
-                        time: r.timeTakenSeconds ? `${Math.floor(r.timeTakenSeconds / 60)}د ${r.timeTakenSeconds % 60}ث` : '—',
-                        score: r.score || 0,
-                        total: total,
-                        percent: pct + '%',
-                        status: r.correctionStatus === 'pending_correction' ? 'قيد التصحيح'
-                          : r.correctionStatus === 'manually_corrected' ? 'مصحح يدوياً' : 'تلقائي'
-                      };
-                    });
-                    await downloadExcel({
-                      headers, rows,
-                      sheetName: 'النتائج',
-                      filename: `results_${downloadExam.title}_${Date.now()}.xlsx`
-                    });
-                    setShowDownloadChoice(false);
-                  } catch (e) { toast.error('فشل: ' + e.message); }
-                }}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2"
-              >
-                <FaFileExcel /> ملف Excel (قابل للتعديل)
-              </button>
-              <button
-                onClick={async () => {
-                  try {
-                    const escapeHtml = (str) => {
-                      const d = document.createElement('div');
-                      d.textContent = str || '';
-                      return d.innerHTML;
-                    };
-                    const rows = downloadResults.map((r, i) => {
-                      const total = r.totalPoints || r.totalQuestions || 1;
-                      const pct = total > 0 ? Math.round(((r.score || 0) / total) * 100) : 0;
-                      return `<tr>
-                        <td style="text-align:center;">${i + 1}</td>
-                        <td>${escapeHtml(r.studentName)}</td>
-                        <td style="text-align:center;font-family:monospace;">${escapeHtml(r.studentSerial || '—')}</td>
-                        <td style="text-align:center;">${r.timeTakenSeconds ? Math.floor(r.timeTakenSeconds / 60) + 'د ' + (r.timeTakenSeconds % 60) + 'ث' : '—'}</td>
-                        <td style="text-align:center;font-weight:bold;">${r.score || 0}/${total} (${pct}%)</td>
-                        <td style="text-align:center;">${r.correctionStatus === 'pending_correction' ? '⏳ قيد التصحيح' : r.correctionStatus === 'manually_corrected' ? '✅ مصحح يدوياً' : '✓ تلقائي'}</td>
-                      </tr>`;
-                    }).join('');
-                    const html = `<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><style>
-                      @page { size: A4 landscape; margin: 10mm; }
-                      body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; padding: 10px; color: #000; background: #fff; }
-                      h1 { text-align: center; font-size: 20px; margin: 0 0 5px 0; }
-                      .date { text-align: center; font-size: 12px; color: #555; margin-bottom: 15px; }
-                      table { width: 100%; border-collapse: collapse; font-size: 12px; }
-                      th, td { border: 1px solid #333; padding: 8px 6px; text-align: right; }
-                      th { background: #e5e5e5; font-weight: bold; font-size: 13px; }
-                      tr:nth-child(even) td { background: #f9f9f9; }
-                    </style></head><body>
-                      <h1>نتائج الاختبار: ${escapeHtml(downloadExam.title)}</h1>
-                      <p class="date">التاريخ: ${new Date().toLocaleDateString('ar-EG')} — عدد المتقدمين: ${downloadResults.length}</p>
-                      <table><thead><tr>
-                        <th style="width:50px;">#</th><th>اسم الطالب</th><th style="width:100px;">الرقم التسلسلي</th>
-                        <th style="width:120px;">الوقت المستغرق</th><th style="width:140px;">العلامة</th><th style="width:120px;">الحالة</th>
-                      </tr></thead><tbody>${rows}</tbody></table>
-                    </body></html>`;
-                    await downloadPDFFromHTML({
-                      html,
-                      filename: `results_${downloadExam.title}_${Date.now()}.pdf`,
-                      orientation: 'landscape'
-                    });
-                    setShowDownloadChoice(false);
-                  } catch (e) { toast.error('فشل: ' + e.message); }
-                }}
-                className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2"
-              >
-                <FaFilePdf /> ملف PDF (أسرع، غير قابل للتعديل)
-              </button>
-              <button
-                onClick={() => { setShowDownloadChoice(false); setDownloadExam(null); setDownloadResults([]); }}
-                className="w-full bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-xl text-sm"
-              >
-                إلغاء
-              </button>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );

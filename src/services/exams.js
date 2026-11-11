@@ -6,10 +6,10 @@ import {
 import {
   MAX_EXAM_ATTEMPTS, EXAM_CORRECTION_MODE, EXAM_RESULT_STATUS
 } from '../constants';
+import { sendExamManualCorrectionAlertToManager } from '../utils/notifications';
 
 export { MAX_EXAM_ATTEMPTS };
 
-// ✅ تنقية الأسئلة
 const sanitizeQuestions = (questions) => {
   if (!Array.isArray(questions)) return [];
   return questions.map(q => {
@@ -25,9 +25,6 @@ const sanitizeQuestions = (questions) => {
   });
 };
 
-// ✅ ============================================================
-// إنشاء اختبار جديد
-// ✅ ============================================================
 export const createExam = async (examData) => {
   const sanitized = {
     teacherId: examData.teacherId || '',
@@ -47,9 +44,6 @@ export const createExam = async (examData) => {
   return ref.id;
 };
 
-// ✅ ============================================================
-// تحديث اختبار (سيتم استدعاء regrade بعد التحديث)
-// ✅ ============================================================
 export const updateExam = async (examId, examData) => {
   const sanitized = {};
   if (examData.title !== undefined) sanitized.title = (examData.title || '').trim();
@@ -65,24 +59,16 @@ export const updateExam = async (examId, examData) => {
   await updateDoc(doc(db, 'exams', examId), sanitized);
 };
 
-// ✅ ============================================================
-// حذف اختبار نهائياً + حذف جميع نتائجه
-// ✅ ============================================================
 export const deleteExam = async (examId) => {
-  // حذف جميع النتائج المرتبطة
   const resultsSnap = await getDocs(
     query(collection(db, 'examResults'), where('examId', '==', examId))
   );
   const deletePromises = resultsSnap.docs.map(d => deleteDoc(doc(db, 'examResults', d.id)));
   await Promise.all(deletePromises);
 
-  // حذف الاختبار نفسه
   await deleteDoc(doc(db, 'exams', examId));
 };
 
-// ✅ ============================================================
-// جلب اختبارات المعلم
-// ✅ ============================================================
 export const getExamsByTeacher = async (teacherId) => {
   const q = query(
     collection(db, 'exams'),
@@ -93,9 +79,6 @@ export const getExamsByTeacher = async (teacherId) => {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 };
 
-// ✅ ============================================================
-// جلب الاختبارات المتاحة للطالب
-// ✅ ============================================================
 export const getActiveExamsForStudent = async (classIds) => {
   const now = new Date();
   if (!classIds || classIds.length === 0) return [];
@@ -119,9 +102,6 @@ export const getActiveExamsForStudent = async (classIds) => {
   });
 };
 
-// ✅ ============================================================
-// تقديم نتيجة اختبار
-// ✅ ============================================================
 export const submitExamResult = async (resultData, exam) => {
   const isAuto = (exam.correctionMode || EXAM_CORRECTION_MODE.AUTO) === EXAM_CORRECTION_MODE.AUTO;
 
@@ -186,21 +166,29 @@ export const submitExamResult = async (resultData, exam) => {
   };
 
   const ref = await addDoc(collection(db, 'examResults'), cleanedResult);
+
+  if (!isAuto) {
+    const pendingSnap = await getDocs(query(collection(db, 'examResults'), where('examId', '==', resultData.examId), where('correctionStatus', '==', EXAM_RESULT_STATUS.PENDING_CORRECTION)));
+    const pendingCount = pendingSnap.size;
+    
+    if (pendingCount > 0 && pendingCount % 5 === 0) {
+      const managersSnap = await getDocs(query(collection(db, 'profiles'), where('role', '==', 'system_manager')));
+      const submissionTime = new Date(); 
+      for (const manager of managersSnap.docs) {
+        await sendExamManualCorrectionAlertToManager(manager.id, pendingCount, exam.title, submissionTime);
+      }
+    }
+  }
+
   return { id: ref.id, score, totalPoints, totalQuestions: exam.questions.length };
 };
 
-// ✅ ============================================================
-// جلب نتائج اختبار
-// ✅ ============================================================
 export const getExamResults = async (examId) => {
   const q = query(collection(db, 'examResults'), where('examId', '==', examId));
   const snap = await getDocs(q);
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 };
 
-// ✅ ============================================================
-// جلب نتيجة طالب واحدة
-// ✅ ============================================================
 export const getStudentExamResults = async (examId, studentId) => {
   const q = query(
     collection(db, 'examResults'),
@@ -222,9 +210,6 @@ export const getStudentAttemptsCount = async (examId, studentId) => {
   return results.length;
 };
 
-// ✅ ============================================================
-// إعادة تصحيح جميع النتائج بعد تعديل الاختبار
-// ✅ ============================================================
 export const regradeExamResults = async (examId, updatedExam) => {
   const results = await getExamResults(examId);
   const updatedResults = [];
@@ -232,7 +217,6 @@ export const regradeExamResults = async (examId, updatedExam) => {
 
   for (const result of results) {
     const oldScore = typeof result.score === 'number' ? result.score : 0;
-    const oldStatus = result.correctionStatus || 'auto_corrected';
 
     let newTotalPoints = 0;
     let newScore = 0;
@@ -247,7 +231,6 @@ export const regradeExamResults = async (examId, updatedExam) => {
 
       let isCorrect = null;
 
-      // إعادة تصحيح تلقائي دائمًا بناءً على الإجابة الصحيحة الجديدة
       const normalized = String(studentAnswer).trim().toLowerCase();
       const correctNorm = String(q.correctAnswer ?? '').trim().toLowerCase();
       isCorrect = normalized !== '' && normalized === correctNorm;
@@ -287,7 +270,6 @@ export const regradeExamResults = async (examId, updatedExam) => {
       updatedAt: serverTimestamp()
     });
 
-    // إشعار الطالب فقط إذا تغيرت النتيجة
     if (newScore !== oldScore) {
       notifications.push({
         studentId: result.studentId,
@@ -310,11 +292,7 @@ export const regradeExamResults = async (examId, updatedExam) => {
   return { updatedResults, notifications };
 };
 
-// ✅ ============================================================
-// ✅ التصحيح الشخصي: المعلم يحدد صح/خطأ لكل سؤال لطالب معين
-// ✅ ============================================================
 export const saveManualCorrections = async (resultId, corrections) => {
-  // corrections = [{ questionId, isCorrect }, ...]
   const resultRef = doc(db, 'examResults', resultId);
   const resultSnap = await getDoc(resultRef);
   if (!resultSnap.exists()) throw new Error('النتيجة غير موجودة');

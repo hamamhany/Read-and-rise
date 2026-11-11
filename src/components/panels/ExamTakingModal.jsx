@@ -141,7 +141,6 @@ const ExamTakingModal = ({ exam, student, onClose }) => {
   return (
     <div className="fixed inset-0 z-[100] bg-gray-950 overflow-y-auto" dir="rtl">
       <div className="min-h-screen flex flex-col max-w-3xl mx-auto">
-        {/* Header */}
         <div className="sticky top-0 z-10 bg-gray-900 border-b-2 border-blue-500/40 p-4 shadow-xl">
           <div className="flex justify-between items-center flex-wrap gap-3">
             <div>
@@ -249,7 +248,6 @@ const ExamTakingModal = ({ exam, student, onClose }) => {
           ))}
         </div>
 
-        {/* Footer */}
         <div className="sticky bottom-0 bg-gray-900 border-t-2 border-gray-700 p-4 flex gap-3">
           <button
             onClick={onClose}

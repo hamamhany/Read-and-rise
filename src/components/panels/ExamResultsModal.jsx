@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import {
-  FaTimes, FaSpinner, FaEye, FaClipboardList
+  FaTimes, FaSpinner, FaEye, FaClipboardList, FaEdit, FaDownload, FaPrint, FaFileExcel, FaFilePdf, FaTrashAlt
 } from 'react-icons/fa';
-import { getExamResults } from '../../services/exams';
+import { getExamResults, deleteExam } from '../../services/exams';
 import ExamAnswersDetailModal from './ExamAnswersDetailModal';
 import ExamManualCorrectionModal from './ExamManualCorrectionModal';
 import { EXAM_RESULT_STATUS } from '../../constants';
+import { downloadExcel, downloadPDFFromHTML } from '../../utils/exporters';
+import { useConfirm } from '../common/ConfirmContext';
 
 const formatDuration = (seconds) => {
   if (!seconds || seconds < 0) return '—';
@@ -16,11 +18,15 @@ const formatDuration = (seconds) => {
   return `${m}د${s > 0 ? ` ${s}ث` : ''}`;
 };
 
-const ExamResultsModal = ({ isOpen, onClose, exam }) => {
+const ExamResultsModal = ({ isOpen, onClose, exam, onEdit, onDelete }) => {
+  const confirm = useConfirm();
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
   const [exploringResult, setExploringResult] = useState(null);
   const [showManualCorrection, setShowManualCorrection] = useState(false);
+  
+  const [showDownloadChoice, setShowDownloadChoice] = useState(false);
+  const [downloadResults, setDownloadResults] = useState([]);
 
   useEffect(() => {
     if (isOpen && exam) loadResults();
@@ -31,7 +37,6 @@ const ExamResultsModal = ({ isOpen, onClose, exam }) => {
     setLoading(true);
     try {
       const data = await getExamResults(exam.id);
-      // تجميع حسب الطالب — أفضل محاولة
       const byStudent = {};
       data.forEach(r => {
         if (!byStudent[r.studentId] || (r.score || 0) > (byStudent[r.studentId].score || 0)) {
@@ -48,6 +53,97 @@ const ExamResultsModal = ({ isOpen, onClose, exam }) => {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDownloadExam = () => {
+    if (results.length === 0) return toast.error('لا توجد نتائج لتحميلها');
+    setDownloadResults(results);
+    setShowDownloadChoice(true);
+  };
+
+  const handlePrintExam = () => {
+    if (results.length === 0) return toast.error('لا توجد نتائج للطباعة');
+    const escapeHtml = (str) => {
+      const div = document.createElement('div');
+      div.textContent = str || '';
+      return div.innerHTML;
+    };
+    const rows = results.map((r, i) => {
+      const total = r.totalPoints || r.totalQuestions || 1;
+      const pct = total > 0 ? Math.round(((r.score || 0) / total) * 100) : 0;
+      return `
+        <tr>
+          <td style="text-align:center;">${i + 1}</td>
+          <td>${escapeHtml(r.studentName || '')}</td>
+          <td style="text-align:center;font-family:monospace;">${escapeHtml(r.studentSerial || '—')}</td>
+          <td style="text-align:center;">${r.timeTakenSeconds ? Math.floor(r.timeTakenSeconds / 60) + 'د ' + (r.timeTakenSeconds % 60) + 'ث' : '—'}</td>
+          <td style="text-align:center;font-weight:bold;">${r.score || 0}/${total} (${pct}%)</td>
+          <td style="text-align:center;">${r.correctionStatus === 'pending_correction' ? '⏳ قيد التصحيح' : r.correctionStatus === 'manually_corrected' ? '✅ مصحح يدوياً' : '✓ تلقائي'}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const html = `
+      <!DOCTYPE html>
+      <html dir="rtl" lang="ar">
+      <head>
+        <meta charset="UTF-8">
+        <style>
+          @page { size: A4 landscape; margin: 10mm; }
+          body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; padding: 10px; color: #000; background: #fff; }
+          h1 { text-align: center; font-size: 20px; margin: 0 0 5px 0; }
+          .date { text-align: center; font-size: 12px; color: #555; margin-bottom: 15px; }
+          table { width: 100%; border-collapse: collapse; font-size: 12px; }
+          th, td { border: 1px solid #333; padding: 8px 6px; text-align: right; }
+          th { background: #e5e5e5; font-weight: bold; font-size: 13px; }
+          tr:nth-child(even) td { background: #f9f9f9; }
+        </style>
+      </head>
+      <body>
+        <h1>نتائج الاختبار: ${escapeHtml(exam.title)}</h1>
+        <p class="date">التاريخ: ${new Date().toLocaleDateString('ar-EG')} — عدد المتقدمين: ${results.length} — التصحيح: ${exam.correctionMode === 'manual' ? 'يدوي' : 'تلقائي'}</p>
+        <table>
+          <thead>
+            <tr>
+              <th style="width:50px;">#</th>
+              <th>اسم الطالب</th>
+              <th style="width:100px;">الرقم التسلسلي</th>
+              <th style="width:120px;">الوقت المستغرق</th>
+              <th style="width:140px;">العلامة</th>
+              <th style="width:120px;">الحالة</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </body>
+      </html>
+    `;
+
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;';
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow.document;
+    doc.open(); doc.write(html); doc.close();
+    setTimeout(() => {
+      try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch (e) { /* ignore */ }
+      setTimeout(() => { if (document.body.contains(iframe)) document.body.removeChild(iframe); }, 1500);
+    }, 300);
+  };
+
+  const handleDeleteExam = async () => {
+    const ok = await confirm(
+      'إغلاق الاختبار نهائياً',
+      `سيتم حذف الاختبار "${exam.title}" وكل نتائجه نهائياً من السيرفر. لا يمكن التراجع. هل أنت متأكد؟`
+    );
+    if (!ok) return;
+    try {
+      await deleteExam(exam.id);
+      toast.success('✅ تم حذف الاختبار وكل نتائجه');
+      if (onDelete) onDelete();
+      else onClose();
+    } catch (e) {
+      toast.error('فشل: ' + e.message);
     }
   };
 
@@ -70,7 +166,25 @@ const ExamResultsModal = ({ isOpen, onClose, exam }) => {
                   طريقة التصحيح: {isManual ? 'يدوي (شخصي)' : 'تلقائي'}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={() => onEdit(exam)}
+                  className="bg-cyan-600 hover:bg-cyan-700 text-white px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1"
+                >
+                  <FaEdit /> تعديل
+                </button>
+                <button
+                  onClick={handleDownloadExam}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1"
+                >
+                  <FaDownload /> تحميل النتائج
+                </button>
+                <button
+                  onClick={handlePrintExam}
+                  className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1"
+                >
+                  <FaPrint /> طباعة
+                </button>
                 {isManual && (
                   <button
                     onClick={() => setShowManualCorrection(true)}
@@ -79,7 +193,7 @@ const ExamResultsModal = ({ isOpen, onClose, exam }) => {
                     <FaClipboardList /> تصحيح
                   </button>
                 )}
-                <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">
+                <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl px-2">
                   <FaTimes />
                 </button>
               </div>
@@ -96,7 +210,7 @@ const ExamResultsModal = ({ isOpen, onClose, exam }) => {
                 <p className="text-gray-400">لم يتقدم أي طالب لهذا الاختبار بعد.</p>
               </div>
             ) : (
-              <div className="overflow-x-auto rounded-xl border-2 border-gray-700">
+              <div className="overflow-x-auto rounded-xl border-2 border-gray-700 mb-6">
                 <table className="w-full text-right border-collapse text-sm">
                   <thead className="bg-gray-800 text-gray-300 sticky top-0">
                     <tr>
@@ -176,6 +290,21 @@ const ExamResultsModal = ({ isOpen, onClose, exam }) => {
               </div>
             )}
           </div>
+
+          <div className="sticky bottom-0 bg-gray-900 border-t-2 border-gray-700 p-4 flex flex-wrap justify-between gap-3">
+            <button
+              onClick={handleDeleteExam}
+              className="bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2"
+            >
+              <FaTrashAlt /> حذف الاختبار نهائياً
+            </button>
+            <button
+              onClick={onClose}
+              className="bg-gray-700 hover:bg-gray-600 text-white px-8 py-2.5 rounded-xl font-bold"
+            >
+              إغلاق
+            </button>
+          </div>
         </div>
       </div>
 
@@ -195,6 +324,114 @@ const ExamResultsModal = ({ isOpen, onClose, exam }) => {
           onClose={() => { setShowManualCorrection(false); loadResults(); }}
           exam={exam}
         />
+      )}
+
+      {showDownloadChoice && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[120] p-4">
+          <div className="bg-gray-900 p-6 rounded-2xl max-w-md w-full border border-emerald-500/40">
+            <h3 className="text-xl font-bold text-emerald-300 mb-3 text-center">
+              تحميل نتائج "{exam.title}"
+            </h3>
+            <p className="text-sm text-gray-300 text-center mb-4">
+              كيف تريد تحميل النتائج؟
+            </p>
+            <div className="space-y-2">
+              <button
+                onClick={async () => {
+                  try {
+                    const headers = [
+                      { header: 'اسم الطالب', key: 'name', width: 25 },
+                      { header: 'الرقم التسلسلي', key: 'serial', width: 15 },
+                      { header: 'الوقت المستغرق', key: 'time', width: 15 },
+                      { header: 'العلامة', key: 'score', width: 12 },
+                      { header: 'المجموع', key: 'total', width: 10 },
+                      { header: 'النسبة', key: 'percent', width: 10 },
+                      { header: 'الحالة', key: 'status', width: 18 }
+                    ];
+                    const rows = downloadResults.map(r => {
+                      const total = r.totalPoints || r.totalQuestions || 1;
+                      const pct = total > 0 ? Math.round(((r.score || 0) / total) * 100) : 0;
+                      return {
+                        name: r.studentName || '',
+                        serial: r.studentSerial || '—',
+                        time: r.timeTakenSeconds ? `${Math.floor(r.timeTakenSeconds / 60)}د ${r.timeTakenSeconds % 60}ث` : '—',
+                        score: r.score || 0,
+                        total: total,
+                        percent: pct + '%',
+                        status: r.correctionStatus === 'pending_correction' ? 'قيد التصحيح'
+                          : r.correctionStatus === 'manually_corrected' ? 'مصحح يدوياً' : 'تلقائي'
+                      };
+                    });
+                    await downloadExcel({
+                      headers, rows,
+                      sheetName: 'النتائج',
+                      filename: `results_${exam.title}_${Date.now()}.xlsx`
+                    });
+                    setShowDownloadChoice(false);
+                  } catch (e) { toast.error('فشل: ' + e.message); }
+                }}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2"
+              >
+                <FaFileExcel /> ملف Excel (قابل للتعديل)
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    const escapeHtml = (str) => {
+                      const d = document.createElement('div');
+                      d.textContent = str || '';
+                      return d.innerHTML;
+                    };
+                    const rows = downloadResults.map((r, i) => {
+                      const total = r.totalPoints || r.totalQuestions || 1;
+                      const pct = total > 0 ? Math.round(((r.score || 0) / total) * 100) : 0;
+                      return `<tr>
+                        <td style="text-align:center;">${i + 1}</td>
+                        <td>${escapeHtml(r.studentName)}</td>
+                        <td style="text-align:center;font-family:monospace;">${escapeHtml(r.studentSerial || '—')}</td>
+                        <td style="text-align:center;">${r.timeTakenSeconds ? Math.floor(r.timeTakenSeconds / 60) + 'د ' + (r.timeTakenSeconds % 60) + 'ث' : '—'}</td>
+                        <td style="text-align:center;font-weight:bold;">${r.score || 0}/${total} (${pct}%)</td>
+                        <td style="text-align:center;">${r.correctionStatus === 'pending_correction' ? '⏳ قيد التصحيح' : r.correctionStatus === 'manually_corrected' ? '✅ مصحح يدوياً' : '✓ تلقائي'}</td>
+                      </tr>`;
+                    }).join('');
+                    const html = `<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><style>
+                      @page { size: A4 landscape; margin: 10mm; }
+                      body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; padding: 10px; color: #000; background: #fff; }
+                      h1 { text-align: center; font-size: 20px; margin: 0 0 5px 0; }
+                      .date { text-align: center; font-size: 12px; color: #555; margin-bottom: 15px; }
+                      table { width: 100%; border-collapse: collapse; font-size: 12px; }
+                      th, td { border: 1px solid #333; padding: 8px 6px; text-align: right; }
+                      th { background: #e5e5e5; font-weight: bold; font-size: 13px; }
+                      tr:nth-child(even) td { background: #f9f9f9; }
+                    </style></head><body>
+                      <h1>نتائج الاختبار: ${escapeHtml(exam.title)}</h1>
+                      <p class="date">التاريخ: ${new Date().toLocaleDateString('ar-EG')} — عدد المتقدمين: ${downloadResults.length}</p>
+                      <table><thead><tr>
+                        <th style="width:50px;">#</th><th>اسم الطالب</th><th style="width:100px;">الرقم التسلسلي</th>
+                        <th style="width:120px;">الوقت المستغرق</th><th style="width:140px;">العلامة</th><th style="width:120px;">الحالة</th>
+                      </tr></thead><tbody>${rows}</tbody></table>
+                    </body></html>`;
+                    await downloadPDFFromHTML({
+                      html,
+                      filename: `results_${exam.title}_${Date.now()}.pdf`,
+                      orientation: 'landscape'
+                    });
+                    setShowDownloadChoice(false);
+                  } catch (e) { toast.error('فشل: ' + e.message); }
+                }}
+                className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2"
+              >
+                <FaFilePdf /> ملف PDF (أسرع، غير قابل للتعديل)
+              </button>
+              <button
+                onClick={() => setShowDownloadChoice(false)}
+                className="w-full bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-xl text-sm"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

@@ -87,3 +87,26 @@ export const sendExamCorrectionNotification = async (studentId, examTitle, newSc
     console.error('Error sending exam correction notification:', err);
   }
 };
+
+// ✅ إشعار المدير بوجود إجابات بانتظار المراجعة (التصحيح الشخصي)
+export const sendExamManualCorrectionAlertToManager = async (managerId, count, examTitle, submissionDate) => {
+  if (!managerId) return;
+  try {
+    const dateStr = submissionDate.toLocaleDateString('ar-EG');
+    const timeStr = submissionDate.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+    
+    const body = `تحية طيبة وبعد،\n\nنحيطكم علماً بأنه قد أتمّ ${count} طلاب تقديم اختبارهم الإلكتروني (${examTitle}) بنجاح، وتنتظر إجاباتهم مراجعتكم واعتماد درجاتهم النهائية عبر النظام.\n\nنرجو منكم التكرم بالدخول إلى لوحة التحكم الخاصة بكم في أقرب وقت، والانتقال إلى قسم الاختبارات لمراجعة تفاصيل إجابات الطلاب المذكورين واستكمال عملية التصحيح والاعتماد، ليتسنى للطلاب الاطلاع على نتائجهم النهائية.\n\nشاكرين لكم حسن تعاونكم وجهودكم المستمرة في متابعة سير العملية التعليمية.\n\nمع خالص التحيات،\nإدارة المنصة\nالتاريخ: ${dateStr}\nالساعة: ${timeStr}\n\n*ملاحظة: إرسال هذه الرسالة في هذا الوقت لا يعني بالضرورة أن الطلاب قد أتموا الاختبار للتو؛ فقد يكون تقديم الاختبار قد تم منذ فترة، ولكن أُرسل هذا التنبيه الآن بسبب تأخير في إرسال الإشعارات.`;
+
+    const notification = {
+      title: 'تنبيه بشأن وجود إجابات طلاب بانتظار المراجعة والاعتماد',
+      body,
+      type: 'exam_manual_correction_alert',
+      relatedId: null,
+      createdAt: serverTimestamp(),
+      read: false, readAt: null
+    };
+    await setDoc(doc(collection(db, 'notifications', managerId, 'userNotifications')), notification);
+  } catch (err) {
+    console.error('Error sending manual correction alert to manager:', err);
+  }
+};
