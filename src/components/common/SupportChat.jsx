@@ -135,7 +135,8 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
       setText('');
 
       // 2. إذا كان المرسل هو الطالب، ننادي المساعد الذكي (Gemini)
-      if (isCreator) {
+            if (isCreator) {
+        alert("جاري الاتصال بالذكاء الاصطناعي...");
         try {
           const response = await fetch('/api/gemini', {
             method: 'POST',
