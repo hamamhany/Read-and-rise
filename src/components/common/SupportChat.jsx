@@ -129,6 +129,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
     const t = text.trim();
     if (!t) return;
     setSending(true);
+    console.log("🚀 زر الإرسال اشتغل!");
     try {
       // 1. إرسال رسالة الطالب لقاعدة البيانات (فايربيس) كالعادة
       await sendTicketMessage(ticketId, { id: user.id, name: user.name || user.username || 'مستخدم', role: user.role }, t);
