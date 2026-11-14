@@ -5,6 +5,7 @@ import {
   FaExclamationTriangle, FaCheckCircle, FaTimesCircle, FaEye,
   FaPlus, FaVideo, FaUsers, FaTrashAlt, FaPrint, FaPaperPlane, FaFileAlt
 } from 'react-icons/fa';
+import { useNavigate } from 'react-router-dom';
 import { db, messaging } from '../../firebase';
 import {
   doc, getDoc, setDoc, updateDoc, collection, query,
@@ -19,8 +20,6 @@ import { AddAssignmentModal } from '../common/AddAssignmentModal';
 import { AddLessonModal } from '../common/AddLessonModal';
 import PrintStudentsModal from '../common/PrintStudentsModal';
 import ReportModal from '../common/ReportModal';
-import ExamManagerModal from './ExamManagerModal';
-import ExamResultsModal from './ExamResultsModal';
 import {
   generateId, sanitizeInput, fetchClassNames, getActiveWarnings
 } from '../../utils/helpers';
@@ -31,6 +30,7 @@ import { MESSAGE_REQUEST_TYPES } from '../../constants';
 
 const TeacherPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
+  const navigate = useNavigate();
   const [lessonTimes, setLessonTimes] = useState([]);
   const [homeworks, setHomeworks] = useState([]);
   const [students, setStudents] = useState([]);
@@ -69,12 +69,8 @@ const TeacherPanel = ({ user, onLogout }) => {
   // Apology states
   const [showApologyModal, setShowApologyModal] = useState(false);
 
-  // Exam states
-  const [showExamManager, setShowExamManager] = useState(false);
-  const [editingExam, setEditingExam] = useState(null);
-  const [showExamResults, setShowExamResults] = useState(false);
+  // Exam states (تم إزالة showExamManager, editingExam, showExamResults, selectedExam)
   const [exams, setExams] = useState([]);
-  const [selectedExam, setSelectedExam] = useState(null);
 
   const requestNotificationPermission = async () => {
     try {
@@ -424,14 +420,14 @@ const TeacherPanel = ({ user, onLogout }) => {
     return () => { unsubTeacher(); unsubStudents(); unsubClasses(); unsubPending(); unsubNotif(); };
   }, [user.id]);
 
-  // Fetch Exams
+  // Fetch Exams (بدون showExamManager في dependencies)
   useEffect(() => {
     if (user.id) {
       getExamsByTeacher(user.id)
         .then(setExams)
         .catch(err => console.error("Error fetching exams:", err));
     }
-  }, [user.id, showExamManager]);
+  }, [user.id]);
 
   const getNextLessonTime = (classId) => {
     if (!lessonTimes || lessonTimes.length === 0) return null;
@@ -532,15 +528,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     } catch (e) {
       toast.error('فشل: ' + e.message);
     }
-  };
-
-  const handleExamModalClose = async (wasSaved) => {
-    setShowExamManager(false);
-    setEditingExam(null);
-    try {
-      const list = await getExamsByTeacher(user.id);
-      setExams(list);
-    } catch (e) { console.warn(e); }
   };
 
   if (loading) return <div className="text-center text-gray-400 p-8">جاري التحميل...</div>;
@@ -658,14 +645,14 @@ const TeacherPanel = ({ user, onLogout }) => {
           ) : <p className="text-gray-400 text-center py-4">لا توجد واجبات.</p>}
         </div>
 
-        {/* ✅ قسم الاختبارات الإلكترونية */}
+        {/* ✅ قسم الاختبارات الإلكترونية — يستخدم now navigation */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-orange-500/20">
           <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
             <h3 className="text-xl font-semibold text-orange-300">
               <FaFileAlt className="inline-block me-2" /> الاختبارات الإلكترونية
             </h3>
             <button
-              onClick={() => { setEditingExam(null); setShowExamManager(true); }}
+              onClick={() => navigate('/exams/new', { state: { back: '/' } })}
               className="btn-primary bg-orange-600 hover:bg-orange-700 py-2 px-4 text-sm rounded-md text-white"
             >
               + إنشاء اختبار جديد
@@ -685,7 +672,7 @@ const TeacherPanel = ({ user, onLogout }) => {
                   </p>
                 </div>
                 <button
-                  onClick={() => { setSelectedExam(exam); setShowExamResults(true); }}
+                  onClick={() => navigate(`/exams/${exam.id}/results`, { state: { back: '/' } })}
                   className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold"
                 >
                   عرض النتائج
@@ -896,33 +883,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         initialTimes={lessonTimes}
         classesList={classes}
       />
-
-      <ExamManagerModal
-        isOpen={showExamManager}
-        onClose={handleExamModalClose}
-        classes={classes}
-        teacherId={user.id}
-        exam={editingExam}
-      />
-
-      {selectedExam && (
-        <ExamResultsModal
-          isOpen={showExamResults}
-          onClose={() => { setShowExamResults(false); setSelectedExam(null); }}
-          exam={selectedExam}
-          onEdit={(exam) => {
-            setShowExamResults(false);
-            setEditingExam(exam);
-            setShowExamManager(true);
-          }}
-          onDelete={async () => {
-            setShowExamResults(false);
-            setSelectedExam(null);
-            const list = await getExamsByTeacher(user.id);
-            setExams(list);
-          }}
-        />
-      )}
     </div>
   );
 };

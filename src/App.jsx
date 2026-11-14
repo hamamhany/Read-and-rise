@@ -1,5 +1,5 @@
-// src/App.jsx
 import React, { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import toast, { Toaster } from 'react-hot-toast';
 import { auth } from './services/firebaseAuth';
 import { db } from './firebase';
@@ -15,7 +15,17 @@ import SupervisorPanel from './components/panels/SupervisorPanel';
 import TeacherPanel from './components/panels/TeacherPanel';
 import StudentPanel from './components/panels/StudentPanel';
 import SystemManagerPanel from './components/panels/SystemManagerPanel';
-import SupportButton from './components/common/SupportButton'; // ✅ جديد
+import SupportButton from './components/common/SupportButton';
+import {
+  ExamCreatePage, ExamEditPage, ExamTakePage, ExamResultsPage, ExamAnswersPage
+} from './pages/ExamPages';
+
+const MainDashboard = ({ user, onLogout }) => {
+  if (user.role === 'system_manager') return <SystemManagerPanel user={user} onLogout={onLogout} />;
+  if (user.role === 'supervisor') return <SupervisorPanel user={user} onLogout={onLogout} />;
+  if (user.role === 'teacher') return <TeacherPanel user={user} onLogout={onLogout} />;
+  return <StudentPanel user={user} onLogout={onLogout} />;
+};
 
 const App = () => {
   const [user, setUser] = useState(null);
@@ -151,7 +161,6 @@ const App = () => {
         return;
       }
 
-      // Student
       if (!profile.isProfileComplete) {
         setPendingUserForComplete({
           id: docId,
@@ -206,59 +215,44 @@ const App = () => {
     return <Login onLogin={handleLogin} onFrozen={handleFrozen} onCompleteProfile={handleCompleteProfile} />;
   }
 
-  if (user.role === 'system_manager') {
-    return (
-      <>
-        <SystemManagerPanel user={user} onLogout={handleLogout} />
-        <SupportButton user={user} />
-      </>
-    );
-  }
-
-  if (user.role === 'supervisor') {
-    return (
-      <>
-        <SupervisorPanel user={user} onLogout={handleLogout} />
-        <SupportButton user={user} />
-      </>
-    );
-  }
-
-  if (user.role === 'teacher') {
-    return (
-      <>
-        <TeacherPanel user={user} onLogout={handleLogout} />
-        <SupportButton user={user} />
-      </>
-    );
-  }
-
   return (
-    <>
-      <StudentPanel user={user} onLogout={handleLogout} />
-      <SupportButton user={user} />
-    </>
+    <Routes>
+      <Route path="/" element={
+        <>
+          <MainDashboard user={user} onLogout={handleLogout} />
+          <SupportButton user={user} />
+        </>
+      } />
+      <Route path="/exams/new" element={user.role === 'teacher' ? <ExamCreatePage user={user} /> : <Navigate to="/" replace />} />
+      <Route path="/exams/:examId/edit" element={user.role === 'teacher' ? <ExamEditPage user={user} /> : <Navigate to="/" replace />} />
+      <Route path="/exams/:examId/take" element={user.role === 'student' ? <ExamTakePage user={user} /> : <Navigate to="/" replace />} />
+      <Route path="/exams/:examId/results" element={user.role === 'teacher' ? <ExamResultsPage user={user} /> : <Navigate to="/" replace />} />
+      <Route path="/exams/:examId/answers/:resultId" element={<ExamAnswersPage user={user} />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 };
 
 const Root = () => (
-  <ConfirmProvider>
-    <Toaster
-      position="top-center"
-      toastOptions={{
-        duration: 3000,
-        style: {
-          background: '#1e293b',
-          color: '#fff',
-          border: '1px solid rgba(255,255,255,0.15)',
-          borderRadius: '16px',
-          padding: '16px',
-          direction: 'rtl'
-        }
-      }}
-    />
-    <App />
-  </ConfirmProvider>
+  <BrowserRouter>
+    <ConfirmProvider>
+      <Toaster
+        position="top-center"
+        toastOptions={{
+          duration: 3000,
+          style: {
+            background: '#1e293b',
+            color: '#fff',
+            border: '1px solid rgba(255,255,255,0.15)',
+            borderRadius: '16px',
+            padding: '16px',
+            direction: 'rtl'
+          }
+        }}
+      />
+      <App />
+    </ConfirmProvider>
+  </BrowserRouter>
 );
 
 export default Root;

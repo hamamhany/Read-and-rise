@@ -5,6 +5,7 @@ import {
   FaUpload, FaClock, FaCheckCircle, FaTimesCircle, FaEnvelope,
   FaComment, FaIdCard, FaFileAlt, FaEye
 } from 'react-icons/fa';
+import { useNavigate } from 'react-router-dom';
 import { db, messaging } from '../../firebase';
 import { auth } from '../../services/firebaseAuth';
 import {
@@ -17,12 +18,11 @@ import { CountdownTimer, HomeworkTextCountdown } from '../common/CountdownTimer'
 import { sanitizeInput, arabicToEnglishNumber, fetchClassNames } from '../../utils/helpers';
 import { recordAttendance, processStudentAbsences } from '../../services/attendance';
 import { sendUrgentReminderMessage, sendContactTeacherMessage } from '../../utils/whatsapp';
-import ExamTakingModal from './ExamTakingModal';
-import ExamAnswersDetailModal from './ExamAnswersDetailModal';
 import { getActiveExamsForStudent, getStudentAttemptsCount, getStudentExamResult } from '../../services/exams';
 
 const StudentPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
+  const navigate = useNavigate();
   const [teacherData, setTeacherData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
@@ -57,13 +57,9 @@ const StudentPanel = ({ user, onLogout }) => {
   const [isRecordingAttendance, setIsRecordingAttendance] = useState(false);
   const absenceProcessedRef = useRef(false);
 
-  // Exam states
+  // Exam states (تم إزالة selectedExam, showExamModal, reviewingExam, showReviewAnswers)
   const [activeExams, setActiveExams] = useState([]);
-  const [selectedExam, setSelectedExam] = useState(null);
-  const [showExamModal, setShowExamModal] = useState(false);
   const [studentResults, setStudentResults] = useState({});
-  const [reviewingExam, setReviewingExam] = useState(null);
-  const [showReviewAnswers, setShowReviewAnswers] = useState(false);
 
   const requestNotificationPermission = async () => {
     try {
@@ -282,7 +278,7 @@ const StudentPanel = ({ user, onLogout }) => {
     return () => { unsubscribeTeacher(); unsubscribeProfile(); unsubscribeNotif(); };
   }, [user.id]);
 
-  // ✅ تحميل الاختبارات المتاحة + نتائج الطالب (محاولة واحدة)
+  // ✅ تحميل الاختبارات المتاحة + نتائج الطالب (بدون showExamModal)
   useEffect(() => {
     if (!profile?.classIds || profile.classIds.length === 0) return;
 
@@ -299,7 +295,7 @@ const StudentPanel = ({ user, onLogout }) => {
           const existingResult = await getStudentExamResult(exam.id, user.id);
 
           if (existingResult) {
-            resultsMap[exam.id] = { ...existingResult, _examData: exam };
+            resultsMap[exam.id] = existingResult;
           }
 
           if (attempts < 1) {
@@ -318,7 +314,7 @@ const StudentPanel = ({ user, onLogout }) => {
 
     loadExams();
     return () => { isMounted = false; };
-  }, [profile?.classIds, user.id, showExamModal]);
+  }, [profile?.classIds, user.id]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -496,7 +492,7 @@ const StudentPanel = ({ user, onLogout }) => {
     toast.success('تم إرسال رسالة الاستعجال للمعلم.');
   };
 
-  // ✅ بدء اختبار — محاولة واحدة فقط
+  // ✅ بدء اختبار — يستخدم navigate الآن
   const handleStartExam = async (exam) => {
     const used = exam.attemptsUsed || 0;
     if (used >= 1) {
@@ -508,8 +504,7 @@ const StudentPanel = ({ user, onLogout }) => {
       `هل أنت متأكد من بدء الاختبار "${exam.title}"؟\nلديك محاولة واحدة فقط. بعد التسليم لا يمكنك التراجع أو إعادة المحاولة.`
     );
     if (!ok) return;
-    setSelectedExam(exam);
-    setShowExamModal(true);
+    navigate(`/exams/${exam.id}/take`, { state: { back: '/' } });
   };
 
   if (loading) return <div className="text-center text-gray-400 p-8">جاري التحميل...</div>;
@@ -638,7 +633,7 @@ const StudentPanel = ({ user, onLogout }) => {
           )}
         </div>
 
-        {/* ✅ قسم الاختبارات المتاحة — محاولة واحدة */}
+        {/* ✅ قسم الاختبارات المتاحة — navigate */}
         <div className="bg-gray-800/60 p-6 rounded-2xl border border-orange-500/20">
           <h3 className="text-xl font-semibold text-orange-300 mb-4">
             <FaFileAlt className="inline-block me-2" /> الاختبارات المتاحة
@@ -684,7 +679,7 @@ const StudentPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* ✅ اختباراتك المقدمة — مراجعة الإجابات */}
+        {/* ✅ اختباراتك المقدمة — مراجعة الإجابات عبر navigate */}
         {Object.keys(studentResults).length > 0 && (
           <div className="bg-gray-800/60 p-6 rounded-2xl border border-green-500/20">
             <h3 className="text-xl font-semibold text-green-300 mb-4">
@@ -717,10 +712,7 @@ const StudentPanel = ({ user, onLogout }) => {
                     </div>
                     {isCorrected && (
                       <button
-                        onClick={() => {
-                          setReviewingExam({ result, exam: result._examData });
-                          setShowReviewAnswers(true);
-                        }}
+                        onClick={() => navigate(`/exams/${result.examId}/answers/${result.id}`, { state: { back: '/' } })}
                         className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-bold whitespace-nowrap"
                       >
                         <FaEye className="inline me-1" /> مراجعة الإجابات
@@ -883,31 +875,6 @@ const StudentPanel = ({ user, onLogout }) => {
             <button onClick={() => setShowReviewResultModal(false)} className="mt-4 btn-primary bg-gray-600 hover:bg-gray-700 w-full py-3 rounded-md text-white">إغلاق</button>
           </div>
         </div>
-      )}
-
-      {selectedExam && showExamModal && (
-        <ExamTakingModal
-          exam={selectedExam}
-          student={{
-            ...user,
-            serialNumber: profile?.serialNumber || user?.serialNumber || '',
-            name: profile?.name || user?.name || user?.username || 'طالب'
-          }}
-          onClose={() => {
-            setShowExamModal(false);
-            setSelectedExam(null);
-          }}
-        />
-      )}
-
-      {showReviewAnswers && reviewingExam && (
-        <ExamAnswersDetailModal
-          isOpen={showReviewAnswers}
-          onClose={() => { setShowReviewAnswers(false); setReviewingExam(null); }}
-          result={reviewingExam.result}
-          exam={reviewingExam.exam}
-          viewerMode="student"
-        />
       )}
     </div>
   );
