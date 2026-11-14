@@ -125,7 +125,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
     ticket.status !== SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED;
 
   const handleSend = async () => {
-    alert('handleSend v2');
     const t = text.trim();
     if (!t) return;
     setSending(true);
