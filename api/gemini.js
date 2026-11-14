@@ -4,9 +4,23 @@ export const config = {
   maxDuration: 60,
 };
 
-// يجرّب الموديلات بالترتيب. إذا فشل الأول (ضغط أو حد استخدام) ينتقل للتالي تلقائياً.
-const MODELS = ['gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
-const RETRYABLE = [429, 500, 502, 503, 504];
+// الموديلات المجانية للمحادثة، مرتبة من الأقوى للأخف.
+// إذا فشل موديل (ضغط 503، أو خلصت حصته اليومية 429، أو أي خطأ) ينتقل للتالي تلقائياً.
+// كل موديل له حصة يومية منفصلة، فكلما زاد عددها زادت قدرة المساعد على الرد.
+const MODELS = [
+  'gemini-3.8-flash',
+  'gemini-4-hydrogen',
+  'gemini-3.6-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-3.1-flash-lite',
+  'gemini-3-flash-preview',
+  'gemini-2.5-flash-lite',
+  'gemma-4-31b-it',
+  'gemma-4-26b-a4b-it',
+];
+
+// الحد الأقصى للوقت الكلي (بالميلي ثانية) قبل ما نوقف التجربة، لأن Vercel يقطع الدالة عند 60 ثانية
+const TIME_BUDGET_MS = 45000;
 
 // ============================================================
 // دليل المنصة: هذا هو المصدر الوحيد لمعلومات المساعد عن المنصة.
@@ -129,14 +143,16 @@ export default async function handler(req, res) {
 
     const ai = new GoogleGenAI({
       apiKey,
-      httpOptions: { timeout: 18000 },
+      httpOptions: { timeout: 15000 },
     });
 
     const contents = buildContents(history, message);
     const systemInstruction = buildSystemInstruction(hasGreeted);
+    const startedAt = Date.now();
 
     let lastError;
     for (const model of MODELS) {
+      if (Date.now() - startedAt > TIME_BUDGET_MS) break;
       try {
         const response = await ai.models.generateContent({
           model,
@@ -144,18 +160,16 @@ export default async function handler(req, res) {
           config: { systemInstruction, temperature: 0.3 },
         });
         if (response.text) {
+          console.log('Answered by ' + model);
           return res.status(200).json({ text: response.text });
         }
         lastError = new Error('Empty response from ' + model);
       } catch (err) {
         lastError = err;
         console.error('Gemini error on ' + model + ':', err?.message || err);
-        const status = Number(err?.status);
-        // أخطاء مثل 400 أو 403 ما بتنحل بتغيير الموديل، فنوقف
-        if (status && !RETRYABLE.includes(status)) throw err;
       }
     }
-    throw lastError;
+    throw lastError || new Error('All models failed');
   } catch (error) {
     console.error('Gemini API Error:', error);
     const status = Number(error?.status);
