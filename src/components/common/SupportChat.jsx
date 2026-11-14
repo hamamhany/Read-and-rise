@@ -124,20 +124,16 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
     deleteStatus !== DELETE_REQUEST_STATUS.CANCELLED &&
     ticket.status !== SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED;
 
-  // ✅ تعديل: دالة الإرسال المربوطة بجوجل جمني
   const handleSend = async () => {
+    alert('handleSend v2');
     const t = text.trim();
     if (!t) return;
     setSending(true);
-    console.log("🚀 زر الإرسال اشتغل!");
     try {
-      // 1. إرسال رسالة الطالب لقاعدة البيانات (فايربيس) كالعادة
       await sendTicketMessage(ticketId, { id: user.id, name: user.name || user.username || 'مستخدم', role: user.role }, t);
       setText('');
 
-      // 2. إذا كان المرسل هو الطالب، ننادي المساعد الذكي (Gemini)
-            if (isCreator) {
-        alert("جاري الاتصال بالذكاء الاصطناعي...");
+      if (isCreator) {
         try {
           const response = await fetch('/api/gemini', {
             method: 'POST',
@@ -148,7 +144,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           const data = await response.json();
           
           if (data.text) {
-            // 3. إرسال رد المساعد الذكي لقاعدة البيانات عشان يظهر بالشات
             await sendTicketMessage(
               ticketId, 
               { id: 'ai-assistant', name: 'المساعد الذكي', role: 'system' }, 
