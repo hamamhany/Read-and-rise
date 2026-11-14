@@ -28,7 +28,7 @@ export default async function handler(req, res) {
     const systemInstruction = "أنت المساعد الذكي لمنصة تعليمية. دائماً في أول رسالة لك، يجب أن ترحب بالمستخدم وتقول: 'أهلاً وسهلاً بك، معك المساعد الذكي'. بعدها، قم بالرد على استفساره بلطف واحترافية وباللغة العربية.";
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.8-flash',
       contents: message,
       config: {
         systemInstruction: systemInstruction,
