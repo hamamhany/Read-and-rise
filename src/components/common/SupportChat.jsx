@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import {
   FaTimes, FaPaperPlane, FaStar, FaCheckCircle, FaTimesCircle,
   FaSpinner, FaHeadset, FaPhone, FaLock, FaWhatsapp, FaTrashAlt,
-  FaHourglassHalf, FaExclamationTriangle, FaShieldAlt
+  FaHourglassHalf, FaExclamationTriangle, FaShieldAlt, FaArrowRight
 } from 'react-icons/fa';
 import {
   subscribeToTicket, sendTicketMessage, studentConfirmSolved,
@@ -22,10 +22,12 @@ import {
   SUPPORT_REPORT_REASONS
 } from '../../constants';
 import { useConfirm } from './ConfirmContext';
-import { askAssistant, buildAiHistory } from '../../utils/askAssistant';
+import { askAssistant, buildAiHistory, useAiTyping } from '../../utils/askAssistant';
+import { BotAvatar, TypingBubble, ChatComposer } from './ChatParts';
 
-const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
+const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage = false }) => {
   const confirm = useConfirm();
+  const aiTyping = useAiTyping(ticketId);
   const [ticket, setTicket] = useState(null);
   const [supervisorInfo, setSupervisorInfo] = useState(null);
   const [text, setText] = useState('');
@@ -84,7 +86,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [ticket?.messages?.length]);
+  }, [ticket?.messages?.length, aiTyping]);
 
   if (!ticket) {
     return (
@@ -127,26 +129,25 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
 
   const handleSend = async () => {
     const t = text.trim();
-    if (!t) return;
+    if (!t || sending) return;
     setSending(true);
     try {
       await sendTicketMessage(ticketId, { id: user.id, name: user.name || user.username || 'مستخدم', role: user.role }, t);
       setText('');
-
-      if (isCreator) {
-        try {
-          // سجل المحادثة قبل هذه الرسالة (عشان المساعد يتذكر ولا يكرر الترحيب)
-          const history = buildAiHistory(ticket.messages, user.id);
-          await askAssistant({ ticketId, message: t, history });
-        } catch (aiError) {
-          console.error('خطأ في المساعد الذكي:', aiError);
-          toast.error('تعذر رد المساعد الذكي: ' + aiError.message);
-        }
-      }
     } catch (e) {
       toast.error('فشل: ' + e.message);
-    } finally {
       setSending(false);
+      return;
+    }
+    // نحرر زر الإرسال فوراً، ورد المساعد بيجي لاحقاً (مع نقاط "يكتب الآن")
+    setSending(false);
+
+    if (isCreator) {
+      const history = buildAiHistory(ticket.messages, user.id);
+      askAssistant({ ticketId, message: t, history }).catch((aiError) => {
+        console.error('خطأ في المساعد الذكي:', aiError);
+        toast.error('تعذر رد المساعد الذكي: ' + aiError.message);
+      });
     }
   };
 
@@ -393,11 +394,27 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
     (!deleteStatus || deleteStatus === DELETE_REQUEST_STATUS.CANCELLED);
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[70] flex items-center justify-center p-2 sm:p-4" onClick={onClose}>
-      <div className="bg-gray-900 rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col border border-blue-500/30" onClick={e => e.stopPropagation()}>
+    <div
+      dir="rtl"
+      className={fullPage
+        ? 'fixed inset-0 bg-gray-950 z-[70] flex justify-center'
+        : 'fixed inset-0 bg-black/80 backdrop-blur-sm z-[70] flex items-center justify-center p-2 sm:p-4'}
+      onClick={fullPage ? undefined : onClose}
+    >
+      <div
+        className={fullPage
+          ? 'bg-gray-900 w-full max-w-3xl h-full flex flex-col sm:border-x border-gray-800'
+          : 'bg-gray-900 rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col border border-blue-500/30'}
+        onClick={e => e.stopPropagation()}
+      >
 
         <div className="flex items-center justify-between p-3 border-b border-gray-700">
           <div className="flex items-center gap-2 min-w-0 flex-wrap">
+            {fullPage && (
+              <button onClick={onClose} className="text-gray-300 hover:text-white text-lg flex-shrink-0" title="رجوع">
+                <FaArrowRight />
+              </button>
+            )}
             <FaHeadset className="text-blue-400 text-lg flex-shrink-0" />
             <p className="text-white font-bold text-sm truncate">الدعم الفني</p>
 
@@ -421,7 +438,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
               </button>
             )}
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white text-xl flex-shrink-0"><FaTimes /></button>
+          {!fullPage && <button onClick={onClose} className="text-gray-400 hover:text-white text-xl flex-shrink-0"><FaTimes /></button>}
         </div>
 
         {isCreator && ticket.assignedSupervisorName && !closedStatuses.includes(ticket.status) && (
@@ -541,26 +558,31 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
           </div>
         )}
 
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-2" style={{ minHeight: 200 }}>
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3" style={{ minHeight: 200 }}>
           {ticket.messages?.filter(m => !shouldHideMessage(m)).map((m) => {
             const isMe = m.senderId === user.id;
+            const isAI = m.senderId === 'ai-assistant';
             const isSystem = m.senderRole === 'system';
             return (
-              <div key={m.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[80%] p-2 rounded-xl text-sm ${
-                  isSystem
-                    ? 'bg-purple-600/30 text-purple-100 border border-purple-500/40 rounded-bl-none'
-                    : isMe
-                      ? 'bg-blue-600 text-white rounded-br-none'
-                      : 'bg-gray-700 text-gray-100 rounded-bl-none'
+              <div key={m.id} className={`flex items-end gap-2 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                {isAI && <BotAvatar />}
+                <div className={`max-w-[80%] p-2.5 rounded-2xl text-sm ${
+                  isAI
+                    ? 'bg-gray-800 text-gray-100 border border-gray-700 rounded-br-none'
+                    : isSystem
+                      ? 'bg-purple-600/30 text-purple-100 border border-purple-500/40 rounded-br-none'
+                      : isMe
+                        ? 'bg-blue-600 text-white rounded-bl-none'
+                        : 'bg-gray-700 text-gray-100 rounded-br-none'
                 }`}>
-                  {!isMe && <p className={`text-[10px] font-bold mb-0.5 ${isSystem ? 'text-purple-300' : 'text-blue-300'}`}>{m.senderName}</p>}
-                  <p className="whitespace-pre-wrap break-words">{m.text}</p>
+                  {!isMe && <p className={`text-[10px] font-bold mb-0.5 ${isAI ? 'text-indigo-300' : isSystem ? 'text-purple-300' : 'text-blue-300'}`}>{m.senderName}</p>}
+                  <p dir="auto" className="whitespace-pre-wrap break-words">{m.text}</p>
                   <p className="text-[9px] opacity-60 mt-1">{m.createdAt ? new Date(m.createdAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) : ''}</p>
                 </div>
               </div>
             );
           })}
+          {aiTyping && <TypingBubble />}
         </div>
 
         {ticket.status === SUPPORT_TICKET_STATUS.REPORTED && (
@@ -624,10 +646,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
         )}
 
         {canSend && (
-          <div className="p-2 border-t border-gray-700 flex gap-2">
-            <input type="text" value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && !sending && handleSend()} placeholder="اكتب رسالتك..." className="flex-1 bg-gray-800 text-white p-2 rounded-lg border border-gray-600 text-sm" maxLength={2000} />
-            <button onClick={handleSend} disabled={sending || !text.trim()} className="bg-blue-600 hover:bg-blue-700 text-white px-4 rounded-lg disabled:opacity-40">{sending ? <FaSpinner className="animate-spin" /> : <FaPaperPlane />}</button>
-          </div>
+          <ChatComposer value={text} onChange={setText} onSend={handleSend} sending={sending} />
         )}
 
         {showReportModal && (

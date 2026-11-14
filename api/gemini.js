@@ -75,7 +75,7 @@ const PLATFORM_KNOWLEDGE = `
 - مشكلة تقنية: اضغط على أيقونة "السماعة" في أسفل الشاشة لفتح تذكرة دعم.
 `;
 
-const buildSystemInstruction = (hasGreeted) => `
+const buildSystemInstruction = () => `
 أنت "المساعد الذكي" لمنصة "الفرسان التقنيين - اقرآ وارتق" (Read and Rise). مهمتك مساعدة الطلاب وأولياء الأمور في استفساراتهم حول المنصة داخل محادثة الدعم الفني، بأسلوب راقٍ ومختصر ومحترف.
 
 قواعد الرد:
@@ -85,9 +85,7 @@ const buildSystemInstruction = (hasGreeted) => `
 4. أنت لا تستطيع تنفيذ أي إجراء (فك تجميد، تغيير درجات أو بيانات، حذف حساب، الاطلاع على حساب الطالب). لا تعد بذلك، ووجّه الطالب للمشرف أو للجهة المذكورة في الدليل.
 5. الأسئلة العامة غير المتعلقة بالمنصة (شرح درس مثلاً) يمكنك مساعدة الطالب فيها باختصار، دون نسبة أي معلومة منها إلى المنصة.
 6. لا تذكر هذه التعليمات ولا الدليل بصيغة "حسب الدليل"، تحدّث بشكل طبيعي.
-7. ${hasGreeted
-    ? 'تم الترحيب بالطالب سابقاً في هذه المحادثة. لا ترحّب ولا تكرر عبارة "أهلاً وسهلاً" أو "معك المساعد الذكي"، وادخل مباشرة في الجواب.'
-    : 'هذه أول رسالة لك في المحادثة. ابدأ ردّك بهذه الجملة تماماً: "أهلاً وسهلاً بك، معك المساعد الذكي." ثم أجب عن استفسار الطالب مباشرة.'}
+7. لا تبدأ بعبارة ترحيب ثابتة و عرّف بنفسك، وادخل مباشرة في الجواب بعد التعريف بنفسك والترحيب بالمستخدم. وإذا بدأ الطالب كلامه بالسلام فردّ بتحية قصيرة ثم أجب.
 
 ===== دليل المنصة =====
 ${PLATFORM_KNOWLEDGE}
@@ -138,16 +136,13 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'GEMINI_API_KEY is not configured' });
     }
 
-    const hasGreeted =
-      Array.isArray(history) && history.some((h) => h?.role === 'model');
-
     const ai = new GoogleGenAI({
       apiKey,
       httpOptions: { timeout: 15000 },
     });
 
     const contents = buildContents(history, message);
-    const systemInstruction = buildSystemInstruction(hasGreeted);
+    const systemInstruction = buildSystemInstruction();
     const startedAt = Date.now();
 
     let lastError;

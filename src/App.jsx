@@ -16,6 +16,7 @@ import TeacherPanel from './components/panels/TeacherPanel';
 import StudentPanel from './components/panels/StudentPanel';
 import SystemManagerPanel from './components/panels/SystemManagerPanel';
 import SupportButton from './components/common/SupportButton';
+import SupportPage from './pages/SupportPage';
 import {
   ExamCreatePage, ExamEditPage, ExamTakePage, ExamResultsPage, ExamAnswersPage
 } from './pages/ExamPages';
@@ -223,6 +224,7 @@ const App = () => {
           <SupportButton user={user} />
         </>
       } />
+      <Route path="/support" element={<SupportPage user={user} />} />
       <Route path="/exams/new" element={user.role === 'teacher' ? <ExamCreatePage user={user} /> : <Navigate to="/" replace />} />
       <Route path="/exams/:examId/edit" element={user.role === 'teacher' ? <ExamEditPage user={user} /> : <Navigate to="/" replace />} />
       <Route path="/exams/:examId/take" element={user.role === 'student' ? <ExamTakePage user={user} /> : <Navigate to="/" replace />} />
