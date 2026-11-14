@@ -4,7 +4,7 @@ import { FaPaperPlane, FaRobot, FaHeadset, FaUserTie } from 'react-icons/fa';
 // ===== مسارات الصور والصوت (عدّلها هنا إذا اختلف اسم الملف أو الامتداد) =====
 export const BOT_IMAGE = '/images/shat-boot.png';              // صورة المساعد الذكي
 export const SUPPORT_IMAGE = '/images/Support-image.png';      // صورة هيدر الدعم الفني
-export const SUPERVISOR_IMAGE = '/images/Supervision-image.png'; // صورة المشرف
+export const SUPERVISOR_IMAGE = '/public/images/Supervision-image.png'; // صورة المشرف
 const SEND_SOUND_BASE = '/voice/Transmission-effect';          // صوت الإرسال (بدون امتداد)
 const SEND_SOUND_EXTS = ['mp3', 'wav', 'ogg', 'm4a'];          // يجرّب الامتدادات بالترتيب
 
