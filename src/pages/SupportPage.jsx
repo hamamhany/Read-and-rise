@@ -99,33 +99,36 @@ const SupportPage = ({ user }) => {
   }
 
   return (
-    <div dir="rtl" className="fixed inset-0 bg-gray-950 z-[70] flex justify-center">
-      <div className="bg-gray-900 w-full max-w-3xl h-full flex flex-col sm:border-x border-gray-800">
-        <div className="flex items-center gap-2 p-3 border-b border-gray-700">
-          <button onClick={goHome} className="text-gray-300 hover:text-white text-lg" title="رجوع">
+    <div dir="rtl" className="fixed inset-0 bg-gray-950 z-[70] flex flex-col">
+      <div className="border-b border-gray-800 bg-gray-900/90 backdrop-blur flex-shrink-0">
+        <div className="max-w-3xl mx-auto w-full flex items-center gap-2 p-3">
+          <button onClick={goHome} className="text-gray-300 hover:text-white text-lg flex-shrink-0" title="رجوع">
             <FaArrowRight />
           </button>
-          <FaHeadset className="text-blue-400 text-lg" />
-          <p className="text-white font-bold text-sm">طلب دعم جديد</p>
+          <BotAvatar size={38} />
+          <div className="leading-tight">
+            <p className="text-white font-bold text-sm">طلب دعم جديد</p>
+            <p className="text-[11px] text-gray-400">المساعد الذكي وفريق الدعم</p>
+          </div>
         </div>
-
-        <div className="flex-1 overflow-y-auto flex flex-col items-center justify-center text-center px-6 gap-3">
-          <BotAvatar size={80} />
-          <p className="text-white font-bold text-lg">كيف يمكننا مساعدتك؟</p>
-          <p className="text-gray-400 text-sm leading-relaxed max-w-sm">
-            اكتب استفسارك في الأسفل. سيساعدك المساعد الذكي أولاً، ويتابع معك أحد المشرفين عند الحاجة.
-          </p>
-        </div>
-
-        <ChatComposer
-          value={newMessage}
-          onChange={setNewMessage}
-          onSend={handleCreate}
-          sending={creating}
-          placeholder="اكتب استفسارك هنا..."
-          autoFocus
-        />
       </div>
+
+      <div className="chat-scroll flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center text-center px-6 gap-3">
+        <BotAvatar size={80} />
+        <p className="text-white font-bold text-lg">كيف يمكننا مساعدتك؟</p>
+        <p className="text-gray-400 text-sm leading-relaxed max-w-sm">
+          اكتب استفسارك في الأسفل. سيساعدك المساعد الذكي أولاً، ويتابع معك أحد المشرفين عند الحاجة.
+        </p>
+      </div>
+
+      <ChatComposer
+        value={newMessage}
+        onChange={setNewMessage}
+        onSend={handleCreate}
+        sending={creating}
+        placeholder="اكتب استفسارك هنا..."
+        autoFocus
+      />
     </div>
   );
 };

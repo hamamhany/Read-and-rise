@@ -4,6 +4,22 @@ import { FaPaperPlane, FaRobot } from 'react-icons/fa';
 // صورة المساعد الذكي: ضعها في public/images/ باسم shat-boot.png
 export const BOT_IMAGE = '/images/shat-boot.png';
 
+// ===== شريط تمرير بتصميم المنصة (بدل شريط المتصفح بالأسهم) =====
+const CHAT_CSS = `
+.chat-scroll { scrollbar-width: thin; scrollbar-color: #4b5563 transparent; }
+.chat-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.chat-scroll::-webkit-scrollbar-track { background: transparent; }
+.chat-scroll::-webkit-scrollbar-thumb { background-color: #4b5563; border-radius: 9999px; border: 2px solid transparent; background-clip: content-box; }
+.chat-scroll::-webkit-scrollbar-thumb:hover { background-color: #6b7280; }
+.chat-scroll::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+`;
+if (typeof document !== 'undefined' && !document.getElementById('chat-parts-style')) {
+  const el = document.createElement('style');
+  el.id = 'chat-parts-style';
+  el.textContent = CHAT_CSS;
+  document.head.appendChild(el);
+}
+
 export const BotAvatar = ({ size = 32 }) => {
   const [failed, setFailed] = useState(false);
   const style = { width: size, height: size };
@@ -49,7 +65,10 @@ export const TypingBubble = () => (
   </div>
 );
 
-// خانة الكتابة: تكبر مع النص (سطر جديد تلقائي)، وتدعم العربي والإنجليزي بالتبديل
+const LINE_HEIGHT = 24; // يساوي leading-6
+const MAX_LINES = 10;   // بعد 10 أسطر يتوقف النمو ويظهر شريط التمرير
+
+// خانة الكتابة: تكبر مع النص حتى 10 أسطر، وتدعم العربي والإنجليزي بالتبديل
 export const ChatComposer = ({
   value,
   onChange,
@@ -65,8 +84,14 @@ export const ChatComposer = ({
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+    const cs = window.getComputedStyle(el);
+    const padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+    const maxH = LINE_HEIGHT * MAX_LINES + padY;
     el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+    const needed = el.scrollHeight;
+    el.style.height = Math.min(needed, maxH) + 'px';
+    // شريط التمرير يظهر فقط لما يتجاوز النص 10 أسطر
+    el.style.overflowY = needed > maxH + 1 ? 'auto' : 'hidden';
   }, [value]);
 
   const handleKeyDown = (e) => {
@@ -84,32 +109,34 @@ export const ChatComposer = ({
   return (
     <div
       dir="rtl"
-      className="p-2 border-t border-gray-700 flex items-end gap-2"
-      style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
+      className="flex-shrink-0 bg-gray-900/90 backdrop-blur border-t border-gray-800 px-3 pt-2"
+      style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
     >
-      <textarea
-        ref={ref}
-        rows={1}
-        dir={value ? 'auto' : 'rtl'}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder={placeholder}
-        maxLength={maxLength}
-        autoFocus={autoFocus}
-        disabled={disabled}
-        style={{ unicodeBidi: 'plaintext', textAlign: 'start' }}
-        className="flex-1 bg-gray-800 text-white px-3 py-2 rounded-2xl border border-gray-600 text-sm leading-6 resize-none overflow-y-auto focus:outline-none focus:border-blue-500"
-      />
-      <button
-        type="button"
-        onClick={onSend}
-        disabled={sending || disabled || !value.trim()}
-        className="w-10 h-10 flex-shrink-0 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center disabled:opacity-40 transition"
-        title="إرسال"
-      >
-        <FaPaperPlane style={{ transform: 'scaleX(-1)' }} />
-      </button>
+      <div className="max-w-3xl mx-auto w-full flex items-end gap-2 bg-gray-800 border border-gray-700 focus-within:border-blue-500 rounded-3xl px-3 py-1.5 transition-colors">
+        <textarea
+          ref={ref}
+          rows={1}
+          dir={value ? 'auto' : 'rtl'}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          maxLength={maxLength}
+          autoFocus={autoFocus}
+          disabled={disabled}
+          style={{ unicodeBidi: 'plaintext', textAlign: 'start' }}
+          className="chat-scroll flex-1 min-w-0 bg-transparent text-white text-[15px] leading-6 py-2 resize-none outline-none border-0 placeholder-gray-500"
+        />
+        <button
+          type="button"
+          onClick={onSend}
+          disabled={sending || disabled || !value.trim()}
+          className="w-9 h-9 mb-0.5 flex-shrink-0 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center disabled:opacity-40 disabled:hover:bg-blue-600 transition"
+          title="إرسال"
+        >
+          <FaPaperPlane size={14} style={{ transform: 'scaleX(-1)' }} />
+        </button>
+      </div>
     </div>
   );
 };
