@@ -3,6 +3,7 @@ import { FaHeadset } from 'react-icons/fa';
 import { createSupportTicket, getStudentOpenTicket, markTicketAsRead, dismissClosedBubble } from '../../services/support';
 import { sanitizeInput } from '../../utils/helpers';
 import SupportChat from './SupportChat';
+import { askAssistant } from '../../utils/askAssistant';
 import toast from 'react-hot-toast';
 
 const SupportButton = ({ user }) => {
@@ -90,6 +91,13 @@ const SupportButton = ({ user }) => {
       setActiveTicket(newTicket);
       setShowNewForm(false);
       setNewMessage('');
+
+      // المساعد الذكي يرد على الرسالة الأولى (بدون انتظار، عشان المحادثة تنفتح فوراً)
+      askAssistant({ ticketId: newTicket?.id || id, message: text, history: [] })
+        .catch((aiError) => {
+          console.error('خطأ في المساعد الذكي:', aiError);
+          toast.error('تعذر رد المساعد الذكي: ' + aiError.message);
+        });
     } catch (err) {
       toast.error(err.message);
     } finally {

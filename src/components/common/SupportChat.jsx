@@ -22,6 +22,7 @@ import {
   SUPPORT_REPORT_REASONS
 } from '../../constants';
 import { useConfirm } from './ConfirmContext';
+import { askAssistant, buildAiHistory } from '../../utils/askAssistant';
 
 const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
   const confirm = useConfirm();
@@ -134,29 +135,18 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student' }) => {
 
       if (isCreator) {
         try {
-          const response = await fetch('/api/gemini', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: t })
-          });
-          
-          const data = await response.json();
-          
-          if (data.text) {
-            await sendTicketMessage(
-              ticketId, 
-              { id: 'ai-assistant', name: 'المساعد الذكي', role: 'system' }, 
-              data.text
-            );
-          }
+          // سجل المحادثة قبل هذه الرسالة (عشان المساعد يتذكر ولا يكرر الترحيب)
+          const history = buildAiHistory(ticket.messages, user.id);
+          await askAssistant({ ticketId, message: t, history });
         } catch (aiError) {
-          console.error("خطأ في الاتصال بالمساعد الذكي:", aiError);
+          console.error('خطأ في المساعد الذكي:', aiError);
+          toast.error('تعذر رد المساعد الذكي: ' + aiError.message);
         }
       }
-    } catch (e) { 
-      toast.error('فشل: ' + e.message); 
-    } finally { 
-      setSending(false); 
+    } catch (e) {
+      toast.error('فشل: ' + e.message);
+    } finally {
+      setSending(false);
     }
   };
 
