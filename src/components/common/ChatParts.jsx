@@ -4,9 +4,11 @@ import { FaPaperPlane, FaRobot, FaHeadset, FaUserTie } from 'react-icons/fa';
 // ===== مسارات الصور والصوت (عدّلها هنا إذا اختلف اسم الملف أو الامتداد) =====
 export const BOT_IMAGE = '/images/shat-boot.png';              // صورة المساعد الذكي
 export const SUPPORT_IMAGE = '/images/Support-image.png';      // صورة هيدر الدعم الفني
-export const SUPERVISOR_IMAGE = 'public/images/Supervision-image.png'; // صورة المشرف
+export const SUPERVISOR_IMAGE = '/images/Supervision-image.png'; // صورة المشرف
 const SEND_SOUND_BASE = '/voice/Transmission-effect';          // صوت الإرسال (بدون امتداد)
 const SEND_SOUND_EXTS = ['mp3', 'wav', 'ogg', 'm4a'];          // يجرّب الامتدادات بالترتيب
+const INCOMING_SOUND_BASE = '/voice/Incoming-Message';         // صوت الرسائل الواردة (بدون امتداد)
+const INCOMING_SOUND_EXTS = ['mp3', 'wav', 'ogg', 'm4a'];      // يجرّب الامتدادات بالترتيب
 
 // ===== شريط تمرير بتصميم المنصة + حركات المحادثة =====
 const CHAT_CSS = `
@@ -54,7 +56,6 @@ const loadSendAudio = () => {
   const a = new Audio(`${SEND_SOUND_BASE}.${SEND_SOUND_EXTS[sendExtIndex]}`);
   a.preload = 'auto';
   a.volume = 0.6;
-  // إذا الملف مش موجود أو الامتداد غلط، جرّب الامتداد التالي
   a.addEventListener('error', () => { sendExtIndex += 1; sendAudio = null; loadSendAudio(); }, { once: true });
   sendAudio = a;
 };
@@ -70,6 +71,38 @@ export const playSendSound = () => {
     if (!sendAudio) return;
     sendAudio.currentTime = 0;
     const p = sendAudio.play();
+    if (p && typeof p.catch === 'function') p.catch(() => {});
+  } catch {
+    // تجاهل أي خطأ بالصوت
+  }
+};
+
+// ===== صوت الرسائل الواردة (جديد) =====
+let incomingAudio = null;
+let incomingExtIndex = 0;
+let incomingSoundDisabled = false;
+
+const loadIncomingAudio = () => {
+  if (typeof Audio === 'undefined') { incomingSoundDisabled = true; return; }
+  if (incomingExtIndex >= INCOMING_SOUND_EXTS.length) { incomingSoundDisabled = true; incomingAudio = null; return; }
+  const a = new Audio(`${INCOMING_SOUND_BASE}.${INCOMING_SOUND_EXTS[incomingExtIndex]}`);
+  a.preload = 'auto';
+  a.volume = 0.6;
+  a.addEventListener('error', () => { incomingExtIndex += 1; incomingAudio = null; loadIncomingAudio(); }, { once: true });
+  incomingAudio = a;
+};
+
+export const prepareIncomingSound = () => {
+  if (!incomingAudio && !incomingSoundDisabled) loadIncomingAudio();
+};
+
+export const playIncomingSound = () => {
+  if (incomingSoundDisabled) return;
+  prepareIncomingSound();
+  try {
+    if (!incomingAudio) return;
+    incomingAudio.currentTime = 0;
+    const p = incomingAudio.play();
     if (p && typeof p.catch === 'function') p.catch(() => {});
   } catch {
     // تجاهل أي خطأ بالصوت
@@ -169,13 +202,11 @@ export const ChatComposer = ({
     el.style.height = 'auto';
     const needed = el.scrollHeight;
     el.style.height = Math.min(needed, maxH) + 'px';
-    // شريط التمرير يظهر فقط لما يتجاوز النص 10 أسطر
     el.style.overflowY = needed > maxH + 1 ? 'auto' : 'hidden';
   }, [value]);
 
   const triggerSend = () => {
     if (sending || disabled || !value.trim()) return;
-    // الصوت والحركة لحظة الضغط (ضروري عشان المتصفحات تسمح بتشغيل الصوت)
     playSendSound();
     setFlying(true);
     if (flyTimer.current) clearTimeout(flyTimer.current);
@@ -185,7 +216,6 @@ export const ChatComposer = ({
 
   const handleKeyDown = (e) => {
     if (e.key !== 'Enter' || e.shiftKey || e.nativeEvent?.isComposing) return;
-    // على الجوال: Enter سطر جديد، والإرسال بالزر
     const isTouch =
       typeof window !== 'undefined' &&
       window.matchMedia &&

@@ -3,12 +3,12 @@ import { sendTicketMessage } from '../services/support';
 
 export const AI_SENDER = {
   id: 'ai-assistant',
-  name: 'المساعد الذكي',
+  name: 'المساعد الذكي سند',
   role: 'system',
 };
 
 // ===== حالة "المساعد يكتب الآن" (مشتركة بين الشاشات) =====
-const pending = new Map(); // ticketId -> عدد الطلبات الجارية
+const pending = new Map();
 const listeners = new Set();
 const emit = () => listeners.forEach((l) => l());
 const subscribe = (l) => {
@@ -22,7 +22,6 @@ const changePending = (ticketId, delta) => {
   emit();
 };
 
-// true طالما المساعد يجهّز رداً لهذه التذكرة
 export const useAiTyping = (ticketId) =>
   useSyncExternalStore(
     subscribe,
@@ -30,7 +29,6 @@ export const useAiTyping = (ticketId) =>
     () => false
   );
 
-// يبني سجل المحادثة اللي بينبعت لـ Gemini (آخر 10 رسائل من الطالب والمساعد فقط)
 export const buildAiHistory = (messages = [], studentId) =>
   messages
     .filter((m) => m.senderId === studentId || m.senderId === AI_SENDER.id)
@@ -40,7 +38,6 @@ export const buildAiHistory = (messages = [], studentId) =>
       text: m.text,
     }));
 
-// ينادي /api/gemini ويحفظ الرد بالتذكرة. بيرمي خطأ إذا فشل.
 export async function askAssistant({ ticketId, message, history = [] }) {
   changePending(ticketId, +1);
   try {

@@ -51,10 +51,14 @@ const SupportTicketsSection = ({ user }) => {
   const handleBatchAction = async (action) => {
     if (selectedIds.length === 0) return;
     setLoadingAction(true);
+
+    // نحتفظ بقائمة المعرفات قبل مسحها (لعرض أول تذكرة بعد الاستلام)
+    const idsToOpen = [...selectedIds];
+
     try {
       const batch = writeBatch(db);
 
-      selectedIds.forEach(id => {
+      idsToOpen.forEach(id => {
         const ref = doc(db, 'supportTickets', id);
         if (action === 'claim') {
           batch.update(ref, {
@@ -82,7 +86,16 @@ const SupportTicketsSection = ({ user }) => {
 
       await batch.commit();
 
-      if (action === 'claim') toast.success('✅ تم استلام التذاكر المحددة');
+      if (action === 'claim') {
+        toast.success('✅ تم استلام التذاكر المحددة');
+        setSelectedIds([]);
+        setShowExplorer(false);
+        // فتح أول تذكرة تم استلامها في الشاشة الكاملة فورًا
+        if (idsToOpen.length > 0) {
+          setSelectedTicketId(idsToOpen[0]);
+        }
+        return;
+      }
       if (action === 'transfer') toast.success('✅ تم تحويل التذاكر للمدير');
       if (action === 'close') toast.success('✅ تم إغلاق التذاكر');
 
@@ -98,7 +111,6 @@ const SupportTicketsSection = ({ user }) => {
   const displayedTickets = unassigned.slice(0, displayedCount);
   const hasMore = displayedCount < unassigned.length;
 
-  // ✅ لا نخفي القسم إذا كانت هناك دردشة مفتوحة أو نافذة استكشاف مفتوحة
   if (
     unassigned.length === 0 &&
     mine.length === 0 &&
@@ -246,7 +258,13 @@ const SupportTicketsSection = ({ user }) => {
       )}
 
       {selectedTicketId && (
-        <SupportChat user={user} ticketId={selectedTicketId} viewerMode="supervisor" onClose={() => setSelectedTicketId(null)} />
+        <SupportChat
+          user={user}
+          ticketId={selectedTicketId}
+          viewerMode="supervisor"
+          fullPage
+          onClose={() => setSelectedTicketId(null)}
+        />
       )}
     </div>
   );

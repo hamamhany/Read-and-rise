@@ -23,7 +23,11 @@ import {
 } from '../../constants';
 import { useConfirm } from './ConfirmContext';
 import { askAssistant, buildAiHistory, useAiTyping } from '../../utils/askAssistant';
-import { BotAvatar, SupportAvatar, SupervisorAvatar, TypingBubble, ChatComposer } from './ChatParts';
+import { formatRelativeTime } from '../../utils/helpers';
+import {
+  BotAvatar, SupportAvatar, SupervisorAvatar, TypingBubble, ChatComposer,
+  playIncomingSound, prepareIncomingSound
+} from './ChatParts';
 
 const TYPING_TTL_MS = 5000;              // مدة بقاء مؤشر "يكتب" بعد آخر تحديث
 const TYPING_PING_MS = 3000;             // كل كم ثانية يرسل المشرف إشارة الكتابة
@@ -59,6 +63,9 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
   const scrollRef = useRef(null);
   const [ticketWasLoaded, setTicketWasLoaded] = useState(false);
 
+  // --- مؤقت صغير لإعادة الرسم كل 60 ثانية (لتحديث "منذ كذا") ---
+  const [, setClockTick] = useState(0);
+
   // --- مؤشر "المشرف يكتب" ---
   const [supTyping, setSupTyping] = useState(null);
   const supTypingRef = useRef(null);
@@ -73,10 +80,20 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
   const knownIdsRef = useRef(null);
   const animatedIdsRef = useRef(new Set());
 
+  // --- مراجع صوت الرسائل الواردة ---
+  const soundInitRef = useRef(false);
+  const lastMsgCountRef = useRef(0);
+
   const contactReasons = [
     'إرسال صورة للتوضيح', 'إرسال فيديو للتوضيح', 'مشكلة تقنية',
     'استفسار عن الدرجات', 'مشكلة في الحساب', 'طلب توضيح إضافي', 'سبب آخر'
   ];
+
+  // ✅ مؤقت لتحديث عرض "منذ كذا" كل دقيقة
+  useEffect(() => {
+    const timer = setInterval(() => setClockTick((t) => t + 1), 60 * 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (!ticketId) return;
@@ -106,7 +123,29 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [ticket?.messages?.length, aiTyping, supTyping]);
 
-  // كشف "المشرف يكتب": نعتمد على تغيّر قيمة typing.at وساعة جهاز الطالب نفسه (مش ساعة المشرف)
+  // ✅ كشف الرسائل الجديدة وتشغيل صوت "الرسائل الواردة"
+  useEffect(() => {
+    if (!ticket) return;
+    const msgs = ticket.messages || [];
+
+    if (!soundInitRef.current) {
+      soundInitRef.current = true;
+      lastMsgCountRef.current = msgs.length;
+      prepareIncomingSound();
+      return;
+    }
+
+    if (msgs.length > lastMsgCountRef.current) {
+      const newMsgs = msgs.slice(lastMsgCountRef.current);
+      const hasIncoming = newMsgs.some(
+        (m) => m.senderId !== user.id && m.senderId !== 'system'
+      );
+      if (hasIncoming) playIncomingSound();
+    }
+    lastMsgCountRef.current = msgs.length;
+  }, [ticket?.messages?.length, user.id, !!ticket]);
+
+  // كشف "المشرف يكتب"
   useEffect(() => {
     if (!ticket) return;
     const t = ticket.typing;
@@ -114,7 +153,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
     typingInitRef.current = true;
     if (!t || !t.at || t.id === user.id) { setSupTyping(null); return; }
     if (first) {
-      // قيمة قديمة من قبل فتح الصفحة: نتجاهلها
       typingSeenRef.current = { token: t.at, at: 0 };
       setSupTyping(null);
       return;
@@ -129,8 +167,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
     return () => clearTimeout(timer);
   }, [ticket?.typing?.at, ticket?.typing?.id, !!ticket, user.id]);
 
-  // رد المساعد الاحتياطي (للطالب فقط): بعد استلام المشرف، إذا آخر رسالة للطالب بدون رد 10 دقايق
-  // ولا يرد طالما المشرف يكتب. (لاحقاً ممكن ننقله للكورن)
+  // رد المساعد الاحتياطي (للطالب فقط)
   const lastMsgId = ticket?.messages?.[ticket.messages.length - 1]?.id;
   useEffect(() => {
     if (viewerMode !== 'student') return;
@@ -214,13 +251,11 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
     setSending(false);
 
     if (!isCreator) {
-      // المشرف/المدير أرسل رسالته: نلغي مؤشر "يكتب"
       lastPingRef.current = 0;
       clearTicketTyping(ticketId).catch(() => {});
       return;
     }
 
-    // المساعد يرد فوراً فقط قبل ما يستلم مشرف التذكرة
     if (!ticket.assignedSupervisorId) {
       const history = buildAiHistory(ticket.messages, user.id);
       askAssistant({ ticketId, message: t, history }).catch((aiError) => {
@@ -230,7 +265,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
     }
   };
 
-  // المشرف/المدير: نرسل إشارة "يكتب" كل ~3 ثواني أثناء الكتابة
   const handleTextChange = (v) => {
     setText(v);
     if (!isCreator && canSend && v.trim()) {
@@ -476,7 +510,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
     );
   };
 
-  // --- حركات الرسائل الجديدة (ما نحرّك الرسائل الموجودة عند فتح المحادثة) ---
   const allMsgs = ticket.messages || [];
   if (knownIdsRef.current === null) {
     knownIdsRef.current = new Set(allMsgs.map((m) => m.id));
@@ -489,7 +522,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
     });
   }
 
-  // --- مكان إشعار "تم استلام الطلب": بعد آخر رسالة أُرسلت قبل استلام المشرف ---
   const hasAssignee = !!(ticket.assignedSupervisorId && ticket.assignedSupervisorName);
   let noticeAfterId = null;
   if (hasAssignee) {
@@ -559,10 +591,10 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
                   <p className="text-white font-bold text-sm truncate">الدعم الفني</p>
                   <p className="text-[11px] text-gray-400 truncate">
                     {aiTyping
-                      ? 'المساعد الذكي يكتب الآن...'
+                      ? 'المساعد الذكي سند يكتب الآن...'
                       : supTyping
                         ? `${supTyping.name || 'المشرف'} يكتب الآن...`
-                        : 'المساعد الذكي وفريق الدعم'}
+                        : 'المساعد الذكي سند وفريق الدعم'}
                   </p>
                 </div>
               </>
@@ -722,7 +754,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
               const isMe = m.senderId === user.id;
               const isAI = m.senderId === 'ai-assistant';
               const isSystem = m.senderRole === 'system';
-              const isCreatorMsg = m.senderId === ticket.studentId; // الطالب (صاحب التذكرة) يمين، والباقي يسار
+              const isCreatorMsg = m.senderId === ticket.studentId;
               const isNew = animatedIdsRef.current.has(m.id);
               return (
                 <React.Fragment key={m.id}>
@@ -740,7 +772,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
                       } ${isCreatorMsg ? 'rounded-br-none' : 'rounded-bl-none'}`}>
                         {!isMe && <p className={`text-[10px] font-bold mb-0.5 ${isAI ? 'text-indigo-300' : isSystem ? 'text-purple-300' : 'text-blue-300'}`}>{m.senderName}</p>}
                         <p dir="auto" className={`whitespace-pre-wrap break-words ${fullPage ? 'leading-7' : ''}`}>{m.text}</p>
-                        <p className="text-[10px] opacity-60 mt-1">{m.createdAt ? new Date(m.createdAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) : ''}</p>
+                        <p className="text-[10px] opacity-60 mt-1">{m.createdAt ? formatRelativeTime(m.createdAt) : ''}</p>
                       </div>
                     </div>
                   )}
