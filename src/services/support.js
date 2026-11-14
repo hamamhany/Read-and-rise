@@ -231,6 +231,8 @@ export const claimTicket = async (ticketId, supervisorId, supervisorName, manage
       assignedSupervisorId: supervisorId,
       assignedSupervisorName: supervisorName,
       assignedAt: serverTimestamp(),
+      // عدد الرسائل لحظة الاستلام: نستخدمه لوضع إشعار "تم استلام طلبك" بالمكان الصحيح
+      assignedMessageCount: (ticket.messages || []).length,
       status: SUPPORT_TICKET_STATUS.IN_PROGRESS,
       updatedAt: serverTimestamp(),
       unreadForSupervisor: false,
@@ -716,4 +718,32 @@ export const closeReportedTicketAfterAccountDeletion = async (ticketId) => {
 
 export const finalizeReportWithWarning = async (ticketId, managerId) => {
   await deleteTicketPermanently(ticketId);
+};
+
+// ===== مؤشر "يكتب الآن" للمشرف/المدير (يُحدَّث كل ~3 ثواني أثناء الكتابة) =====
+export const setTicketTyping = async (ticketId, who) => {
+  await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
+    typing: { id: who.id, name: who.name || '', role: who.role || '', at: Date.now() }
+  });
+};
+
+export const clearTicketTyping = async (ticketId) => {
+  await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), { typing: null });
+};
+
+// ===== حجز "حق رد المساعد" على رسالة معيّنة، لمنع تكرار الرد لو كان الطالب فاتح أكثر من تبويب =====
+export const claimAiReply = async (ticketId, messageId) => {
+  try {
+    const ref = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
+    return await runTransaction(db, async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists()) return false;
+      if (snap.data().aiRepliedToMessageId === messageId) return false;
+      tx.update(ref, { aiRepliedToMessageId: messageId });
+      return true;
+    });
+  } catch (err) {
+    console.warn('claimAiReply failed, continuing anyway:', err);
+    return true;
+  }
 };

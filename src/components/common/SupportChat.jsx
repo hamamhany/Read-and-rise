@@ -12,7 +12,7 @@ import {
   approveContactRequest, rejectContactRequest,
   requestTicketDeletion, approveDeletionBySupervisor, rejectDeletionBySupervisor,
   approveDeletionByStudent, rejectDeletionByStudent,
-  reportTicket
+  reportTicket, setTicketTyping, clearTicketTyping, claimAiReply
 } from '../../services/support';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
@@ -23,7 +23,11 @@ import {
 } from '../../constants';
 import { useConfirm } from './ConfirmContext';
 import { askAssistant, buildAiHistory, useAiTyping } from '../../utils/askAssistant';
-import { BotAvatar, TypingBubble, ChatComposer } from './ChatParts';
+import { BotAvatar, SupportAvatar, SupervisorAvatar, TypingBubble, ChatComposer } from './ChatParts';
+
+const TYPING_TTL_MS = 5000;              // مدة بقاء مؤشر "يكتب" بعد آخر تحديث
+const TYPING_PING_MS = 3000;             // كل كم ثانية يرسل المشرف إشارة الكتابة
+const AI_FALLBACK_MS = 10 * 60 * 1000;   // المساعد يرد بعد 10 دقايق بدون رد المشرف
 
 const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage = false }) => {
   const confirm = useConfirm();
@@ -54,6 +58,20 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
 
   const scrollRef = useRef(null);
   const [ticketWasLoaded, setTicketWasLoaded] = useState(false);
+
+  // --- مؤشر "المشرف يكتب" ---
+  const [supTyping, setSupTyping] = useState(null);
+  const supTypingRef = useRef(null);
+  supTypingRef.current = supTyping;
+  const typingInitRef = useRef(false);
+  const typingSeenRef = useRef({ token: null, at: 0 });
+  const lastPingRef = useRef(0);
+
+  // --- مراجع عامة ---
+  const ticketRef = useRef(null);
+  ticketRef.current = ticket;
+  const knownIdsRef = useRef(null);
+  const animatedIdsRef = useRef(new Set());
 
   const contactReasons = [
     'إرسال صورة للتوضيح', 'إرسال فيديو للتوضيح', 'مشكلة تقنية',
@@ -86,7 +104,61 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [ticket?.messages?.length, aiTyping]);
+  }, [ticket?.messages?.length, aiTyping, supTyping]);
+
+  // كشف "المشرف يكتب": نعتمد على تغيّر قيمة typing.at وساعة جهاز الطالب نفسه (مش ساعة المشرف)
+  useEffect(() => {
+    if (!ticket) return;
+    const t = ticket.typing;
+    const first = !typingInitRef.current;
+    typingInitRef.current = true;
+    if (!t || !t.at || t.id === user.id) { setSupTyping(null); return; }
+    if (first) {
+      // قيمة قديمة من قبل فتح الصفحة: نتجاهلها
+      typingSeenRef.current = { token: t.at, at: 0 };
+      setSupTyping(null);
+      return;
+    }
+    if (typingSeenRef.current.token !== t.at) {
+      typingSeenRef.current = { token: t.at, at: Date.now() };
+    }
+    const left = TYPING_TTL_MS - (Date.now() - typingSeenRef.current.at);
+    if (left <= 0) { setSupTyping(null); return; }
+    setSupTyping({ name: t.name });
+    const timer = setTimeout(() => setSupTyping(null), left);
+    return () => clearTimeout(timer);
+  }, [ticket?.typing?.at, ticket?.typing?.id, !!ticket, user.id]);
+
+  // رد المساعد الاحتياطي (للطالب فقط): بعد استلام المشرف، إذا آخر رسالة للطالب بدون رد 10 دقايق
+  // ولا يرد طالما المشرف يكتب. (لاحقاً ممكن ننقله للكورن)
+  const lastMsgId = ticket?.messages?.[ticket.messages.length - 1]?.id;
+  useEffect(() => {
+    if (viewerMode !== 'student') return;
+    const t0 = ticketRef.current;
+    if (!t0 || t0.status !== SUPPORT_TICKET_STATUS.IN_PROGRESS || !t0.assignedSupervisorId) return;
+    const msgs0 = t0.messages || [];
+    const last = msgs0[msgs0.length - 1];
+    if (!last || last.senderId !== user.id) return;
+    const sentAt = new Date(last.createdAt).getTime();
+    if (!sentAt) return;
+
+    let cancelled = false;
+    let timer;
+    const attempt = async () => {
+      if (cancelled) return;
+      const t = ticketRef.current;
+      const msgs = t?.messages || [];
+      const l = msgs[msgs.length - 1];
+      if (!t || t.status !== SUPPORT_TICKET_STATUS.IN_PROGRESS || !t.assignedSupervisorId || !l || l.id !== last.id) return;
+      if (supTypingRef.current) { timer = setTimeout(attempt, 5000); return; }
+      const ok = await claimAiReply(ticketId, last.id);
+      if (!ok || cancelled) return;
+      askAssistant({ ticketId, message: last.text, history: buildAiHistory(msgs.slice(0, -1), user.id) })
+        .catch((err) => console.error('خطأ في رد المساعد الاحتياطي:', err));
+    };
+    timer = setTimeout(attempt, Math.max(0, sentAt + AI_FALLBACK_MS - Date.now()));
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [lastMsgId, ticket?.status, ticket?.assignedSupervisorId, ticketId, viewerMode, user.id]);
 
   if (!ticket) {
     return (
@@ -139,15 +211,38 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
       setSending(false);
       return;
     }
-    // نحرر زر الإرسال فوراً، ورد المساعد بيجي لاحقاً (مع نقاط "يكتب الآن")
     setSending(false);
 
-    if (isCreator) {
+    if (!isCreator) {
+      // المشرف/المدير أرسل رسالته: نلغي مؤشر "يكتب"
+      lastPingRef.current = 0;
+      clearTicketTyping(ticketId).catch(() => {});
+      return;
+    }
+
+    // المساعد يرد فوراً فقط قبل ما يستلم مشرف التذكرة
+    if (!ticket.assignedSupervisorId) {
       const history = buildAiHistory(ticket.messages, user.id);
       askAssistant({ ticketId, message: t, history }).catch((aiError) => {
         console.error('خطأ في المساعد الذكي:', aiError);
         toast.error('تعذر رد المساعد الذكي: ' + aiError.message);
       });
+    }
+  };
+
+  // المشرف/المدير: نرسل إشارة "يكتب" كل ~3 ثواني أثناء الكتابة
+  const handleTextChange = (v) => {
+    setText(v);
+    if (!isCreator && canSend && v.trim()) {
+      const now = Date.now();
+      if (now - lastPingRef.current > TYPING_PING_MS) {
+        lastPingRef.current = now;
+        setTicketTyping(ticketId, {
+          id: user.id,
+          name: user.name || user.username || 'المشرف',
+          role: user.role
+        }).catch(() => {});
+      }
     }
   };
 
@@ -381,6 +476,47 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
     );
   };
 
+  // --- حركات الرسائل الجديدة (ما نحرّك الرسائل الموجودة عند فتح المحادثة) ---
+  const allMsgs = ticket.messages || [];
+  if (knownIdsRef.current === null) {
+    knownIdsRef.current = new Set(allMsgs.map((m) => m.id));
+  } else {
+    allMsgs.forEach((m) => {
+      if (!knownIdsRef.current.has(m.id)) {
+        knownIdsRef.current.add(m.id);
+        animatedIdsRef.current.add(m.id);
+      }
+    });
+  }
+
+  // --- مكان إشعار "تم استلام الطلب": بعد آخر رسالة أُرسلت قبل استلام المشرف ---
+  const hasAssignee = !!(ticket.assignedSupervisorId && ticket.assignedSupervisorName);
+  let noticeAfterId = null;
+  if (hasAssignee) {
+    if (typeof ticket.assignedMessageCount === 'number') {
+      noticeAfterId = allMsgs[ticket.assignedMessageCount - 1]?.id || null;
+    } else {
+      const aMs = ticket.assignedAt?.toMillis?.() ??
+        (ticket.assignedAt?.seconds ? ticket.assignedAt.seconds * 1000 : null);
+      if (aMs) {
+        for (let k = allMsgs.length - 1; k >= 0; k--) {
+          const tm = new Date(allMsgs[k].createdAt).getTime();
+          if (tm && tm <= aMs) { noticeAfterId = allMsgs[k].id; break; }
+        }
+      }
+    }
+  }
+  const noticeInList = !!noticeAfterId && allMsgs.some((m) => m.id === noticeAfterId);
+  const renderNotice = (key) => (
+    <div key={key} className="flex justify-center chat-in-left">
+      <span className="inline-flex items-center gap-2 text-xs text-green-300 bg-green-900/20 border border-green-500/20 rounded-full px-4 py-1.5">
+        ✅ {isCreator
+          ? `تم استلام طلبك من قبل ${ticket.assignedSupervisorName}`
+          : `استلم ${ticket.assignedSupervisorName} هذه التذكرة`}
+      </span>
+    </div>
+  );
+
   const shouldHideMessage = (m) => {
     if (!m.hiddenFor || !Array.isArray(m.hiddenFor)) return false;
     if (isSupervisor && m.hiddenFor.includes('supervisor')) return true;
@@ -409,7 +545,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
       >
 
         <div className={fullPage ? 'border-b border-gray-800 bg-gray-900/90 backdrop-blur flex-shrink-0' : 'border-b border-gray-700'}>
-        <div className={`flex items-center justify-between p-3 ${fullPage ? 'max-w-3xl mx-auto w-full' : ''}`}>
+        <div className={`flex items-center justify-between p-3 ${fullPage ? 'w-full px-4' : ''}`}>
           <div className="flex items-center gap-2 min-w-0 flex-wrap">
             {fullPage && (
               <button onClick={onClose} className="text-gray-300 hover:text-white text-lg flex-shrink-0" title="رجوع">
@@ -418,11 +554,15 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
             )}
             {fullPage ? (
               <>
-                <BotAvatar size={38} />
+                <SupportAvatar size={40} />
                 <div className="min-w-0 leading-tight">
                   <p className="text-white font-bold text-sm truncate">الدعم الفني</p>
                   <p className="text-[11px] text-gray-400 truncate">
-                    {aiTyping ? 'المساعد الذكي يكتب الآن...' : 'المساعد الذكي وفريق الدعم'}
+                    {aiTyping
+                      ? 'المساعد الذكي يكتب الآن...'
+                      : supTyping
+                        ? `${supTyping.name || 'المشرف'} يكتب الآن...`
+                        : 'المساعد الذكي وفريق الدعم'}
                   </p>
                 </div>
               </>
@@ -457,13 +597,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
         </div>
         </div>
 
-        <div className={fullPage ? 'w-full max-w-3xl mx-auto flex-shrink-0' : 'contents'}>
-        {isCreator && ticket.assignedSupervisorName && !closedStatuses.includes(ticket.status) && (
-          <div className="px-3 py-1.5 border-b border-gray-700 bg-green-900/20 text-xs text-green-300 flex items-center gap-1">
-            ✅ تم استلام طلبك من قبل {ticket.assignedSupervisorName}
-          </div>
-        )}
-
+        <div className={fullPage ? 'w-full flex-shrink-0' : 'contents'}>
         {showContactBar && (
           <div className="px-3 py-2 border-b border-gray-700 bg-gray-800/50 text-xs">
             {!contactStatus && (
@@ -582,37 +716,47 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
           className="chat-scroll flex-1 min-h-0 overflow-y-auto"
           style={fullPage ? { overscrollBehavior: 'contain' } : { minHeight: 200 }}
         >
-          <div className={fullPage ? 'max-w-3xl mx-auto w-full px-4 py-5 space-y-4' : 'p-3 space-y-3'}>
-            {ticket.messages?.filter(m => !shouldHideMessage(m)).map((m) => {
+          <div className={fullPage ? 'w-full px-4 py-5 space-y-4' : 'p-3 space-y-3'}>
+            {allMsgs.map((m) => {
+              const hidden = shouldHideMessage(m);
               const isMe = m.senderId === user.id;
               const isAI = m.senderId === 'ai-assistant';
               const isSystem = m.senderRole === 'system';
+              const isCreatorMsg = m.senderId === ticket.studentId; // الطالب (صاحب التذكرة) يمين، والباقي يسار
+              const isNew = animatedIdsRef.current.has(m.id);
               return (
-                <div key={m.id} className={`flex items-end gap-2 ${isMe ? 'justify-end' : 'justify-start'}`}>
-                  {isAI && <BotAvatar />}
-                  <div className={`max-w-[85%] sm:max-w-[75%] px-3 py-2 rounded-2xl ${fullPage ? 'text-[15px]' : 'text-sm'} ${
-                    isAI
-                      ? 'bg-gray-800 text-gray-100 border border-gray-700 rounded-br-none'
-                      : isSystem
-                        ? 'bg-purple-600/30 text-purple-100 border border-purple-500/40 rounded-br-none'
-                        : isMe
-                          ? 'bg-blue-600 text-white rounded-bl-none'
-                          : 'bg-gray-700 text-gray-100 rounded-br-none'
-                  }`}>
-                    {!isMe && <p className={`text-[10px] font-bold mb-0.5 ${isAI ? 'text-indigo-300' : isSystem ? 'text-purple-300' : 'text-blue-300'}`}>{m.senderName}</p>}
-                    <p dir="auto" className={`whitespace-pre-wrap break-words ${fullPage ? 'leading-7' : ''}`}>{m.text}</p>
-                    <p className="text-[10px] opacity-60 mt-1">{m.createdAt ? new Date(m.createdAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) : ''}</p>
-                  </div>
-                </div>
+                <React.Fragment key={m.id}>
+                  {!hidden && (
+                    <div className={`flex items-end gap-2 ${isCreatorMsg ? 'justify-start' : 'flex-row-reverse justify-start'} ${isNew ? (isCreatorMsg ? 'chat-in-right' : 'chat-in-left') : ''}`}>
+                      {!isCreatorMsg && (isAI ? <BotAvatar /> : !isSystem ? <SupervisorAvatar /> : null)}
+                      <div className={`max-w-[85%] sm:max-w-[70%] px-3 py-2 rounded-2xl ${fullPage ? 'text-[15px]' : 'text-sm'} ${isNew && isMe ? 'chat-glow' : ''} ${
+                        isAI
+                          ? 'bg-gray-800 text-gray-100 border border-gray-700'
+                          : isSystem
+                            ? 'bg-purple-600/30 text-purple-100 border border-purple-500/40'
+                            : isMe
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-gray-700 text-gray-100'
+                      } ${isCreatorMsg ? 'rounded-br-none' : 'rounded-bl-none'}`}>
+                        {!isMe && <p className={`text-[10px] font-bold mb-0.5 ${isAI ? 'text-indigo-300' : isSystem ? 'text-purple-300' : 'text-blue-300'}`}>{m.senderName}</p>}
+                        <p dir="auto" className={`whitespace-pre-wrap break-words ${fullPage ? 'leading-7' : ''}`}>{m.text}</p>
+                        <p className="text-[10px] opacity-60 mt-1">{m.createdAt ? new Date(m.createdAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) : ''}</p>
+                      </div>
+                    </div>
+                  )}
+                  {hasAssignee && noticeAfterId === m.id && renderNotice('notice-claimed')}
+                </React.Fragment>
               );
             })}
-            {aiTyping && <TypingBubble />}
+            {hasAssignee && !noticeInList && renderNotice('notice-claimed')}
+            {aiTyping && <TypingBubble kind="ai" />}
+            {supTyping && <TypingBubble kind="staff" />}
           </div>
         </div>
 
-        <div className={fullPage ? 'w-full max-w-3xl mx-auto flex-shrink-0' : 'contents'}>
+        <div className={fullPage ? 'w-full flex-shrink-0' : 'contents'}>
         {ticket.status === SUPPORT_TICKET_STATUS.REPORTED && (
-          <div className="p-4 bg-red-500/10 border-t-2 border-red-500/40 text-center">
+          <div className="px-4 py-4 bg-red-500/10 border-t border-red-500/30 text-center">
             <FaShieldAlt className="text-red-400 text-2xl mx-auto mb-2" />
             <p className="text-red-200 text-sm font-bold mb-1">
               تم تحويل المحادثة إلى قسم المراجعة في الإدارة
@@ -635,15 +779,15 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
         )}
 
         {ticket.status === SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED && isCreator && (
-          <div className="p-4 bg-yellow-500/10 border-t-2 border-yellow-500/40">
-            <p className="text-yellow-200 text-sm text-center mb-3 font-bold">
+          <div className="px-4 py-5 bg-yellow-500/5 border-t border-yellow-500/30">
+            <p className="text-yellow-200 text-sm text-center mb-4 font-bold">
               📩 طلب {ticket.assignedSupervisorName || 'المشرف'} إغلاق تذكرة الدعم الفني
             </p>
-            <div className="flex flex-col gap-2">
-              <button onClick={handleSolved} className="w-full bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto">
+              <button onClick={handleSolved} className="bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition shadow-lg shadow-green-900/30">
                 <FaCheckCircle /> نعم شكراً، لقد حصلت على الدعم الذي أريده
               </button>
-              <button onClick={handleNotSolved} className="w-full bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2">
+              <button onClick={handleNotSolved} className="bg-red-600 hover:bg-red-700 text-white py-3 px-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition shadow-lg shadow-red-900/30">
                 <FaTimesCircle /> لا، ما زلت لدي بعض المشاكل
               </button>
             </div>
@@ -651,7 +795,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
         )}
 
         {ticket.status === SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED && !isCreator && (
-          <div className="p-3 bg-yellow-500/10 border-t border-yellow-500/30 text-center">
+          <div className="px-4 py-3 bg-yellow-500/5 border-t border-yellow-500/30 text-center">
             <p className="text-yellow-200 text-sm flex items-center justify-center gap-2">
               <FaHourglassHalf /> الدردشة متوقفة بانتظار قرار صاحب التذكرة
             </p>
@@ -659,22 +803,23 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
         )}
 
         {ticket.status === SUPPORT_TICKET_STATUS.AWAITING_RATING && isCreator && !showRating && (
-          <div className="p-3 bg-green-500/10 border-t border-green-500/30 text-center">
-            <p className="text-green-200 text-sm mb-2">✅ يرجى تقييم الخدمة</p>
-            <button onClick={() => setShowRating(true)} className="bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-2 rounded-lg font-bold"><FaStar className="inline me-1" /> تقييم</button>
+          <div className="px-4 py-5 bg-green-500/5 border-t border-green-500/30 text-center">
+            <p className="text-green-200 text-sm font-bold mb-3">✅ يرجى تقييم الخدمة</p>
+            <button onClick={() => setShowRating(true)} className="bg-yellow-600 hover:bg-yellow-700 text-white px-8 py-2.5 rounded-xl font-bold text-sm transition shadow-lg shadow-yellow-900/30">
+              <FaStar className="inline me-1" /> تقييم
+            </button>
           </div>
         )}
 
         {ticket.status === SUPPORT_TICKET_STATUS.AWAITING_RATING && !isCreator && (
-          <div className="p-3 bg-green-500/10 border-t border-green-500/30 text-center text-green-200 text-sm">
+          <div className="px-4 py-3 bg-green-500/5 border-t border-green-500/30 text-center text-green-200 text-sm">
             ⏳ بانتظار تقييم صاحب التذكرة
           </div>
         )}
-
         </div>
 
         {canSend && (
-          <ChatComposer value={text} onChange={setText} onSend={handleSend} sending={sending} />
+          <ChatComposer value={text} onChange={handleTextChange} onSend={handleSend} sending={sending} />
         )}
 
         {showReportModal && (

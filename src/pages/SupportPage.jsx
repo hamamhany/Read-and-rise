@@ -8,7 +8,7 @@ import {
 import { sanitizeInput } from '../utils/helpers';
 import { askAssistant } from '../utils/askAssistant';
 import SupportChat from '../components/common/SupportChat';
-import { BotAvatar, ChatComposer } from '../components/common/ChatParts';
+import { BotAvatar, SupportAvatar, ChatComposer } from '../components/common/ChatParts';
 
 const SupportPage = ({ user }) => {
   const navigate = useNavigate();
@@ -101,11 +101,11 @@ const SupportPage = ({ user }) => {
   return (
     <div dir="rtl" className="fixed inset-0 bg-gray-950 z-[70] flex flex-col">
       <div className="border-b border-gray-800 bg-gray-900/90 backdrop-blur flex-shrink-0">
-        <div className="max-w-3xl mx-auto w-full flex items-center gap-2 p-3">
+        <div className="w-full flex items-center gap-2 px-4 py-3">
           <button onClick={goHome} className="text-gray-300 hover:text-white text-lg flex-shrink-0" title="رجوع">
             <FaArrowRight />
           </button>
-          <BotAvatar size={38} />
+          <SupportAvatar size={40} />
           <div className="leading-tight">
             <p className="text-white font-bold text-sm">طلب دعم جديد</p>
             <p className="text-[11px] text-gray-400">المساعد الذكي وفريق الدعم</p>
