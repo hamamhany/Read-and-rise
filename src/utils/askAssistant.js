@@ -1,12 +1,11 @@
-
 import { sendTicketMessage } from '../services/support';
- 
+
 export const AI_SENDER = {
   id: 'ai-assistant',
   name: 'المساعد الذكي',
   role: 'system',
 };
- 
+
 // يبني سجل المحادثة اللي بينبعت لـ Gemini (آخر 10 رسائل من الطالب والمساعد فقط)
 export const buildAiHistory = (messages = [], studentId) =>
   messages
@@ -16,7 +15,7 @@ export const buildAiHistory = (messages = [], studentId) =>
       role: m.senderId === AI_SENDER.id ? 'model' : 'user',
       text: m.text,
     }));
- 
+
 // ينادي /api/gemini ويحفظ الرد بالتذكرة. بيرمي خطأ إذا فشل.
 export async function askAssistant({ ticketId, message, history = [] }) {
   const response = await fetch('/api/gemini', {
@@ -24,7 +23,7 @@ export async function askAssistant({ ticketId, message, history = [] }) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, history }),
   });
- 
+
   const raw = await response.text();
   let data = null;
   try {
@@ -32,11 +31,14 @@ export async function askAssistant({ ticketId, message, history = [] }) {
   } catch {
     // الرد مش JSON
   }
- 
+
   if (!response.ok || !data?.text) {
-    throw new Error(data?.error || `HTTP ${response.status}`);
+    throw new Error(
+      data
+        ? `${data.error || 'خطأ'}${data.details ? ' — ' + data.details : ''}`
+        : `HTTP ${response.status}`
+    );
   }
- 
+
   await sendTicketMessage(ticketId, AI_SENDER, data.text);
 }
- 
