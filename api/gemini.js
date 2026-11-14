@@ -4,7 +4,9 @@ export const config = {
   maxDuration: 60,
 };
 
-const MODEL = 'gemini-3.8-flash';
+// يجرّب الموديلات بالترتيب. إذا فشل الأول (ضغط أو حد استخدام) ينتقل للتالي تلقائياً.
+const MODELS = ['gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
+const RETRYABLE = [429, 500, 502, 503, 504];
 
 // ============================================================
 // دليل المنصة: هذا هو المصدر الوحيد لمعلومات المساعد عن المنصة.
@@ -127,19 +129,33 @@ export default async function handler(req, res) {
 
     const ai = new GoogleGenAI({
       apiKey,
-      httpOptions: { timeout: 55000 },
+      httpOptions: { timeout: 18000 },
     });
 
-    const response = await ai.models.generateContent({
-      model: MODEL,
-      contents: buildContents(history, message),
-      config: {
-        systemInstruction: buildSystemInstruction(hasGreeted),
-        temperature: 0.3,
-      },
-    });
+    const contents = buildContents(history, message);
+    const systemInstruction = buildSystemInstruction(hasGreeted);
 
-    return res.status(200).json({ text: response.text });
+    let lastError;
+    for (const model of MODELS) {
+      try {
+        const response = await ai.models.generateContent({
+          model,
+          contents,
+          config: { systemInstruction, temperature: 0.3 },
+        });
+        if (response.text) {
+          return res.status(200).json({ text: response.text });
+        }
+        lastError = new Error('Empty response from ' + model);
+      } catch (err) {
+        lastError = err;
+        console.error('Gemini error on ' + model + ':', err?.message || err);
+        const status = Number(err?.status);
+        // أخطاء مثل 400 أو 403 ما بتنحل بتغيير الموديل، فنوقف
+        if (status && !RETRYABLE.includes(status)) throw err;
+      }
+    }
+    throw lastError;
   } catch (error) {
     console.error('Gemini API Error:', error);
     const status = Number(error?.status);
