@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import {
   FaExclamationTriangle, FaEye, FaUser, FaHeadset, FaTimes,
-  FaSpinner, FaTrashAlt, FaCheckCircle, FaRedoAlt, FaBan, FaBell
+  FaSpinner, FaTrashAlt, FaCheckCircle, FaRedoAlt, FaBan, FaBell, FaRobot
 } from 'react-icons/fa';
 import {
   subscribeToManagerReviewTickets, subscribeToManagerOpenTickets,
@@ -27,6 +27,7 @@ import {
   SUPPORT_RATING_CATEGORIES, SUPPORT_TICKET_STATUS
 } from '../../constants';
 import SupportChat from '../common/SupportChat';
+import { RichText } from '../common/ChatParts';
 import { useConfirm } from '../common/ConfirmContext';
 
 const ManagerSupportReviewsSection = ({ user }) => {
@@ -79,7 +80,8 @@ const ManagerSupportReviewsSection = ({ user }) => {
     setMode(null);
     setReason('');
     try {
-      if (ticket.assignedSupervisorId) {
+      // ✅ لا نجيب بيانات المشرف البشري إذا كانت الشكوى ضد سند
+      if (ticket.assignedSupervisorId && ticket.ratedAgainstAi !== true) {
         const s = await getDoc(doc(db, 'profiles', ticket.assignedSupervisorId));
         if (s.exists()) setSupervisor({ id: s.id, ...s.data() });
       }
@@ -125,30 +127,40 @@ const ManagerSupportReviewsSection = ({ user }) => {
     } catch (e) { toast.error(e.message); }
   };
 
-  // ✅ الآن managerDecide يحذف التذكرة تلقائياً بعد تسجيل القرار
+  // ✅ اعتذار: إذا الشكوى ضد سند → اعتذار للطالب فقط، لا تنبيه لأي مشرف
   const handleApologize = async () => {
-    if (!reason.trim()) { toast.error('اكتب سبب الاعتذار للمشرف'); return; }
+    if (!reason.trim()) {
+      toast.error(selected.ratedAgainstAi === true
+        ? 'اكتب سبب الاعتذار للطالب'
+        : 'اكتب سبب الاعتذار للمشرف');
+      return;
+    }
     setProcessing(true);
     try {
-      if (supervisor) {
+      if (selected.ratedAgainstAi !== true && supervisor) {
         sendSupervisorRatingWarningMessage(supervisor, selected.rating, reason.trim());
       }
       if (student) {
         sendApologyToStudentMessage(student);
       }
       await managerDecide(selected.id, 'apologize', reason.trim());
-      toast.success('✅ تم الاعتذار وحذف التذكرة نهائياً');
+      toast.success(selected.ratedAgainstAi === true
+        ? '✅ تم الاعتذار للطالب وحذف التذكرة'
+        : '✅ تم الاعتذار وحذف التذكرة نهائياً');
       closeModal();
     } catch (e) { toast.error('فشل: ' + e.message); }
     finally { setProcessing(false); }
   };
 
   const handleReject = async () => {
-    const ok = await confirm('رفض الشكوى', 'سيتم إلغاء الشكوى وإعطاء المشرف 5 نجوم وإرسال تحذير حازم للطالب. متابعة؟');
+    const msg = selected.ratedAgainstAi === true
+      ? 'سيتم رفض الشكوى ضد المساعد الذكي سند وحذف التذكرة. لا يحتسب أي تقييم على أي مشرف. متابعة؟'
+      : 'سيتم إلغاء الشكوى وإعطاء المشرف 5 نجوم وإرسال تحذير حازم للطالب. متابعة؟';
+    const ok = await confirm('رفض الشكوى', msg);
     if (!ok) return;
     setProcessing(true);
     try {
-      if (student) {
+      if (selected.ratedAgainstAi !== true && student) {
         const classIds = student.classIds || [];
         let classNames = '';
         if (classIds.length > 0) {
@@ -300,7 +312,7 @@ const ManagerSupportReviewsSection = ({ user }) => {
           {reviews.map(t => {
             const catLabel = SUPPORT_RATING_CATEGORIES.find(c => c.value === t.ratingCategory)?.label || '';
             return (
-              <div key={t.id} className="p-3 bg-black/30 rounded-lg border border-rose-500/30">
+              <div key={t.id} className={`p-3 bg-black/30 rounded-lg border ${t.ratedAgainstAi === true ? 'border-indigo-500/40' : 'border-rose-500/30'}`}>
                 <div className="flex justify-between items-start gap-2 flex-wrap">
                   <div className="flex-1 min-w-0">
                     <p className="text-white text-sm">
@@ -309,7 +321,13 @@ const ManagerSupportReviewsSection = ({ user }) => {
                     </p>
                     <p className="text-xs text-rose-200 mt-1">⭐ {t.rating}/5 — {catLabel}</p>
                     <p className="text-xs text-gray-300 mt-1 line-clamp-2">"{t.ratingReason}"</p>
-                    <p className="text-xs text-cyan-300 mt-1">المشرف: {t.assignedSupervisorName}</p>
+                    {t.ratedAgainstAi === true ? (
+                      <p className="text-xs text-indigo-300 mt-1 flex items-center gap-1">
+                        <FaRobot size={10} /> الشكوى ضد المساعد الذكي سند
+                      </p>
+                    ) : (
+                      <p className="text-xs text-cyan-300 mt-1">المشرف: {t.assignedSupervisorName}</p>
+                    )}
                   </div>
                   <button onClick={() => openReview(t)} className="text-xs bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg">
                     <FaEye /> مراجعة
@@ -411,7 +429,7 @@ const ManagerSupportReviewsSection = ({ user }) => {
               {selectedReport.messages?.map(m => (
                 <div key={m.id} className="text-xs mb-1">
                   <strong className="text-blue-300">{m.senderName}:</strong>
-                  <span className="text-gray-300"> {m.text}</span>
+                  <span className="text-gray-300"> <RichText text={m.text} /></span>
                 </div>
               ))}
             </div>
@@ -464,7 +482,9 @@ const ManagerSupportReviewsSection = ({ user }) => {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] p-4" onClick={closeModal}>
           <div className="bg-gray-900 p-6 rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-rose-500/30" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold text-rose-300">مراجعة تقييم سلبي</h3>
+              <h3 className="text-xl font-bold text-rose-300">
+                {selected.ratedAgainstAi === true ? 'شكوى ضد المساعد الذكي سند' : 'مراجعة تقييم سلبي'}
+              </h3>
               <button onClick={closeModal} className="text-gray-400 hover:text-white text-2xl">✕</button>
             </div>
 
@@ -475,18 +495,29 @@ const ManagerSupportReviewsSection = ({ user }) => {
               {selected.studentPhone && <p className="text-gray-300">الهاتف: <span dir="ltr">{selected.studentPhone}</span></p>}
             </div>
 
-            <div className="bg-gray-800/60 p-3 rounded-xl mb-3 text-sm">
-              <p className="text-cyan-200 font-bold mb-1">🛡️ المشرف:</p>
-              <p className="text-gray-300">الاسم: {selected.assignedSupervisorName}</p>
-              {supervisor && (
-                <>
-                  <p className="text-gray-300">الهاتف: <span dir="ltr">{supervisor.phone}</span></p>
-                  {supervisor.ratingCount > 0 && (
-                    <p className="text-gray-300">التقييم الحالي: ⭐ {supervisor.ratingAverage?.toFixed?.(1) || supervisor.ratingAverage} ({supervisor.ratingCount} تقييم)</p>
-                  )}
-                </>
-              )}
-            </div>
+            {selected.ratedAgainstAi === true ? (
+              <div className="bg-indigo-500/10 p-3 rounded-xl mb-3 text-sm border border-indigo-500/30">
+                <p className="text-indigo-200 font-bold mb-1 flex items-center gap-2">
+                  <FaRobot /> الشكوى ضد المساعد الذكي سند
+                </p>
+                <p className="text-gray-300 text-xs">
+                  لم يتدخل أي مشرف بشري — الاعتذار للطالب فقط، ولا يُحتسب أي تقييم على أي مشرف.
+                </p>
+              </div>
+            ) : (
+              <div className="bg-gray-800/60 p-3 rounded-xl mb-3 text-sm">
+                <p className="text-cyan-200 font-bold mb-1">🛡️ المشرف:</p>
+                <p className="text-gray-300">الاسم: {selected.assignedSupervisorName}</p>
+                {supervisor && (
+                  <>
+                    <p className="text-gray-300">الهاتف: <span dir="ltr">{supervisor.phone}</span></p>
+                    {supervisor.ratingCount > 0 && (
+                      <p className="text-gray-300">التقييم الحالي: ⭐ {supervisor.ratingAverage?.toFixed?.(1) || supervisor.ratingAverage} ({supervisor.ratingCount} تقييم)</p>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
 
             <div className="bg-rose-500/10 p-3 rounded-xl mb-3 text-sm border border-rose-500/30">
               <p className="text-rose-200 font-bold mb-1">⭐ التقييم السلبي:</p>
@@ -500,7 +531,7 @@ const ManagerSupportReviewsSection = ({ user }) => {
               {selected.messages?.map(m => (
                 <div key={m.id} className="text-xs mb-1">
                   <strong className="text-blue-300">{m.senderName}:</strong>
-                  <span className="text-gray-300"> {m.text}</span>
+                  <span className="text-gray-300"> <RichText text={m.text} /></span>
                 </div>
               ))}
             </div>
@@ -508,25 +539,41 @@ const ManagerSupportReviewsSection = ({ user }) => {
             {!mode && (
               <div className="space-y-2">
                 <button onClick={() => setMode('apologize')} className="w-full p-3 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 rounded-xl text-amber-200 text-sm">
-                  🌸 قبول الشكوى والاعتذار (تنبيه للمشرف + اعتذار للطالب)
+                  {selected.ratedAgainstAi === true
+                    ? '🌸 قبول الشكوى والاعتذار للطالب (لا شيء على أي مشرف)'
+                    : '🌸 قبول الشكوى والاعتذار (تنبيه للمشرف + اعتذار للطالب)'}
                 </button>
                 <button onClick={handleReject} disabled={processing} className="w-full p-3 bg-red-600/20 hover:bg-red-600/30 border border-red-500/40 rounded-xl text-red-200 text-sm disabled:opacity-50">
-                  {processing ? 'جاري المعالجة...' : '🛑 رفض الشكوى (5 نجوم للمشرف + تحذير للطالب)'}
+                  {processing
+                    ? 'جاري المعالجة...'
+                    : selected.ratedAgainstAi === true
+                      ? '🛑 رفض الشكوى (حذف التذكرة دون أي تقييم)'
+                      : '🛑 رفض الشكوى (5 نجوم للمشرف + تحذير للطالب)'}
                 </button>
               </div>
             )}
 
             {mode === 'apologize' && (
               <div className="space-y-3">
-                <label className="text-sm text-gray-300">سبب الاعتذار (سيُرسل للمشرف):</label>
+                <label className="text-sm text-gray-300">
+                  {selected.ratedAgainstAi === true
+                    ? 'سبب الاعتذار (سيُرسل للطالب):'
+                    : 'سبب الاعتذار (سيُرسل للمشرف):'}
+                </label>
                 <textarea
                   value={reason}
                   onChange={e => setReason(e.target.value)}
                   className="w-full bg-gray-800 text-white p-2 rounded border border-gray-600 text-sm resize-none h-24"
-                  placeholder="اشرح للمشرف ما الذي أخطأ فيه..."
+                  placeholder={selected.ratedAgainstAi === true
+                    ? 'اشرح للطالب سبب الاعتذار...'
+                    : 'اشرح للمشرف ما الذي أخطأ فيه...'}
                 />
                 <button onClick={handleApologize} disabled={processing || !reason.trim()} className="w-full bg-amber-600 hover:bg-amber-700 text-white py-2 rounded-lg disabled:opacity-50">
-                  {processing ? 'جاري الإرسال والحذف...' : '📤 إرسال التنبيهات وتأكيد الاعتذار (سيتم حذف التذكرة)'}
+                  {processing
+                    ? 'جاري الإرسال والحذف...'
+                    : selected.ratedAgainstAi === true
+                      ? '📤 إرسال الاعتذار للطالب (سيتم حذف التذكرة)'
+                      : '📤 إرسال التنبيهات وتأكيد الاعتذار (سيتم حذف التذكرة)'}
                 </button>
               </div>
             )}

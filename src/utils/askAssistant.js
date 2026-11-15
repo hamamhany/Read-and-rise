@@ -8,7 +8,6 @@ export const AI_SENDER = {
   role: 'system',
 };
 
-// ===== حالة "المساعد يكتب الآن" (مشتركة بين الشاشات) =====
 const pending = new Map();
 const listeners = new Set();
 const emit = () => listeners.forEach((l) => l());
@@ -39,13 +38,19 @@ export const buildAiHistory = (messages = [], studentId) =>
       text: m.text,
     }));
 
-export async function askAssistant({ ticketId, message, history = [], userRole = 'student' }) {
+export async function askAssistant({
+  ticketId,
+  message,
+  history = [],
+  userRole = 'student',
+  suppressEndTag = false,
+}) {
   changePending(ticketId, +1);
   try {
     const response = await fetch('/api/gemini', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, history, userRole }),
+      body: JSON.stringify({ message, history, userRole, suppressEndTag }),
     });
 
     const raw = await response.text();

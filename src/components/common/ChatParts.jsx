@@ -77,7 +77,7 @@ export const playSendSound = () => {
   }
 };
 
-// ===== صوت الرسائل الواردة (جديد) =====
+// ===== صوت الرسائل الواردة =====
 let incomingAudio = null;
 let incomingExtIndex = 0;
 let incomingSoundDisabled = false;
@@ -107,6 +107,26 @@ export const playIncomingSound = () => {
   } catch {
     // تجاهل أي خطأ بالصوت
   }
+};
+
+// ===== نص بتنسيق غني: يحوّل **نص** إلى <strong> تخين =====
+// (إذا بعت المساعد الذكي **مهم** راح يطلع تخين بدل ما تظهر النجمات)
+export const RichText = ({ text, strongClassName = 'font-extrabold' }) => {
+  if (text === null || text === undefined) return null;
+  const str = String(text);
+  if (!str.includes('**')) return <>{str}</>;
+  const parts = str.split(/(\*\*[\s\S]+?\*\*)/g);
+  return (
+    <>
+      {parts.map((part, i) => {
+        const m = part.match(/^\*\*([\s\S]+?)\*\*$/);
+        if (m && m[1]) {
+          return <strong key={i} className={strongClassName}>{m[1]}</strong>;
+        }
+        return <React.Fragment key={i}>{part}</React.Fragment>;
+      })}
+    </>
+  );
 };
 
 // ===== الصور الدائرية =====
@@ -173,7 +193,7 @@ export const TypingBubble = ({ kind = 'ai' }) => (
 const LINE_HEIGHT = 24; // يساوي leading-6
 const MAX_LINES = 10;   // بعد 10 أسطر يتوقف النمو ويظهر شريط التمرير
 
-// خانة الكتابة: تكبر مع النص حتى 10 أسطر، وتدعم العربي والإنجليزي، وفيها تأثير وصوت للإرسال
+// خانة الكتابة
 export const ChatComposer = ({
   value,
   onChange,

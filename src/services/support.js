@@ -57,6 +57,7 @@ export const createSupportTicket = async (data) => {
     ratingCategory: null,
     ratingReason: null,
     ratedAt: null,
+    ratedAgainstAi: false,
     managerReviewedAt: null,
     managerDecision: null,
     managerReason: null,
@@ -204,7 +205,6 @@ export const subscribeToPendingContactRequests = (callback) => {
   return () => {};
 };
 
-// ✅ حجز التذكرة — بدون رسالة نظام داخل المحادثة (تُعرض كشريط صغير في الواجهة)
 export const claimTicket = async (ticketId, supervisorId, supervisorName, managerMode = false) => {
   await runTransaction(db, async (transaction) => {
     const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
@@ -232,7 +232,6 @@ export const claimTicket = async (ticketId, supervisorId, supervisorName, manage
       assignedSupervisorId: supervisorId,
       assignedSupervisorName: supervisorName,
       assignedAt: serverTimestamp(),
-      // عدد الرسائل لحظة الاستلام: نستخدمه لوضع إشعار "تم استلام طلبك" بالمكان الصحيح
       assignedMessageCount: (ticket.messages || []).length,
       status: SUPPORT_TICKET_STATUS.IN_PROGRESS,
       updatedAt: serverTimestamp(),
@@ -538,6 +537,7 @@ export const rejectDeletionByStudent = async (ticketId, reason = '') => {
 };
 
 // ✅ طلب إغلاق التذكرة — يدعم طلب "سند" الذكي أيضاً
+//    كل طلب جديد يحدّث aiRequestedEnd ليعكس هوية مُقدّم الطلب الأخير
 export const requestTicketEnd = async (ticketId, supervisorName = '', opts = {}) => {
   const { aiEnd = false } = opts;
   const now = Date.now();
@@ -546,11 +546,9 @@ export const requestTicketEnd = async (ticketId, supervisorName = '', opts = {})
     endRequestedAt: serverTimestamp(),
     endRequestExpiresAt: new Date(now + SUPPORT_END_TIMEOUT_MS),
     unreadForStudent: true,
+    aiRequestedEnd: aiEnd,
     updatedAt: serverTimestamp()
   };
-  if (aiEnd) {
-    updates.aiRequestedEnd = true;
-  }
   await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), updates);
 };
 
@@ -582,6 +580,10 @@ export const submitRating = async (ticketId, rating, ratingCategory, ratingReaso
   const isFull = rating === 5;
   const newStatus = isFull ? SUPPORT_TICKET_STATUS.RATED_FULL : SUPPORT_TICKET_STATUS.RATED_LOW;
 
+  // ✅ هل الشكوى ضد المساعد الذكي "سند"؟
+  // (يعني آخر من طلب الإغلاق هو سند وليس مشرفاً بشرياً)
+  const ratedAgainstAi = !isFull && data.aiRequestedEnd === true;
+
   await updateDoc(ticketRef, {
     rating,
     ratingCategory: ratingCategory || null,
@@ -589,10 +591,12 @@ export const submitRating = async (ticketId, rating, ratingCategory, ratingReaso
     ratedAt: serverTimestamp(),
     status: newStatus,
     closedAt: isFull ? serverTimestamp() : null,
+    ratedAgainstAi,
     updatedAt: serverTimestamp()
   });
 
-  if (data.assignedSupervisorId) {
+  // ✅ نحدّث تقييم المشرف البشري فقط إذا لم تكن الشكوى ضد سند
+  if (!ratedAgainstAi && data.assignedSupervisorId) {
     const supRef = doc(db, 'profiles', data.assignedSupervisorId);
     const supSnap = await getDoc(supRef);
     if (supSnap.exists()) {
@@ -637,7 +641,8 @@ export const managerDecide = async (ticketId, decision, managerReason) => {
     updatedAt: serverTimestamp()
   });
 
-  if (data.assignedSupervisorId) {
+  // ✅ نحدّث تقييم المشرف البشري فقط إذا لم تكن الشكوى ضد سند
+  if (data.assignedSupervisorId && data.ratedAgainstAi !== true) {
     const supRef = doc(db, 'profiles', data.assignedSupervisorId);
     const supSnap = await getDoc(supRef);
     if (supSnap.exists()) {
@@ -794,7 +799,6 @@ export const finalizeReportWithWarning = async (ticketId, managerId) => {
   await deleteTicketPermanently(ticketId);
 };
 
-// ===== مؤشر "يكتب الآن" للمشرف/المدير =====
 export const setTicketTyping = async (ticketId, who) => {
   await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
     typing: { id: who.id, name: who.name || '', role: who.role || '', at: Date.now() }
@@ -805,7 +809,6 @@ export const clearTicketTyping = async (ticketId) => {
   await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), { typing: null });
 };
 
-// ===== حجز "حق رد المساعد" على رسالة معيّنة =====
 export const claimAiReply = async (ticketId, messageId) => {
   try {
     const ref = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
@@ -822,7 +825,6 @@ export const claimAiReply = async (ticketId, messageId) => {
   }
 };
 
-// ===== تسجيل محاولة انتحال هوية / اختراق في سجل الحوادث الأمنية =====
 export const logSecurityIncident = async (ticketId, userRole, text) => {
   try {
     await addDoc(collection(db, 'securityIncidents'), {

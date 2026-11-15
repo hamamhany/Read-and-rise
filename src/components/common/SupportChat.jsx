@@ -24,7 +24,7 @@ import { askAssistant, buildAiHistory, useAiTyping } from '../../utils/askAssist
 import { formatRelativeTime } from '../../utils/helpers';
 import {
   BotAvatar, SupportAvatar, SupervisorAvatar, TypingBubble, ChatComposer,
-  playIncomingSound, prepareIncomingSound
+  playIncomingSound, prepareIncomingSound, RichText
 } from './ChatParts';
 
 const TYPING_TTL_MS = 5000;
@@ -363,10 +363,23 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
     } catch (e) { toast.error('فشل: ' + e.message); }
   };
 
+  // ✅ لو رفض الطالب طلب الإنهاء اللي قدّمه "سند" — سند يستفسر عن المشكلة المتبقية
   const handleNotSolved = async () => {
     try {
+      const wasAiEnd = ticket.aiRequestedEnd === true;
       await studentConfirmNotSolved(ticketId);
       toast.success('تم إبلاغ المشرف — يمكنك متابعة المحادثة');
+
+      if (wasAiEnd) {
+        const history = buildAiHistory(ticket.messages, user.id);
+        askAssistant({
+          ticketId,
+          message: '[رسالة نظام] الطالب رفض إغلاق التذكرة التي طلبتَ إغلاقها ويريد متابعة المساعدة. اكتب له رسالة استفسار قصيرة وودية تسأله عن المشكلة المتبقية وكيف يمكنك مساعدته أكثر. لا تكرر اعتذاراً مطولاً.',
+          history,
+          userRole: user.role || 'student',
+          suppressEndTag: true,
+        }).catch((err) => console.error('خطأ في استفسار المساعد:', err));
+      }
     } catch (e) { toast.error('فشل: ' + e.message); }
   };
 
@@ -480,8 +493,9 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
     return false;
   };
 
-  const endRequesterName = ticket.assignedSupervisorName
-    || (ticket.aiRequestedEnd ? 'المساعد الذكي سند' : 'المشرف');
+  const endRequesterName = ticket.aiRequestedEnd
+    ? 'المساعد الذكي سند'
+    : (ticket.assignedSupervisorName || 'المشرف');
 
   return (
     <div
@@ -628,7 +642,9 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
                               : 'bg-gray-700 text-gray-100'
                       } ${isCreatorMsg ? 'rounded-br-none' : 'rounded-bl-none'}`}>
                         {!isMe && <p className={`text-[10px] font-bold mb-0.5 ${isAI ? 'text-indigo-300' : isSystem ? 'text-purple-300' : 'text-blue-300'}`}>{m.senderName}</p>}
-                        <p dir="auto" className={`whitespace-pre-wrap break-words ${fullPage ? 'leading-7' : ''}`}>{m.text}</p>
+                        <p dir="auto" className={`whitespace-pre-wrap break-words ${fullPage ? 'leading-7' : ''}`}>
+                          <RichText text={m.text} />
+                        </p>
                         <p className="text-[10px] opacity-60 mt-1">{m.createdAt ? formatRelativeTime(m.createdAt) : ''}</p>
                       </div>
                     </div>
