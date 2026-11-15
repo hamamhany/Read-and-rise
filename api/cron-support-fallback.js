@@ -58,7 +58,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    // ✅ مفتاح الإيقاف
     const enabled = await isAiEnabled();
     if (!enabled) {
       return res.status(200).json({ ok: true, skipped: 'AI is disabled by admin' });
@@ -81,6 +80,7 @@ export default async function handler(req, res) {
 
       const lastMsg = messages[messages.length - 1];
 
+      // ✅ لا ترد على رسائل سند نفسه، ولا على رسائل المشرف
       if (lastMsg.senderId === AI_SENDER_ID) continue;
       if (lastMsg.senderId === ticket.assignedSupervisorId) continue;
 
@@ -106,6 +106,8 @@ export default async function handler(req, res) {
             message: lastMsg.text,
             history,
             userRole: ticket.studentRole || 'student',
+            userName: ticket.studentName || '',
+            userGender: ticket.studentGender || '',
           }),
         });
         if (!geminiRes.ok) {

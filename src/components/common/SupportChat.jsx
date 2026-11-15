@@ -271,8 +271,8 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
       return;
     }
 
+    // ✅ بما أنك تريد سند أن يرد عليك دائماً، فالكود هنا يرسل له الرسالة إذا لم يكن هناك مشرف
     if (!ticket.assignedSupervisorId) {
-      // ✅ إشعار لمرة واحدة فقط عند إيقاف سند
       if (!aiEnabled) {
         if (!hasShownAiDisabledToast.current) {
           hasShownAiDisabledToast.current = true;
