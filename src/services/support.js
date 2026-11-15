@@ -38,7 +38,8 @@ export const createSupportTicket = async (data) => {
   const ticket = {
     ...data,
     status: SUPPORT_TICKET_STATUS.OPEN,
-    requiresManager: data.studentRole === 'supervisor' || data.studentRole === 'system_manager',
+    // ✅ التعديل هنا: كل التذاكر تذهب لصندوق المشرفين أولاً
+    requiresManager: false, 
     assignedSupervisorId: null,
     assignedSupervisorName: null,
     assignedAt: null,
@@ -302,8 +303,6 @@ export const dismissClosedBubble = async (ticketId) => {
   await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), { bubbleDismissedByStudent: true });
 };
 
-// ✅ التحويل للمدير: يصبح رسالة عادية ويُطلق التذكرة (بدون اشتراط مشرف)،
-//    المساعد الذكي يبقى يرد على الطالب كأنه مشرف، والمدير يستلمها من "تذاكر بانتظار المدير"
 export const transferToManager = async (ticketId, supervisorName) => {
   const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
   const snap = await getDoc(ticketRef);
@@ -325,7 +324,7 @@ export const transferToManager = async (ticketId, supervisorName) => {
     assignedSupervisorId: null,
     assignedSupervisorName: null,
     assignedAt: null,
-    requiresManager: true,
+    requiresManager: true, // ✅ هنا يتم التحويل للمدير فقط عند ضغط المشرف
     transferredBy: supervisorName,
     transferredAt: serverTimestamp(),
     messages: arrayUnion(message),
@@ -536,8 +535,6 @@ export const rejectDeletionByStudent = async (ticketId, reason = '') => {
   });
 };
 
-// ✅ طلب إغلاق التذكرة — يدعم طلب "سند" الذكي أيضاً
-//    كل طلب جديد يحدّث aiRequestedEnd ليعكس هوية مُقدّم الطلب الأخير
 export const requestTicketEnd = async (ticketId, supervisorName = '', opts = {}) => {
   const { aiEnd = false } = opts;
   const now = Date.now();
@@ -580,8 +577,6 @@ export const submitRating = async (ticketId, rating, ratingCategory, ratingReaso
   const isFull = rating === 5;
   const newStatus = isFull ? SUPPORT_TICKET_STATUS.RATED_FULL : SUPPORT_TICKET_STATUS.RATED_LOW;
 
-  // ✅ هل الشكوى ضد المساعد الذكي "سند"؟
-  // (يعني آخر من طلب الإغلاق هو سند وليس مشرفاً بشرياً)
   const ratedAgainstAi = !isFull && data.aiRequestedEnd === true;
 
   await updateDoc(ticketRef, {
@@ -595,7 +590,6 @@ export const submitRating = async (ticketId, rating, ratingCategory, ratingReaso
     updatedAt: serverTimestamp()
   });
 
-  // ✅ نحدّث تقييم المشرف البشري فقط إذا لم تكن الشكوى ضد سند
   if (!ratedAgainstAi && data.assignedSupervisorId) {
     const supRef = doc(db, 'profiles', data.assignedSupervisorId);
     const supSnap = await getDoc(supRef);
@@ -612,7 +606,6 @@ export const submitRating = async (ticketId, rating, ratingCategory, ratingReaso
     }
   }
 
-  // ✅ عند تقييم 5 نجوم يُحذف نهائياً من السيرفر فوراً
   if (isFull) {
     try { await deleteTicketPermanently(ticketId); }
     catch (e) { console.warn('auto-delete after full rating failed:', e); }
@@ -621,7 +614,6 @@ export const submitRating = async (ticketId, rating, ratingCategory, ratingReaso
   return newStatus;
 };
 
-// ✅ قرار المدير: بعد تسجيل القرار تُحذف التذكرة نهائياً فوراً (لا حاجة لزر "إنهاء وحذف")
 export const managerDecide = async (ticketId, decision, managerReason) => {
   const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
   const snap = await getDoc(ticketRef);
@@ -641,7 +633,6 @@ export const managerDecide = async (ticketId, decision, managerReason) => {
     updatedAt: serverTimestamp()
   });
 
-  // ✅ نحدّث تقييم المشرف البشري فقط إذا لم تكن الشكوى ضد سند
   if (data.assignedSupervisorId && data.ratedAgainstAi !== true) {
     const supRef = doc(db, 'profiles', data.assignedSupervisorId);
     const supSnap = await getDoc(supRef);
@@ -660,7 +651,6 @@ export const managerDecide = async (ticketId, decision, managerReason) => {
     }
   }
 
-  // ✅ حذف نهائي فوري بعد قرار المدير
   try { await deleteTicketPermanently(ticketId); }
   catch (e) { console.warn('auto-delete after manager decision failed:', e); }
 
