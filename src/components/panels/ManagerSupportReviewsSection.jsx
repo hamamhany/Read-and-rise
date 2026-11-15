@@ -3,7 +3,8 @@ import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import {
   FaExclamationTriangle, FaEye, FaUser, FaHeadset, FaTimes,
-  FaSpinner, FaTrashAlt, FaCheckCircle, FaRedoAlt, FaBan, FaBell, FaRobot
+  FaSpinner, FaTrashAlt, FaCheckCircle, FaRedoAlt, FaBan, FaBell, FaRobot,
+  FaPlay, FaPause, FaChartBar
 } from 'react-icons/fa';
 import {
   subscribeToManagerReviewTickets, subscribeToManagerOpenTickets,
@@ -21,7 +22,10 @@ import {
 } from '../../utils/whatsapp';
 import { issueWarning } from '../../services/warnings';
 import { deleteUserCompletely } from '../../services/accountDeletion';
-import { doc, getDoc, collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import {
+  doc, getDoc, setDoc, collection, query, where, orderBy, limit,
+  onSnapshot, serverTimestamp
+} from 'firebase/firestore';
 import { db } from '../../firebase';
 import {
   SUPPORT_RATING_CATEGORIES, SUPPORT_TICKET_STATUS
@@ -47,6 +51,16 @@ const ManagerSupportReviewsSection = ({ user }) => {
   const [selectedReport, setSelectedReport] = useState(null);
   const [reportedStudent, setReportedStudent] = useState(null);
   const [reportedSupervisor, setReportedSupervisor] = useState(null);
+
+  // ===== حالة AI =====
+  const [aiEnabled, setAiEnabled] = useState(true);
+  const [togglingAi, setTogglingAi] = useState(false);
+  const [aiStats, setAiStats] = useState({
+    totalToday: 0,
+    peakPerMinute: 0,
+    totalLast24h: 0,
+    quotaExceeded: 0
+  });
 
   useEffect(() => {
     const u1 = subscribeToManagerReviewTickets(setReviews);
@@ -75,12 +89,95 @@ const ManagerSupportReviewsSection = ({ user }) => {
     return () => unsub();
   }, [user.id]);
 
+  // ===== الاشتراك بحالة AI =====
+  useEffect(() => {
+    const unsub = onSnapshot(
+      doc(db, 'systemSettings', 'ai'),
+      (snap) => setAiEnabled(snap.exists() ? snap.data().enabled !== false : true),
+      (err) => console.warn('aiSettings subscription:', err.message)
+    );
+    return () => unsub();
+  }, []);
+
+  // ===== تحميل إحصائيات الاستخدام (كل 30 ثانية) =====
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const now = new Date();
+        const today = now.toISOString().slice(0, 10);
+        const yesterday = new Date(now.getTime() - 86400000).toISOString().slice(0, 10);
+        const [todaySnap, ySnap] = await Promise.all([
+          getDoc(doc(db, 'aiUsage', today)),
+          getDoc(doc(db, 'aiUsage', yesterday))
+        ]);
+        if (cancelled) return;
+
+        const todayData = todaySnap.exists() ? todaySnap.data() : {};
+        const yData = ySnap.exists() ? ySnap.data() : {};
+
+        const currentMinute = now.getUTCHours() * 60 + now.getUTCMinutes();
+        let peak = 0;
+        let totalLast24h = 0;
+
+        const tMins = todayData.minutes || {};
+        for (let m = 0; m <= currentMinute; m++) {
+          const v = tMins[m] || 0;
+          if (v > peak) peak = v;
+          totalLast24h += v;
+        }
+
+        const yMins = yData.minutes || {};
+        for (let m = currentMinute; m <= 1439; m++) {
+          const v = yMins[m] || 0;
+          if (v > peak) peak = v;
+          totalLast24h += v;
+        }
+
+        setAiStats({
+          totalToday: todayData.totalRequests || 0,
+          peakPerMinute: peak,
+          totalLast24h,
+          quotaExceeded: todayData.totalQuotaExceeded || 0
+        });
+      } catch (e) {
+        console.warn('ai stats load failed:', e);
+      }
+    };
+    load();
+    const interval = setInterval(load, 30000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
+
+  const toggleAi = async () => {
+    const nextEnabled = !aiEnabled;
+    const action = nextEnabled ? 'تشغيل' : 'إيقاف';
+    const ok = await confirm(
+      `تأكيد ${action} ردود سند`,
+      `هل تريد ${action} ردود المساعد الذكي "سند" لجميع المستخدمين؟`
+    );
+    if (!ok) return;
+    setTogglingAi(true);
+    try {
+      await setDoc(doc(db, 'systemSettings', 'ai'), {
+        enabled: nextEnabled,
+        updatedAt: serverTimestamp(),
+        updatedBy: user.id,
+        updatedByName: user.name || user.username || 'مدير النظام'
+      }, { merge: true });
+      toast.success(`✅ تم ${action} ردود المساعد الذكي`);
+    } catch (e) {
+      toast.error(`فشل: ${e.message}`);
+    } finally {
+      setTogglingAi(false);
+    }
+  };
+
   const openReview = async (ticket) => {
     setSelected(ticket);
     setMode(null);
     setReason('');
     try {
-      // ✅ لا نجيب بيانات المشرف البشري إذا كانت الشكوى ضد سند
       if (ticket.assignedSupervisorId && ticket.ratedAgainstAi !== true) {
         const s = await getDoc(doc(db, 'profiles', ticket.assignedSupervisorId));
         if (s.exists()) setSupervisor({ id: s.id, ...s.data() });
@@ -127,7 +224,6 @@ const ManagerSupportReviewsSection = ({ user }) => {
     } catch (e) { toast.error(e.message); }
   };
 
-  // ✅ اعتذار: إذا الشكوى ضد سند → اعتذار للطالب فقط، لا تنبيه لأي مشرف
   const handleApologize = async () => {
     if (!reason.trim()) {
       toast.error(selected.ratedAgainstAi === true
@@ -145,8 +241,8 @@ const ManagerSupportReviewsSection = ({ user }) => {
       }
       await managerDecide(selected.id, 'apologize', reason.trim());
       toast.success(selected.ratedAgainstAi === true
-        ? '✅ تم الاعتذار للطالب وحذف التذكرة'
-        : '✅ تم الاعتذار وحذف التذكرة نهائياً');
+        ? '✅ تم الاعتذار للطالب وحذف التذكرة من السيرفر'
+        : '✅ تم الاعتذار وحذف التذكرة من السيرفر');
       closeModal();
     } catch (e) { toast.error('فشل: ' + e.message); }
     finally { setProcessing(false); }
@@ -154,8 +250,8 @@ const ManagerSupportReviewsSection = ({ user }) => {
 
   const handleReject = async () => {
     const msg = selected.ratedAgainstAi === true
-      ? 'سيتم رفض الشكوى ضد المساعد الذكي سند وحذف التذكرة. لا يحتسب أي تقييم على أي مشرف. متابعة؟'
-      : 'سيتم إلغاء الشكوى وإعطاء المشرف 5 نجوم وإرسال تحذير حازم للطالب. متابعة؟';
+      ? 'سيتم رفض الشكوى ضد المساعد الذكي سند وحذف التذكرة من السيرفر. لا يحتسب أي تقييم على أي مشرف. متابعة؟'
+      : 'سيتم إلغاء الشكوى وإعطاء المشرف 5 نجوم وإرسال تحذير حازم للطالب وحذف التذكرة من السيرفر. متابعة؟';
     const ok = await confirm('رفض الشكوى', msg);
     if (!ok) return;
     setProcessing(true);
@@ -173,7 +269,7 @@ const ManagerSupportReviewsSection = ({ user }) => {
         sendComplaintRejectedMessage(student, classNames);
       }
       await managerDecide(selected.id, 'reject', '');
-      toast.success('✅ تم رفض الشكوى وحذف التذكرة نهائياً');
+      toast.success('✅ تم رفض الشكوى وحذف التذكرة من السيرفر');
       closeModal();
     } catch (e) { toast.error('فشل: ' + e.message); }
     finally { setProcessing(false); }
@@ -181,13 +277,13 @@ const ManagerSupportReviewsSection = ({ user }) => {
 
   const handleCancelReportAndDelete = async () => {
     if (!selectedReport) return;
-    const ok = await confirm('رفض البلاغ وحذف التذكرة', 'سيتم رفض البلاغ وحذف التذكرة نهائياً. متابعة؟');
+    const ok = await confirm('رفض البلاغ وحذف التذكرة', 'سيتم رفض البلاغ وحذف التذكرة من السيرفر نهائياً. متابعة؟');
     if (!ok) return;
     setProcessing(true);
     try {
       if (reportedSupervisor) sendReportRejectedMessage(reportedSupervisor);
       await cancelReportAndDelete(selectedReport.id);
-      toast.success('✅ تم رفض البلاغ وحذف التذكرة نهائياً');
+      toast.success('✅ تم رفض البلاغ وحذف التذكرة من السيرفر');
       closeReportModal();
     } catch (e) { toast.error('فشل: ' + e.message); }
     finally { setProcessing(false); }
@@ -209,7 +305,7 @@ const ManagerSupportReviewsSection = ({ user }) => {
 
   const handleCloseReportedAccount = async () => {
     if (!selectedReport) return;
-    const ok = await confirm('إغلاق الحساب نهائياً', 'سيتم حذف حساب المُبلَّغ عنه نهائياً وإدراجه في القائمة السوداء. متأكد؟');
+    const ok = await confirm('إغلاق الحساب نهائياً', 'سيتم حذف حساب المُبلَّغ عنه نهائياً وإدراجه في القائمة السوداء، ثم حذف التذكرة من السيرفر. متأكد؟');
     if (!ok) return;
     setProcessing(true);
     try {
@@ -228,7 +324,7 @@ const ManagerSupportReviewsSection = ({ user }) => {
         blacklistReason: 'مخالفة سلوك أثناء التواصل مع الدعم الفني'
       });
       await closeReportedTicketAfterAccountDeletion(selectedReport.id);
-      toast.success('✅ تم إغلاق الحساب وحذف التذكرة');
+      toast.success('✅ تم إغلاق الحساب وحذف التذكرة من السيرفر');
       closeReportModal();
     } catch (e) { toast.error('فشل: ' + e.message); }
     finally { setProcessing(false); }
@@ -236,7 +332,7 @@ const ManagerSupportReviewsSection = ({ user }) => {
 
   const handleWarnReported = async () => {
     if (!selectedReport) return;
-    const ok = await confirm('إرسال تنبيه إداري', 'سيتم إرسال تنبيه إداري للمُبلَّغ عنه وحذف التذكرة. متابعة؟');
+    const ok = await confirm('إرسال تنبيه إداري', 'سيتم إرسال تنبيه إداري للمُبلَّغ عنه وحذف التذكرة من السيرفر. متابعة؟');
     if (!ok) return;
     setProcessing(true);
     try {
@@ -262,128 +358,190 @@ const ManagerSupportReviewsSection = ({ user }) => {
         throw warnErr;
       }
       await finalizeReportWithWarning(selectedReport.id, user.id);
-      toast.success('✅ تم إرسال التنبيه وإصدار إنذار وحذف التذكرة');
+      toast.success('✅ تم إرسال التنبيه وإصدار إنذار وحذف التذكرة من السيرفر');
       closeReportModal();
     } catch (e) { toast.error('فشل: ' + e.message); }
     finally { setProcessing(false); }
   };
 
-  if (
-    reviews.length === 0 &&
-    openTickets.length === 0 &&
-    myManagerTickets.length === 0 &&
-    reportedTickets.length === 0 &&
-    !openChatId
-  ) return null;
+  const hasAnyContent =
+    reviews.length > 0 ||
+    openTickets.length > 0 ||
+    myManagerTickets.length > 0 ||
+    reportedTickets.length > 0 ||
+    !!openChatId;
 
   return (
     <div className="bg-gray-800/60 p-6 rounded-2xl border border-rose-500/20 space-y-4">
-      <h3 className="text-xl font-semibold text-rose-300 flex items-center gap-2">
-        <FaExclamationTriangle /> مراجعات الدعم الفني
-      </h3>
+      {/* ✅ لوحة المساعد الذكي سند (دائماً ظاهرة للمدير) */}
+      <div className="bg-gradient-to-br from-indigo-900/30 to-purple-900/20 p-4 rounded-xl border border-indigo-500/40">
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <h4 className="text-indigo-200 font-bold flex items-center gap-2 text-sm">
+            <FaRobot /> المساعد الذكي سند
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${aiEnabled ? 'bg-green-500/20 text-green-300 border border-green-500/40' : 'bg-red-500/20 text-red-300 border border-red-500/40'}`}>
+              {aiEnabled ? '● يعمل' : '■ متوقف'}
+            </span>
+          </h4>
+          <button
+            onClick={toggleAi}
+            disabled={togglingAi}
+            className={`px-4 py-1.5 rounded-lg text-xs font-bold text-white flex items-center gap-1.5 disabled:opacity-50 transition ${
+              aiEnabled
+                ? 'bg-red-600 hover:bg-red-700'
+                : 'bg-green-600 hover:bg-green-700'
+            }`}
+          >
+            {togglingAi
+              ? <FaSpinner className="animate-spin" size={10} />
+              : aiEnabled ? <FaPause size={10} /> : <FaPlay size={10} />}
+            {togglingAi ? '...' : aiEnabled ? 'إيقاف الردود' : 'تشغيل الردود'}
+          </button>
+        </div>
 
-      {reportedTickets.length > 0 && (
-        <div className="border border-red-500/30 rounded-xl p-3 bg-red-900/10">
-          <p className="text-sm text-red-200 font-bold mb-2 flex items-center gap-2">
-            <FaBell /> بلاغات الدعم الفني — بانتظار قرارك ({reportedTickets.length})
-          </p>
-          <div className="space-y-2 max-h-56 overflow-y-auto">
-            {reportedTickets.map(t => (
-              <div key={t.id} className="p-2 bg-black/40 rounded-lg border border-red-500/20 flex justify-between items-center gap-2">
-                <div className="flex-1 min-w-0">
-                  <p className="text-white text-xs truncate">
-                    <FaUser className="inline me-1" />{t.studentName}
-                  </p>
-                  <p className="text-[10px] text-red-300 truncate">
-                    بلاغ من: {t.report?.reportedByName} — {t.report?.reasonLabel}
-                  </p>
-                </div>
-                <button onClick={() => openReportedTicket(t)} className="text-xs bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-lg whitespace-nowrap">
-                  <FaEye /> مراجعة
-                </button>
-              </div>
-            ))}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="bg-black/40 p-2 rounded-lg text-center border border-gray-700">
+            <p className="text-[10px] text-gray-400 mb-0.5">طلبات اليوم</p>
+            <p className="text-lg font-bold text-white">{aiStats.totalToday.toLocaleString('ar-EG')}</p>
+          </div>
+          <div className="bg-black/40 p-2 rounded-lg text-center border border-amber-500/20">
+            <p className="text-[10px] text-gray-400 mb-0.5">ذروة/دقيقة (24س)</p>
+            <p className="text-lg font-bold text-amber-300">{aiStats.peakPerMinute.toLocaleString('ar-EG')}</p>
+          </div>
+          <div className="bg-black/40 p-2 rounded-lg text-center border border-cyan-500/20">
+            <p className="text-[10px] text-gray-400 mb-0.5">إجمالي 24س</p>
+            <p className="text-lg font-bold text-cyan-300">{aiStats.totalLast24h.toLocaleString('ar-EG')}</p>
+          </div>
+          <div className="bg-black/40 p-2 rounded-lg text-center border border-red-500/20">
+            <p className="text-[10px] text-gray-400 mb-0.5">تجاوز الحصة</p>
+            <p className={`text-lg font-bold ${aiStats.quotaExceeded > 0 ? 'text-red-300' : 'text-gray-400'}`}>
+              {aiStats.quotaExceeded.toLocaleString('ar-EG')}
+            </p>
           </div>
         </div>
+
+        <p className="text-[10px] text-gray-400 mt-2 flex items-center gap-1">
+          <FaChartBar size={9} />
+          هذه الأرقام تقديرية — للحصة الفعلية الرسمية:{' '}
+          <a href="https://aistudio.google.com/usage" target="_blank" rel="noopener noreferrer" className="text-indigo-300 hover:text-indigo-200 underline">
+            افتح لوحة Google AI Studio
+          </a>
+        </p>
+      </div>
+
+      {!hasAnyContent && (
+        <p className="text-gray-500 text-sm text-center py-3">لا توجد طلبات مراجعة أو بلاغات حالياً.</p>
       )}
 
-      {reviews.length > 0 && (
-        <div className="space-y-2 max-h-96 overflow-y-auto">
-          {reviews.map(t => {
-            const catLabel = SUPPORT_RATING_CATEGORIES.find(c => c.value === t.ratingCategory)?.label || '';
-            return (
-              <div key={t.id} className={`p-3 bg-black/30 rounded-lg border ${t.ratedAgainstAi === true ? 'border-indigo-500/40' : 'border-rose-500/30'}`}>
-                <div className="flex justify-between items-start gap-2 flex-wrap">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white text-sm">
-                      <strong>الطالب:</strong> {t.studentName}
-                      {t.studentSerialNumber && <span className="text-xs text-gray-400 mx-1">({t.studentSerialNumber})</span>}
-                    </p>
-                    <p className="text-xs text-rose-200 mt-1">⭐ {t.rating}/5 — {catLabel}</p>
-                    <p className="text-xs text-gray-300 mt-1 line-clamp-2">"{t.ratingReason}"</p>
-                    {t.ratedAgainstAi === true ? (
-                      <p className="text-xs text-indigo-300 mt-1 flex items-center gap-1">
-                        <FaRobot size={10} /> الشكوى ضد المساعد الذكي سند
+      {hasAnyContent && (
+        <>
+          <h3 className="text-xl font-semibold text-rose-300 flex items-center gap-2">
+            <FaExclamationTriangle /> مراجعات الدعم الفني
+          </h3>
+
+          {reportedTickets.length > 0 && (
+            <div className="border border-red-500/30 rounded-xl p-3 bg-red-900/10">
+              <p className="text-sm text-red-200 font-bold mb-2 flex items-center gap-2">
+                <FaBell /> بلاغات الدعم الفني — بانتظار قرارك ({reportedTickets.length})
+              </p>
+              <div className="space-y-2 max-h-56 overflow-y-auto">
+                {reportedTickets.map(t => (
+                  <div key={t.id} className="p-2 bg-black/40 rounded-lg border border-red-500/20 flex justify-between items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white text-xs truncate">
+                        <FaUser className="inline me-1" />{t.studentName}
                       </p>
-                    ) : (
-                      <p className="text-xs text-cyan-300 mt-1">المشرف: {t.assignedSupervisorName}</p>
-                    )}
+                      <p className="text-[10px] text-red-300 truncate">
+                        بلاغ من: {t.report?.reportedByName} — {t.report?.reasonLabel}
+                      </p>
+                    </div>
+                    <button onClick={() => openReportedTicket(t)} className="text-xs bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-lg whitespace-nowrap">
+                      <FaEye /> مراجعة
+                    </button>
                   </div>
-                  <button onClick={() => openReview(t)} className="text-xs bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg">
-                    <FaEye /> مراجعة
-                  </button>
-                </div>
+                ))}
               </div>
-            );
-          })}
-        </div>
-      )}
+            </div>
+          )}
 
-      {myManagerTickets.length > 0 && (
-        <div className="border-t border-gray-700 pt-4">
-          <p className="text-sm text-emerald-200 font-bold mb-2 flex items-center gap-2">
-            <FaHeadset /> تذاكرك النشطة ({myManagerTickets.length})
-          </p>
-          <div className="space-y-2 max-h-48 overflow-y-auto">
-            {myManagerTickets.map(t => (
-              <div key={t.id} className="p-2 bg-black/30 rounded-lg border border-emerald-500/20 flex justify-between items-center gap-2">
-                <div className="flex-1 min-w-0">
-                  <p className="text-white text-xs truncate"><FaUser className="inline me-1" />{t.studentName}</p>
-                  <p className="text-[10px] text-gray-400 truncate">
-                    {t.messages?.[t.messages.length - 1]?.text || 'لا توجد رسائل'}
-                  </p>
-                </div>
-                <button onClick={() => setOpenChatId(t.id)} className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded-lg">
-                  فتح
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+          {reviews.length > 0 && (
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {reviews.map(t => {
+                const catLabel = SUPPORT_RATING_CATEGORIES.find(c => c.value === t.ratingCategory)?.label || '';
+                return (
+                  <div key={t.id} className={`p-3 bg-black/30 rounded-lg border ${t.ratedAgainstAi === true ? 'border-indigo-500/40' : 'border-rose-500/30'}`}>
+                    <div className="flex justify-between items-start gap-2 flex-wrap">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-sm">
+                          <strong>الطالب:</strong> {t.studentName}
+                          {t.studentSerialNumber && <span className="text-xs text-gray-400 mx-1">({t.studentSerialNumber})</span>}
+                        </p>
+                        <p className="text-xs text-rose-200 mt-1">⭐ {t.rating}/5 — {catLabel}</p>
+                        <p className="text-xs text-gray-300 mt-1 line-clamp-2">"{t.ratingReason}"</p>
+                        {t.ratedAgainstAi === true ? (
+                          <p className="text-xs text-indigo-300 mt-1 flex items-center gap-1">
+                            <FaRobot size={10} /> الشكوى ضد المساعد الذكي سند
+                          </p>
+                        ) : (
+                          <p className="text-xs text-cyan-300 mt-1">المشرف: {t.assignedSupervisorName}</p>
+                        )}
+                      </div>
+                      <button onClick={() => openReview(t)} className="text-xs bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg">
+                        <FaEye /> مراجعة
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
-      {openTickets.length > 0 && (
-        <div className="border-t border-gray-700 pt-4">
-          <p className="text-sm text-cyan-200 font-bold mb-2 flex items-center gap-2">
-            <FaHeadset /> تذاكر من المشرفين / محوّلة للمدير ({openTickets.length})
-          </p>
-          <div className="space-y-2 max-h-48 overflow-y-auto">
-            {openTickets.map(t => (
-              <div key={t.id} className="p-2 bg-black/30 rounded-lg border border-cyan-500/20 flex justify-between items-center gap-2">
-                <div className="flex-1 min-w-0">
-                  <p className="text-white text-xs truncate"><FaUser className="inline me-1" />{t.studentName}</p>
-                  <p className="text-[10px] text-gray-400 truncate">{t.messages?.[0]?.text}</p>
-                  {t.transferredBy && (
-                    <p className="text-[10px] text-amber-300 truncate">📤 محوّلة من: {t.transferredBy}</p>
-                  )}
-                </div>
-                <button onClick={() => handleClaimOpenTicket(t.id)} className="text-xs bg-cyan-600 hover:bg-cyan-700 text-white px-3 py-1 rounded-lg">
-                  استلام
-                </button>
+          {myManagerTickets.length > 0 && (
+            <div className="border-t border-gray-700 pt-4">
+              <p className="text-sm text-emerald-200 font-bold mb-2 flex items-center gap-2">
+                <FaHeadset /> تذاكرك النشطة ({myManagerTickets.length})
+              </p>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {myManagerTickets.map(t => (
+                  <div key={t.id} className="p-2 bg-black/30 rounded-lg border border-emerald-500/20 flex justify-between items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white text-xs truncate"><FaUser className="inline me-1" />{t.studentName}</p>
+                      <p className="text-[10px] text-gray-400 truncate">
+                        {t.messages?.[t.messages.length - 1]?.text || 'لا توجد رسائل'}
+                      </p>
+                    </div>
+                    <button onClick={() => setOpenChatId(t.id)} className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded-lg">
+                      فتح
+                    </button>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
+            </div>
+          )}
+
+          {openTickets.length > 0 && (
+            <div className="border-t border-gray-700 pt-4">
+              <p className="text-sm text-cyan-200 font-bold mb-2 flex items-center gap-2">
+                <FaHeadset /> تذاكر من المشرفين / محوّلة للمدير ({openTickets.length})
+              </p>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {openTickets.map(t => (
+                  <div key={t.id} className="p-2 bg-black/30 rounded-lg border border-cyan-500/20 flex justify-between items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white text-xs truncate"><FaUser className="inline me-1" />{t.studentName}</p>
+                      <p className="text-[10px] text-gray-400 truncate">{t.messages?.[0]?.text}</p>
+                      {t.transferredBy && (
+                        <p className="text-[10px] text-amber-300 truncate">📤 محوّلة من: {t.transferredBy}</p>
+                      )}
+                    </div>
+                    <button onClick={() => handleClaimOpenTicket(t.id)} className="text-xs bg-cyan-600 hover:bg-cyan-700 text-white px-3 py-1 rounded-lg">
+                      استلام
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {openChatId && (
@@ -434,43 +592,32 @@ const ManagerSupportReviewsSection = ({ user }) => {
               ))}
             </div>
 
+            <p className="text-[11px] text-amber-300 mb-2 text-center">
+              ⚠️ أي إجراء تختاره سيؤدي إلى حذف التذكرة نهائياً من السيرفر.
+            </p>
+
             <div className="space-y-2">
-              <button
-                onClick={handleCancelReportAndDelete}
-                disabled={processing}
-                className="w-full p-3 bg-gray-600/30 hover:bg-gray-600/50 border border-gray-500/40 rounded-xl text-gray-200 text-sm flex items-center justify-center gap-2 disabled:opacity-50"
-              >
+              <button onClick={handleCancelReportAndDelete} disabled={processing}
+                className="w-full p-3 bg-gray-600/30 hover:bg-gray-600/50 border border-gray-500/40 rounded-xl text-gray-200 text-sm flex items-center justify-center gap-2 disabled:opacity-50">
                 <FaTrashAlt /> رفض البلاغ وحذف المحادثة نهائياً
               </button>
 
-              <button
-                onClick={handleCancelReportAndReopen}
-                disabled={processing}
-                className="w-full p-3 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 rounded-xl text-blue-200 text-sm flex items-center justify-center gap-2 disabled:opacity-50"
-              >
+              <button onClick={handleCancelReportAndReopen} disabled={processing}
+                className="w-full p-3 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 rounded-xl text-blue-200 text-sm flex items-center justify-center gap-2 disabled:opacity-50">
                 <FaRedoAlt /> رفض البلاغ وإعادة المحادثة لمشرف آخر
               </button>
 
-              <button
-                onClick={handleWarnReported}
-                disabled={processing}
-                className="w-full p-3 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 rounded-xl text-amber-200 text-sm flex items-center justify-center gap-2 disabled:opacity-50"
-              >
+              <button onClick={handleWarnReported} disabled={processing}
+                className="w-full p-3 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 rounded-xl text-amber-200 text-sm flex items-center justify-center gap-2 disabled:opacity-50">
                 <FaBell /> إرسال تنبيه إداري للمُبلَّغ عنه
               </button>
 
-              <button
-                onClick={handleCloseReportedAccount}
-                disabled={processing}
-                className="w-full p-3 bg-red-600/30 hover:bg-red-600/50 border border-red-500/50 rounded-xl text-red-200 text-sm flex items-center justify-center gap-2 disabled:opacity-50"
-              >
+              <button onClick={handleCloseReportedAccount} disabled={processing}
+                className="w-full p-3 bg-red-600/30 hover:bg-red-600/50 border border-red-500/50 rounded-xl text-red-200 text-sm flex items-center justify-center gap-2 disabled:opacity-50">
                 <FaBan /> إغلاق حساب المُبلَّغ عنه نهائياً
               </button>
 
-              <button
-                onClick={closeReportModal}
-                className="w-full p-2 bg-gray-700 hover:bg-gray-600 rounded-xl text-gray-300 text-xs"
-              >
+              <button onClick={closeReportModal} className="w-full p-2 bg-gray-700 hover:bg-gray-600 rounded-xl text-gray-300 text-xs">
                 إلغاء
               </button>
             </div>
@@ -535,6 +682,10 @@ const ManagerSupportReviewsSection = ({ user }) => {
                 </div>
               ))}
             </div>
+
+            <p className="text-[11px] text-amber-300 mb-2 text-center">
+              ⚠️ أي قرار تتخذه سيؤدي إلى حذف التذكرة نهائياً من السيرفر فوراً.
+            </p>
 
             {!mode && (
               <div className="space-y-2">

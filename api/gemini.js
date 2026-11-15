@@ -1,8 +1,76 @@
 import { GoogleGenAI } from '@google/genai';
+import admin from 'firebase-admin';
 
 export const config = {
   maxDuration: 60,
 };
+
+// ===== تهيئة Firebase Admin (مرة واحدة) =====
+if (!admin.apps.length) {
+  try {
+    const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || '{}');
+    if (sa.project_id && sa.private_key) {
+      admin.initializeApp({ credential: admin.credential.cert(sa) });
+    }
+  } catch (e) { console.error('Admin init failed in gemini:', e.message); }
+}
+const db = admin.apps.length ? admin.firestore() : null;
+
+// ===== ذاكرة مؤقتة لحالة "سند" (10 ثوانٍ) =====
+let aiSettingsCache = { enabled: true, fetchedAt: 0 };
+const AI_SETTINGS_CACHE_MS = 10000;
+
+async function isAiEnabled() {
+  if (!db) return true;
+  const now = Date.now();
+  if (now - aiSettingsCache.fetchedAt < AI_SETTINGS_CACHE_MS) {
+    return aiSettingsCache.enabled;
+  }
+  try {
+    const snap = await db.collection('systemSettings').doc('ai').get();
+    const enabled = snap.exists ? snap.data().enabled !== false : true;
+    aiSettingsCache = { enabled, fetchedAt: now };
+    return enabled;
+  } catch (e) {
+    console.warn('AI settings check failed:', e.message);
+    return true;
+  }
+}
+
+// ===== تسجيل الاستخدام (fire-and-forget، لا يعطّل الرد) =====
+async function logUsage(model, status) {
+  if (!db) return;
+  try {
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10);
+    const minuteOfDay = now.getUTCHours() * 60 + now.getUTCMinutes();
+    const safeModel = String(model).replace(/[.\s/]/g, '_');
+    const ref = db.collection('aiUsage').doc(dateStr);
+
+    const updates = {
+      date: dateStr,
+      totalRequests: admin.firestore.FieldValue.increment(1),
+      [`minutes.${minuteOfDay}`]: admin.firestore.FieldValue.increment(1),
+      [`models.${safeModel}.count`]: admin.firestore.FieldValue.increment(1),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    if (status === 'success') {
+      updates.totalSuccess = admin.firestore.FieldValue.increment(1);
+      updates[`models.${safeModel}.success`] = admin.firestore.FieldValue.increment(1);
+    } else if (status === 'quota') {
+      updates.totalQuotaExceeded = admin.firestore.FieldValue.increment(1);
+      updates[`models.${safeModel}.quotaExceeded`] = admin.firestore.FieldValue.increment(1);
+    } else {
+      updates.totalErrors = admin.firestore.FieldValue.increment(1);
+      updates[`models.${safeModel}.errors`] = admin.firestore.FieldValue.increment(1);
+    }
+
+    await ref.set(updates, { merge: true });
+  } catch (e) {
+    console.warn('logUsage failed:', e.message);
+  }
+}
 
 const MODELS = [
   'gemini-3.8-flash',
@@ -159,12 +227,27 @@ const stripTags = (raw) =>
     .replace(/\[IMPERSONATION_DETECTED\]/g, '')
     .trim();
 
+const isQuotaError = (err) => {
+  const status = Number(err?.status);
+  const msg = String(err?.message || '');
+  return status === 429 || /429|quota|RESOURCE_EXHAUSTED|rate/i.test(msg);
+};
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
+    // ✅ مفتاح الإيقاف/التشغيل
+    const enabled = await isAiEnabled();
+    if (!enabled) {
+      return res.status(503).json({
+        error: 'المساعد الذكي متوقف مؤقتاً من قبل الإدارة',
+        disabled: true,
+      });
+    }
+
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
     const message = typeof body?.message === 'string' ? body.message.trim() : '';
     const history = body?.history;
@@ -199,6 +282,7 @@ export default async function handler(req, res) {
           config: { systemInstruction, temperature: 0.3 },
         });
         if (response.text) {
+          logUsage(model, 'success').catch(() => {});
           const rawText = response.text;
           const endRequested = !suppressEndTag && rawText.includes(TAG_END);
           const impersonationDetected = rawText.includes(TAG_IMPERSONATION);
@@ -211,8 +295,10 @@ export default async function handler(req, res) {
           });
         }
         lastError = new Error('Empty response from ' + model);
+        logUsage(model, 'error').catch(() => {});
       } catch (err) {
         lastError = err;
+        logUsage(model, isQuotaError(err) ? 'quota' : 'error').catch(() => {});
         console.error('Gemini error on ' + model + ':', err?.message || err);
       }
     }

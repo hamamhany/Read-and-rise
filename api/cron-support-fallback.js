@@ -1,7 +1,6 @@
 // api/cron-support-fallback.js
 import admin from 'firebase-admin';
 
-// ===== تهيئة Firebase Admin (مرة واحدة فقط) =====
 if (!admin.apps.length) {
   const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
   admin.initializeApp({
@@ -10,11 +9,21 @@ if (!admin.apps.length) {
 }
 const db = admin.firestore();
 
-const AI_FALLBACK_MS = 10 * 60 * 1000; // 10 دقائق
+const AI_FALLBACK_MS = 10 * 60 * 1000;
 const AI_SENDER_ID = 'ai-assistant';
 const AI_SENDER_NAME = 'المساعد الذكي سند';
 const AI_SENDER_ROLE = 'system';
 const SUPPORT_END_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+
+async function isAiEnabled() {
+  try {
+    const snap = await db.collection('systemSettings').doc('ai').get();
+    return snap.exists ? snap.data().enabled !== false : true;
+  } catch (e) {
+    console.warn('AI settings check failed in cron:', e.message);
+    return true;
+  }
+}
 
 async function claimAiReply(ticketId, messageId) {
   const ticketRef = db.collection('supportTickets').doc(ticketId);
@@ -43,14 +52,18 @@ function buildAiHistory(messages, studentId) {
 }
 
 export default async function handler(req, res) {
-  // ✅ نقرأ كلمة السر فقط من الترويسة (Header)
   const secret = req.headers['x-cron-secret'];
-
   if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
   try {
+    // ✅ مفتاح الإيقاف
+    const enabled = await isAiEnabled();
+    if (!enabled) {
+      return res.status(200).json({ ok: true, skipped: 'AI is disabled by admin' });
+    }
+
     const now = Date.now();
     const cutoff = now - AI_FALLBACK_MS;
 
@@ -127,7 +140,6 @@ export default async function handler(req, res) {
         unreadForSupervisor: true,
       });
 
-      // ✅ طلب إنهاء من "سند" عندما يرى أن المشكلة انتهت
       if (endRequested) {
         try {
           await db.collection('supportTickets').doc(doc.id).update({
@@ -143,7 +155,6 @@ export default async function handler(req, res) {
         }
       }
 
-      // ✅ تسجيل محاولة انتحال الهوية في سجل الحوادث الأمنية
       if (impersonationDetected) {
         try {
           await db.collection('securityIncidents').add({

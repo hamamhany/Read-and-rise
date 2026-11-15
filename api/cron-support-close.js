@@ -1,8 +1,4 @@
 // api/cron-support-close.js
-// - يحذف التذاكر التي وافق الطرفان على حذفها (شبكة أمان — الحذف الفوري يتم client-side)
-// - يلغي طلبات الحذف المعلقة بعد 24 ساعة بدون اكتمال (لا حذف)
-// - يحذف نهائياً التذاكر المعلّقة في supervisor_ended بعد 24 ساعة (المحادثة انتهت)
-
 import admin from 'firebase-admin';
 
 if (!admin.apps.length) {
@@ -17,7 +13,6 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 export default async function handler(req, res) {
-  // ✅ قراءة كلمة السر من الترويسة x-cron-secret
   const secret = req.headers['x-cron-secret'];
   if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
     return res.status(401).json({ error: 'Unauthorized' });
@@ -33,15 +28,15 @@ export default async function handler(req, res) {
     deleted_both_approved: 0,
     auto_cancelled_pending: 0,
     auto_deleted_expired: 0,
+    old_ai_usage_deleted: 0,
+    old_security_incidents_deleted: 0,
     errors: []
   };
 
   try {
     const ticketsRef = db.collection('supportTickets');
 
-    // =========================================
     // 1) شبكة أمان: حذف التذاكر العالقة في "both_approved"
-    // =========================================
     const q1 = ticketsRef.where('deleteRequest.status', '==', 'both_approved');
     const snap1 = await q1.get();
 
@@ -77,9 +72,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // =========================================
-    // 2) إلغاء طلبات الحذف المعلقة بعد 24 ساعة بدون اكتمال
-    // =========================================
+    // 2) إلغاء طلبات الحذف المعلقة بعد 24 ساعة
     const q2 = ticketsRef.where('deleteRequest.status', '==', 'pending');
     const snap2 = await q2.get();
 
@@ -105,10 +98,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // =========================================
     // 3) حذف نهائي للتذاكر المعلّقة في supervisor_ended بعد 24 ساعة
-    //    (المحادثة انتهت ولم يردّ صاحبها → تُحذف من السيرفر فوراً)
-    // =========================================
     const q3a = ticketsRef.where('status', '==', 'supervisor_ended');
     const snap3a = await q3a.get();
     for (const ticketDoc of snap3a.docs) {
@@ -131,6 +121,33 @@ export default async function handler(req, res) {
           results.errors.push({ ticketId: ticketDoc.id, error: e.message });
         }
       }
+    }
+
+    // 4) ✅ تنظيف سجلات استخدام AI القديمة (أقدم من 7 أيام)
+    const cutoffUsage = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    try {
+      const oldUsage = await db.collection('aiUsage').where('date', '<', cutoffUsage).get();
+      for (const d of oldUsage.docs) {
+        await d.ref.delete();
+        results.old_ai_usage_deleted++;
+      }
+    } catch (e) {
+      results.errors.push({ cleanup: 'aiUsage', error: e.message });
+    }
+
+    // 5) ✅ تنظيف الحوادث الأمنية القديمة (أقدم من 30 يوم)
+    try {
+      const cutoffIncidents = new Date(now - 30 * 24 * 60 * 60 * 1000);
+      const oldIncidents = await db.collection('securityIncidents')
+        .where('createdAt', '<', cutoffIncidents)
+        .limit(100)
+        .get();
+      for (const d of oldIncidents.docs) {
+        await d.ref.delete();
+        results.old_security_incidents_deleted++;
+      }
+    } catch (e) {
+      results.errors.push({ cleanup: 'securityIncidents', error: e.message });
     }
 
     return res.status(200).json({

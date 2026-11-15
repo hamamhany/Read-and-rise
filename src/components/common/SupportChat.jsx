@@ -12,7 +12,7 @@ import {
   approveContactRequest, rejectContactRequest,
   reportTicket, setTicketTyping, clearTicketTyping, claimAiReply
 } from '../../services/support';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebase';
 import {
   SUPPORT_TICKET_STATUS, SUPPORT_RATING_CATEGORIES,
@@ -57,6 +57,9 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
   const [reportReason, setReportReason] = useState('');
   const [reportDetails, setReportDetails] = useState('');
 
+  // ✅ حالة تفعيل المساعد الذكي (يقرأها من systemSettings/ai)
+  const [aiEnabled, setAiEnabled] = useState(true);
+
   const scrollRef = useRef(null);
   const [ticketWasLoaded, setTicketWasLoaded] = useState(false);
 
@@ -85,6 +88,21 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
   useEffect(() => {
     const timer = setInterval(() => setClockTick((t) => t + 1), 60 * 1000);
     return () => clearInterval(timer);
+  }, []);
+
+  // ✅ الاشتراك بحالة AI (نستخدم doc + onSnapshot على systemSettings/ai)
+  useEffect(() => {
+    const unsub = onSnapshot(
+      doc(db, 'systemSettings', 'ai'),
+      (snap) => {
+        setAiEnabled(snap.exists() ? snap.data().enabled !== false : true);
+      },
+      (err) => {
+        console.warn('aiSettings subscription failed:', err?.message);
+        setAiEnabled(true);
+      }
+    );
+    return () => unsub();
   }, []);
 
   useEffect(() => {
@@ -160,6 +178,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
   const lastMsgId = ticket?.messages?.[ticket.messages.length - 1]?.id;
   useEffect(() => {
     if (viewerMode !== 'student') return;
+    if (!aiEnabled) return; // ✅ لا رد احتياطي إذا كان المساعد متوقف
     const t0 = ticketRef.current;
     if (!t0 || t0.status !== SUPPORT_TICKET_STATUS.IN_PROGRESS || !t0.assignedSupervisorId) return;
     const msgs0 = t0.messages || [];
@@ -188,7 +207,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
     };
     timer = setTimeout(attempt, Math.max(0, sentAt + AI_FALLBACK_MS - Date.now()));
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [lastMsgId, ticket?.status, ticket?.assignedSupervisorId, ticketId, viewerMode, user.id, user.role]);
+  }, [lastMsgId, ticket?.status, ticket?.assignedSupervisorId, ticketId, viewerMode, user.id, user.role, aiEnabled]);
 
   if (!ticket) {
     return (
@@ -244,6 +263,11 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
     }
 
     if (!ticket.assignedSupervisorId) {
+      // ✅ إذا كان المساعد متوقف → نبلّغ المستخدم
+      if (!aiEnabled) {
+        toast('⏸️ المساعد الذكي متوقف مؤقتاً — سيتولى أحد المشرفين الرد قريباً.', { duration: 5000 });
+        return;
+      }
       const history = buildAiHistory(ticket.messages, user.id);
       askAssistant({
         ticketId,
@@ -370,7 +394,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
       await studentConfirmNotSolved(ticketId);
       toast.success('تم إبلاغ المشرف — يمكنك متابعة المحادثة');
 
-      if (wasAiEnd) {
+      if (wasAiEnd && aiEnabled) {
         const history = buildAiHistory(ticket.messages, user.id);
         askAssistant({
           ticketId,
@@ -524,13 +548,22 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
               <>
                 <SupportAvatar size={40} />
                 <div className="min-w-0 leading-tight">
-                  <p className="text-white font-bold text-sm truncate">الدعم الفني</p>
+                  <p className="text-white font-bold text-sm truncate">
+                    الدعم الفني
+                    {!aiEnabled && (
+                      <span className="text-[9px] bg-red-500/20 text-red-300 border border-red-500/40 px-1.5 py-0.5 rounded-full ms-2 align-middle">
+                        سند متوقف
+                      </span>
+                    )}
+                  </p>
                   <p className="text-[11px] text-gray-400 truncate">
                     {aiTyping
                       ? 'المساعد الذكي سند يكتب الآن...'
                       : supTyping
                         ? `${supTyping.name || 'المشرف'} يكتب الآن...`
-                        : 'المساعد الذكي سند وفريق الدعم'}
+                        : aiEnabled
+                          ? 'المساعد الذكي سند وفريق الدعم'
+                          : 'فريق الدعم — سيتولى الرد قريباً'}
                   </p>
                 </div>
               </>
@@ -609,6 +642,13 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
         {isCreator && contactStatus === CONTACT_REQUEST_STATUS.APPROVED && (
           <div className="mx-3 mt-2 p-2 bg-green-500/10 border border-green-500/30 rounded-lg text-xs text-green-200">
             ✅ وافقت على {contactRequest?.mode === 'other' ? 'التواصل عبر رقم بديل' : 'مشاركة رقمك المسجل'} مع فريق الدعم.
+          </div>
+        )}
+
+        {/* ✅ بانر إيقاف المساعد الذكي */}
+        {!aiEnabled && ticket.status !== SUPPORT_TICKET_STATUS.REPORTED && (
+          <div className="mx-3 mt-2 p-2 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-200 text-center">
+            ⏸️ المساعد الذكي "سند" متوقف مؤقتاً من قبل الإدارة — سيتولى أحد المشرفين الرد قريباً.
           </div>
         )}
 

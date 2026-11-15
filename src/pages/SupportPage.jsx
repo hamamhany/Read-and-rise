@@ -57,7 +57,7 @@ const SupportPage = ({ user }) => {
       const targetRole = (user.role === 'supervisor' || user.role === 'system_manager')
         ? 'مدير النظام'
         : 'مشرف';
-      toast.success(`✅ تم إرسال طلبك — بانتظار ${targetRole}`);
+      toast.success(`✅ تم إرسال طلبك `);
 
       const newTicket = await getStudentOpenTicket(user.id);
       const newId = newTicket?.id || id;
