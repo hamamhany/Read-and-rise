@@ -14,6 +14,7 @@ const AI_FALLBACK_MS = 10 * 60 * 1000; // 10 دقائق
 const AI_SENDER_ID = 'ai-assistant';
 const AI_SENDER_NAME = 'المساعد الذكي سند';
 const AI_SENDER_ROLE = 'system';
+const SUPPORT_END_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
 async function claimAiReply(ticketId, messageId) {
   const ticketRef = db.collection('supportTickets').doc(ticketId);
@@ -42,9 +43,9 @@ function buildAiHistory(messages, studentId) {
 }
 
 export default async function handler(req, res) {
-  // ✅ التعديل هنا: نقرأ كلمة السر فقط من الترويسة (Header)
+  // ✅ نقرأ كلمة السر فقط من الترويسة (Header)
   const secret = req.headers['x-cron-secret'];
-  
+
   if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
@@ -82,11 +83,17 @@ export default async function handler(req, res) {
       const geminiUrl = `${process.env.VERCEL_URL ? 'https://' + process.env.VERCEL_URL : 'http://localhost:3000'}/api/gemini`;
 
       let aiText = null;
+      let endRequested = false;
+      let impersonationDetected = false;
       try {
         const geminiRes = await fetch(geminiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: lastMsg.text, history }),
+          body: JSON.stringify({
+            message: lastMsg.text,
+            history,
+            userRole: ticket.studentRole || 'student',
+          }),
         });
         if (!geminiRes.ok) {
           console.error('Gemini HTTP error:', geminiRes.status, await geminiRes.text());
@@ -94,6 +101,8 @@ export default async function handler(req, res) {
         }
         const data = await geminiRes.json();
         aiText = data?.text;
+        endRequested = !!data?.endRequested;
+        impersonationDetected = !!data?.impersonationDetected;
       } catch (err) {
         console.error('Gemini fetch error:', err);
         continue;
@@ -118,7 +127,39 @@ export default async function handler(req, res) {
         unreadForSupervisor: true,
       });
 
-      results.push({ ticketId: doc.id, replied: true });
+      // ✅ طلب إنهاء من "سند" عندما يرى أن المشكلة انتهت
+      if (endRequested) {
+        try {
+          await db.collection('supportTickets').doc(doc.id).update({
+            status: 'supervisor_ended',
+            endRequestedAt: admin.firestore.FieldValue.serverTimestamp(),
+            endRequestExpiresAt: new Date(now + SUPPORT_END_TIMEOUT_MS),
+            aiRequestedEnd: true,
+            unreadForStudent: true,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+        } catch (e) {
+          console.warn('cron AI end-request failed:', e);
+        }
+      }
+
+      // ✅ تسجيل محاولة انتحال الهوية في سجل الحوادث الأمنية
+      if (impersonationDetected) {
+        try {
+          await db.collection('securityIncidents').add({
+            ticketId: doc.id,
+            userId: ticket.studentId || null,
+            userRole: ticket.studentRole || 'unknown',
+            text: String(lastMsg.text || '').slice(0, 2000),
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            reviewed: false,
+          });
+        } catch (e) {
+          console.warn('cron security log failed:', e);
+        }
+      }
+
+      results.push({ ticketId: doc.id, replied: true, ended: endRequested });
     }
 
     return res.status(200).json({

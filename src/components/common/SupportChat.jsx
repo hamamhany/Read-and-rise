@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import {
   FaTimes, FaPaperPlane, FaStar, FaCheckCircle, FaTimesCircle,
-  FaSpinner, FaHeadset, FaPhone, FaLock, FaWhatsapp, FaTrashAlt,
+  FaSpinner, FaHeadset, FaPhone, FaLock, FaWhatsapp,
   FaHourglassHalf, FaExclamationTriangle, FaShieldAlt, FaArrowRight
 } from 'react-icons/fa';
 import {
@@ -10,15 +10,13 @@ import {
   studentConfirmNotSolved, submitRating, requestTicketEnd,
   transferToManager, requestContactInfo, markTicketAsRead, claimTicket,
   approveContactRequest, rejectContactRequest,
-  requestTicketDeletion, approveDeletionBySupervisor, rejectDeletionBySupervisor,
-  approveDeletionByStudent, rejectDeletionByStudent,
   reportTicket, setTicketTyping, clearTicketTyping, claimAiReply
 } from '../../services/support';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import {
   SUPPORT_TICKET_STATUS, SUPPORT_RATING_CATEGORIES,
-  CONTACT_REQUEST_STATUS, DELETE_REQUEST_STATUS,
+  CONTACT_REQUEST_STATUS,
   SUPPORT_REPORT_REASONS
 } from '../../constants';
 import { useConfirm } from './ConfirmContext';
@@ -29,9 +27,9 @@ import {
   playIncomingSound, prepareIncomingSound
 } from './ChatParts';
 
-const TYPING_TTL_MS = 5000;              // مدة بقاء مؤشر "يكتب" بعد آخر تحديث
-const TYPING_PING_MS = 3000;             // كل كم ثانية يرسل المشرف إشارة الكتابة
-const AI_FALLBACK_MS = 10 * 60 * 1000;   // المساعد يرد بعد 10 دقايق بدون رد المشرف
+const TYPING_TTL_MS = 5000;
+const TYPING_PING_MS = 3000;
+const AI_FALLBACK_MS = 10 * 60 * 1000;
 
 const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage = false }) => {
   const confirm = useConfirm();
@@ -55,7 +53,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
   const [showApproveContactModal, setShowApproveContactModal] = useState(false);
   const [approveContactMode, setApproveContactMode] = useState('registered');
   const [approveCustomNumber, setApproveCustomNumber] = useState('');
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportReason, setReportReason] = useState('');
   const [reportDetails, setReportDetails] = useState('');
@@ -63,10 +60,8 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
   const scrollRef = useRef(null);
   const [ticketWasLoaded, setTicketWasLoaded] = useState(false);
 
-  // --- مؤقت صغير لإعادة الرسم كل 60 ثانية (لتحديث "منذ كذا") ---
   const [, setClockTick] = useState(0);
 
-  // --- مؤشر "المشرف يكتب" ---
   const [supTyping, setSupTyping] = useState(null);
   const supTypingRef = useRef(null);
   supTypingRef.current = supTyping;
@@ -74,13 +69,11 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
   const typingSeenRef = useRef({ token: null, at: 0 });
   const lastPingRef = useRef(0);
 
-  // --- مراجع عامة ---
   const ticketRef = useRef(null);
   ticketRef.current = ticket;
   const knownIdsRef = useRef(null);
   const animatedIdsRef = useRef(new Set());
 
-  // --- مراجع صوت الرسائل الواردة ---
   const soundInitRef = useRef(false);
   const lastMsgCountRef = useRef(0);
 
@@ -89,7 +82,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
     'استفسار عن الدرجات', 'مشكلة في الحساب', 'طلب توضيح إضافي', 'سبب آخر'
   ];
 
-  // ✅ مؤقت لتحديث عرض "منذ كذا" كل دقيقة
   useEffect(() => {
     const timer = setInterval(() => setClockTick((t) => t + 1), 60 * 1000);
     return () => clearInterval(timer);
@@ -123,7 +115,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [ticket?.messages?.length, aiTyping, supTyping]);
 
-  // ✅ كشف الرسائل الجديدة وتشغيل صوت "الرسائل الواردة"
   useEffect(() => {
     if (!ticket) return;
     const msgs = ticket.messages || [];
@@ -145,7 +136,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
     lastMsgCountRef.current = msgs.length;
   }, [ticket?.messages?.length, user.id, !!ticket]);
 
-  // كشف "المشرف يكتب"
   useEffect(() => {
     if (!ticket) return;
     const t = ticket.typing;
@@ -167,7 +157,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
     return () => clearTimeout(timer);
   }, [ticket?.typing?.at, ticket?.typing?.id, !!ticket, user.id]);
 
-  // رد المساعد الاحتياطي (للطالب فقط)
   const lastMsgId = ticket?.messages?.[ticket.messages.length - 1]?.id;
   useEffect(() => {
     if (viewerMode !== 'student') return;
@@ -190,12 +179,16 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
       if (supTypingRef.current) { timer = setTimeout(attempt, 5000); return; }
       const ok = await claimAiReply(ticketId, last.id);
       if (!ok || cancelled) return;
-      askAssistant({ ticketId, message: last.text, history: buildAiHistory(msgs.slice(0, -1), user.id) })
-        .catch((err) => console.error('خطأ في رد المساعد الاحتياطي:', err));
+      askAssistant({
+        ticketId,
+        message: last.text,
+        history: buildAiHistory(msgs.slice(0, -1), user.id),
+        userRole: user.role || 'student',
+      }).catch((err) => console.error('خطأ في رد المساعد الاحتياطي:', err));
     };
     timer = setTimeout(attempt, Math.max(0, sentAt + AI_FALLBACK_MS - Date.now()));
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [lastMsgId, ticket?.status, ticket?.assignedSupervisorId, ticketId, viewerMode, user.id]);
+  }, [lastMsgId, ticket?.status, ticket?.assignedSupervisorId, ticketId, viewerMode, user.id, user.role]);
 
   if (!ticket) {
     return (
@@ -219,8 +212,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
 
   const contactRequest = ticket.contactRequest;
   const contactStatus = contactRequest?.status;
-  const deleteRequest = ticket.deleteRequest;
-  const deleteStatus = deleteRequest?.status;
 
   const closedStatuses = [
     SUPPORT_TICKET_STATUS.AUTO_CLOSED,
@@ -231,10 +222,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
   const showContactBar = !closedStatuses.includes(ticket.status) && (
     (isSupervisor && isAssignedSupervisor) || isManager
   );
-
-  const showDeleteBar = deleteStatus &&
-    deleteStatus !== DELETE_REQUEST_STATUS.CANCELLED &&
-    ticket.status !== SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED;
 
   const handleSend = async () => {
     const t = text.trim();
@@ -258,7 +245,12 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
 
     if (!ticket.assignedSupervisorId) {
       const history = buildAiHistory(ticket.messages, user.id);
-      askAssistant({ ticketId, message: t, history }).catch((aiError) => {
+      askAssistant({
+        ticketId,
+        message: t,
+        history,
+        userRole: user.role || 'student',
+      }).catch((aiError) => {
         console.error('خطأ في المساعد الذكي:', aiError);
         toast.error('تعذر رد المساعد الذكي: ' + aiError.message);
       });
@@ -304,7 +296,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
   };
 
   const handleTransferToManager = async () => {
-    const ok = await confirm('تحويل للمدير', 'تحويل التذكرة للمدير؟ لن تتمكن من الرد بعد الآن.');
+    const ok = await confirm('تحويل للمدير', 'سيتم تحويل الطلب إلى المدير للمراجعة، ويمكن لصاحب التذكرة متابعة الحديث مع المساعد الذكي في الأثناء. متابعة؟');
     if (!ok) return;
     try {
       await transferToManager(ticketId, user.name || user.username);
@@ -360,74 +352,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
       toast.success('تم رفض الطلب');
       setShowRejectContactModal(false);
       setRejectContactReason('');
-    } catch (e) { toast.error(e.message); }
-    finally { setProcessing(false); }
-  };
-
-  const handleRequestDelete = async () => {
-    const ok = await confirm('طلب حذف التذكرة', 'سيتم إرسال طلب حذف للطرف الآخر. لا يتم الحذف مباشرة حتى يوافق الطرفان. متابعة؟');
-    if (!ok) return;
-    setProcessing(true);
-    try {
-      await requestTicketDeletion(
-        ticketId,
-        user.id,
-        user.name || user.username || (isManager ? 'مدير النظام' : 'مشرف')
-      );
-      toast.success('✅ تم إرسال طلب الحذف — بانتظار موافقة الطرف الآخر');
-      setShowDeleteConfirm(false);
-    } catch (e) { toast.error(e.message); }
-    finally { setProcessing(false); }
-  };
-
-  const handleApproveDeleteSupervisor = async () => {
-    const ok = await confirm('تأكيد الحذف', 'الموافقة على حذف التذكرة نهائياً؟ لا يمكن التراجع.');
-    if (!ok) return;
-    setProcessing(true);
-    try {
-      const result = await approveDeletionBySupervisor(ticketId);
-      if (result?.shouldDelete) {
-        toast.success('✅ تم حذف التذكرة نهائياً');
-      } else {
-        toast.success('✅ تمت موافقتك — بانتظار موافقة صاحب التذكرة');
-      }
-    } catch (e) { toast.error(e.message); }
-    finally { setProcessing(false); }
-  };
-
-  const handleRejectDeleteSupervisor = async () => {
-    const ok = await confirm('رفض الحذف', 'رفض طلب حذف التذكرة؟');
-    if (!ok) return;
-    setProcessing(true);
-    try {
-      await rejectDeletionBySupervisor(ticketId, 'رفض المشرف');
-      toast.success('تم رفض طلب الحذف');
-    } catch (e) { toast.error(e.message); }
-    finally { setProcessing(false); }
-  };
-
-  const handleApproveDeleteStudent = async () => {
-    const ok = await confirm('تأكيد الحذف', 'الموافقة على حذف التذكرة نهائياً؟ لا يمكن التراجع.');
-    if (!ok) return;
-    setProcessing(true);
-    try {
-      const result = await approveDeletionByStudent(ticketId);
-      if (result?.shouldDelete) {
-        toast.success('✅ تم حذف التذكرة نهائياً');
-      } else {
-        toast.success('✅ تمت موافقتك — بانتظار موافقة المشرف');
-      }
-    } catch (e) { toast.error(e.message); }
-    finally { setProcessing(false); }
-  };
-
-  const handleRejectDeleteStudent = async () => {
-    const ok = await confirm('رفض الحذف', 'رفض طلب حذف التذكرة؟');
-    if (!ok) return;
-    setProcessing(true);
-    try {
-      await rejectDeletionByStudent(ticketId, 'رفض صاحب التذكرة');
-      toast.success('تم رفض طلب الحذف');
     } catch (e) { toast.error(e.message); }
     finally { setProcessing(false); }
   };
@@ -556,10 +480,8 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
     return false;
   };
 
-  const canInitiateDelete =
-    ((isManager && isAssignedSupervisor) || (isSupervisor && isAssignedSupervisor)) &&
-    [SUPPORT_TICKET_STATUS.IN_PROGRESS, SUPPORT_TICKET_STATUS.MANAGER_PENDING].includes(ticket.status) &&
-    (!deleteStatus || deleteStatus === DELETE_REQUEST_STATUS.CANCELLED);
+  const endRequesterName = ticket.assignedSupervisorName
+    || (ticket.aiRequestedEnd ? 'المساعد الذكي سند' : 'المشرف');
 
   return (
     <div
@@ -617,13 +539,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
                 </button>
               </>
             )}
-
-            {canInitiateDelete && (
-              <button onClick={() => setShowDeleteConfirm(true)}
-                className="text-xs bg-red-700 hover:bg-red-800 px-2 py-0.5 rounded text-white flex items-center gap-1">
-                <FaTrashAlt size={10} /> طلب حذف
-              </button>
-            )}
           </div>
           {!fullPage && <button onClick={onClose} className="text-gray-400 hover:text-white text-xl flex-shrink-0"><FaTimes /></button>}
         </div>
@@ -680,64 +595,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
         {isCreator && contactStatus === CONTACT_REQUEST_STATUS.APPROVED && (
           <div className="mx-3 mt-2 p-2 bg-green-500/10 border border-green-500/30 rounded-lg text-xs text-green-200">
             ✅ وافقت على {contactRequest?.mode === 'other' ? 'التواصل عبر رقم بديل' : 'مشاركة رقمك المسجل'} مع فريق الدعم.
-          </div>
-        )}
-
-        {showDeleteBar && (
-          <div className={`m-3 p-3 border rounded-xl text-sm ${
-            deleteStatus === DELETE_REQUEST_STATUS.BOTH_APPROVED
-              ? 'bg-red-500/10 border-red-500/40'
-              : 'bg-orange-500/10 border-orange-500/40'
-          }`}>
-            <p className={`font-bold mb-1 ${deleteStatus === DELETE_REQUEST_STATUS.BOTH_APPROVED ? 'text-red-200' : 'text-orange-200'}`}>
-              🗑️ طلب حذف التذكرة
-            </p>
-
-            {deleteStatus === DELETE_REQUEST_STATUS.PENDING && (
-              <>
-                <p className="text-xs text-gray-300 mb-2">
-                  طلب <strong>{deleteRequest.requestedByName}</strong> حذف التذكرة.
-                </p>
-
-                {isSupervisor && isAssignedSupervisor && !deleteRequest.supervisorApproved && (
-                  <div className="flex gap-2 mt-2">
-                    <button onClick={handleApproveDeleteSupervisor} disabled={processing}
-                      className="flex-1 bg-green-600 hover:bg-green-700 text-white py-1.5 rounded text-xs font-bold disabled:opacity-50">
-                      ✅ موافقة
-                    </button>
-                    <button onClick={handleRejectDeleteSupervisor} disabled={processing}
-                      className="flex-1 bg-red-600 hover:bg-red-700 text-white py-1.5 rounded text-xs font-bold disabled:opacity-50">
-                      ❌ رفض
-                    </button>
-                  </div>
-                )}
-
-                {isCreator && !deleteRequest.studentApproved && (
-                  <div className="flex gap-2 mt-2">
-                    <button onClick={handleApproveDeleteStudent} disabled={processing}
-                      className="flex-1 bg-green-600 hover:bg-green-700 text-white py-1.5 rounded text-xs font-bold disabled:opacity-50">
-                      ✅ موافقة
-                    </button>
-                    <button onClick={handleRejectDeleteStudent} disabled={processing}
-                      className="flex-1 bg-red-600 hover:bg-red-700 text-white py-1.5 rounded text-xs font-bold disabled:opacity-50">
-                      ❌ رفض
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-
-            {deleteStatus === DELETE_REQUEST_STATUS.BOTH_APPROVED && (
-              <p className="text-xs text-red-300 flex items-center gap-2">
-                <FaSpinner className="animate-spin" /> جاري حذف التذكرة نهائياً...
-              </p>
-            )}
-          </div>
-        )}
-
-        {deleteStatus === DELETE_REQUEST_STATUS.CANCELLED && (
-          <div className="mx-3 mt-2 p-2 bg-gray-700/30 border border-gray-600 rounded-lg text-xs text-gray-300">
-            ℹ️ تم إلغاء طلب الحذف{deleteRequest.cancelledReason ? `: ${deleteRequest.cancelledReason}` : ''}
           </div>
         )}
 
@@ -813,7 +670,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
         {ticket.status === SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED && isCreator && (
           <div className="px-4 py-5 bg-yellow-500/5 border-t border-yellow-500/30">
             <p className="text-yellow-200 text-sm text-center mb-4 font-bold">
-              📩 طلب {ticket.assignedSupervisorName || 'المشرف'} إغلاق تذكرة الدعم الفني
+              📩 طلب {endRequesterName} إغلاق تذكرة الدعم الفني
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto">
               <button onClick={handleSolved} className="bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition shadow-lg shadow-green-900/30">
@@ -978,30 +835,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
                 <button onClick={handleRejectContactSubmit} disabled={processing} className="px-4 py-2 text-sm bg-red-600 rounded text-white font-bold disabled:opacity-50">
                   {processing ? <FaSpinner className="animate-spin inline me-1" /> : null}
                   تأكيد الرفض
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showDeleteConfirm && (
-          <div className="fixed inset-0 bg-black/90 z-[80] flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
-            <div className="bg-gray-900 p-6 rounded-2xl max-w-sm w-full border border-red-500/30">
-              <h3 className="font-bold text-white mb-3">🗑️ طلب حذف التذكرة</h3>
-              <p className="text-sm text-gray-300 mb-3">سيتم إرسال طلب حذف إلى:</p>
-              <ul className="text-xs text-gray-400 mb-3 list-disc list-inside">
-                {!isManager && <li>المدير (إن لم تكن أنت)</li>}
-                {isSupervisor && <li>صاحب التذكرة</li>}
-                {isManager && <li>المشرف المعيّن وصاحب التذكرة</li>}
-              </ul>
-              <p className="text-xs text-amber-300 mb-3">
-                ⚠️ يُحذف نهائياً وفوراً بمجرد موافقة الطرفين. لا يمكن التراجع بعد الحذف.
-              </p>
-              <div className="flex gap-2 justify-end">
-                <button onClick={() => setShowDeleteConfirm(false)} className="px-4 py-2 text-sm bg-gray-700 rounded text-white">إلغاء</button>
-                <button onClick={handleRequestDelete} disabled={processing} className="px-4 py-2 text-sm bg-red-600 rounded text-white font-bold disabled:opacity-50">
-                  {processing ? <FaSpinner className="animate-spin inline me-1" /> : null}
-                  تأكيد الطلب
                 </button>
               </div>
             </div>

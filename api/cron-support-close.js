@@ -1,7 +1,7 @@
 // api/cron-support-close.js
-// - يحذف التذاكر التي وافق الطرفان على حذفها وانقضت 24 ساعة (شبكة أمان — الحذف الفوري يتم client-side)
+// - يحذف التذاكر التي وافق الطرفان على حذفها (شبكة أمان — الحذف الفوري يتم client-side)
 // - يلغي طلبات الحذف المعلقة بعد 24 ساعة بدون اكتمال (لا حذف)
-// - يغلق تلقائياً التذاكر المعلّقة (فقط تغيير حالة، لا حذف)
+// - يحذف نهائياً التذاكر المعلّقة في supervisor_ended بعد 24 ساعة (المحادثة انتهت)
 
 import admin from 'firebase-admin';
 
@@ -17,7 +17,7 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 export default async function handler(req, res) {
-  // ✅ التعديل هنا: قراءة كلمة السر من الترويسة x-cron-secret
+  // ✅ قراءة كلمة السر من الترويسة x-cron-secret
   const secret = req.headers['x-cron-secret'];
   if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
     return res.status(401).json({ error: 'Unauthorized' });
@@ -32,7 +32,7 @@ export default async function handler(req, res) {
   const results = {
     deleted_both_approved: 0,
     auto_cancelled_pending: 0,
-    auto_closed_expired: 0,
+    auto_deleted_expired: 0,
     errors: []
   };
 
@@ -41,8 +41,6 @@ export default async function handler(req, res) {
 
     // =========================================
     // 1) شبكة أمان: حذف التذاكر العالقة في "both_approved"
-    //    (الحذف الفوري يتم client-side عند الموافقة الثانية)
-    //    هذا يمسك فقط الحالات التي فشل فيها الحذف من المتصفح
     // =========================================
     const q1 = ticketsRef.where('deleteRequest.status', '==', 'both_approved');
     const snap1 = await q1.get();
@@ -57,7 +55,6 @@ export default async function handler(req, res) {
           : (scheduledAt.toMillis ? scheduledAt.toMillis() : 0);
       }
 
-      // تحقق مزدوج: يجب أن يكون الطرفان قد وافقا فعلاً
       const bothApproved =
         data.deleteRequest?.supervisorApproved === true &&
         data.deleteRequest?.studentApproved === true;
@@ -82,7 +79,6 @@ export default async function handler(req, res) {
 
     // =========================================
     // 2) إلغاء طلبات الحذف المعلقة بعد 24 ساعة بدون اكتمال
-    // ⚠️ لا حذف — فقط إلغاء الطلب
     // =========================================
     const q2 = ticketsRef.where('deleteRequest.status', '==', 'pending');
     const snap2 = await q2.get();
@@ -110,29 +106,32 @@ export default async function handler(req, res) {
     }
 
     // =========================================
-    // 3) إغلاق تلقائي للتذاكر المعلّقة (فقط تغيير حالة، لا حذف)
+    // 3) حذف نهائي للتذاكر المعلّقة في supervisor_ended بعد 24 ساعة
+    //    (المحادثة انتهت ولم يردّ صاحبها → تُحذف من السيرفر فوراً)
     // =========================================
     const q3a = ticketsRef.where('status', '==', 'supervisor_ended');
     const snap3a = await q3a.get();
     for (const ticketDoc of snap3a.docs) {
       const data = ticketDoc.data();
-      const endRequested = data.endRequestedAt?.toMillis?.() || 0;
+      const endRequested = data.endRequestedAt?.toMillis?.()
+        || (data.endRequestedAt?.seconds ? data.endRequestedAt.seconds * 1000 : 0);
       if (endRequested > 0 && (now - endRequested) >= HOUR_24) {
         try {
-          await ticketDoc.ref.update({
-            status: 'auto_closed',
-            closedAt: admin.firestore.FieldValue.serverTimestamp(),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-          });
-          results.auto_closed_expired++;
+          if (data.assignedSupervisorId) {
+            const supRef = db.collection('profiles').doc(data.assignedSupervisorId);
+            const supSnap = await supRef.get();
+            if (supSnap.exists) {
+              const current = supSnap.data().activeTicketCount || 0;
+              await supRef.update({ activeTicketCount: Math.max(0, current - 1) });
+            }
+          }
+          await ticketDoc.ref.delete();
+          results.auto_deleted_expired++;
         } catch (e) {
           results.errors.push({ ticketId: ticketDoc.id, error: e.message });
         }
       }
     }
-
-    // ملاحظة: الحذف الفوري عند موافقة الطرفين يتم client-side
-    // هذا الـ cron يعمل كشبكة أمان للحالات العالقة فقط
 
     return res.status(200).json({
       success: true,

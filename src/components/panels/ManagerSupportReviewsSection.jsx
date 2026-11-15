@@ -8,7 +8,7 @@ import {
 import {
   subscribeToManagerReviewTickets, subscribeToManagerOpenTickets,
   subscribeToReportedTickets,
-  managerDecide, finalizeAndDeleteTicket, claimTicket,
+  managerDecide, claimTicket,
   cancelReportAndDelete, cancelReportAndReopen,
   finalizeReportWithWarning,
   closeReportedTicketAfterAccountDeletion
@@ -24,7 +24,7 @@ import { deleteUserCompletely } from '../../services/accountDeletion';
 import { doc, getDoc, collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebase';
 import {
-  SUPPORT_RATING_CATEGORIES, SUPPORT_TICKET_STATUS, SUPPORT_REPORT_REASONS
+  SUPPORT_RATING_CATEGORIES, SUPPORT_TICKET_STATUS
 } from '../../constants';
 import SupportChat from '../common/SupportChat';
 import { useConfirm } from '../common/ConfirmContext';
@@ -125,6 +125,7 @@ const ManagerSupportReviewsSection = ({ user }) => {
     } catch (e) { toast.error(e.message); }
   };
 
+  // ✅ الآن managerDecide يحذف التذكرة تلقائياً بعد تسجيل القرار
   const handleApologize = async () => {
     if (!reason.trim()) { toast.error('اكتب سبب الاعتذار للمشرف'); return; }
     setProcessing(true);
@@ -136,8 +137,8 @@ const ManagerSupportReviewsSection = ({ user }) => {
         sendApologyToStudentMessage(student);
       }
       await managerDecide(selected.id, 'apologize', reason.trim());
-      toast.success('✅ تم تسجيل القرار. اضغط "إنهاء وحذف" بعد إرسال الرسائل.');
-      setMode('apologize');
+      toast.success('✅ تم الاعتذار وحذف التذكرة نهائياً');
+      closeModal();
     } catch (e) { toast.error('فشل: ' + e.message); }
     finally { setProcessing(false); }
   };
@@ -160,19 +161,7 @@ const ManagerSupportReviewsSection = ({ user }) => {
         sendComplaintRejectedMessage(student, classNames);
       }
       await managerDecide(selected.id, 'reject', '');
-      toast.success('✅ تم رفض الشكوى. اضغط "إنهاء وحذف" بعد إرسال الرسالة.');
-      setMode('reject');
-    } catch (e) { toast.error('فشل: ' + e.message); }
-    finally { setProcessing(false); }
-  };
-
-  const handleFinalize = async () => {
-    const ok = await confirm('حذف التذكرة نهائياً', 'سيتم حذف التذكرة نهائياً من السيرفر. تأكد من إرسال جميع الرسائل أولاً. متابعة؟');
-    if (!ok) return;
-    setProcessing(true);
-    try {
-      await finalizeAndDeleteTicket(selected.id);
-      toast.success('✅ تم حذف التذكرة نهائياً');
+      toast.success('✅ تم رفض الشكوى وحذف التذكرة نهائياً');
       closeModal();
     } catch (e) { toast.error('فشل: ' + e.message); }
     finally { setProcessing(false); }
@@ -358,7 +347,7 @@ const ManagerSupportReviewsSection = ({ user }) => {
       {openTickets.length > 0 && (
         <div className="border-t border-gray-700 pt-4">
           <p className="text-sm text-cyan-200 font-bold mb-2 flex items-center gap-2">
-            <FaHeadset /> تذاكر من المشرفين ({openTickets.length})
+            <FaHeadset /> تذاكر من المشرفين / محوّلة للمدير ({openTickets.length})
           </p>
           <div className="space-y-2 max-h-48 overflow-y-auto">
             {openTickets.map(t => (
@@ -366,6 +355,9 @@ const ManagerSupportReviewsSection = ({ user }) => {
                 <div className="flex-1 min-w-0">
                   <p className="text-white text-xs truncate"><FaUser className="inline me-1" />{t.studentName}</p>
                   <p className="text-[10px] text-gray-400 truncate">{t.messages?.[0]?.text}</p>
+                  {t.transferredBy && (
+                    <p className="text-[10px] text-amber-300 truncate">📤 محوّلة من: {t.transferredBy}</p>
+                  )}
                 </div>
                 <button onClick={() => handleClaimOpenTicket(t.id)} className="text-xs bg-cyan-600 hover:bg-cyan-700 text-white px-3 py-1 rounded-lg">
                   استلام
@@ -534,16 +526,7 @@ const ManagerSupportReviewsSection = ({ user }) => {
                   placeholder="اشرح للمشرف ما الذي أخطأ فيه..."
                 />
                 <button onClick={handleApologize} disabled={processing || !reason.trim()} className="w-full bg-amber-600 hover:bg-amber-700 text-white py-2 rounded-lg disabled:opacity-50">
-                  {processing ? 'جاري الإرسال...' : '📤 إرسال التنبيهات وتأكيد الاعتذار'}
-                </button>
-              </div>
-            )}
-
-            {(mode === 'apologize' || mode === 'reject') && (
-              <div className="mt-3 p-3 bg-green-500/10 border border-green-500/30 rounded-xl">
-                <p className="text-green-200 text-xs mb-2">✅ تم تسجيل القرار. اضغط الزر التالي بعد إرسال الرسائل عبر واتساب:</p>
-                <button onClick={handleFinalize} disabled={processing} className="w-full bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg">
-                  🗑️ إنهاء وحذف التذكرة نهائياً
+                  {processing ? 'جاري الإرسال والحذف...' : '📤 إرسال التنبيهات وتأكيد الاعتذار (سيتم حذف التذكرة)'}
                 </button>
               </div>
             )}

@@ -72,6 +72,7 @@ export const createSupportTicket = async (data) => {
     reportResolvedAt: null,
     reportResolvedBy: null,
     reportAction: null,
+    aiRequestedEnd: false,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   };
@@ -302,12 +303,51 @@ export const dismissClosedBubble = async (ticketId) => {
   await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), { bubbleDismissedByStudent: true });
 };
 
+// ✅ التحويل للمدير: يصبح رسالة عادية ويُطلق التذكرة (بدون اشتراط مشرف)،
+//    المساعد الذكي يبقى يرد على الطالب كأنه مشرف، والمدير يستلمها من "تذاكر بانتظار المدير"
 export const transferToManager = async (ticketId, supervisorName) => {
-  await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
-    status: SUPPORT_TICKET_STATUS.MANAGER_PENDING,
+  const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
+  const snap = await getDoc(ticketRef);
+  if (!snap.exists()) throw new Error('التذكرة غير موجودة');
+  const data = snap.data();
+  const previousSupervisorId = data.assignedSupervisorId;
+
+  const message = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+    senderId: 'system',
+    senderName: 'النظام',
+    senderRole: 'system',
+    text: `📤 تم تحويل هذا الطلب إلى مدير النظام للمراجعة بواسطة ${supervisorName || 'المشرف'}. يمكنك متابعة الحديث مع المساعد الذكي "سند" في الأثناء، وسيتدخل المدير عند الحاجة.`,
+    createdAt: new Date().toISOString()
+  };
+
+  await updateDoc(ticketRef, {
+    status: SUPPORT_TICKET_STATUS.OPEN,
+    assignedSupervisorId: null,
+    assignedSupervisorName: null,
+    assignedAt: null,
+    requiresManager: true,
     transferredBy: supervisorName,
+    transferredAt: serverTimestamp(),
+    messages: arrayUnion(message),
+    lastMessage: message.text,
+    unreadForStudent: false,
+    unreadForSupervisor: false,
     updatedAt: serverTimestamp()
   });
+
+  if (previousSupervisorId) {
+    try {
+      const supRef = doc(db, 'profiles', previousSupervisorId);
+      await runTransaction(db, async (tx) => {
+        const s = await tx.get(supRef);
+        if (s.exists()) {
+          const current = s.data().activeTicketCount || 0;
+          tx.update(supRef, { activeTicketCount: Math.max(0, current - 1) });
+        }
+      });
+    } catch (e) { console.warn('decrement supervisor count failed:', e); }
+  }
 };
 
 export const requestContactInfo = async (ticketId, reason, requesterId, requesterName = '') => {
@@ -497,16 +537,21 @@ export const rejectDeletionByStudent = async (ticketId, reason = '') => {
   });
 };
 
-// ✅ طلب إغلاق التذكرة — بدون رسالة نظام داخل المحادثة (تُعرض كواجهة في الأسفل)
-export const requestTicketEnd = async (ticketId, supervisorName = '') => {
+// ✅ طلب إغلاق التذكرة — يدعم طلب "سند" الذكي أيضاً
+export const requestTicketEnd = async (ticketId, supervisorName = '', opts = {}) => {
+  const { aiEnd = false } = opts;
   const now = Date.now();
-  await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
+  const updates = {
     status: SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED,
     endRequestedAt: serverTimestamp(),
     endRequestExpiresAt: new Date(now + SUPPORT_END_TIMEOUT_MS),
     unreadForStudent: true,
     updatedAt: serverTimestamp()
-  });
+  };
+  if (aiEnd) {
+    updates.aiRequestedEnd = true;
+  }
+  await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), updates);
 };
 
 export const studentConfirmSolved = async (ticketId) => {
@@ -523,6 +568,7 @@ export const studentConfirmNotSolved = async (ticketId) => {
     studentSatisfied: false,
     endRequestedAt: null,
     endRequestExpiresAt: null,
+    aiRequestedEnd: false,
     updatedAt: serverTimestamp()
   });
 };
@@ -542,6 +588,7 @@ export const submitRating = async (ticketId, rating, ratingCategory, ratingReaso
     ratingReason: ratingReason || null,
     ratedAt: serverTimestamp(),
     status: newStatus,
+    closedAt: isFull ? serverTimestamp() : null,
     updatedAt: serverTimestamp()
   });
 
@@ -560,9 +607,17 @@ export const submitRating = async (ticketId, rating, ratingCategory, ratingReaso
       });
     }
   }
+
+  // ✅ عند تقييم 5 نجوم يُحذف نهائياً من السيرفر فوراً
+  if (isFull) {
+    try { await deleteTicketPermanently(ticketId); }
+    catch (e) { console.warn('auto-delete after full rating failed:', e); }
+  }
+
   return newStatus;
 };
 
+// ✅ قرار المدير: بعد تسجيل القرار تُحذف التذكرة نهائياً فوراً (لا حاجة لزر "إنهاء وحذف")
 export const managerDecide = async (ticketId, decision, managerReason) => {
   const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
   const snap = await getDoc(ticketRef);
@@ -599,6 +654,11 @@ export const managerDecide = async (ticketId, decision, managerReason) => {
       }
     }
   }
+
+  // ✅ حذف نهائي فوري بعد قرار المدير
+  try { await deleteTicketPermanently(ticketId); }
+  catch (e) { console.warn('auto-delete after manager decision failed:', e); }
+
   return newStatus;
 };
 
@@ -687,6 +747,7 @@ export const cancelReportAndReopen = async (ticketId, managerId) => {
   const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
   const snap = await getDoc(ticketRef);
   if (!snap.exists()) throw new Error('التذكرة غير موجودة');
+  const data = snap.data();
 
   const systemMessage = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
@@ -710,6 +771,19 @@ export const cancelReportAndReopen = async (ticketId, managerId) => {
     messages: arrayUnion(systemMessage),
     updatedAt: serverTimestamp()
   });
+
+  if (data.assignedSupervisorId) {
+    try {
+      const supRef = doc(db, 'profiles', data.assignedSupervisorId);
+      await runTransaction(db, async (tx) => {
+        const s = await tx.get(supRef);
+        if (s.exists()) {
+          const current = s.data().activeTicketCount || 0;
+          tx.update(supRef, { activeTicketCount: Math.max(0, current - 1) });
+        }
+      });
+    } catch (e) { console.warn('decrement failed:', e); }
+  }
 };
 
 export const closeReportedTicketAfterAccountDeletion = async (ticketId) => {
@@ -720,7 +794,7 @@ export const finalizeReportWithWarning = async (ticketId, managerId) => {
   await deleteTicketPermanently(ticketId);
 };
 
-// ===== مؤشر "يكتب الآن" للمشرف/المدير (يُحدَّث كل ~3 ثواني أثناء الكتابة) =====
+// ===== مؤشر "يكتب الآن" للمشرف/المدير =====
 export const setTicketTyping = async (ticketId, who) => {
   await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
     typing: { id: who.id, name: who.name || '', role: who.role || '', at: Date.now() }
@@ -731,7 +805,7 @@ export const clearTicketTyping = async (ticketId) => {
   await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), { typing: null });
 };
 
-// ===== حجز "حق رد المساعد" على رسالة معيّنة، لمنع تكرار الرد لو كان الطالب فاتح أكثر من تبويب =====
+// ===== حجز "حق رد المساعد" على رسالة معيّنة =====
 export const claimAiReply = async (ticketId, messageId) => {
   try {
     const ref = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
@@ -745,5 +819,20 @@ export const claimAiReply = async (ticketId, messageId) => {
   } catch (err) {
     console.warn('claimAiReply failed, continuing anyway:', err);
     return true;
+  }
+};
+
+// ===== تسجيل محاولة انتحال هوية / اختراق في سجل الحوادث الأمنية =====
+export const logSecurityIncident = async (ticketId, userRole, text) => {
+  try {
+    await addDoc(collection(db, 'securityIncidents'), {
+      ticketId: ticketId || null,
+      userRole: userRole || 'unknown',
+      text: String(text || '').slice(0, 2000),
+      createdAt: serverTimestamp(),
+      reviewed: false
+    });
+  } catch (e) {
+    console.warn('logSecurityIncident failed:', e);
   }
 };
