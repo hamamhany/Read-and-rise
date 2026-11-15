@@ -15,7 +15,6 @@ const AI_SENDER_ID = 'ai-assistant';
 const AI_SENDER_NAME = 'المساعد الذكي سند';
 const AI_SENDER_ROLE = 'system';
 
-// دالة لحجز حق الرد ومنع التكرار (نفس فكرة claimAiReply في العميل)
 async function claimAiReply(ticketId, messageId) {
   const ticketRef = db.collection('supportTickets').doc(ticketId);
   try {
@@ -32,7 +31,6 @@ async function claimAiReply(ticketId, messageId) {
   }
 }
 
-// بناء سجل المحادثة الذي يفهمه Gemini
 function buildAiHistory(messages, studentId) {
   return messages
     .filter((m) => m.senderId === studentId || m.senderId === AI_SENDER_ID)
@@ -44,8 +42,9 @@ function buildAiHistory(messages, studentId) {
 }
 
 export default async function handler(req, res) {
-  // ===== حماية الرابط بمفتاح سري =====
-  const secret = req.query.secret || req.headers['x-cron-secret'];
+  // ✅ التعديل هنا: نقرأ كلمة السر فقط من الترويسة (Header)
+  const secret = req.headers['x-cron-secret'];
+  
   if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
@@ -54,7 +53,6 @@ export default async function handler(req, res) {
     const now = Date.now();
     const cutoff = now - AI_FALLBACK_MS;
 
-    // جلب كل التذاكر قيد التنفيذ
     const snap = await db
       .collection('supportTickets')
       .where('status', '==', 'in_progress')
@@ -69,22 +67,17 @@ export default async function handler(req, res) {
 
       const lastMsg = messages[messages.length - 1];
 
-      // تجاهل إذا كانت آخر رسالة من المساعد أو من المشرف
       if (lastMsg.senderId === AI_SENDER_ID) continue;
       if (lastMsg.senderId === ticket.assignedSupervisorId) continue;
 
-      // تجاهل إذا لم تمر 10 دقائق بعد
       const lastMsgTime = new Date(lastMsg.createdAt).getTime();
       if (!lastMsgTime || lastMsgTime > cutoff) continue;
 
-      // تجاهل إذا سبق للمساعد الرد على هذه الرسالة
       if (ticket.aiRepliedToMessageId === lastMsg.id) continue;
 
-      // حجز حق الرد (لمنع التكرار لو حدث تنفيذ متزامن)
       const claimed = await claimAiReply(doc.id, lastMsg.id);
       if (!claimed) continue;
 
-      // بناء السجل وإرساله إلى Gemini
       const history = buildAiHistory(messages, ticket.studentId);
       const geminiUrl = `${process.env.VERCEL_URL ? 'https://' + process.env.VERCEL_URL : 'http://localhost:3000'}/api/gemini`;
 
@@ -108,7 +101,6 @@ export default async function handler(req, res) {
 
       if (!aiText) continue;
 
-      // تجهيز رسالة المساعد وحفظها في Firestore
       const aiMessage = {
         id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
         senderId: AI_SENDER_ID,
