@@ -58,9 +58,9 @@ function countLessonsBetween(startMs, endMs, lessonTimes) {
 }
 
 export default async function handler(req, res) {
-  const authHeader = req.headers.authorization;
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  // ✅ التعديل هنا: قراءة كلمة السر من الترويسة x-cron-secret
+  const secret = req.headers['x-cron-secret'];
+  if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
