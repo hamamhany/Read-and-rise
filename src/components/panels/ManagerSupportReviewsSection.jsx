@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import {
   FaExclamationTriangle, FaEye, FaUser, FaHeadset, FaTimes,
   FaSpinner, FaTrashAlt, FaCheckCircle, FaRedoAlt, FaBan, FaBell, FaRobot,
-  FaPlay, FaPause, FaChartBar
+  FaPlay, FaPause, FaChartBar, FaSyncAlt
 } from 'react-icons/fa';
 import {
   subscribeToManagerReviewTickets, subscribeToManagerOpenTickets,
@@ -23,7 +23,7 @@ import {
 import { issueWarning } from '../../services/warnings';
 import { deleteUserCompletely } from '../../services/accountDeletion';
 import {
-  doc, getDoc, setDoc, collection, query, where, orderBy, limit,
+  doc, getDoc, setDoc, deleteDoc, collection, query, where, orderBy, limit,
   onSnapshot, serverTimestamp
 } from 'firebase/firestore';
 import { db } from '../../firebase';
@@ -170,6 +170,21 @@ const ManagerSupportReviewsSection = ({ user }) => {
       toast.error(`فشل: ${e.message}`);
     } finally {
       setTogglingAi(false);
+    }
+  };
+
+  const handleResetStats = async () => {
+    const ok = await confirm('تصفير الإحصائيات', 'هل تريد تصفير إحصائيات استخدام المساعد الذكي لهذا اليوم والأمس؟');
+    if (!ok) return;
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+      await deleteDoc(doc(db, 'aiUsage', today));
+      await deleteDoc(doc(db, 'aiUsage', yesterday));
+      setAiStats({ totalToday: 0, peakPerMinute: 0, totalLast24h: 0, quotaExceeded: 0 });
+      toast.success('✅ تم تصفير الإحصائيات بنجاح');
+    } catch (e) {
+      toast.error('فشل التصفير: ' + e.message);
     }
   };
 
@@ -373,7 +388,7 @@ const ManagerSupportReviewsSection = ({ user }) => {
 
   return (
     <div className="bg-gray-800/60 p-6 rounded-2xl border border-rose-500/20 space-y-4">
-      {/* ✅ لوحة المساعد الذكي سند (دائماً ظاهرة للمدير) */}
+      {/* ✅ لوحة المساعد الذكي سند */}
       <div className="bg-gradient-to-br from-indigo-900/30 to-purple-900/20 p-4 rounded-xl border border-indigo-500/40">
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <h4 className="text-indigo-200 font-bold flex items-center gap-2 text-sm">
@@ -382,20 +397,25 @@ const ManagerSupportReviewsSection = ({ user }) => {
               {aiEnabled ? '● يعمل' : '■ متوقف'}
             </span>
           </h4>
-          <button
-            onClick={toggleAi}
-            disabled={togglingAi}
-            className={`px-4 py-1.5 rounded-lg text-xs font-bold text-white flex items-center gap-1.5 disabled:opacity-50 transition ${
-              aiEnabled
-                ? 'bg-red-600 hover:bg-red-700'
-                : 'bg-green-600 hover:bg-green-700'
-            }`}
-          >
-            {togglingAi
-              ? <FaSpinner className="animate-spin" size={10} />
-              : aiEnabled ? <FaPause size={10} /> : <FaPlay size={10} />}
-            {togglingAi ? '...' : aiEnabled ? 'إيقاف الردود' : 'تشغيل الردود'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleResetStats}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold text-gray-300 bg-gray-700 hover:bg-gray-600 flex items-center gap-1.5 transition"
+              title="تصفير الإحصائيات"
+            >
+              <FaSyncAlt size={10} /> تصفير
+            </button>
+            <button
+              onClick={toggleAi}
+              disabled={togglingAi}
+              className={`px-4 py-1.5 rounded-lg text-xs font-bold text-white flex items-center gap-1.5 disabled:opacity-50 transition ${
+                aiEnabled ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'
+              }`}
+            >
+              {togglingAi ? <FaSpinner className="animate-spin" size={10} /> : aiEnabled ? <FaPause size={10} /> : <FaPlay size={10} />}
+              {togglingAi ? '...' : aiEnabled ? 'إيقاف الردود' : 'تشغيل الردود'}
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">

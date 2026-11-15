@@ -44,13 +44,15 @@ export async function askAssistant({
   history = [],
   userRole = 'student',
   suppressEndTag = false,
+  userName = '',
+  userGender = '',
 }) {
   changePending(ticketId, +1);
   try {
     const response = await fetch('/api/gemini', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, history, userRole, suppressEndTag }),
+      body: JSON.stringify({ message, history, userRole, suppressEndTag, userName, userGender }),
     });
 
     const raw = await response.text();
@@ -67,7 +69,6 @@ export async function askAssistant({
 
     await sendTicketMessage(ticketId, AI_SENDER, data.text);
 
-    // ✅ إذا رأى "سند" أن الاستفسار انتهى — يقدّم طلب إنهاء زي المشرف
     if (data.endRequested) {
       try {
         await requestTicketEnd(ticketId, AI_SENDER.name, { aiEnd: true });
@@ -76,7 +77,6 @@ export async function askAssistant({
       }
     }
 
-    // ✅ إذا اكتشف "سند" محاولة انتحال هوية — تُسجّل الحادثة أمنياً
     if (data.impersonationDetected) {
       try {
         await logSecurityIncident(ticketId, userRole, message);
