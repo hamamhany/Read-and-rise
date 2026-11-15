@@ -19,9 +19,9 @@ const REMINDER_DAYS = 21;
 const DELETE_AFTER_REMINDER_DAYS = 7;
 
 export default async function handler(req, res) {
-  const authHeader = req.headers.authorization;
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}` && req.headers['x-vercel-cron'] !== '1') {
+  // ✅ التعديل هنا: قراءة كلمة السر من الترويسة x-cron-secret
+  const secret = req.headers['x-cron-secret'];
+  if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
