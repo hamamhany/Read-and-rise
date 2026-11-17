@@ -29,7 +29,7 @@ import {
 
 const TYPING_TTL_MS = 5000;
 const TYPING_PING_MS = 3000;
-const AI_FALLBACK_MS = 10 * 60 * 1000; // المساعد يرد بعد 10 دقائق لو المشرف ما رد
+const AI_FALLBACK_MS = 10 * 60 * 1000;
 const AI_END_CLIENT_COOLDOWN_MS = 60 * 1000;
 const AI_DEDUPE_MS = 3000;
 
@@ -177,7 +177,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
     return () => clearTimeout(timer);
   }, [ticket?.typing?.at, ticket?.typing?.id, !!ticket, user.id]);
 
-  // ===== آلية الـ10 دقايق: المشرف موجود وما رد → سند يرد كاحتياطي =====
   const lastMsgId = ticket?.messages?.[ticket.messages.length - 1]?.id;
   useEffect(() => {
     if (viewerMode !== 'student') return;
@@ -216,6 +215,26 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
     timer = setTimeout(attempt, Math.max(0, sentAt + AI_FALLBACK_MS - Date.now()));
     return () => { cancelled = true; clearTimeout(timer); };
   }, [lastMsgId, ticket?.status, ticket?.assignedSupervisorId, ticketId, viewerMode, user.id, user.role, aiEnabled, user.name, user.username, user.gender]);
+
+  // ✅ حماية: المدير ما يقدر يفتح دردشة ليس فيها مشرف بشري ولا محوّلة ولا بلاغ
+  if (
+    ticket &&
+    viewerMode === 'manager' &&
+    ticket.studentId !== user.id &&
+    ticket.assignedSupervisorId == null &&
+    ticket.requiresManager !== true &&
+    ticket.status !== SUPPORT_TICKET_STATUS.REPORTED
+  ) {
+    return (
+      <div className="fixed inset-0 bg-black/90 z-[70] flex items-center justify-center p-4" onClick={onClose}>
+        <div className="bg-gray-900 p-6 rounded-2xl max-w-sm text-center border border-red-500/30" onClick={e => e.stopPropagation()}>
+          <p className="text-red-300 font-bold mb-2">⚠️ لا يمكن الوصول</p>
+          <p className="text-gray-300 text-sm mb-4">هذه المحادثة خاصة بين المستخدم والمساعد الذكي، ولا يمكن الاطلاع عليها إلا بعد تدخل مشرف بشري.</p>
+          <button onClick={onClose} className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm">إغلاق</button>
+        </div>
+      </div>
+    );
+  }
 
   if (!ticket) {
     return (
@@ -272,7 +291,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
       return;
     }
 
-    // سند يرد فوراً فقط إذا ما في مشرف معيَّن (لتفادي انتظار الـ10 دقايق بلا فايدة)
     if (ticket.assignedSupervisorId) return;
 
     const now = Date.now();
