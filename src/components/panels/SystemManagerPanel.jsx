@@ -1,3 +1,4 @@
+// src/components/panels/SystemManagerPanel.jsx
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import {
@@ -147,9 +148,9 @@ const SystemManagerPanel = ({ user, onLogout }) => {
   useEffect(() => {
     const unsub = setupOnMessageListener((payload) => {
       toast.custom(() => (
-        <div className="bg-gray-800 text-white p-4 rounded-xl border border-amber-500 shadow-xl max-w-sm mx-auto">
+        <div className="bg-white dark:bg-gray-800 text-slate-900 dark:text-white p-4 rounded-xl border border-amber-500 shadow-xl max-w-sm mx-auto">
           <strong className="block text-lg">{payload.notification?.title}</strong>
-          <p className="text-sm text-gray-200">{payload.notification?.body}</p>
+          <p className="text-sm text-slate-600 dark:text-gray-200">{payload.notification?.body}</p>
         </div>
       ), { duration: 5000 });
     });
@@ -331,7 +332,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
         break;
       case 'auto_delete':
       case 'unactivated_account_deleted':
-        // الحساب محذوف مسبقاً من الـ cron — هنا فقط إرسال الإشعار
         break;
       case 'password_reset_approval': {
         const idToken = await auth.currentUser.getIdToken();
@@ -522,96 +522,96 @@ const SystemManagerPanel = ({ user, onLogout }) => {
   const pendingCount = messageRequests.filter(r => r.status === 'pending' && r.type !== 'report').length;
   const pad2 = (n) => String(n).padStart(2, '0');
 
-  if (loading) return <div className="text-center text-gray-400 p-8">جاري التحميل...</div>;
+  if (loading) return <div className="text-center text-slate-500 dark:text-gray-400 p-8">جاري التحميل...</div>;
 
   return (
     <div className="container-center min-h-screen p-4 relative" dir="rtl">
-      <div className="bg-gray-900/80 p-8 max-w-5xl w-full space-y-6 z-10 border border-gray-700 rounded-3xl backdrop-blur-sm">
-        <div className="flex justify-between items-center flex-wrap gap-4 border-b border-gray-700 pb-4">
+      <div className="bg-white/90 dark:bg-gray-900/80 p-8 max-w-5xl w-full space-y-6 z-10 border border-gray-200 dark:border-gray-700 rounded-3xl backdrop-blur-sm shadow-xl">
+        <div className="flex justify-between items-center flex-wrap gap-4 border-b border-gray-300 dark:border-gray-700 pb-4">
           <div>
-            <h2 className="text-3xl font-bold text-amber-400 flex items-center gap-2">
+            <h2 className="text-3xl font-bold text-amber-600 dark:text-amber-400 flex items-center gap-2">
               <FaUserShield /> لوحة مدير النظام
             </h2>
-            <p className="text-gray-400 text-sm mt-1">مرحباً بك: {user.name || user.username}</p>
+            <p className="text-slate-600 dark:text-gray-400 text-sm mt-1">مرحباً بك: {user.name || user.username}</p>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={handleOpenNotifications} className="relative bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-full text-2xl transition shadow-lg">
+            <button onClick={handleOpenNotifications} className="relative bg-slate-200 dark:bg-gray-700 hover:bg-slate-300 dark:hover:bg-gray-600 text-slate-800 dark:text-white p-2 rounded-full text-2xl transition shadow-lg">
               <FaBell />
               {unreadCount > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">{unreadCount}</span>}
-              {notificationsActive && <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-400 rounded-full border-2 border-gray-900 animate-pulse" />}
+              {notificationsActive && <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-400 rounded-full border-2 border-white dark:border-gray-900 animate-pulse" />}
             </button>
             <button onClick={onLogout} className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-full text-2xl transition shadow-lg"><FaSignOutAlt /></button>
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-gradient-to-br from-red-900/50 to-red-900/20 p-6 rounded-2xl border border-red-500/30 shadow-xl">
+          <div className="bg-gradient-to-br from-red-100 to-red-50 dark:from-red-900/50 dark:to-red-900/20 p-6 rounded-2xl border border-red-200 dark:border-red-500/30 shadow-xl">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center shadow-lg"><FaExclamationTriangle className="text-white text-xl" /></div>
-              <div><p className="text-xs text-red-300 uppercase tracking-widest font-semibold">طلبات معلّقة</p><h3 className="text-sm font-bold text-red-100">قيد المراجعة</h3></div>
+              <div><p className="text-xs text-red-600 dark:text-red-300 uppercase tracking-widest font-semibold">طلبات معلّقة</p><h3 className="text-sm font-bold text-red-900 dark:text-red-100">قيد المراجعة</h3></div>
             </div>
-            <p className="text-4xl font-black text-white"><CountUp value={pendingCount} /></p>
+            <p className="text-4xl font-black text-slate-900 dark:text-white"><CountUp value={pendingCount} /></p>
           </div>
 
-          <div className="bg-gradient-to-br from-emerald-900/50 to-emerald-900/20 p-6 rounded-2xl border border-emerald-500/30 shadow-xl">
+          <div className="bg-gradient-to-br from-emerald-100 to-emerald-50 dark:from-emerald-900/50 dark:to-emerald-900/20 p-6 rounded-2xl border border-emerald-200 dark:border-emerald-500/30 shadow-xl">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center shadow-lg"><FaUsers className="text-white text-xl" /></div>
-              <div><p className="text-xs text-emerald-300 uppercase tracking-widest font-semibold">الطلاب</p><h3 className="text-sm font-bold text-emerald-100">إجمالي المسجلين</h3></div>
+              <div><p className="text-xs text-emerald-600 dark:text-emerald-300 uppercase tracking-widest font-semibold">الطلاب</p><h3 className="text-sm font-bold text-emerald-900 dark:text-emerald-100">إجمالي المسجلين</h3></div>
             </div>
-            <p className="text-4xl font-black text-white"><CountUp value={studentsCount} /></p>
+            <p className="text-4xl font-black text-slate-900 dark:text-white"><CountUp value={studentsCount} /></p>
           </div>
 
-          <div className="bg-gradient-to-br from-indigo-900/50 to-indigo-900/20 p-6 rounded-2xl border border-indigo-500/30 shadow-xl">
+          <div className="bg-gradient-to-br from-indigo-100 to-indigo-50 dark:from-indigo-900/50 dark:to-indigo-900/20 p-6 rounded-2xl border border-indigo-200 dark:border-indigo-500/30 shadow-xl">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-lg"><FaUserShield className="text-white text-xl" /></div>
-              <div><p className="text-xs text-indigo-300 uppercase tracking-widest font-semibold">المشرفين</p><h3 className="text-sm font-bold text-indigo-100">الحسابات النشطة</h3></div>
+              <div><p className="text-xs text-indigo-600 dark:text-indigo-300 uppercase tracking-widest font-semibold">المشرفين</p><h3 className="text-sm font-bold text-indigo-900 dark:text-indigo-100">الحسابات النشطة</h3></div>
             </div>
-            <p className="text-4xl font-black text-white"><CountUp value={supervisorsCount} /></p>
+            <p className="text-4xl font-black text-slate-900 dark:text-white"><CountUp value={supervisorsCount} /></p>
           </div>
 
-          <div className="bg-gradient-to-br from-blue-900/50 to-blue-900/20 p-6 rounded-2xl border border-blue-500/30 shadow-xl">
+          <div className="bg-gradient-to-br from-blue-100 to-blue-50 dark:from-blue-900/50 dark:to-blue-900/20 p-6 rounded-2xl border border-blue-200 dark:border-blue-500/30 shadow-xl">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center shadow-lg"><FaChalkboardTeacher className="text-white text-xl" /></div>
-              <div><p className="text-xs text-blue-300 uppercase tracking-widest font-semibold">المعلمين</p><h3 className="text-sm font-bold text-blue-100">في النظام</h3></div>
+              <div><p className="text-xs text-blue-600 dark:text-blue-300 uppercase tracking-widest font-semibold">المعلمين</p><h3 className="text-sm font-bold text-blue-900 dark:text-blue-100">في النظام</h3></div>
             </div>
-            <p className="text-4xl font-black text-white"><CountUp value={teachersCount} /></p>
+            <p className="text-4xl font-black text-slate-900 dark:text-white"><CountUp value={teachersCount} /></p>
           </div>
 
-          <div className="bg-gradient-to-br from-purple-900/50 to-purple-900/20 p-6 rounded-2xl border border-purple-500/30 shadow-xl">
+          <div className="bg-gradient-to-br from-purple-100 to-purple-50 dark:from-purple-900/50 dark:to-purple-900/20 p-6 rounded-2xl border border-purple-200 dark:border-purple-500/30 shadow-xl">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-fuchsia-600 flex items-center justify-center shadow-lg"><FaBroadcastTower className="text-white text-xl" /></div>
-              <div><p className="text-xs text-purple-300 uppercase tracking-widest font-semibold">محاضرات</p><h3 className="text-sm font-bold text-purple-100">نشطة الآن</h3></div>
+              <div><p className="text-xs text-purple-600 dark:text-purple-300 uppercase tracking-widest font-semibold">محاضرات</p><h3 className="text-sm font-bold text-purple-900 dark:text-purple-100">نشطة الآن</h3></div>
             </div>
-            <p className="text-4xl font-black text-white"><CountUp value={activeLecturesCount} /></p>
+            <p className="text-4xl font-black text-slate-900 dark:text-white"><CountUp value={activeLecturesCount} /></p>
           </div>
 
-          <div className="bg-gradient-to-br from-amber-900/50 to-amber-900/20 p-6 rounded-2xl border border-amber-500/30 shadow-xl">
+          <div className="bg-gradient-to-br from-amber-100 to-amber-50 dark:from-amber-900/50 dark:to-amber-900/20 p-6 rounded-2xl border border-amber-200 dark:border-amber-500/30 shadow-xl">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500 to-yellow-600 flex items-center justify-center shadow-lg"><FaHourglassHalf className="text-white text-xl" /></div>
-              <div><p className="text-xs text-amber-300 uppercase tracking-widest font-semibold">الحصة القادمة</p></div>
+              <div><p className="text-xs text-amber-600 dark:text-amber-300 uppercase tracking-widest font-semibold">الحصة القادمة</p></div>
             </div>
             {nextGlobalLesson ? (
-              <p className="text-3xl font-black text-white tabular-nums" dir="ltr">
-                {liveCountdown.d > 0 && <span className="text-amber-200">{liveCountdown.d}d </span>}
+              <p className="text-3xl font-black text-slate-900 dark:text-white tabular-nums" dir="ltr">
+                {liveCountdown.d > 0 && <span className="text-amber-600 dark:text-amber-200">{liveCountdown.d}d </span>}
                 {pad2(liveCountdown.h)}:{pad2(liveCountdown.m)}:{pad2(liveCountdown.s)}
               </p>
-            ) : <p className="text-2xl font-black text-gray-500 text-center">—</p>}
+            ) : <p className="text-2xl font-black text-slate-400 dark:text-gray-500 text-center">—</p>}
           </div>
         </div>
 
         {pendingAnnouncements.length > 0 && (
-          <div className="bg-gray-800/60 p-6 rounded-2xl border border-blue-500/30">
-            <h3 className="text-xl font-semibold text-blue-300 flex items-center gap-2 mb-3">
+          <div className="bg-blue-50 dark:bg-gray-800/60 p-6 rounded-2xl border border-blue-200 dark:border-blue-500/30">
+            <h3 className="text-xl font-semibold text-blue-700 dark:text-blue-300 flex items-center gap-2 mb-3">
               <FaBroadcastTower /> إعلانات بانتظار موافقتك ({pendingAnnouncements.length})
             </h3>
             <div className="space-y-3 max-h-80 overflow-y-auto">
               {pendingAnnouncements.map(ann => (
-                <div key={ann.id} className="p-4 bg-black/30 rounded-xl border border-blue-500/20">
+                <div key={ann.id} className="p-4 bg-white dark:bg-black/30 rounded-xl border border-blue-200 dark:border-blue-500/20">
                   <div className="flex justify-between items-start gap-2 flex-wrap mb-2">
                     <div className="flex-1 min-w-0">
-                      <p className="text-white font-bold">{ann.title}</p>
-                      <p className="text-xs text-gray-400 mt-1">من: {ann.requestedByName || 'مشرف'}</p>
-                      <p className="text-sm text-gray-300 mt-2 line-clamp-3 whitespace-pre-wrap">{ann.body}</p>
+                      <p className="text-slate-900 dark:text-white font-bold">{ann.title}</p>
+                      <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">من: {ann.requestedByName || 'مشرف'}</p>
+                      <p className="text-sm text-slate-700 dark:text-gray-300 mt-2 line-clamp-3 whitespace-pre-wrap">{ann.body}</p>
                     </div>
                   </div>
                   <div className="flex gap-2 mt-2 flex-wrap">
@@ -632,53 +632,53 @@ const SystemManagerPanel = ({ user, onLogout }) => {
         <ManagerSupportReviewsSection user={user} />
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <button onClick={() => setShowSupervisorsModal(true)} className="bg-gradient-to-br from-indigo-900/40 to-blue-900/20 p-5 rounded-2xl border border-indigo-500/30 hover:border-indigo-400/60 text-right shadow-lg">
+          <button onClick={() => setShowSupervisorsModal(true)} className="bg-indigo-50 dark:bg-gradient-to-br dark:from-indigo-900/40 dark:to-blue-900/20 p-5 rounded-2xl border border-indigo-200 dark:border-indigo-500/30 hover:border-indigo-400 dark:hover:border-indigo-400/60 text-right shadow-lg transition-colors">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-lg"><FaUserShield className="text-white text-xl" /></div>
-                <div><p className="text-white font-bold">إدارة المشرفين</p><p className="text-xs text-indigo-300 mt-0.5">{supervisorsCount} مشرف</p></div>
+                <div><p className="text-slate-900 dark:text-white font-bold">إدارة المشرفين</p><p className="text-xs text-indigo-600 dark:text-indigo-300 mt-0.5">{supervisorsCount} مشرف</p></div>
               </div>
-              <FaChevronLeft className="text-indigo-300" />
+              <FaChevronLeft className="text-indigo-500 dark:text-indigo-300" />
             </div>
           </button>
 
-          <button onClick={() => setShowStudentsModal(true)} className="bg-gradient-to-br from-blue-900/40 to-cyan-900/20 p-5 rounded-2xl border border-blue-500/30 hover:border-blue-400/60 text-right shadow-lg">
+          <button onClick={() => setShowStudentsModal(true)} className="bg-blue-50 dark:bg-gradient-to-br dark:from-blue-900/40 dark:to-cyan-900/20 p-5 rounded-2xl border border-blue-200 dark:border-blue-500/30 hover:border-blue-400 dark:hover:border-blue-400/60 text-right shadow-lg transition-colors">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center shadow-lg"><FaUsers className="text-white text-xl" /></div>
-                <div><p className="text-white font-bold">إدارة الطلاب</p><p className="text-xs text-blue-300 mt-0.5">{studentsCount} طالب</p></div>
+                <div><p className="text-slate-900 dark:text-white font-bold">إدارة الطلاب</p><p className="text-xs text-blue-600 dark:text-blue-300 mt-0.5">{studentsCount} طالب</p></div>
               </div>
-              <FaChevronLeft className="text-blue-300" />
+              <FaChevronLeft className="text-blue-500 dark:text-blue-300" />
             </div>
           </button>
 
-          <button onClick={() => setShowBlacklistModal(true)} className="bg-gradient-to-br from-red-900/40 to-rose-900/20 p-5 rounded-2xl border border-red-500/30 hover:border-red-400/60 text-right shadow-lg">
+          <button onClick={() => setShowBlacklistModal(true)} className="bg-red-50 dark:bg-gradient-to-br dark:from-red-900/40 dark:to-rose-900/20 p-5 rounded-2xl border border-red-200 dark:border-red-500/30 hover:border-red-400 dark:hover:border-red-400/60 text-right shadow-lg transition-colors">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center shadow-lg"><FaBan className="text-white text-xl" /></div>
-                <div><p className="text-white font-bold">القائمة السوداء</p><p className="text-xs text-red-300 mt-0.5">{blacklistCount} رقم محظور</p></div>
+                <div><p className="text-slate-900 dark:text-white font-bold">القائمة السوداء</p><p className="text-xs text-red-600 dark:text-red-300 mt-0.5">{blacklistCount} رقم محظور</p></div>
               </div>
-              <FaChevronLeft className="text-red-300" />
+              <FaChevronLeft className="text-red-500 dark:text-red-300" />
             </div>
           </button>
         </div>
 
-        <div className="bg-gray-800/60 p-6 rounded-2xl border border-amber-500/30">
+        <div className="bg-amber-50 dark:bg-gray-800/60 p-6 rounded-2xl border border-amber-200 dark:border-amber-500/30">
           <div className="flex justify-between items-center flex-wrap gap-3 mb-4">
-            <h3 className="text-xl font-semibold text-amber-300 flex items-center gap-2">
+            <h3 className="text-xl font-semibold text-amber-700 dark:text-amber-300 flex items-center gap-2">
               <FaPaperPlane /> طلبات الرسائل والإجراءات ({filteredRequests.length})
             </h3>
             <div className="flex flex-wrap gap-2">
-              <button onClick={() => setRequestFilter('pending')} className={`px-3 py-1 rounded-lg text-xs ${requestFilter === 'pending' ? 'bg-amber-600 text-white' : 'bg-gray-700 text-gray-300'}`}>قيد المراجعة ({pendingCount})</button>
-              <button onClick={() => setRequestFilter('approved')} className={`px-3 py-1 rounded-lg text-xs ${requestFilter === 'approved' ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-300'}`}>معتمدة</button>
-              <button onClick={() => setRequestFilter('rejected')} className={`px-3 py-1 rounded-lg text-xs ${requestFilter === 'rejected' ? 'bg-red-600 text-white' : 'bg-gray-700 text-gray-300'}`}>مرفوضة</button>
-              <button onClick={() => setRequestFilter('all')} className={`px-3 py-1 rounded-lg text-xs ${requestFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300'}`}>الكل</button>
+              <button onClick={() => setRequestFilter('pending')} className={`px-3 py-1 rounded-lg text-xs transition-colors ${requestFilter === 'pending' ? 'bg-amber-600 text-white' : 'bg-slate-200 dark:bg-gray-700 text-slate-700 dark:text-gray-300'}`}>قيد المراجعة ({pendingCount})</button>
+              <button onClick={() => setRequestFilter('approved')} className={`px-3 py-1 rounded-lg text-xs transition-colors ${requestFilter === 'approved' ? 'bg-green-600 text-white' : 'bg-slate-200 dark:bg-gray-700 text-slate-700 dark:text-gray-300'}`}>معتمدة</button>
+              <button onClick={() => setRequestFilter('rejected')} className={`px-3 py-1 rounded-lg text-xs transition-colors ${requestFilter === 'rejected' ? 'bg-red-600 text-white' : 'bg-slate-200 dark:bg-gray-700 text-slate-700 dark:text-gray-300'}`}>مرفوضة</button>
+              <button onClick={() => setRequestFilter('all')} className={`px-3 py-1 rounded-lg text-xs transition-colors ${requestFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-slate-200 dark:bg-gray-700 text-slate-700 dark:text-gray-300'}`}>الكل</button>
             </div>
           </div>
-          <p className="text-xs text-gray-500 mb-3">📌 اضغط "فتح" لمراجعة الطلب — إرسال (فاتح واتساب) / تم الإرسال (تنفيذ + مسح) / رفض</p>
+          <p className="text-xs text-slate-500 dark:text-gray-500 mb-3">📌 اضغط "فتح" لمراجعة الطلب — إرسال (فاتح واتساب) / تم الإرسال (تنفيذ + مسح) / رفض</p>
 
           {filteredRequests.length === 0 ? (
-            <p className="text-gray-400 text-center py-6">لا توجد طلبات في هذا التصنيف.</p>
+            <p className="text-slate-500 dark:text-gray-400 text-center py-6">لا توجد طلبات في هذا التصنيف.</p>
           ) : (
             <div className="space-y-3 max-h-[600px] overflow-y-auto">
               {filteredRequests.map(request => {
@@ -687,27 +687,27 @@ const SystemManagerPanel = ({ user, onLogout }) => {
                 const isRejected = request.status === 'rejected';
                 const isActionType = ACTION_TYPES.includes(request.type);
                 const statusBadge = isPending ? (
-                  <span className="text-xs bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full">⏳ قيد المراجعة</span>
+                  <span className="text-xs bg-amber-500/20 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded-full">⏳ قيد المراجعة</span>
                 ) : isApproved ? (
-                  <span className="text-xs bg-green-500/20 text-green-300 px-2 py-0.5 rounded-full">✅ تم</span>
+                  <span className="text-xs bg-green-500/20 text-green-700 dark:text-green-300 px-2 py-0.5 rounded-full">✅ تم</span>
                 ) : (
-                  <span className="text-xs bg-red-500/20 text-red-300 px-2 py-0.5 rounded-full">❌ مرفوض</span>
+                  <span className="text-xs bg-red-500/20 text-red-700 dark:text-red-300 px-2 py-0.5 rounded-full">❌ مرفوض</span>
                 );
 
                 return (
-                  <div key={request.id} className="p-4 bg-black/30 rounded-xl border border-gray-700 space-y-2">
+                  <div key={request.id} className="p-4 bg-white dark:bg-black/30 rounded-xl border border-gray-200 dark:border-gray-700 space-y-2">
                     <div className="flex flex-wrap justify-between items-start gap-2">
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-amber-300 font-bold text-sm">{MESSAGE_REQUEST_TYPE_LABELS[request.type] || request.type}</span>
+                          <span className="text-amber-600 dark:text-amber-300 font-bold text-sm">{MESSAGE_REQUEST_TYPE_LABELS[request.type] || request.type}</span>
                           {statusBadge}
                         </div>
-                        <p className="text-white text-sm mt-1">
+                        <p className="text-slate-900 dark:text-white text-sm mt-1">
                           <strong>{request.targetName}</strong>
-                          {request.targetClass && <span className="text-gray-400 text-xs mr-2">({request.targetClass})</span>}
+                          {request.targetClass && <span className="text-slate-500 dark:text-gray-400 text-xs mr-2">({request.targetClass})</span>}
                         </p>
-                        <p className="text-xs text-gray-400 mt-0.5">مقدم من: {request.requestedByName || 'مشرف'}</p>
-                        <p className="text-[10px] text-gray-500 mt-1">
+                        <p className="text-xs text-slate-500 dark:text-gray-400 mt-0.5">مقدم من: {request.requestedByName || 'مشرف'}</p>
+                        <p className="text-[10px] text-slate-400 dark:text-gray-500 mt-1">
                           {request.createdAt?.toDate?.() ? new Date(request.createdAt.toDate()).toLocaleString('ar-EG') : ''}
                         </p>
                       </div>
@@ -744,7 +744,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
                           </button>
                         )}
                         {isApproved && (
-                          <button onClick={() => handleDeleteRequest(request.id)} className="text-xs bg-gray-600 hover:bg-gray-700 text-white px-3 py-1.5 rounded-lg">
+                          <button onClick={() => handleDeleteRequest(request.id)} className="text-xs bg-slate-500 hover:bg-slate-600 dark:bg-gray-600 dark:hover:bg-gray-700 text-white px-3 py-1.5 rounded-lg">
                             <FaTrashAlt className="inline me-1" /> حذف
                           </button>
                         )}
@@ -759,25 +759,25 @@ const SystemManagerPanel = ({ user, onLogout }) => {
       </div>
 
       {openRequestModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[70] flex items-center justify-center p-4" onClick={() => !processingAction && setOpenRequestModal(null)}>
-          <div className="bg-gray-900 rounded-3xl w-full max-w-lg max-h-[90vh] flex flex-col border border-amber-500/30" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center p-4 border-b border-gray-700">
-              <h3 className="text-lg font-bold text-amber-300">
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm z-[70] flex items-center justify-center p-4" onClick={() => !processingAction && setOpenRequestModal(null)}>
+          <div className="bg-white dark:bg-gray-900 rounded-3xl w-full max-w-lg max-h-[90vh] flex flex-col border border-amber-300 dark:border-amber-500/30 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
+              <h3 className="text-lg font-bold text-amber-600 dark:text-amber-300">
                 {MESSAGE_REQUEST_TYPE_LABELS[openRequestModal.type] || openRequestModal.type}
               </h3>
-              <button onClick={() => setOpenRequestModal(null)} className="text-gray-400 hover:text-white text-xl">✕</button>
+              <button onClick={() => setOpenRequestModal(null)} className="text-slate-400 hover:text-slate-700 dark:text-gray-400 dark:hover:text-white text-xl">✕</button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              <div className="bg-gray-800/60 p-3 rounded-xl">
-                <p className="text-xs text-gray-400 mb-1">المستلم:</p>
-                <p className="text-white font-bold">{openRequestModal.targetName}</p>
+              <div className="bg-slate-50 dark:bg-gray-800/60 p-3 rounded-xl border border-gray-200 dark:border-transparent">
+                <p className="text-xs text-slate-500 dark:text-gray-400 mb-1">المستلم:</p>
+                <p className="text-slate-900 dark:text-white font-bold">{openRequestModal.targetName}</p>
                 <div className="flex items-center gap-2 mt-2">
-                  <p className="text-sm text-cyan-300 font-mono flex-1" dir="ltr">{openRequestModal.targetPhone || '—'}</p>
+                  <p className="text-sm text-cyan-600 dark:text-cyan-300 font-mono flex-1" dir="ltr">{openRequestModal.targetPhone || '—'}</p>
                   {openRequestModal.targetPhone && (
                     <button
                       onClick={() => { navigator.clipboard.writeText(openRequestModal.targetPhone); toast.success('تم نسخ الرقم'); }}
-                      className="text-cyan-400 hover:text-cyan-300 p-1.5 rounded bg-cyan-500/10 hover:bg-cyan-500/20"
+                      className="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 p-1.5 rounded bg-cyan-500/10 hover:bg-cyan-500/20"
                       title="نسخ الرقم"
                     >
                       <FaCopy />
@@ -786,28 +786,28 @@ const SystemManagerPanel = ({ user, onLogout }) => {
                 </div>
               </div>
 
-              <div className="bg-gray-800/60 p-3 rounded-xl">
+              <div className="bg-slate-50 dark:bg-gray-800/60 p-3 rounded-xl border border-gray-200 dark:border-transparent">
                 <div className="flex items-center justify-between mb-1">
-                  <p className="text-xs text-gray-400">نص الرسالة:</p>
+                  <p className="text-xs text-slate-500 dark:text-gray-400">نص الرسالة:</p>
                   <button
                     onClick={() => { navigator.clipboard.writeText(buildMessageText(openRequestModal)); toast.success('تم نسخ الرسالة'); }}
-                    className="text-amber-400 hover:text-amber-300 p-1.5 rounded bg-amber-500/10 hover:bg-amber-500/20"
+                    className="text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 p-1.5 rounded bg-amber-500/10 hover:bg-amber-500/20"
                     title="نسخ الرسالة"
                   >
                     <FaCopy />
                   </button>
                 </div>
-                <p className="text-sm text-gray-200 whitespace-pre-wrap break-words max-h-60 overflow-y-auto bg-black/30 p-2 rounded border border-gray-700">
+                <p className="text-sm text-slate-700 dark:text-gray-200 whitespace-pre-wrap break-words max-h-60 overflow-y-auto bg-white dark:bg-black/30 p-2 rounded border border-gray-200 dark:border-gray-700">
                   {buildMessageText(openRequestModal)}
                 </p>
               </div>
 
-              <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-2 text-xs text-blue-200">
+              <div className="bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 rounded-lg p-2 text-xs text-blue-700 dark:text-blue-200">
                 ℹ️ اضغط "إرسال" لفتح واتساب. بعد إتمام الإرسال فعلياً، اضغط "تم الإرسال" لتنفيذ الإجراء النهائي وحذف الطلب.
               </div>
             </div>
 
-            <div className="p-4 border-t border-gray-700 space-y-2">
+            <div className="p-4 border-t border-gray-200 dark:border-gray-700 space-y-2">
               <button
                 onClick={() => handleSendWhatsApp(openRequestModal)}
                 className="w-full bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-xl font-bold flex items-center justify-center gap-2"
@@ -838,23 +838,23 @@ const SystemManagerPanel = ({ user, onLogout }) => {
       <BlacklistModal isOpen={showBlacklistModal} onClose={() => setShowBlacklistModal(false)} onCountChange={setBlacklistCount} />
 
       {showNotificationsModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={handleCloseNotifications}>
-          <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full max-h-[70vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={handleCloseNotifications}>
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl max-w-lg w-full max-h-[70vh] overflow-y-auto border border-gray-200 dark:border-gray-700 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-semibold text-amber-300"><FaBell className="inline-block me-2" /> الإشعارات</h3>
-              <button onClick={handleCloseNotifications} className="text-gray-400 hover:text-white text-2xl">✕</button>
+              <h3 className="text-xl font-semibold text-amber-600 dark:text-amber-300"><FaBell className="inline-block me-2" /> الإشعارات</h3>
+              <button onClick={handleCloseNotifications} className="text-slate-400 hover:text-slate-700 dark:text-gray-400 dark:hover:text-white text-2xl">✕</button>
             </div>
             {notifications.length === 0 ? (
-              <p className="text-gray-400 text-center py-4">لا توجد إشعارات</p>
+              <p className="text-slate-500 dark:text-gray-400 text-center py-4">لا توجد إشعارات</p>
             ) : (
               <div className="space-y-3">
                 {notifications.map((n) => (
-                  <div key={n.id} className="p-3 rounded-xl border bg-gray-800/60 border-blue-500/40">
+                  <div key={n.id} className="p-3 rounded-xl border bg-slate-50 dark:bg-gray-800/60 border-blue-200 dark:border-blue-500/40">
                     <div className="flex justify-between items-start">
-                      <h4 className="text-white font-medium">{n.title}</h4>
-                      <span className="text-xs text-gray-400">{n.createdAt?.toDate?.() ? new Date(n.createdAt.toDate()).toLocaleString('ar-EG') : ''}</span>
+                      <h4 className="text-slate-900 dark:text-white font-medium">{n.title}</h4>
+                      <span className="text-xs text-slate-500 dark:text-gray-400">{n.createdAt?.toDate?.() ? new Date(n.createdAt.toDate()).toLocaleString('ar-EG') : ''}</span>
                     </div>
-                    <p className="text-sm text-gray-300 mt-1">{n.body}</p>
+                    <p className="text-sm text-slate-700 dark:text-gray-300 mt-1">{n.body}</p>
                   </div>
                 ))}
               </div>
