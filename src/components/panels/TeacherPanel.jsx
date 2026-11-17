@@ -111,9 +111,9 @@ const TeacherPanel = ({ user, onLogout }) => {
     try {
       const unsub = onMessage(messaging, (payload) => {
         toast.custom(() => (
-          <div className="bg-gray-800 text-white p-4 rounded-xl border border-purple-500 shadow-xl max-w-sm mx-auto">
+          <div className="bg-white dark:bg-gray-800 text-slate-900 dark:text-white p-4 rounded-xl border border-purple-300 dark:border-purple-500 shadow-xl max-w-sm mx-auto">
             <strong className="block text-lg">{payload.notification?.title}</strong>
-            <p className="text-sm text-gray-200">{payload.notification?.body}</p>
+            <p className="text-sm text-slate-700 dark:text-gray-200">{payload.notification?.body}</p>
           </div>
         ), { duration: 5000 });
       });
@@ -530,39 +530,39 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  if (loading) return <div className="text-center text-gray-400 p-8">جاري التحميل...</div>;
+  if (loading) return <div className="text-center text-slate-500 dark:text-gray-400 p-8">جاري التحميل...</div>;
 
   return (
     <div className="container-center min-h-screen p-4 relative" dir="rtl">
-      <div className="bg-gray-900/80 p-8 max-w-4xl w-full space-y-6 z-10 border border-gray-700 rounded-3xl backdrop-blur-sm">
-        <div className="flex justify-between items-center flex-wrap gap-4 border-b border-gray-700 pb-4">
+      <div className="bg-white/90 dark:bg-gray-900/80 p-8 max-w-4xl w-full space-y-6 z-10 border border-slate-200 dark:border-gray-700 rounded-3xl backdrop-blur-sm">
+        <div className="flex justify-between items-center flex-wrap gap-4 border-b border-slate-200 dark:border-gray-700 pb-4">
           <div>
-            <h2 className="text-3xl font-bold text-purple-300">لوحة تحكم المعلم</h2>
-            <p className="text-gray-400 text-sm mt-1">مرحباً: {user.name || user.username}</p>
+            <h2 className="text-3xl font-bold text-purple-700 dark:text-purple-300">لوحة تحكم المعلم</h2>
+            <p className="text-slate-500 dark:text-gray-400 text-sm mt-1">مرحباً: {user.name || user.username}</p>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={handleOpenNotifications} className="relative bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-full text-2xl transition shadow-lg">
+            <button onClick={handleOpenNotifications} className="relative bg-slate-200 dark:bg-gray-700 hover:bg-slate-300 dark:hover:bg-gray-600 text-slate-900 dark:text-white p-2 rounded-full text-2xl transition shadow-lg">
               <FaBell />
               {unreadCount > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">{unreadCount}</span>}
-              {notificationsActive && <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-400 rounded-full border-2 border-gray-900 animate-pulse" />}
+              {notificationsActive && <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-400 rounded-full border-2 border-white dark:border-gray-900 animate-pulse" />}
             </button>
             <button onClick={onLogout} className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-full text-2xl transition shadow-lg"><FaSignOutAlt /></button>
           </div>
         </div>
 
-        {errorMsg && <p className="text-red-400 text-sm bg-red-500/10 p-3 rounded-xl border border-red-500/20">{errorMsg}</p>}
+        {errorMsg && <p className="text-red-700 dark:text-red-400 text-sm bg-red-500/10 p-3 rounded-xl border border-red-300 dark:border-red-500/20">{errorMsg}</p>}
 
         {pendingReviews.length > 0 && (
-          <div className="bg-yellow-900/30 p-6 rounded-2xl border border-yellow-500/40 shadow-lg">
-            <h3 className="text-xl font-semibold text-yellow-300 mb-3 flex items-center gap-2">
+          <div className="bg-yellow-50 dark:bg-yellow-900/30 p-6 rounded-2xl border border-yellow-300 dark:border-yellow-500/40 shadow-lg">
+            <h3 className="text-xl font-semibold text-yellow-700 dark:text-yellow-300 mb-3 flex items-center gap-2">
               <FaClipboardList /> طلبات تعديل البيانات ({pendingReviews.length})
             </h3>
             <div className="space-y-3 max-h-80 overflow-y-auto">
               {pendingReviews.map(student => (
-                <div key={student.id} className="bg-black/30 p-4 rounded-xl border border-yellow-500/20 flex justify-between items-center gap-3">
+                <div key={student.id} className="bg-white dark:bg-black/30 p-4 rounded-xl border border-yellow-300 dark:border-yellow-500/20 flex justify-between items-center gap-3">
                   <div>
-                    <span className="text-white font-medium">{student.name || student.username}</span>
-                    <span className="text-xs text-gray-400 mr-2">({student.username})</span>
+                    <span className="text-slate-900 dark:text-white font-medium">{student.name || student.username}</span>
+                    <span className="text-xs text-slate-500 dark:text-gray-400 mr-2">({student.username})</span>
                   </div>
                   <button onClick={() => openReviewModal(student)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm"><FaEye className="inline-block me-1" /> مراجعة</button>
                 </div>
@@ -573,40 +573,40 @@ const TeacherPanel = ({ user, onLogout }) => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="flex flex-col gap-4">
-            <div className="flex-1 relative overflow-hidden bg-gradient-to-br from-indigo-900/60 via-purple-900/40 to-purple-900/20 p-4 rounded-2xl border border-purple-500/30 shadow-xl group">
+            <div className="flex-1 relative overflow-hidden bg-gradient-to-br from-indigo-100 dark:from-indigo-900/60 via-purple-50 dark:via-purple-900/40 to-purple-50 dark:to-purple-900/20 p-4 rounded-2xl border border-purple-300 dark:border-purple-500/30 shadow-xl group">
               <div className="relative z-10">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center shadow-lg"><FaUsers className="text-white text-lg" /></div>
-                    <div><p className="text-xs text-purple-300 uppercase tracking-widest font-semibold">الإجمالي</p><h3 className="text-sm font-bold text-purple-100">عدد الطلاب</h3></div>
+                    <div><p className="text-xs text-purple-700 dark:text-purple-300 uppercase tracking-widest font-semibold">الإجمالي</p><h3 className="text-sm font-bold text-purple-800 dark:text-purple-100">عدد الطلاب</h3></div>
                   </div>
                   <div className="flex items-baseline gap-2">
-                    <p className="text-4xl font-black bg-gradient-to-r from-white via-purple-100 to-purple-200 bg-clip-text text-transparent">{students.length}</p>
-                    <span className="text-purple-300 text-sm font-medium">طالب</span>
+                    <p className="text-4xl font-black bg-gradient-to-r from-slate-900 dark:from-white via-purple-700 dark:via-purple-100 to-purple-700 dark:to-purple-200 bg-clip-text text-transparent">{students.length}</p>
+                    <span className="text-purple-700 dark:text-purple-300 text-sm font-medium">طالب</span>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="flex-1 relative overflow-hidden bg-gradient-to-br from-pink-900/60 via-fuchsia-900/40 to-fuchsia-900/20 p-4 rounded-2xl border border-pink-500/30 shadow-xl group">
+            <div className="flex-1 relative overflow-hidden bg-gradient-to-br from-pink-100 dark:from-pink-900/60 via-fuchsia-50 dark:via-fuchsia-900/40 to-fuchsia-50 dark:to-fuchsia-900/20 p-4 rounded-2xl border border-pink-300 dark:border-pink-500/30 shadow-xl group">
               <div className="relative z-10 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-fuchsia-600 flex items-center justify-center shadow-lg"><FaClipboardList className="text-white text-lg" /></div>
-                  <div><p className="text-xs text-pink-300 uppercase tracking-widest font-semibold">الإجمالي</p><h3 className="text-sm font-bold text-pink-100">الشعب الدراسية</h3></div>
+                  <div><p className="text-xs text-pink-700 dark:text-pink-300 uppercase tracking-widest font-semibold">الإجمالي</p><h3 className="text-sm font-bold text-pink-800 dark:text-pink-100">الشعب الدراسية</h3></div>
                 </div>
                 <div className="flex items-baseline gap-2">
-                  <p className="text-4xl font-black bg-gradient-to-r from-white via-pink-100 to-pink-200 bg-clip-text text-transparent">{classes.length}</p>
-                  <span className="text-pink-300 text-sm font-medium">شعبة</span>
+                  <p className="text-4xl font-black bg-gradient-to-r from-slate-900 dark:from-white via-pink-700 dark:via-pink-100 to-pink-700 dark:to-pink-200 bg-clip-text text-transparent">{classes.length}</p>
+                  <span className="text-pink-700 dark:text-pink-300 text-sm font-medium">شعبة</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700 flex flex-col justify-center">
+          <div className="bg-slate-50 dark:bg-gray-800/60 p-6 rounded-2xl border border-slate-200 dark:border-gray-700 flex flex-col justify-center">
             <div className="flex justify-between items-center mb-2">
-              <h3 className="text-lg font-semibold text-purple-200">الوقت المتبقي للحصة القادمة</h3>
+              <h3 className="text-lg font-semibold text-purple-800 dark:text-purple-200">الوقت المتبقي للحصة القادمة</h3>
               {classes.length > 0 && (
-                <select value={selectedClassForLesson} onChange={(e) => setSelectedClassForLesson(e.target.value)} className="bg-gray-700 text-white rounded-md px-3 py-1 text-sm border border-gray-600">
+                <select value={selectedClassForLesson} onChange={(e) => setSelectedClassForLesson(e.target.value)} className="bg-slate-200 dark:bg-gray-700 text-slate-900 dark:text-white rounded-md px-3 py-1 text-sm border border-slate-200 dark:border-gray-600">
                   {classes.map(cls => <option key={cls.id} value={cls.id}>{cls.name}</option>)}
                 </select>
               )}
@@ -625,30 +625,30 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700 space-y-4">
+        <div className="bg-slate-50 dark:bg-gray-800/60 p-6 rounded-2xl border border-slate-200 dark:border-gray-700 space-y-4">
           <div className="flex justify-between items-center">
-            <h3 className="text-xl font-semibold text-pink-300"><FaPen className="inline-block me-2" /> إدارة الواجبات</h3>
+            <h3 className="text-xl font-semibold text-pink-700 dark:text-pink-300"><FaPen className="inline-block me-2" /> إدارة الواجبات</h3>
             <button onClick={() => setShowAssignmentChoice(true)} className="btn-primary bg-gradient-to-r from-pink-500 to-purple-600 py-2 px-4 text-sm rounded-md text-white"><FaPen className="inline-block me-2" /> إضافة واجب</button>
           </div>
           {homeworks.length > 0 ? (
             <div className="space-y-3 max-h-60 overflow-y-auto">
               {homeworks.map(hw => (
-                <div key={hw.id} className="p-3 rounded-xl border border-gray-700 bg-black/30 flex justify-between items-start gap-3">
+                <div key={hw.id} className="p-3 rounded-xl border border-slate-200 dark:border-gray-700 bg-white dark:bg-black/30 flex justify-between items-start gap-3">
                   <div className="flex-1">
-                    <p className="text-gray-100 text-sm">{hw.text}</p>
-                    {hw.is_draft && <span className="text-xs bg-yellow-500/20 text-yellow-300 px-2 py-0.5 rounded-full mr-2">💾 مسودة</span>}
+                    <p className="text-slate-800 dark:text-gray-100 text-sm">{hw.text}</p>
+                    {hw.is_draft && <span className="text-xs bg-yellow-500/20 text-yellow-700 dark:text-yellow-300 px-2 py-0.5 rounded-full mr-2">💾 مسودة</span>}
                   </div>
-                  <button onClick={() => deleteHomework(hw.id)} className="p-1.5 bg-red-600/30 text-red-300 rounded-lg border border-red-500/30 hover:bg-red-600/50 text-xs"><FaTrashAlt /></button>
+                  <button onClick={() => deleteHomework(hw.id)} className="p-1.5 bg-red-100 dark:bg-red-600/30 text-red-700 dark:text-red-300 rounded-lg border border-red-300 dark:border-red-500/30 hover:bg-red-600/50 text-xs"><FaTrashAlt /></button>
                 </div>
               ))}
             </div>
-          ) : <p className="text-gray-400 text-center py-4">لا توجد واجبات.</p>}
+          ) : <p className="text-slate-500 dark:text-gray-400 text-center py-4">لا توجد واجبات.</p>}
         </div>
 
         {/* ✅ قسم الاختبارات الإلكترونية — يستخدم now navigation */}
-        <div className="bg-gray-800/60 p-6 rounded-2xl border border-orange-500/20">
+        <div className="bg-slate-50 dark:bg-gray-800/60 p-6 rounded-2xl border border-orange-300 dark:border-orange-500/20">
           <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-            <h3 className="text-xl font-semibold text-orange-300">
+            <h3 className="text-xl font-semibold text-orange-700 dark:text-orange-300">
               <FaFileAlt className="inline-block me-2" /> الاختبارات الإلكترونية
             </h3>
             <button
@@ -660,13 +660,13 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
           <div className="space-y-2 max-h-96 overflow-y-auto">
             {exams.map(exam => (
-              <div key={exam.id} className="p-3 bg-black/30 rounded-xl border border-gray-700 flex justify-between items-center flex-wrap gap-3">
+              <div key={exam.id} className="p-3 bg-white dark:bg-black/30 rounded-xl border border-slate-200 dark:border-gray-700 flex justify-between items-center flex-wrap gap-3">
                 <div>
-                  <p className="text-white font-bold">{exam.title}</p>
-                  <p className="text-xs text-gray-400">
+                  <p className="text-slate-900 dark:text-white font-bold">{exam.title}</p>
+                  <p className="text-xs text-slate-500 dark:text-gray-400">
                     المدة: {exam.duration ? `${exam.duration} دقيقة` : 'غير محددة'} |
                     الأسئلة: {exam.questions?.length || 0} |
-                    التصحيح: <span className={exam.correctionMode === 'manual' ? 'text-amber-300' : 'text-green-300'}>
+                    التصحيح: <span className={exam.correctionMode === 'manual' ? 'text-amber-700 dark:text-amber-300' : 'text-green-700 dark:text-green-300'}>
                       {exam.correctionMode === 'manual' ? 'يدوي' : 'تلقائي'}
                     </span>
                   </p>
@@ -680,14 +680,14 @@ const TeacherPanel = ({ user, onLogout }) => {
               </div>
             ))}
             {exams.length === 0 && (
-              <p className="text-gray-400 text-center py-4">لا توجد اختبارات بعد.</p>
+              <p className="text-slate-500 dark:text-gray-400 text-center py-4">لا توجد اختبارات بعد.</p>
             )}
           </div>
         </div>
 
-        <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700">
+        <div className="bg-slate-50 dark:bg-gray-800/60 p-6 rounded-2xl border border-slate-200 dark:border-gray-700">
           <div className="flex flex-wrap justify-between items-center gap-3">
-            <h3 className="text-xl font-semibold text-blue-300"><FaUser className="inline-block me-2" /> إدارة الطلاب</h3>
+            <h3 className="text-xl font-semibold text-blue-700 dark:text-blue-300"><FaUser className="inline-block me-2" /> إدارة الطلاب</h3>
             <div className="flex flex-wrap gap-2">
               <button onClick={() => setShowStudentsModal(true)} className="btn-primary bg-purple-600 hover:bg-purple-700 py-2 px-4 text-sm rounded-md text-white"><FaClipboardList className="inline-block me-2" /> عرض الطلبة</button>
               <button onClick={() => setShowPrintModal(true)} className="btn-primary bg-teal-600 hover:bg-teal-700 py-2 px-4 text-sm rounded-md text-white"><FaPrint className="inline-block me-2" /> طباعة الجدول</button>
@@ -695,8 +695,8 @@ const TeacherPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        <div className="bg-gray-800/60 p-6 rounded-2xl border border-gray-700 space-y-4">
-          <h3 className="text-xl font-semibold text-purple-200"><FaClock className="inline-block me-2" /> جدولة المواعيد</h3>
+        <div className="bg-slate-50 dark:bg-gray-800/60 p-6 rounded-2xl border border-slate-200 dark:border-gray-700 space-y-4">
+          <h3 className="text-xl font-semibold text-purple-800 dark:text-purple-200"><FaClock className="inline-block me-2" /> جدولة المواعيد</h3>
           <button onClick={() => setShowLessonModal(true)} className="btn-primary bg-gradient-to-r from-indigo-500 to-blue-600 py-3 px-6 rounded-md text-white font-bold shadow-lg hover:scale-105 transition-transform">
             <FaClock className="inline-block me-2" /> إدارة وتعديل المواعيد
           </button>
@@ -715,29 +715,29 @@ const TeacherPanel = ({ user, onLogout }) => {
       )}
 
       {showStudentsModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-40 p-4" onClick={() => setShowStudentsModal(false)}>
-          <div className="bg-gray-900 p-6 rounded-3xl max-w-4xl w-full max-h-[80vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center z-40 p-4" onClick={() => setShowStudentsModal(false)}>
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl max-w-4xl w-full max-h-[80vh] overflow-y-auto border border-slate-200 dark:border-gray-700" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-semibold text-blue-300">قائمة الطلاب ({students.length})</h3>
-              <button onClick={() => setShowStudentsModal(false)} className="text-gray-400 hover:text-white text-2xl">✕</button>
+              <h3 className="text-xl font-semibold text-blue-700 dark:text-blue-300">قائمة الطلاب ({students.length})</h3>
+              <button onClick={() => setShowStudentsModal(false)} className="text-slate-500 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white text-2xl">✕</button>
             </div>
             <div className="space-y-3">
               {students.map(s => {
                 const classNames = s.classes?.map(c => c.name).filter(Boolean).join(', ') || 'لا توجد شعبة';
                 const warningCount = getActiveWarnings(s.warnings || []).length;
                 return (
-                  <div key={s.id} className={`p-3 rounded-xl border flex flex-wrap justify-between items-center gap-3 ${s.isFrozen ? 'bg-gray-800/60 border-gray-700 opacity-80' : 'bg-gray-800/30 border-gray-700'}`}>
+                  <div key={s.id} className={`p-3 rounded-xl border flex flex-wrap justify-between items-center gap-3 ${s.isFrozen ? 'bg-slate-50 dark:bg-gray-800/60 border-slate-200 dark:border-gray-700 opacity-80' : 'bg-slate-100 dark:bg-gray-800/30 border-slate-200 dark:border-gray-700'}`}>
                     <div className="flex items-center gap-3 flex-wrap flex-1">
-                      <span className="text-white text-sm font-medium">{s.name || s.username}</span>
-                      {s.serialNumber && <span className="text-xs text-cyan-300 font-mono" dir="ltr">#{s.serialNumber}</span>}
-                      <span className="text-xs text-blue-300 bg-blue-950/40 px-2 py-0.5 rounded border border-blue-500/20">الشعب: {classNames}</span>
-                      {s.isFrozen && <span className="text-xs text-orange-400 bg-orange-950/40 px-2 py-0.5 rounded">⏳ مجمد</span>}
-                      <span className="text-xs text-yellow-300 bg-yellow-950/40 px-2 py-0.5 rounded border border-yellow-500/30">الإنذارات: {warningCount}/3</span>
+                      <span className="text-slate-900 dark:text-white text-sm font-medium">{s.name || s.username}</span>
+                      {s.serialNumber && <span className="text-xs text-cyan-700 dark:text-cyan-300 font-mono" dir="ltr">#{s.serialNumber}</span>}
+                      <span className="text-xs text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded border border-blue-300 dark:border-blue-500/20">الشعب: {classNames}</span>
+                      {s.isFrozen && <span className="text-xs text-orange-700 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/40 px-2 py-0.5 rounded">⏳ مجمد</span>}
+                      <span className="text-xs text-yellow-700 dark:text-yellow-300 bg-yellow-50 dark:bg-yellow-950/40 px-2 py-0.5 rounded border border-yellow-300 dark:border-yellow-500/30">الإنذارات: {warningCount}/3</span>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <button onClick={() => openWarningModal(s)} className="text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-2 py-1 rounded-lg">إنذار</button>
-                      <button onClick={() => { setSelectedStudentForReport(s); setShowReportModal(true); }} className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg">بلاغ</button>
-                      <button onClick={() => { setSelectedStudentForMessage(s); setShowGeneralMessageModal(true); }} className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-lg">رسالة</button>
+                      <button onClick={() => openWarningModal(s)} className="text-xs bg-yellow-500/20 text-yellow-700 dark:text-yellow-300 border border-yellow-300 dark:border-yellow-500/30 px-2 py-1 rounded-lg">إنذار</button>
+                      <button onClick={() => { setSelectedStudentForReport(s); setShowReportModal(true); }} className="text-xs bg-red-500/20 text-red-700 dark:text-red-400 border border-red-300 dark:border-red-500/30 px-2 py-1 rounded-lg">بلاغ</button>
+                      <button onClick={() => { setSelectedStudentForMessage(s); setShowGeneralMessageModal(true); }} className="text-xs bg-green-500/20 text-green-700 dark:text-green-300 border border-green-300 dark:border-green-500/30 px-2 py-1 rounded-lg">رسالة</button>
                     </div>
                   </div>
                 );
@@ -748,19 +748,19 @@ const TeacherPanel = ({ user, onLogout }) => {
       )}
 
       {showWarningModal && selectedStudentForWarning && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowWarningModal(false)}>
-          <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-yellow-500/30" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-semibold text-yellow-300 mb-4"><FaExclamationTriangle className="inline-block me-2" /> إصدار إنذار</h3>
-            <p className="text-gray-300 text-sm mb-2">الطالب: <strong>{selectedStudentForWarning.name}</strong></p>
-            <p className="text-gray-400 text-xs mb-2">الإنذارات النشطة: {getActiveWarnings(selectedStudentForWarning.warnings || []).length} / 3</p>
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowWarningModal(false)}>
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-yellow-300 dark:border-yellow-500/30" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-semibold text-yellow-700 dark:text-yellow-300 mb-4"><FaExclamationTriangle className="inline-block me-2" /> إصدار إنذار</h3>
+            <p className="text-slate-700 dark:text-gray-300 text-sm mb-2">الطالب: <strong>{selectedStudentForWarning.name}</strong></p>
+            <p className="text-slate-500 dark:text-gray-400 text-xs mb-2">الإنذارات النشطة: {getActiveWarnings(selectedStudentForWarning.warnings || []).length} / 3</p>
             <div className="space-y-4">
-              <textarea className="bg-gray-800 w-full h-24 text-right p-2 border border-gray-600 rounded-md text-white resize-none" placeholder="اكتب وصف المخالفة..." value={warningDescription} onChange={(e) => setWarningDescription(e.target.value)} />
-              <div className="bg-yellow-500/10 p-3 rounded-xl border border-yellow-500/20 text-xs text-yellow-300">
+              <textarea className="bg-white dark:bg-gray-800 w-full h-24 text-right p-2 border border-slate-200 dark:border-gray-600 rounded-md text-slate-900 dark:text-white resize-none" placeholder="اكتب وصف المخالفة..." value={warningDescription} onChange={(e) => setWarningDescription(e.target.value)} />
+              <div className="bg-yellow-500/10 p-3 rounded-xl border border-yellow-300 dark:border-yellow-500/20 text-xs text-yellow-700 dark:text-yellow-300">
                 سيتم حفظ طلب الإنذار وإرساله رسمياً إلى ولي الأمر بعد مراجعة <strong>مدير النظام</strong>.
               </div>
               <div className="flex gap-3">
                 <button onClick={confirmWarning} className="btn-primary bg-yellow-600 hover:bg-yellow-700 px-6 py-2 rounded-md text-white">حفظ الطلب</button>
-                <button onClick={() => setShowWarningModal(false)} className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-md text-white">إلغاء</button>
+                <button onClick={() => setShowWarningModal(false)} className="btn-primary bg-slate-200 dark:bg-gray-600 hover:bg-slate-300 dark:hover:bg-gray-700 px-6 py-2 rounded-md text-slate-900 dark:text-white">إلغاء</button>
               </div>
             </div>
           </div>
@@ -768,18 +768,18 @@ const TeacherPanel = ({ user, onLogout }) => {
       )}
 
       {showGeneralMessageModal && selectedStudentForMessage && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowGeneralMessageModal(false)}>
-          <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-gray-700" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-semibold text-green-300 mb-4"><FaPaperPlane className="inline-block me-2" /> رسالة إلى {selectedStudentForMessage.name}</h3>
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowGeneralMessageModal(false)}>
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-slate-200 dark:border-gray-700" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-semibold text-green-700 dark:text-green-300 mb-4"><FaPaperPlane className="inline-block me-2" /> رسالة إلى {selectedStudentForMessage.name}</h3>
             <div className="space-y-3">
-              <input type="text" className="bg-gray-800 w-full text-right p-2 border border-gray-600 rounded-md text-white" placeholder="الموضوع" value={generalMessageSubject} onChange={(e) => setGeneralMessageSubject(e.target.value)} />
-              <textarea className="bg-gray-800 w-full h-32 text-right p-2 border border-gray-600 rounded-md text-white resize-none" placeholder="نص الرسالة..." value={generalMessageText} onChange={(e) => setGeneralMessageText(e.target.value)} />
-              <div className="bg-blue-500/10 p-3 rounded-xl border border-blue-500/20 text-xs text-blue-200">
+              <input type="text" className="bg-white dark:bg-gray-800 w-full text-right p-2 border border-slate-200 dark:border-gray-600 rounded-md text-slate-900 dark:text-white" placeholder="الموضوع" value={generalMessageSubject} onChange={(e) => setGeneralMessageSubject(e.target.value)} />
+              <textarea className="bg-white dark:bg-gray-800 w-full h-32 text-right p-2 border border-slate-200 dark:border-gray-600 rounded-md text-slate-900 dark:text-white resize-none" placeholder="نص الرسالة..." value={generalMessageText} onChange={(e) => setGeneralMessageText(e.target.value)} />
+              <div className="bg-blue-500/10 p-3 rounded-xl border border-blue-300 dark:border-blue-500/20 text-xs text-blue-800 dark:text-blue-200">
                 📨 سيتم حفظ الرسالة كطلب معلّق، ولن تُرسل إلا بعد اعتماد <strong>مدير النظام</strong>.
               </div>
               <div className="flex gap-3">
                 <button onClick={handleSaveGeneralMessage} className="btn-primary bg-green-600 hover:bg-green-700 px-6 py-2 rounded-md text-white"><FaPaperPlane className="inline-block me-2" /> حفظ الطلب</button>
-                <button onClick={() => setShowGeneralMessageModal(false)} className="btn-primary bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-md text-white">إلغاء</button>
+                <button onClick={() => setShowGeneralMessageModal(false)} className="btn-primary bg-slate-200 dark:bg-gray-600 hover:bg-slate-300 dark:hover:bg-gray-700 px-6 py-2 rounded-md text-slate-900 dark:text-white">إلغاء</button>
               </div>
             </div>
           </div>
@@ -787,27 +787,27 @@ const TeacherPanel = ({ user, onLogout }) => {
       )}
 
       {showReviewModal && selectedReviewStudent && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowReviewModal(false)}>
-          <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-blue-500/30" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-semibold text-blue-300 mb-4"><FaClipboardList className="inline-block me-2" /> مراجعة طلب التعديل</h3>
-            <p className="text-gray-300 text-sm mb-3">الطالب: <strong>{selectedReviewStudent.name}</strong></p>
-            <div className="bg-amber-500/10 p-3 rounded-xl border border-amber-500/30 text-xs text-amber-200 mb-3">
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowReviewModal(false)}>
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-blue-300 dark:border-blue-500/30" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-semibold text-blue-700 dark:text-blue-300 mb-4"><FaClipboardList className="inline-block me-2" /> مراجعة طلب التعديل</h3>
+            <p className="text-slate-700 dark:text-gray-300 text-sm mb-3">الطالب: <strong>{selectedReviewStudent.name}</strong></p>
+            <div className="bg-amber-500/10 p-3 rounded-xl border border-amber-300 dark:border-amber-500/30 text-xs text-amber-800 dark:text-amber-200 mb-3">
               ⚠️ إشعار الموافقة/الرفض سيُرسل لولي الأمر بعد اعتماد <strong>مدير النظام</strong>.
             </div>
             <div className="flex gap-3 mt-4">
               <button onClick={() => acceptReview(selectedReviewStudent.id)} className="btn-primary bg-green-600 px-6 py-2 rounded-md text-white"><FaCheckCircle className="inline-block me-2" /> قبول</button>
               <button onClick={() => rejectReview(selectedReviewStudent.id)} className="btn-primary bg-red-600 px-6 py-2 rounded-md text-white"><FaTimesCircle className="inline-block me-2" /> رفض</button>
-              <button onClick={() => setShowReviewModal(false)} className="btn-primary bg-gray-600 px-6 py-2 rounded-md text-white">إلغاء</button>
+              <button onClick={() => setShowReviewModal(false)} className="btn-primary bg-slate-200 dark:bg-gray-600 px-6 py-2 rounded-md text-slate-900 dark:text-white">إلغاء</button>
             </div>
           </div>
         </div>
       )}
 
       {showApologyModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowApologyModal(false)}>
-          <div className="bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-orange-500/30" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-semibold text-orange-300 mb-4">اعتذار عن الحصة القادمة</h3>
-            <p className="text-gray-300 text-sm mb-4">اختر الإجراء المناسب:</p>
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowApologyModal(false)}>
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-orange-300 dark:border-orange-500/30" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-semibold text-orange-700 dark:text-orange-300 mb-4">اعتذار عن الحصة القادمة</h3>
+            <p className="text-slate-700 dark:text-gray-300 text-sm mb-4">اختر الإجراء المناسب:</p>
             <div className="space-y-3">
               <button onClick={() => { setShowApologyModal(false); setShowLessonModal(true); }} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold">
                 تحديد حصة تعويض عن الإلغاء
@@ -815,38 +815,38 @@ const TeacherPanel = ({ user, onLogout }) => {
               <button onClick={handlePostponeLesson} className="w-full bg-orange-600 hover:bg-orange-700 text-white py-3 rounded-xl font-bold">
                 تأجيل إلى الحصة التي تليها
               </button>
-              <button onClick={() => setShowApologyModal(false)} className="w-full bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-xl text-sm">إلغاء</button>
+              <button onClick={() => setShowApologyModal(false)} className="w-full bg-slate-200 dark:bg-gray-700 hover:bg-slate-300 dark:hover:bg-gray-600 text-slate-900 dark:text-white py-2 rounded-xl text-sm">إلغاء</button>
             </div>
           </div>
         </div>
       )}
 
       {showNotificationsModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={handleCloseNotifications}>
-          <div className="bg-gray-900 p-6 rounded-3xl max-w-lg w-full max-h-[70vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={handleCloseNotifications}>
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl max-w-lg w-full max-h-[70vh] overflow-y-auto border border-slate-200 dark:border-gray-700" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-semibold text-purple-300"><FaBell className="inline-block me-2" /> الإشعارات</h3>
-              <button onClick={handleCloseNotifications} className="text-gray-400 hover:text-white text-2xl">✕</button>
+              <h3 className="text-xl font-semibold text-purple-700 dark:text-purple-300"><FaBell className="inline-block me-2" /> الإشعارات</h3>
+              <button onClick={handleCloseNotifications} className="text-slate-500 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white text-2xl">✕</button>
             </div>
-            <p className="text-xs text-gray-500 mb-3">📌 ستُحذف هذه الإشعارات تلقائياً عند إغلاق النافذة.</p>
+            <p className="text-xs text-slate-500 dark:text-gray-500 mb-3">📌 ستُحذف هذه الإشعارات تلقائياً عند إغلاق النافذة.</p>
             {!notificationsActive && (
-              <div className="mb-4 p-3 bg-yellow-500/10 rounded-xl border border-yellow-500/20 text-yellow-200 text-sm">
+              <div className="mb-4 p-3 bg-yellow-500/10 rounded-xl border border-yellow-300 dark:border-yellow-500/20 text-yellow-800 dark:text-yellow-200 text-sm">
                 ⚠️ الإشعارات غير مفعلة. اضغط على زر الجرس لتفعيلها.
               </div>
             )}
             {notifications.length === 0 ? (
-              <p className="text-gray-400 text-center py-4">لا توجد إشعارات</p>
+              <p className="text-slate-500 dark:text-gray-400 text-center py-4">لا توجد إشعارات</p>
             ) : (
               <div className="space-y-3">
                 {notifications.map((n) => (
-                  <div key={n.id} className="p-3 rounded-xl border bg-gray-800/60 border-blue-500/40">
+                  <div key={n.id} className="p-3 rounded-xl border bg-slate-50 dark:bg-gray-800/60 border-blue-300 dark:border-blue-500/40">
                     <div className="flex justify-between items-start">
-                      <h4 className="text-white font-medium">{n.title}</h4>
-                      <span className="text-xs text-gray-400">
+                      <h4 className="text-slate-900 dark:text-white font-medium">{n.title}</h4>
+                      <span className="text-xs text-slate-500 dark:text-gray-400">
                         {n.createdAt?.toDate?.() ? new Date(n.createdAt.toDate()).toLocaleString('ar-EG') : ''}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-300 mt-1">{n.body}</p>
+                    <p className="text-sm text-slate-700 dark:text-gray-300 mt-1">{n.body}</p>
                   </div>
                 ))}
               </div>
