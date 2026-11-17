@@ -5,7 +5,6 @@ export const config = {
   maxDuration: 60,
 };
 
-// ===== تهيئة Firebase Admin (مرة واحدة) =====
 if (!admin.apps.length) {
   try {
     const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || '{}');
@@ -16,7 +15,6 @@ if (!admin.apps.length) {
 }
 const db = admin.apps.length ? admin.firestore() : null;
 
-// ===== ذاكرة مؤقتة لحالة "سند" (10 ثوانٍ) =====
 let aiSettingsCache = { enabled: true, fetchedAt: 0 };
 const AI_SETTINGS_CACHE_MS = 10000;
 
@@ -37,8 +35,12 @@ async function isAiEnabled() {
   }
 }
 
-// ===== تسجيل الاستخدام =====
-async function logUsage(model, status) {
+// ✅ يسجل مرة واحدة لكل رسالة مستخدم (وليس لكل محاولة نموذج)
+// - totalRequests = عدد الرسائل (اللي تشوفها في "طلبات اليوم")
+// - totalAttempts = عدد محاولات API (للتشخيص)
+// - minutes[X] = عدد الرسائل في الدقيقة X
+// - peakPerMinute = أعلى عدد رسائل في دقيقة واحدة اليوم
+async function logMessage(model, status, attempts = 1) {
   if (!db) return;
   try {
     const now = new Date();
@@ -47,28 +49,55 @@ async function logUsage(model, status) {
     const safeModel = String(model).replace(/[.\s/]/g, '_');
     const ref = db.collection('aiUsage').doc(dateStr);
 
-    const updates = {
-      date: dateStr,
-      totalRequests: admin.firestore.FieldValue.increment(1),
-      [`minutes.${minuteOfDay}`]: admin.firestore.FieldValue.increment(1),
-      [`models.${safeModel}.count`]: admin.firestore.FieldValue.increment(1),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    };
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const data = snap.exists ? snap.data() : {};
 
-    if (status === 'success') {
-      updates.totalSuccess = admin.firestore.FieldValue.increment(1);
-      updates[`models.${safeModel}.success`] = admin.firestore.FieldValue.increment(1);
-    } else if (status === 'quota') {
-      updates.totalQuotaExceeded = admin.firestore.FieldValue.increment(1);
-      updates[`models.${safeModel}.quotaExceeded`] = admin.firestore.FieldValue.increment(1);
-    } else {
-      updates.totalErrors = admin.firestore.FieldValue.increment(1);
-      updates[`models.${safeModel}.errors`] = admin.firestore.FieldValue.increment(1);
-    }
+      // minutes كـ object كامل (يتجنب مشاكل dot-notation)
+      const minutes = { ...(data.minutes || {}) };
+      const currentMinuteCount = Number(minutes[minuteOfDay]) || 0;
+      const newMinuteCount = currentMinuteCount + 1;
+      minutes[minuteOfDay] = newMinuteCount;
 
-    await ref.set(updates, { merge: true });
+      // peak يُحدّث فوراً (لليوم فقط)
+      const currentPeak = Number(data.peakPerMinute) || 0;
+      const newPeak = Math.max(currentPeak, newMinuteCount);
+
+      // عداد النماذج
+      const models = { ...(data.models || {}) };
+      const modelData = { ...(models[safeModel] || {}) };
+      modelData.count = (Number(modelData.count) || 0) + attempts;
+      if (status === 'success') {
+        modelData.success = (Number(modelData.success) || 0) + 1;
+      } else if (status === 'quota') {
+        modelData.quotaExceeded = (Number(modelData.quotaExceeded) || 0) + 1;
+      } else {
+        modelData.errors = (Number(modelData.errors) || 0) + 1;
+      }
+      models[safeModel] = modelData;
+
+      const updates = {
+        date: dateStr,
+        totalRequests: (Number(data.totalRequests) || 0) + 1,
+        totalAttempts: (Number(data.totalAttempts) || 0) + attempts,
+        minutes,
+        peakPerMinute: newPeak,
+        models,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+
+      if (status === 'success') {
+        updates.totalSuccess = (Number(data.totalSuccess) || 0) + 1;
+      } else if (status === 'quota') {
+        updates.totalQuotaExceeded = (Number(data.totalQuotaExceeded) || 0) + 1;
+      } else {
+        updates.totalErrors = (Number(data.totalErrors) || 0) + 1;
+      }
+
+      tx.set(ref, updates, { merge: true });
+    });
   } catch (e) {
-    console.warn('logUsage failed:', e.message);
+    console.warn('logMessage failed:', e.message);
   }
 }
 
@@ -277,9 +306,14 @@ export default async function handler(req, res) {
     const systemInstruction = buildSystemInstruction(userRole, suppressEndTag, userName, userGender);
     const startedAt = Date.now();
 
+    // ✅ نعدّ المحاولات هنا، ونسجل مرة واحدة فقط في النهاية
+    let attempts = 0;
     let lastError;
+    let isQuotaFailure = false;
+
     for (const model of MODELS) {
       if (Date.now() - startedAt > TIME_BUDGET_MS) break;
+      attempts++;
       try {
         const response = await ai.models.generateContent({
           model,
@@ -287,11 +321,14 @@ export default async function handler(req, res) {
           config: { systemInstruction, temperature: 0.3 },
         });
         if (response.text) {
-          logUsage(model, 'success').catch(() => {});
           const rawText = response.text;
           const endRequested = !suppressEndTag && rawText.includes(TAG_END);
           const impersonationDetected = rawText.includes(TAG_IMPERSONATION);
           const cleanText = stripTags(rawText);
+
+          // ✅ نجاح: سجل مرة واحدة فقط
+          logMessage(model, 'success', attempts).catch(() => {});
+
           return res.status(200).json({
             text: cleanText,
             endRequested,
@@ -299,12 +336,14 @@ export default async function handler(req, res) {
           });
         }
         lastError = new Error('Empty response from ' + model);
-        logUsage(model, 'error').catch(() => {});
       } catch (err) {
         lastError = err;
-        logUsage(model, isQuotaError(err) ? 'quota' : 'error').catch(() => {});
+        if (isQuotaError(err)) isQuotaFailure = true;
       }
     }
+
+    // ✅ فشل تام: سجل مرة واحدة فقط
+    logMessage(MODELS[0], isQuotaFailure ? 'quota' : 'error', attempts).catch(() => {});
     throw lastError || new Error('All models failed');
   } catch (error) {
     const status = Number(error?.status);
