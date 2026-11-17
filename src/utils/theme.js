@@ -7,10 +7,13 @@ export function getStoredTheme() {
 
 export function applyTheme(theme) {
   if (typeof document === 'undefined') return;
+  const isLight = theme === 'light';
   const root = document.documentElement;
   root.classList.remove('theme-light', 'theme-dark');
-  root.classList.add(theme === 'light' ? 'theme-light' : 'theme-dark');
-  root.style.colorScheme = theme === 'light' ? 'light' : 'dark';
+  root.classList.add(isLight ? 'theme-light' : 'theme-dark');
+  // يفعّل/يعطّل كلاسات Tailwind من نوع dark: ليتبع الثيم المختار فقط (وليس إعداد الجهاز)
+  root.classList.toggle('dark', !isLight);
+  root.style.colorScheme = isLight ? 'light' : 'dark';
 }
 
 export function setTheme(theme) {

@@ -387,20 +387,20 @@ const ManagerSupportReviewsSection = ({ user }) => {
     !!openChatId;
 
   return (
-    <div className="bg-gray-800/60 p-6 rounded-2xl border border-rose-500/20 space-y-4">
+    <div className="bg-slate-50 dark:bg-gray-800/60 p-6 rounded-2xl border border-rose-300 dark:border-rose-500/20 space-y-4">
       {/* ✅ لوحة المساعد الذكي سند */}
-      <div className="bg-gradient-to-br from-indigo-900/30 to-purple-900/20 p-4 rounded-xl border border-indigo-500/40">
+      <div className="bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-900/30 dark:to-purple-900/20 p-4 rounded-xl border border-indigo-300 dark:border-indigo-500/40">
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-          <h4 className="text-indigo-200 font-bold flex items-center gap-2 text-sm">
+          <h4 className="text-indigo-800 dark:text-indigo-200 font-bold flex items-center gap-2 text-sm">
             <FaRobot /> المساعد الذكي سند
-            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${aiEnabled ? 'bg-green-500/20 text-green-300 border border-green-500/40' : 'bg-red-500/20 text-red-300 border border-red-500/40'}`}>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${aiEnabled ? 'bg-green-500/20 text-green-700 dark:text-green-300 border border-green-300 dark:border-green-500/40' : 'bg-red-500/20 text-red-700 dark:text-red-300 border border-red-300 dark:border-red-500/40'}`}>
               {aiEnabled ? '● يعمل' : '■ متوقف'}
             </span>
           </h4>
           <div className="flex items-center gap-2">
             <button
               onClick={handleResetStats}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold text-gray-300 bg-gray-700 hover:bg-gray-600 flex items-center gap-1.5 transition"
+              className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-700 dark:text-gray-300 bg-slate-200 dark:bg-gray-700 hover:bg-slate-300 dark:hover:bg-gray-600 flex items-center gap-1.5 transition"
               title="تصفير الإحصائيات"
             >
               <FaSyncAlt size={10} /> تصفير
@@ -419,58 +419,58 @@ const ManagerSupportReviewsSection = ({ user }) => {
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <div className="bg-black/40 p-2 rounded-lg text-center border border-gray-700">
-            <p className="text-[10px] text-gray-400 mb-0.5">طلبات اليوم</p>
-            <p className="text-lg font-bold text-white">{aiStats.totalToday.toLocaleString('ar-EG')}</p>
+          <div className="bg-white dark:bg-black/40 p-2 rounded-lg text-center border border-slate-200 dark:border-gray-700">
+            <p className="text-[10px] text-slate-500 dark:text-gray-400 mb-0.5">طلبات اليوم</p>
+            <p className="text-lg font-bold text-slate-900 dark:text-white">{aiStats.totalToday.toLocaleString('ar-EG')}</p>
           </div>
-          <div className="bg-black/40 p-2 rounded-lg text-center border border-amber-500/20">
-            <p className="text-[10px] text-gray-400 mb-0.5">ذروة/دقيقة (24س)</p>
-            <p className="text-lg font-bold text-amber-300">{aiStats.peakPerMinute.toLocaleString('ar-EG')}</p>
+          <div className="bg-white dark:bg-black/40 p-2 rounded-lg text-center border border-amber-300 dark:border-amber-500/20">
+            <p className="text-[10px] text-slate-500 dark:text-gray-400 mb-0.5">ذروة/دقيقة (24س)</p>
+            <p className="text-lg font-bold text-amber-700 dark:text-amber-300">{aiStats.peakPerMinute.toLocaleString('ar-EG')}</p>
           </div>
-          <div className="bg-black/40 p-2 rounded-lg text-center border border-cyan-500/20">
-            <p className="text-[10px] text-gray-400 mb-0.5">إجمالي 24س</p>
-            <p className="text-lg font-bold text-cyan-300">{aiStats.totalLast24h.toLocaleString('ar-EG')}</p>
+          <div className="bg-white dark:bg-black/40 p-2 rounded-lg text-center border border-cyan-300 dark:border-cyan-500/20">
+            <p className="text-[10px] text-slate-500 dark:text-gray-400 mb-0.5">إجمالي 24س</p>
+            <p className="text-lg font-bold text-cyan-700 dark:text-cyan-300">{aiStats.totalLast24h.toLocaleString('ar-EG')}</p>
           </div>
-          <div className="bg-black/40 p-2 rounded-lg text-center border border-red-500/20">
-            <p className="text-[10px] text-gray-400 mb-0.5">تجاوز الحصة</p>
-            <p className={`text-lg font-bold ${aiStats.quotaExceeded > 0 ? 'text-red-300' : 'text-gray-400'}`}>
+          <div className="bg-white dark:bg-black/40 p-2 rounded-lg text-center border border-red-300 dark:border-red-500/20">
+            <p className="text-[10px] text-slate-500 dark:text-gray-400 mb-0.5">تجاوز الحصة</p>
+            <p className={`text-lg font-bold ${aiStats.quotaExceeded > 0 ? 'text-red-700 dark:text-red-300' : 'text-slate-500 dark:text-gray-400'}`}>
               {aiStats.quotaExceeded.toLocaleString('ar-EG')}
             </p>
           </div>
         </div>
 
-        <p className="text-[10px] text-gray-400 mt-2 flex items-center gap-1">
+        <p className="text-[10px] text-slate-500 dark:text-gray-400 mt-2 flex items-center gap-1">
           <FaChartBar size={9} />
           هذه الأرقام تقديرية — للحصة الفعلية الرسمية:{' '}
-          <a href="https://aistudio.google.com/usage" target="_blank" rel="noopener noreferrer" className="text-indigo-300 hover:text-indigo-200 underline">
+          <a href="https://aistudio.google.com/usage" target="_blank" rel="noopener noreferrer" className="text-indigo-700 dark:text-indigo-300 hover:text-indigo-900 dark:hover:text-indigo-200 underline">
             افتح لوحة Google AI Studio
           </a>
         </p>
       </div>
 
       {!hasAnyContent && (
-        <p className="text-gray-500 text-sm text-center py-3">لا توجد طلبات مراجعة أو بلاغات حالياً.</p>
+        <p className="text-slate-500 dark:text-gray-500 text-sm text-center py-3">لا توجد طلبات مراجعة أو بلاغات حالياً.</p>
       )}
 
       {hasAnyContent && (
         <>
-          <h3 className="text-xl font-semibold text-rose-300 flex items-center gap-2">
+          <h3 className="text-xl font-semibold text-rose-700 dark:text-rose-300 flex items-center gap-2">
             <FaExclamationTriangle /> مراجعات الدعم الفني
           </h3>
 
           {reportedTickets.length > 0 && (
-            <div className="border border-red-500/30 rounded-xl p-3 bg-red-900/10">
-              <p className="text-sm text-red-200 font-bold mb-2 flex items-center gap-2">
+            <div className="border border-red-300 dark:border-red-500/30 rounded-xl p-3 bg-red-50 dark:bg-red-900/10">
+              <p className="text-sm text-red-800 dark:text-red-200 font-bold mb-2 flex items-center gap-2">
                 <FaBell /> بلاغات الدعم الفني — بانتظار قرارك ({reportedTickets.length})
               </p>
               <div className="space-y-2 max-h-56 overflow-y-auto">
                 {reportedTickets.map(t => (
-                  <div key={t.id} className="p-2 bg-black/40 rounded-lg border border-red-500/20 flex justify-between items-center gap-2">
+                  <div key={t.id} className="p-2 bg-white dark:bg-black/40 rounded-lg border border-red-300 dark:border-red-500/20 flex justify-between items-center gap-2">
                     <div className="flex-1 min-w-0">
-                      <p className="text-white text-xs truncate">
+                      <p className="text-slate-900 dark:text-white text-xs truncate">
                         <FaUser className="inline me-1" />{t.studentName}
                       </p>
-                      <p className="text-[10px] text-red-300 truncate">
+                      <p className="text-[10px] text-red-700 dark:text-red-300 truncate">
                         بلاغ من: {t.report?.reportedByName} — {t.report?.reasonLabel}
                       </p>
                     </div>
@@ -488,21 +488,21 @@ const ManagerSupportReviewsSection = ({ user }) => {
               {reviews.map(t => {
                 const catLabel = SUPPORT_RATING_CATEGORIES.find(c => c.value === t.ratingCategory)?.label || '';
                 return (
-                  <div key={t.id} className={`p-3 bg-black/30 rounded-lg border ${t.ratedAgainstAi === true ? 'border-indigo-500/40' : 'border-rose-500/30'}`}>
+                  <div key={t.id} className={`p-3 bg-white dark:bg-black/30 rounded-lg border ${t.ratedAgainstAi === true ? 'border-indigo-300 dark:border-indigo-500/40' : 'border-rose-300 dark:border-rose-500/30'}`}>
                     <div className="flex justify-between items-start gap-2 flex-wrap">
                       <div className="flex-1 min-w-0">
-                        <p className="text-white text-sm">
+                        <p className="text-slate-900 dark:text-white text-sm">
                           <strong>الطالب:</strong> {t.studentName}
-                          {t.studentSerialNumber && <span className="text-xs text-gray-400 mx-1">({t.studentSerialNumber})</span>}
+                          {t.studentSerialNumber && <span className="text-xs text-slate-500 dark:text-gray-400 mx-1">({t.studentSerialNumber})</span>}
                         </p>
-                        <p className="text-xs text-rose-200 mt-1">⭐ {t.rating}/5 — {catLabel}</p>
-                        <p className="text-xs text-gray-300 mt-1 line-clamp-2">"{t.ratingReason}"</p>
+                        <p className="text-xs text-rose-800 dark:text-rose-200 mt-1">⭐ {t.rating}/5 — {catLabel}</p>
+                        <p className="text-xs text-slate-700 dark:text-gray-300 mt-1 line-clamp-2">"{t.ratingReason}"</p>
                         {t.ratedAgainstAi === true ? (
-                          <p className="text-xs text-indigo-300 mt-1 flex items-center gap-1">
+                          <p className="text-xs text-indigo-700 dark:text-indigo-300 mt-1 flex items-center gap-1">
                             <FaRobot size={10} /> الشكوى ضد المساعد الذكي سند
                           </p>
                         ) : (
-                          <p className="text-xs text-cyan-300 mt-1">المشرف: {t.assignedSupervisorName}</p>
+                          <p className="text-xs text-cyan-700 dark:text-cyan-300 mt-1">المشرف: {t.assignedSupervisorName}</p>
                         )}
                       </div>
                       <button onClick={() => openReview(t)} className="text-xs bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg">
@@ -516,16 +516,16 @@ const ManagerSupportReviewsSection = ({ user }) => {
           )}
 
           {myManagerTickets.length > 0 && (
-            <div className="border-t border-gray-700 pt-4">
-              <p className="text-sm text-emerald-200 font-bold mb-2 flex items-center gap-2">
+            <div className="border-t border-slate-200 dark:border-gray-700 pt-4">
+              <p className="text-sm text-emerald-800 dark:text-emerald-200 font-bold mb-2 flex items-center gap-2">
                 <FaHeadset /> تذاكرك النشطة ({myManagerTickets.length})
               </p>
               <div className="space-y-2 max-h-48 overflow-y-auto">
                 {myManagerTickets.map(t => (
-                  <div key={t.id} className="p-2 bg-black/30 rounded-lg border border-emerald-500/20 flex justify-between items-center gap-2">
+                  <div key={t.id} className="p-2 bg-white dark:bg-black/30 rounded-lg border border-emerald-300 dark:border-emerald-500/20 flex justify-between items-center gap-2">
                     <div className="flex-1 min-w-0">
-                      <p className="text-white text-xs truncate"><FaUser className="inline me-1" />{t.studentName}</p>
-                      <p className="text-[10px] text-gray-400 truncate">
+                      <p className="text-slate-900 dark:text-white text-xs truncate"><FaUser className="inline me-1" />{t.studentName}</p>
+                      <p className="text-[10px] text-slate-500 dark:text-gray-400 truncate">
                         {t.messages?.[t.messages.length - 1]?.text || 'لا توجد رسائل'}
                       </p>
                     </div>
@@ -539,18 +539,18 @@ const ManagerSupportReviewsSection = ({ user }) => {
           )}
 
           {openTickets.length > 0 && (
-            <div className="border-t border-gray-700 pt-4">
-              <p className="text-sm text-cyan-200 font-bold mb-2 flex items-center gap-2">
+            <div className="border-t border-slate-200 dark:border-gray-700 pt-4">
+              <p className="text-sm text-cyan-800 dark:text-cyan-200 font-bold mb-2 flex items-center gap-2">
                 <FaHeadset /> تذاكر من المشرفين / محوّلة للمدير ({openTickets.length})
               </p>
               <div className="space-y-2 max-h-48 overflow-y-auto">
                 {openTickets.map(t => (
-                  <div key={t.id} className="p-2 bg-black/30 rounded-lg border border-cyan-500/20 flex justify-between items-center gap-2">
+                  <div key={t.id} className="p-2 bg-white dark:bg-black/30 rounded-lg border border-cyan-300 dark:border-cyan-500/20 flex justify-between items-center gap-2">
                     <div className="flex-1 min-w-0">
-                      <p className="text-white text-xs truncate"><FaUser className="inline me-1" />{t.studentName}</p>
-                      <p className="text-[10px] text-gray-400 truncate">{t.messages?.[0]?.text}</p>
+                      <p className="text-slate-900 dark:text-white text-xs truncate"><FaUser className="inline me-1" />{t.studentName}</p>
+                      <p className="text-[10px] text-slate-500 dark:text-gray-400 truncate">{t.messages?.[0]?.text}</p>
                       {t.transferredBy && (
-                        <p className="text-[10px] text-amber-300 truncate">📤 محوّلة من: {t.transferredBy}</p>
+                        <p className="text-[10px] text-amber-700 dark:text-amber-300 truncate">📤 محوّلة من: {t.transferredBy}</p>
                       )}
                     </div>
                     <button onClick={() => handleClaimOpenTicket(t.id)} className="text-xs bg-cyan-600 hover:bg-cyan-700 text-white px-3 py-1 rounded-lg">
@@ -574,70 +574,70 @@ const ManagerSupportReviewsSection = ({ user }) => {
       )}
 
       {selectedReport && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] p-4" onClick={closeReportModal}>
-          <div className="bg-gray-900 p-6 rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-red-500/30" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] p-4" onClick={closeReportModal}>
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-red-300 dark:border-red-500/30" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold text-red-300 flex items-center gap-2">
+              <h3 className="text-xl font-bold text-red-700 dark:text-red-300 flex items-center gap-2">
                 <FaExclamationTriangle /> مراجعة بلاغ
               </h3>
-              <button onClick={closeReportModal} className="text-gray-400 hover:text-white text-2xl"><FaTimes /></button>
+              <button onClick={closeReportModal} className="text-slate-500 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white text-2xl"><FaTimes /></button>
             </div>
 
-            <div className="bg-gray-800/60 p-3 rounded-xl mb-3 text-sm">
-              <p className="text-cyan-200 font-bold mb-1">👤 المُبلَّغ عنه (صاحب التذكرة):</p>
-              <p className="text-gray-300">الاسم: {selectedReport.studentName}</p>
-              {reportedStudent?.serialNumber && <p className="text-gray-300">الرقم التسلسلي: {reportedStudent.serialNumber}</p>}
-              {selectedReport.studentPhone && <p className="text-gray-300">الهاتف: <span dir="ltr">{selectedReport.studentPhone}</span></p>}
+            <div className="bg-slate-50 dark:bg-gray-800/60 p-3 rounded-xl mb-3 text-sm">
+              <p className="text-cyan-800 dark:text-cyan-200 font-bold mb-1">👤 المُبلَّغ عنه (صاحب التذكرة):</p>
+              <p className="text-slate-700 dark:text-gray-300">الاسم: {selectedReport.studentName}</p>
+              {reportedStudent?.serialNumber && <p className="text-slate-700 dark:text-gray-300">الرقم التسلسلي: {reportedStudent.serialNumber}</p>}
+              {selectedReport.studentPhone && <p className="text-slate-700 dark:text-gray-300">الهاتف: <span dir="ltr">{selectedReport.studentPhone}</span></p>}
             </div>
 
-            <div className="bg-gray-800/60 p-3 rounded-xl mb-3 text-sm">
-              <p className="text-cyan-200 font-bold mb-1">🛡️ المشرف المُبلِّغ:</p>
-              <p className="text-gray-300">الاسم: {selectedReport.report?.reportedByName}</p>
-              {reportedSupervisor?.phone && <p className="text-gray-300">الهاتف: <span dir="ltr">{reportedSupervisor.phone}</span></p>}
+            <div className="bg-slate-50 dark:bg-gray-800/60 p-3 rounded-xl mb-3 text-sm">
+              <p className="text-cyan-800 dark:text-cyan-200 font-bold mb-1">🛡️ المشرف المُبلِّغ:</p>
+              <p className="text-slate-700 dark:text-gray-300">الاسم: {selectedReport.report?.reportedByName}</p>
+              {reportedSupervisor?.phone && <p className="text-slate-700 dark:text-gray-300">الهاتف: <span dir="ltr">{reportedSupervisor.phone}</span></p>}
             </div>
 
-            <div className="bg-rose-500/10 p-3 rounded-xl mb-3 text-sm border border-rose-500/30">
-              <p className="text-rose-200 font-bold mb-1">📝 تفاصيل البلاغ:</p>
-              <p className="text-gray-200">السبب: {selectedReport.report?.reasonLabel}</p>
-              <p className="text-gray-200">التفاصيل: "{selectedReport.report?.details}"</p>
+            <div className="bg-rose-500/10 p-3 rounded-xl mb-3 text-sm border border-rose-300 dark:border-rose-500/30">
+              <p className="text-rose-800 dark:text-rose-200 font-bold mb-1">📝 تفاصيل البلاغ:</p>
+              <p className="text-slate-700 dark:text-gray-200">السبب: {selectedReport.report?.reasonLabel}</p>
+              <p className="text-slate-700 dark:text-gray-200">التفاصيل: "{selectedReport.report?.details}"</p>
             </div>
 
-            <div className="bg-gray-800/40 p-3 rounded-xl mb-3 max-h-60 overflow-y-auto border border-gray-700">
-              <p className="text-xs text-gray-400 mb-2">📜 سجل المحادثة الكامل:</p>
+            <div className="bg-slate-100 dark:bg-gray-800/40 p-3 rounded-xl mb-3 max-h-60 overflow-y-auto border border-slate-200 dark:border-gray-700">
+              <p className="text-xs text-slate-500 dark:text-gray-400 mb-2">📜 سجل المحادثة الكامل:</p>
               {selectedReport.messages?.map(m => (
                 <div key={m.id} className="text-xs mb-1">
-                  <strong className="text-blue-300">{m.senderName}:</strong>
-                  <span className="text-gray-300"> <RichText text={m.text} /></span>
+                  <strong className="text-blue-700 dark:text-blue-300">{m.senderName}:</strong>
+                  <span className="text-slate-700 dark:text-gray-300"> <RichText text={m.text} /></span>
                 </div>
               ))}
             </div>
 
-            <p className="text-[11px] text-amber-300 mb-2 text-center">
+            <p className="text-[11px] text-amber-700 dark:text-amber-300 mb-2 text-center">
               ⚠️ أي إجراء تختاره سيؤدي إلى حذف التذكرة نهائياً من السيرفر.
             </p>
 
             <div className="space-y-2">
               <button onClick={handleCancelReportAndDelete} disabled={processing}
-                className="w-full p-3 bg-gray-600/30 hover:bg-gray-600/50 border border-gray-500/40 rounded-xl text-gray-200 text-sm flex items-center justify-center gap-2 disabled:opacity-50">
+                className="w-full p-3 bg-slate-100 dark:bg-gray-600/30 hover:bg-slate-300 dark:hover:bg-gray-600/50 border border-slate-300 dark:border-gray-500/40 rounded-xl text-slate-700 dark:text-gray-200 text-sm flex items-center justify-center gap-2 disabled:opacity-50">
                 <FaTrashAlt /> رفض البلاغ وحذف المحادثة نهائياً
               </button>
 
               <button onClick={handleCancelReportAndReopen} disabled={processing}
-                className="w-full p-3 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 rounded-xl text-blue-200 text-sm flex items-center justify-center gap-2 disabled:opacity-50">
+                className="w-full p-3 bg-blue-100 dark:bg-blue-600/20 hover:bg-blue-200 dark:hover:bg-blue-600/30 border border-blue-300 dark:border-blue-500/40 rounded-xl text-blue-800 dark:text-blue-200 text-sm flex items-center justify-center gap-2 disabled:opacity-50">
                 <FaRedoAlt /> رفض البلاغ وإعادة المحادثة لمشرف آخر
               </button>
 
               <button onClick={handleWarnReported} disabled={processing}
-                className="w-full p-3 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 rounded-xl text-amber-200 text-sm flex items-center justify-center gap-2 disabled:opacity-50">
+                className="w-full p-3 bg-amber-100 dark:bg-amber-600/20 hover:bg-amber-200 dark:hover:bg-amber-600/30 border border-amber-300 dark:border-amber-500/40 rounded-xl text-amber-800 dark:text-amber-200 text-sm flex items-center justify-center gap-2 disabled:opacity-50">
                 <FaBell /> إرسال تنبيه إداري للمُبلَّغ عنه
               </button>
 
               <button onClick={handleCloseReportedAccount} disabled={processing}
-                className="w-full p-3 bg-red-600/30 hover:bg-red-600/50 border border-red-500/50 rounded-xl text-red-200 text-sm flex items-center justify-center gap-2 disabled:opacity-50">
+                className="w-full p-3 bg-red-100 dark:bg-red-600/30 hover:bg-red-600/50 border border-red-300 dark:border-red-500/50 rounded-xl text-red-800 dark:text-red-200 text-sm flex items-center justify-center gap-2 disabled:opacity-50">
                 <FaBan /> إغلاق حساب المُبلَّغ عنه نهائياً
               </button>
 
-              <button onClick={closeReportModal} className="w-full p-2 bg-gray-700 hover:bg-gray-600 rounded-xl text-gray-300 text-xs">
+              <button onClick={closeReportModal} className="w-full p-2 bg-slate-200 dark:bg-gray-700 hover:bg-slate-300 dark:hover:bg-gray-600 rounded-xl text-slate-700 dark:text-gray-300 text-xs">
                 إلغاء
               </button>
             </div>
@@ -646,75 +646,75 @@ const ManagerSupportReviewsSection = ({ user }) => {
       )}
 
       {selected && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] p-4" onClick={closeModal}>
-          <div className="bg-gray-900 p-6 rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-rose-500/30" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] p-4" onClick={closeModal}>
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-rose-300 dark:border-rose-500/30" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold text-rose-300">
+              <h3 className="text-xl font-bold text-rose-700 dark:text-rose-300">
                 {selected.ratedAgainstAi === true ? 'شكوى ضد المساعد الذكي سند' : 'مراجعة تقييم سلبي'}
               </h3>
-              <button onClick={closeModal} className="text-gray-400 hover:text-white text-2xl">✕</button>
+              <button onClick={closeModal} className="text-slate-500 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white text-2xl">✕</button>
             </div>
 
-            <div className="bg-gray-800/60 p-3 rounded-xl mb-3 text-sm">
-              <p className="text-cyan-200 font-bold mb-1">👤 الطالب:</p>
-              <p className="text-gray-300">الاسم: {selected.studentName}</p>
-              {selected.studentSerialNumber && <p className="text-gray-300">الرقم التسلسلي: {selected.studentSerialNumber}</p>}
-              {selected.studentPhone && <p className="text-gray-300">الهاتف: <span dir="ltr">{selected.studentPhone}</span></p>}
+            <div className="bg-slate-50 dark:bg-gray-800/60 p-3 rounded-xl mb-3 text-sm">
+              <p className="text-cyan-800 dark:text-cyan-200 font-bold mb-1">👤 الطالب:</p>
+              <p className="text-slate-700 dark:text-gray-300">الاسم: {selected.studentName}</p>
+              {selected.studentSerialNumber && <p className="text-slate-700 dark:text-gray-300">الرقم التسلسلي: {selected.studentSerialNumber}</p>}
+              {selected.studentPhone && <p className="text-slate-700 dark:text-gray-300">الهاتف: <span dir="ltr">{selected.studentPhone}</span></p>}
             </div>
 
             {selected.ratedAgainstAi === true ? (
-              <div className="bg-indigo-500/10 p-3 rounded-xl mb-3 text-sm border border-indigo-500/30">
-                <p className="text-indigo-200 font-bold mb-1 flex items-center gap-2">
+              <div className="bg-indigo-500/10 p-3 rounded-xl mb-3 text-sm border border-indigo-300 dark:border-indigo-500/30">
+                <p className="text-indigo-800 dark:text-indigo-200 font-bold mb-1 flex items-center gap-2">
                   <FaRobot /> الشكوى ضد المساعد الذكي سند
                 </p>
-                <p className="text-gray-300 text-xs">
+                <p className="text-slate-700 dark:text-gray-300 text-xs">
                   لم يتدخل أي مشرف بشري — الاعتذار للطالب فقط، ولا يُحتسب أي تقييم على أي مشرف.
                 </p>
               </div>
             ) : (
-              <div className="bg-gray-800/60 p-3 rounded-xl mb-3 text-sm">
-                <p className="text-cyan-200 font-bold mb-1">🛡️ المشرف:</p>
-                <p className="text-gray-300">الاسم: {selected.assignedSupervisorName}</p>
+              <div className="bg-slate-50 dark:bg-gray-800/60 p-3 rounded-xl mb-3 text-sm">
+                <p className="text-cyan-800 dark:text-cyan-200 font-bold mb-1">🛡️ المشرف:</p>
+                <p className="text-slate-700 dark:text-gray-300">الاسم: {selected.assignedSupervisorName}</p>
                 {supervisor && (
                   <>
-                    <p className="text-gray-300">الهاتف: <span dir="ltr">{supervisor.phone}</span></p>
+                    <p className="text-slate-700 dark:text-gray-300">الهاتف: <span dir="ltr">{supervisor.phone}</span></p>
                     {supervisor.ratingCount > 0 && (
-                      <p className="text-gray-300">التقييم الحالي: ⭐ {supervisor.ratingAverage?.toFixed?.(1) || supervisor.ratingAverage} ({supervisor.ratingCount} تقييم)</p>
+                      <p className="text-slate-700 dark:text-gray-300">التقييم الحالي: ⭐ {supervisor.ratingAverage?.toFixed?.(1) || supervisor.ratingAverage} ({supervisor.ratingCount} تقييم)</p>
                     )}
                   </>
                 )}
               </div>
             )}
 
-            <div className="bg-rose-500/10 p-3 rounded-xl mb-3 text-sm border border-rose-500/30">
-              <p className="text-rose-200 font-bold mb-1">⭐ التقييم السلبي:</p>
-              <p className="text-gray-200">النجوم: {selected.rating}/5</p>
-              <p className="text-gray-200">السبب: {SUPPORT_RATING_CATEGORIES.find(c => c.value === selected.ratingCategory)?.label}</p>
-              <p className="text-gray-200">التفاصيل: "{selected.ratingReason}"</p>
+            <div className="bg-rose-500/10 p-3 rounded-xl mb-3 text-sm border border-rose-300 dark:border-rose-500/30">
+              <p className="text-rose-800 dark:text-rose-200 font-bold mb-1">⭐ التقييم السلبي:</p>
+              <p className="text-slate-700 dark:text-gray-200">النجوم: {selected.rating}/5</p>
+              <p className="text-slate-700 dark:text-gray-200">السبب: {SUPPORT_RATING_CATEGORIES.find(c => c.value === selected.ratingCategory)?.label}</p>
+              <p className="text-slate-700 dark:text-gray-200">التفاصيل: "{selected.ratingReason}"</p>
             </div>
 
-            <div className="bg-gray-800/40 p-3 rounded-xl mb-3 max-h-60 overflow-y-auto border border-gray-700">
-              <p className="text-xs text-gray-400 mb-2">📜 سجل المحادثة الكامل:</p>
+            <div className="bg-slate-100 dark:bg-gray-800/40 p-3 rounded-xl mb-3 max-h-60 overflow-y-auto border border-slate-200 dark:border-gray-700">
+              <p className="text-xs text-slate-500 dark:text-gray-400 mb-2">📜 سجل المحادثة الكامل:</p>
               {selected.messages?.map(m => (
                 <div key={m.id} className="text-xs mb-1">
-                  <strong className="text-blue-300">{m.senderName}:</strong>
-                  <span className="text-gray-300"> <RichText text={m.text} /></span>
+                  <strong className="text-blue-700 dark:text-blue-300">{m.senderName}:</strong>
+                  <span className="text-slate-700 dark:text-gray-300"> <RichText text={m.text} /></span>
                 </div>
               ))}
             </div>
 
-            <p className="text-[11px] text-amber-300 mb-2 text-center">
+            <p className="text-[11px] text-amber-700 dark:text-amber-300 mb-2 text-center">
               ⚠️ أي قرار تتخذه سيؤدي إلى حذف التذكرة نهائياً من السيرفر فوراً.
             </p>
 
             {!mode && (
               <div className="space-y-2">
-                <button onClick={() => setMode('apologize')} className="w-full p-3 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 rounded-xl text-amber-200 text-sm">
+                <button onClick={() => setMode('apologize')} className="w-full p-3 bg-amber-100 dark:bg-amber-600/20 hover:bg-amber-200 dark:hover:bg-amber-600/30 border border-amber-300 dark:border-amber-500/40 rounded-xl text-amber-800 dark:text-amber-200 text-sm">
                   {selected.ratedAgainstAi === true
                     ? '🌸 قبول الشكوى والاعتذار للطالب (لا شيء على أي مشرف)'
                     : '🌸 قبول الشكوى والاعتذار (تنبيه للمشرف + اعتذار للطالب)'}
                 </button>
-                <button onClick={handleReject} disabled={processing} className="w-full p-3 bg-red-600/20 hover:bg-red-600/30 border border-red-500/40 rounded-xl text-red-200 text-sm disabled:opacity-50">
+                <button onClick={handleReject} disabled={processing} className="w-full p-3 bg-red-100 dark:bg-red-600/20 hover:bg-red-200 dark:hover:bg-red-600/30 border border-red-300 dark:border-red-500/40 rounded-xl text-red-800 dark:text-red-200 text-sm disabled:opacity-50">
                   {processing
                     ? 'جاري المعالجة...'
                     : selected.ratedAgainstAi === true
@@ -726,7 +726,7 @@ const ManagerSupportReviewsSection = ({ user }) => {
 
             {mode === 'apologize' && (
               <div className="space-y-3">
-                <label className="text-sm text-gray-300">
+                <label className="text-sm text-slate-700 dark:text-gray-300">
                   {selected.ratedAgainstAi === true
                     ? 'سبب الاعتذار (سيُرسل للطالب):'
                     : 'سبب الاعتذار (سيُرسل للمشرف):'}
@@ -734,7 +734,7 @@ const ManagerSupportReviewsSection = ({ user }) => {
                 <textarea
                   value={reason}
                   onChange={e => setReason(e.target.value)}
-                  className="w-full bg-gray-800 text-white p-2 rounded border border-gray-600 text-sm resize-none h-24"
+                  className="w-full bg-white dark:bg-gray-800 text-slate-900 dark:text-white p-2 rounded border border-slate-200 dark:border-gray-600 text-sm resize-none h-24"
                   placeholder={selected.ratedAgainstAi === true
                     ? 'اشرح للطالب سبب الاعتذار...'
                     : 'اشرح للمشرف ما الذي أخطأ فيه...'}
