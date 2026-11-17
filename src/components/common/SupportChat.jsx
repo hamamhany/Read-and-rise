@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import {
-  FaTimes, FaPaperPlane, FaStar, FaCheckCircle, FaTimesCircle,
+  FaTimes, FaStar, FaCheckCircle, FaTimesCircle,
   FaSpinner, FaHeadset, FaPhone, FaLock, FaWhatsapp,
   FaHourglassHalf, FaExclamationTriangle, FaShieldAlt, FaArrowRight
 } from 'react-icons/fa';
@@ -29,7 +29,9 @@ import {
 
 const TYPING_TTL_MS = 5000;
 const TYPING_PING_MS = 3000;
-const AI_FALLBACK_MS = 10 * 60 * 1000;
+const AI_FALLBACK_MS = 10 * 60 * 1000; // المساعد يرد بعد 10 دقائق لو المشرف ما رد
+const AI_END_CLIENT_COOLDOWN_MS = 60 * 1000;
+const AI_DEDUPE_MS = 3000;
 
 const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage = false }) => {
   const confirm = useConfirm();
@@ -57,14 +59,13 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
   const [reportReason, setReportReason] = useState('');
   const [reportDetails, setReportDetails] = useState('');
 
-  // ✅ حالة تفعيل المساعد الذكي
   const [aiEnabled, setAiEnabled] = useState(true);
-  // ✅ مرجع لتتبع ما إذا تم إظهار إشعار الإيقاف (ليظهر مرة واحدة فقط)
   const hasShownAiDisabledToast = useRef(false);
+
+  const aiDedupeRef = useRef({ key: null, at: 0 });
 
   const scrollRef = useRef(null);
   const [ticketWasLoaded, setTicketWasLoaded] = useState(false);
-
   const [, setClockTick] = useState(0);
 
   const [supTyping, setSupTyping] = useState(null);
@@ -92,17 +93,13 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
     return () => clearInterval(timer);
   }, []);
 
-  // ✅ الاشتراك بحالة AI
   useEffect(() => {
     const unsub = onSnapshot(
       doc(db, 'systemSettings', 'ai'),
       (snap) => {
         const isEnabled = snap.exists() ? snap.data().enabled !== false : true;
         setAiEnabled(isEnabled);
-        if (!isEnabled) {
-          // إعادة تصفير الإشعار عند إيقاف المساعد من جديد
-          hasShownAiDisabledToast.current = false;
-        }
+        if (!isEnabled) hasShownAiDisabledToast.current = false;
       },
       (err) => {
         console.warn('aiSettings subscription failed:', err?.message);
@@ -143,14 +140,12 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
   useEffect(() => {
     if (!ticket) return;
     const msgs = ticket.messages || [];
-
     if (!soundInitRef.current) {
       soundInitRef.current = true;
       lastMsgCountRef.current = msgs.length;
       prepareIncomingSound();
       return;
     }
-
     if (msgs.length > lastMsgCountRef.current) {
       const newMsgs = msgs.slice(lastMsgCountRef.current);
       const hasIncoming = newMsgs.some(
@@ -182,6 +177,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
     return () => clearTimeout(timer);
   }, [ticket?.typing?.at, ticket?.typing?.id, !!ticket, user.id]);
 
+  // ===== آلية الـ10 دقايق: المشرف موجود وما رد → سند يرد كاحتياطي =====
   const lastMsgId = ticket?.messages?.[ticket.messages.length - 1]?.id;
   useEffect(() => {
     if (viewerMode !== 'student') return;
@@ -203,6 +199,9 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
       const l = msgs[msgs.length - 1];
       if (!t || t.status !== SUPPORT_TICKET_STATUS.IN_PROGRESS || !t.assignedSupervisorId || !l || l.id !== last.id) return;
       if (supTypingRef.current) { timer = setTimeout(attempt, 5000); return; }
+      if (t.aiRequestedEnd === true) return;
+      const lastAiEnd = t.lastAiEndRequestAt?.toMillis?.() || 0;
+      if (lastAiEnd && Date.now() - lastAiEnd < AI_END_CLIENT_COOLDOWN_MS) return;
       const ok = await claimAiReply(ticketId, last.id);
       if (!ok || cancelled) return;
       askAssistant({
@@ -254,11 +253,13 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
   const handleSend = async () => {
     const t = text.trim();
     if (!t || sending) return;
+
+    setText('');
     setSending(true);
     try {
       await sendTicketMessage(ticketId, { id: user.id, name: user.name || user.username || 'مستخدم', role: user.role }, t);
-      setText('');
     } catch (e) {
+      setText(t);
       toast.error('فشل: ' + e.message);
       setSending(false);
       return;
@@ -271,28 +272,39 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
       return;
     }
 
-    // ✅ بما أنك تريد سند أن يرد عليك دائماً، فالكود هنا يرسل له الرسالة إذا لم يكن هناك مشرف
-    if (!ticket.assignedSupervisorId) {
-      if (!aiEnabled) {
-        if (!hasShownAiDisabledToast.current) {
-          hasShownAiDisabledToast.current = true;
-          toast('⏸️ المساعد الذكي متوقف مؤقتاً من قبل الإدارة — سيتولى أحد المشرفين الرد قريباً.', { duration: 5000 });
-        }
-        return;
+    // سند يرد فوراً فقط إذا ما في مشرف معيَّن (لتفادي انتظار الـ10 دقايق بلا فايدة)
+    if (ticket.assignedSupervisorId) return;
+
+    const now = Date.now();
+    const dedupeKey = `${ticketId}|${t}`;
+    if (aiDedupeRef.current.key === dedupeKey && now - aiDedupeRef.current.at < AI_DEDUPE_MS) return;
+    aiDedupeRef.current = { key: dedupeKey, at: now };
+
+    if (!aiEnabled) {
+      if (!hasShownAiDisabledToast.current) {
+        hasShownAiDisabledToast.current = true;
+        toast('⏸️ المساعد الذكي متوقف مؤقتاً من قبل الإدارة — سيتولى أحد المشرفين الرد قريباً.', { duration: 5000 });
       }
-      const history = buildAiHistory(ticket.messages, user.id);
-      askAssistant({
-        ticketId,
-        message: t,
-        history,
-        userRole: user.role || 'student',
-        userName: user.name || user.username || '',
-        userGender: user.gender || '',
-      }).catch((aiError) => {
-        console.error('خطأ في المساعد الذكي:', aiError);
-        toast.error('تعذر رد المساعد الذكي: ' + aiError.message);
-      });
+      return;
     }
+
+    const liveTicket = ticketRef.current;
+    if (liveTicket?.aiRequestedEnd === true) return;
+    const lastAiEnd = liveTicket?.lastAiEndRequestAt?.toMillis?.() || 0;
+    if (lastAiEnd && now - lastAiEnd < AI_END_CLIENT_COOLDOWN_MS) return;
+
+    const history = buildAiHistory(ticket.messages, user.id);
+    askAssistant({
+      ticketId,
+      message: t,
+      history,
+      userRole: user.role || 'student',
+      userName: user.name || user.username || '',
+      userGender: user.gender || '',
+    }).catch((aiError) => {
+      console.error('خطأ في المساعد الذكي:', aiError);
+      toast.error('تعذر رد المساعد الذكي: ' + aiError.message);
+    });
   };
 
   const handleTextChange = (v) => {
@@ -334,7 +346,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
   };
 
   const handleTransferToManager = async () => {
-    const ok = await confirm('تحويل للمدير', 'سيتم تحويل الطلب إلى المدير للمراجعة، ويمكن لصاحب التذكرة متابعة الحديث مع المساعد الذكي في الأثناء. متابعة؟');
+    const ok = await confirm('تحويل للمدير', 'سيتم تحويل الطلب إلى المدير لحلّه مباشرة كتذكرة. متابعة؟');
     if (!ok) return;
     try {
       await transferToManager(ticketId, user.name || user.username);
@@ -408,6 +420,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
       toast.success('تم إبلاغ المشرف — يمكنك متابعة المحادثة');
 
       if (wasAiEnd && aiEnabled) {
+        if ((ticket.aiEndRequestCount || 0) >= 2) return;
         const history = buildAiHistory(ticket.messages, user.id);
         askAssistant({
           ticketId,
@@ -431,7 +444,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
     setSubmittingRating(true);
     try {
       await submitRating(ticketId, rating, ratingCategory, ratingReason.trim());
-      toast.success(rating === 5 ? '✅ شكراً لتقييمك' : '✅ تم إرسال تقييمك للمدير');
+      toast.success(rating === 5 ? '✅ شكراً لتقييمك' : '✅ تم إرسال تقييمك');
       setShowRating(false);
       setTimeout(onClose, 1500);
     } catch (e) { toast.error('فشل: ' + e.message); }
@@ -464,24 +477,13 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
     if (contactStatus !== CONTACT_REQUEST_STATUS.APPROVED) return null;
     const mode = contactRequest?.mode || 'registered';
     const phone = mode === 'other' ? contactRequest?.customNumber : ticket.studentPhone;
-
     if (!phone) {
       return <span className="text-xs text-gray-400">⚠️ لم يتم توفير رقم للتواصل</span>;
     }
-
-    if (mode === 'registered') {
-      return (
-        <a href={`https://wa.me/${phone}`} target="_blank" rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-green-300 hover:text-green-200 font-bold bg-green-500/10 px-3 py-1.5 rounded-lg border border-green-500/30">
-          <FaWhatsapp /> تواصل: <span dir="ltr">{phone}</span>
-        </a>
-      );
-    }
-
     return (
       <a href={`https://wa.me/${phone}`} target="_blank" rel="noopener noreferrer"
         className="inline-flex items-center gap-1 text-green-300 hover:text-green-200 font-bold bg-green-500/10 px-3 py-1.5 rounded-lg border border-green-500/30">
-        <FaWhatsapp /> تواصل عبر واتساب
+        <FaWhatsapp /> تواصل: <span dir="ltr">{phone}</span>
       </a>
     );
   };
@@ -550,7 +552,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
           : 'bg-gray-900 rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col border border-blue-500/30'}
         onClick={e => e.stopPropagation()}
       >
-
         <div className={fullPage ? 'border-b border-gray-800 bg-gray-900/90 backdrop-blur flex-shrink-0' : 'border-b border-gray-700'}>
         <div className={`flex items-center justify-between p-3 ${fullPage ? 'w-full px-4' : ''}`}>
           <div className="flex items-center gap-2 min-w-0 flex-wrap">
@@ -563,9 +564,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
               <>
                 <SupportAvatar size={40} />
                 <div className="min-w-0 leading-tight">
-                  <p className="text-white font-bold text-sm truncate">
-                    الدعم الفني
-                  </p>
+                  <p className="text-white font-bold text-sm truncate">الدعم الفني</p>
                   <p className="text-[11px] text-gray-400 truncate">
                     {aiTyping
                       ? 'المساعد الذكي سند يكتب الآن...'
@@ -652,7 +651,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
             ✅ وافقت على {contactRequest?.mode === 'other' ? 'التواصل عبر رقم بديل' : 'مشاركة رقمك المسجل'} مع فريق الدعم.
           </div>
         )}
-
         </div>
 
         <div
@@ -714,7 +712,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
         )}
 
         {isWorkingOnTicket && !isAssignedSupervisor &&
-          [SUPPORT_TICKET_STATUS.OPEN, SUPPORT_TICKET_STATUS.NEEDS_COMPLETION].includes(ticket.status) && (
+          [SUPPORT_TICKET_STATUS.OPEN, SUPPORT_TICKET_STATUS.NEEDS_COMPLETION, SUPPORT_TICKET_STATUS.MANAGER_PENDING].includes(ticket.status) && (
           <div className="p-4 bg-gray-800 border-t border-gray-700 text-center">
             <p className="text-gray-300 text-sm mb-3">لم تقم بحجز هذه التذكرة بعد.</p>
             <button onClick={handleClaim} disabled={claiming}
@@ -780,7 +778,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
               <p className="text-xs text-gray-400 mb-3">
                 سيتم تحويل المحادثة إلى الإدارة للمراجعة. لن تتمكن من إرسال رسائل حتى تنتهي المراجعة.
               </p>
-
               <label className="text-sm text-gray-300 block mb-1">سبب البلاغ <span className="text-red-400">*</span></label>
               <select
                 value={reportReason}
@@ -792,7 +789,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
                   <option key={r.value} value={r.value}>{r.label}</option>
                 ))}
               </select>
-
               <label className="text-sm text-gray-300 block mb-1">تفاصيل البلاغ <span className="text-red-400">*</span></label>
               <textarea
                 value={reportDetails}
@@ -801,7 +797,6 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
                 placeholder="اشرح ما حدث بالتفصيل..."
                 maxLength={1000}
               />
-
               <div className="flex gap-2 justify-end">
                 <button onClick={() => setShowReportModal(false)} className="px-4 py-2 text-sm bg-gray-700 rounded text-white">إلغاء</button>
                 <button onClick={handleSubmitReport} disabled={processing}
@@ -826,9 +821,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
               {contactReason === 'سبب آخر' && (
                 <input type="text" placeholder="اكتب السبب" className="w-full bg-gray-800 text-white p-2 rounded mb-3" onChange={e => setCustomReason(e.target.value)} value={customReason} />
               )}
-              <p className="text-xs text-gray-400 mb-3">
-                📌 سيصل الطلب إلى صاحب التذكرة للموافقة أو الرفض.
-              </p>
+              <p className="text-xs text-gray-400 mb-3">📌 سيصل الطلب إلى صاحب التذكرة للموافقة أو الرفض.</p>
               <div className="flex gap-2 justify-end">
                 <button onClick={() => setShowContactModal(false)} className="px-4 py-2 text-sm bg-gray-700 rounded text-white">إلغاء</button>
                 <button onClick={handleRequestContact} disabled={processing}
@@ -845,30 +838,26 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
           <div className="fixed inset-0 bg-black/90 z-[80] flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
             <div className="bg-gray-900 p-6 rounded-2xl max-w-sm w-full border border-green-500/30">
               <h3 className="font-bold text-white mb-3">كيف تريد مشاركة رقمك؟</h3>
-
               <div className="space-y-2 mb-3">
                 <label className="flex items-start gap-2 text-sm text-gray-200 cursor-pointer p-2 rounded-lg border border-gray-700 hover:border-green-500/40 transition">
                   <input type="radio" name="contactMode" value="registered" checked={approveContactMode === 'registered'} onChange={() => setApproveContactMode('registered')} className="mt-1" />
                   <div>
                     <p className="font-bold">📱 مشاركة رقمي المسجل في المنصة</p>
                     <p className="text-xs text-gray-400" dir="ltr">{ticket.studentPhone || 'غير مسجل'}</p>
-                    <p className="text-[10px] text-amber-300 mt-1"> سيظهر رقمك كاملاً لفريق الدعم</p>
+                    <p className="text-[10px] text-amber-300 mt-1">سيظهر رقمك كاملاً لفريق الدعم</p>
                   </div>
                 </label>
-
                 <label className="flex items-start gap-2 text-sm text-gray-200 cursor-pointer p-2 rounded-lg border border-gray-700 hover:border-green-500/40 transition">
                   <input type="radio" name="contactMode" value="other" checked={approveContactMode === 'other'} onChange={() => setApproveContactMode('other')} className="mt-1" />
                   <div>
                     <p className="font-bold">✏️ إدخال رقم آخر</p>
-                    <p className="text-[10px] text-cyan-300 mt-1">🔒 رقمك الشخصي يُعامل بخصوصية تامة وسيُحذف من سجلات التواصل بعد الدردشة</p>
+                    <p className="text-[10px] text-cyan-300 mt-1">🔒 رقمك الشخصي يُعامل بخصوصية تامة</p>
                   </div>
                 </label>
               </div>
-
               {approveContactMode === 'other' && (
                 <input type="text" inputMode="numeric" value={approveCustomNumber} onChange={e => setApproveCustomNumber(e.target.value)} placeholder="أدخل الرقم مع رمز الدولة" className="w-full bg-gray-800 text-white p-2 rounded mb-3" />
               )}
-
               <div className="flex gap-2 justify-end">
                 <button onClick={() => { setShowApproveContactModal(false); setApproveContactMode('registered'); setApproveCustomNumber(''); }} className="px-4 py-2 text-sm bg-gray-700 rounded text-white">إلغاء</button>
                 <button onClick={handleConfirmApproveContact} disabled={processing} className="px-4 py-2 text-sm bg-green-600 rounded text-white font-bold disabled:opacity-50">

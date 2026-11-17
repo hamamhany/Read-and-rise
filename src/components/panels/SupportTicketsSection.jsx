@@ -4,7 +4,7 @@ import {
   FaHeadset, FaSpinner, FaEye, FaChevronDown, FaArrowCircleLeft,
   FaCheckCircle, FaCheckSquare, FaSquare
 } from 'react-icons/fa';
-import { subscribeToUnassignedTickets, subscribeToSupervisorTickets } from '../../services/support';
+import { subscribeToUnassignedTickets, subscribeToSupervisorTickets, transferToManager } from '../../services/support';
 import { SUPPORT_TICKET_STATUS } from '../../constants';
 import { doc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
@@ -52,10 +52,20 @@ const SupportTicketsSection = ({ user }) => {
     if (selectedIds.length === 0) return;
     setLoadingAction(true);
 
-    // نحتفظ بقائمة المعرفات قبل مسحها (لعرض أول تذكرة بعد الاستلام)
     const idsToOpen = [...selectedIds];
 
     try {
+      // ✅ التحويل: يستخدم transferToManager الحقيقية → تظهر كتذكرة بانتظار حل عند المدير
+      if (action === 'transfer') {
+        for (const id of idsToOpen) {
+          await transferToManager(id, user.name || user.username || 'مشرف');
+        }
+        toast.success('✅ تم تحويل التذاكر للمدير — ستظهر عنده كتذكرة بانتظار الحل');
+        setSelectedIds([]);
+        setShowExplorer(false);
+        return;
+      }
+
       const batch = writeBatch(db);
 
       idsToOpen.forEach(id => {
@@ -68,12 +78,6 @@ const SupportTicketsSection = ({ user }) => {
             status: SUPPORT_TICKET_STATUS.IN_PROGRESS,
             updatedAt: serverTimestamp(),
             unreadForSupervisor: false
-          });
-        } else if (action === 'transfer') {
-          batch.update(ref, {
-            status: SUPPORT_TICKET_STATUS.MANAGER_PENDING,
-            transferredBy: user.name || user.username || 'مشرف',
-            updatedAt: serverTimestamp()
           });
         } else if (action === 'close') {
           batch.update(ref, {
@@ -90,13 +94,11 @@ const SupportTicketsSection = ({ user }) => {
         toast.success('✅ تم استلام التذاكر المحددة');
         setSelectedIds([]);
         setShowExplorer(false);
-        // فتح أول تذكرة تم استلامها في الشاشة الكاملة فورًا
         if (idsToOpen.length > 0) {
           setSelectedTicketId(idsToOpen[0]);
         }
         return;
       }
-      if (action === 'transfer') toast.success('✅ تم تحويل التذاكر للمدير');
       if (action === 'close') toast.success('✅ تم إغلاق التذاكر');
 
       setSelectedIds([]);
@@ -238,14 +240,14 @@ const SupportTicketsSection = ({ user }) => {
                   <button
                     onClick={() => handleBatchAction('claim')}
                     disabled={loadingAction}
-                    className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1"
+                    className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 disabled:opacity-50"
                   >
                     <FaCheckCircle /> استلام
                   </button>
                   <button
                     onClick={() => handleBatchAction('transfer')}
                     disabled={loadingAction}
-                    className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1"
+                    className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 disabled:opacity-50"
                   >
                     <FaArrowCircleLeft /> تحويل للمدير
                   </button>

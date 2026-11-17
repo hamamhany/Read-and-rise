@@ -9,6 +9,7 @@ export const AI_SENDER = {
 };
 
 const pending = new Map();
+const inFlight = new Set();
 const listeners = new Set();
 const emit = () => listeners.forEach((l) => l());
 const subscribe = (l) => {
@@ -47,6 +48,10 @@ export async function askAssistant({
   userName = '',
   userGender = '',
 }) {
+  const key = `${ticketId}|${(message || '').slice(0, 60)}`;
+  if (inFlight.has(key)) return;
+  inFlight.add(key);
+
   changePending(ticketId, +1);
   try {
     const response = await fetch('/api/gemini', {
@@ -85,6 +90,7 @@ export async function askAssistant({
       }
     }
   } finally {
+    inFlight.delete(key);
     changePending(ticketId, -1);
   }
 }

@@ -15,6 +15,9 @@ import {
   SUPPORT_REPORT_REASONS
 } from '../constants';
 
+const AI_MAX_END_REQUESTS = 2;
+const AI_END_COOLDOWN_MS = 5 * 60 * 1000;
+
 export const createSupportTicket = async (data) => {
   const q = query(
     collection(db, SUPPORT_TICKETS_COLLECTION),
@@ -38,8 +41,7 @@ export const createSupportTicket = async (data) => {
   const ticket = {
     ...data,
     status: SUPPORT_TICKET_STATUS.OPEN,
-    // ✅ التعديل هنا: كل التذاكر تذهب لصندوق المشرفين أولاً
-    requiresManager: false, 
+    requiresManager: false,
     assignedSupervisorId: null,
     assignedSupervisorName: null,
     assignedAt: null,
@@ -62,9 +64,6 @@ export const createSupportTicket = async (data) => {
     managerReviewedAt: null,
     managerDecision: null,
     managerReason: null,
-    managerNotificationSent: false,
-    supervisorNotificationSent: false,
-    studentNotificationSent: false,
     unreadForStudent: false,
     unreadForSupervisor: true,
     bubbleDismissedByStudent: false,
@@ -75,6 +74,8 @@ export const createSupportTicket = async (data) => {
     reportResolvedBy: null,
     reportAction: null,
     aiRequestedEnd: false,
+    aiEndRequestCount: 0,
+    lastAiEndRequestAt: null,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   };
@@ -166,9 +167,10 @@ export const subscribeToUnassignedTickets = (callback) => {
 };
 
 export const subscribeToManagerReviewTickets = (callback) => {
+  // ✅ مراجعات فقط: تقييمات سلبية (بعد استبعاد تذاكر AI في submitRating)
   const q = query(
     collection(db, SUPPORT_TICKETS_COLLECTION),
-    where('status', 'in', [SUPPORT_TICKET_STATUS.RATED_LOW, SUPPORT_TICKET_STATUS.MANAGER_PENDING]),
+    where('status', '==', SUPPORT_TICKET_STATUS.RATED_LOW),
     orderBy('updatedAt', 'desc'),
     limit(50)
   );
@@ -178,10 +180,24 @@ export const subscribeToManagerReviewTickets = (callback) => {
 };
 
 export const subscribeToManagerOpenTickets = (callback) => {
+  // ✅ التذاكر المحوّلة للمدير (بحاجة إلى حل كتذكرة عادية)
   const q = query(
     collection(db, SUPPORT_TICKETS_COLLECTION),
     where('requiresManager', '==', true),
     where('status', '==', SUPPORT_TICKET_STATUS.OPEN),
+    orderBy('createdAt', 'asc'),
+    limit(50)
+  );
+  return onSnapshot(q, (snap) => {
+    callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+  });
+};
+
+export const subscribeToLegacyTransfers = (callback) => {
+  // ✅ تذاكر قديمة بحالة MANAGER_PENDING (تحويل جماعي قديم) — تظهر كتذاكر للحل أيضاً
+  const q = query(
+    collection(db, SUPPORT_TICKETS_COLLECTION),
+    where('status', '==', SUPPORT_TICKET_STATUS.MANAGER_PENDING),
     orderBy('createdAt', 'asc'),
     limit(50)
   );
@@ -217,8 +233,11 @@ export const claimTicket = async (ticketId, supervisorId, supervisorName, manage
     if (!ticketSnap.exists()) throw new Error('التذكرة غير موجودة');
     const ticket = ticketSnap.data();
     if (ticket.assignedSupervisorId) throw new Error('التذكرة محجوزة لمشرف آخر');
-    if (ticket.status !== SUPPORT_TICKET_STATUS.OPEN &&
-        ticket.status !== SUPPORT_TICKET_STATUS.NEEDS_COMPLETION) {
+    if (
+      ticket.status !== SUPPORT_TICKET_STATUS.OPEN &&
+      ticket.status !== SUPPORT_TICKET_STATUS.NEEDS_COMPLETION &&
+      ticket.status !== SUPPORT_TICKET_STATUS.MANAGER_PENDING
+    ) {
       throw new Error('التذكرة ليست متاحة');
     }
 
@@ -235,6 +254,7 @@ export const claimTicket = async (ticketId, supervisorId, supervisorName, manage
       assignedAt: serverTimestamp(),
       assignedMessageCount: (ticket.messages || []).length,
       status: SUPPORT_TICKET_STATUS.IN_PROGRESS,
+      requiresManager: false,
       updatedAt: serverTimestamp(),
       unreadForSupervisor: false,
       unreadForStudent: true
@@ -308,6 +328,14 @@ export const transferToManager = async (ticketId, supervisorName) => {
   const snap = await getDoc(ticketRef);
   if (!snap.exists()) throw new Error('التذكرة غير موجودة');
   const data = snap.data();
+
+  if (data.status !== SUPPORT_TICKET_STATUS.IN_PROGRESS) {
+    throw new Error('لا يمكن تحويل التذكرة في هذه الحالة');
+  }
+  if (!data.assignedSupervisorId) {
+    throw new Error('لا يمكن تحويل تذكرة لم يستلمها مشرف بعد');
+  }
+
   const previousSupervisorId = data.assignedSupervisorId;
 
   const message = {
@@ -315,7 +343,7 @@ export const transferToManager = async (ticketId, supervisorName) => {
     senderId: 'system',
     senderName: 'النظام',
     senderRole: 'system',
-    text: `📤 تم تحويل هذا الطلب إلى مدير النظام للمراجعة بواسطة ${supervisorName || 'المشرف'}. يمكنك متابعة الحديث مع المساعد الذكي "سند" في الأثناء، وسيتدخل المدير عند الحاجة.`,
+    text: `📤 تم تحويل هذا الطلب إلى مدير النظام لحلّه مباشرة بواسطة ${supervisorName || 'المشرف'}. يمكنك متابعة الحديث مع المساعد الذكي "سند" في الأثناء.`,
     createdAt: new Date().toISOString()
   };
 
@@ -324,7 +352,7 @@ export const transferToManager = async (ticketId, supervisorName) => {
     assignedSupervisorId: null,
     assignedSupervisorName: null,
     assignedAt: null,
-    requiresManager: true, // ✅ هنا يتم التحويل للمدير فقط عند ضغط المشرف
+    requiresManager: true,
     transferredBy: supervisorName,
     transferredAt: serverTimestamp(),
     messages: arrayUnion(message),
@@ -537,16 +565,36 @@ export const rejectDeletionByStudent = async (ticketId, reason = '') => {
 
 export const requestTicketEnd = async (ticketId, supervisorName = '', opts = {}) => {
   const { aiEnd = false } = opts;
-  const now = Date.now();
-  const updates = {
+  const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
+
+  let updates = {
     status: SUPPORT_TICKET_STATUS.SUPERVISOR_ENDED,
     endRequestedAt: serverTimestamp(),
-    endRequestExpiresAt: new Date(now + SUPPORT_END_TIMEOUT_MS),
+    endRequestExpiresAt: new Date(Date.now() + SUPPORT_END_TIMEOUT_MS),
     unreadForStudent: true,
     aiRequestedEnd: aiEnd,
     updatedAt: serverTimestamp()
   };
-  await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), updates);
+
+  if (aiEnd) {
+    const snap = await getDoc(ticketRef);
+    if (!snap.exists()) throw new Error('التذكرة غير موجودة');
+    const data = snap.data();
+    const count = data.aiEndRequestCount || 0;
+    const lastAt = data.lastAiEndRequestAt?.toMillis?.() || 0;
+
+    if (count >= AI_MAX_END_REQUESTS) {
+      throw new Error('المساعد الذكي وصل للحد الأقصى من طلبات الإغلاق لهذه التذكرة');
+    }
+    if (lastAt && Date.now() - lastAt < AI_END_COOLDOWN_MS) {
+      throw new Error('لا يمكن طلب إغلاق جديد قبل انقضاء 5 دقائق');
+    }
+
+    updates.aiEndRequestCount = count + 1;
+    updates.lastAiEndRequestAt = serverTimestamp();
+  }
+
+  await updateDoc(ticketRef, updates);
 };
 
 export const studentConfirmSolved = async (ticketId) => {
@@ -577,7 +625,9 @@ export const submitRating = async (ticketId, rating, ratingCategory, ratingReaso
   const isFull = rating === 5;
   const newStatus = isFull ? SUPPORT_TICKET_STATUS.RATED_FULL : SUPPORT_TICKET_STATUS.RATED_LOW;
 
-  const ratedAgainstAi = !isFull && data.aiRequestedEnd === true;
+  // ✅ إذا لم يكن هناك مشرف بشري، فالتقييم السلبي ضد المساعد الذكي → يُحذف تلقائياً
+  const hadHumanSupervisor = !!(data.assignedSupervisorId);
+  const ratedAgainstAi = !isFull && (data.aiRequestedEnd === true || !hadHumanSupervisor);
 
   await updateDoc(ticketRef, {
     rating,
@@ -606,9 +656,10 @@ export const submitRating = async (ticketId, rating, ratingCategory, ratingReaso
     }
   }
 
-  if (isFull) {
+  // 5 نجوم: راضٍ → حذف. AI-only: يحذف. غير ذلك: يبقى للمدير.
+  if (isFull || ratedAgainstAi) {
     try { await deleteTicketPermanently(ticketId); }
-    catch (e) { console.warn('auto-delete after full rating failed:', e); }
+    catch (e) { console.warn('auto-delete after rating failed:', e); }
   }
 
   return newStatus;
@@ -659,17 +710,14 @@ export const managerDecide = async (ticketId, decision, managerReason) => {
 
 export const deleteTicketPermanently = async (ticketId) => {
   const ref = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
-
   let supervisorId = null;
 
   try {
     await runTransaction(db, async (transaction) => {
       const snap = await transaction.get(ref);
       if (!snap.exists()) return;
-
       const data = snap.data();
       supervisorId = data.assignedSupervisorId;
-
       transaction.delete(ref);
     });
   } catch (e) {
