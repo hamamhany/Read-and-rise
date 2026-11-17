@@ -1,14 +1,52 @@
 import { useEffect, useState } from 'react';
 import { getStoredTheme, setTheme } from '../../utils/theme';
 
+// هل هناك نافذة منبثقة أو شاشة كاملة مفتوحة الآن؟ (طبقة ثابتة تغطي الشاشة)
+function hasOpenOverlay() {
+  const els = document.querySelectorAll('.fixed.inset-0, .zoom-meeting-modal');
+  for (const el of els) {
+    const cs = window.getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+    const z = parseInt(cs.zIndex, 10);
+    // الطبقات الخلفية الدائمة (z-index منخفض) لا تُعدّ نافذة
+    if (!Number.isNaN(z) && z >= 40) return true;
+  }
+  return false;
+}
+
 export default function ThemeToggle() {
   const [theme, setLocalTheme] = useState(getStoredTheme());
+  const [hidden, setHidden] = useState(false);
 
   useEffect(() => {
     const onChange = (e) => setLocalTheme(e.detail);
     window.addEventListener('theme-change', onChange);
     return () => window.removeEventListener('theme-change', onChange);
   }, []);
+
+  // إخفاء الزر في الشاشات الفرعية: أي رابط غير الرئيسي، أو عند فتح نافذة منبثقة
+  useEffect(() => {
+    let raf = 0;
+    const check = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const path = window.location.pathname.replace(/\/+$/, '');
+        const onSubPage = path !== '';
+        setHidden(onSubPage || hasOpenOverlay());
+      });
+    };
+    check();
+    const observer = new MutationObserver(check);
+    observer.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener('popstate', check);
+    return () => {
+      cancelAnimationFrame(raf);
+      observer.disconnect();
+      window.removeEventListener('popstate', check);
+    };
+  }, []);
+
+  if (hidden) return null;
 
   const isLight = theme === 'light';
 

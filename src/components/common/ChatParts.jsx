@@ -18,6 +18,9 @@ const CHAT_CSS = `
 .chat-scroll::-webkit-scrollbar-thumb { background-color: #4b5563; border-radius: 9999px; border: 2px solid transparent; background-clip: content-box; }
 .chat-scroll::-webkit-scrollbar-thumb:hover { background-color: #6b7280; }
 .chat-scroll::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+html.theme-light .chat-scroll { scrollbar-color: #94a3b8 transparent; background-color: transparent !important; border: 0 !important; }
+html.theme-light .chat-scroll::-webkit-scrollbar-thumb { background-color: #94a3b8; }
+html.theme-light .chat-scroll::-webkit-scrollbar-thumb:hover { background-color: #64748b; }
 
 @keyframes chat-in-right { from { opacity: 0; transform: translate(28px, 14px) scale(.85); } to { opacity: 1; transform: none; } }
 @keyframes chat-in-left  { from { opacity: 0; transform: translate(-28px, 14px) scale(.85); } to { opacity: 1; transform: none; } }
@@ -151,24 +154,24 @@ const ImgAvatar = ({ src, alt, size, Fallback, fallbackClass }) => {
       alt={alt}
       style={style}
       onError={() => setFailed(true)}
-      className="rounded-full object-cover flex-shrink-0 bg-gray-800"
+      className="rounded-full object-cover flex-shrink-0 bg-white dark:bg-gray-800"
     />
   );
 };
 
 export const BotAvatar = ({ size = 32 }) => (
   <ImgAvatar src={BOT_IMAGE} alt="المساعد الذكي" size={size} Fallback={FaRobot}
-    fallbackClass="bg-indigo-600/40 border-indigo-400/40 text-indigo-200" />
+    fallbackClass="bg-indigo-600/40 border-indigo-400/40 text-indigo-800 dark:text-indigo-200" />
 );
 
 export const SupportAvatar = ({ size = 32 }) => (
   <ImgAvatar src={SUPPORT_IMAGE} alt="الدعم الفني" size={size} Fallback={FaHeadset}
-    fallbackClass="bg-blue-600/40 border-blue-400/40 text-blue-200" />
+    fallbackClass="bg-blue-600/40 border-blue-400/40 text-blue-800 dark:text-blue-200" />
 );
 
 export const SupervisorAvatar = ({ size = 32 }) => (
   <ImgAvatar src={SUPERVISOR_IMAGE} alt="المشرف" size={size} Fallback={FaUserTie}
-    fallbackClass="bg-emerald-600/40 border-emerald-400/40 text-emerald-200" />
+    fallbackClass="bg-emerald-600/40 border-emerald-400/40 text-emerald-800 dark:text-emerald-200" />
 );
 
 // فقاعة "يكتب الآن": ثلاث نقاط تتنطط بجانب صورة المساعد أو المشرف (على اليسار)
@@ -176,7 +179,7 @@ export const TypingBubble = ({ kind = 'ai' }) => (
   <div className="flex items-end gap-2 flex-row-reverse justify-start chat-in-left">
     {kind === 'staff' ? <SupervisorAvatar /> : <BotAvatar />}
     <div
-      className="bg-gray-800 border border-gray-700 rounded-2xl rounded-bl-none px-4 py-3 flex items-center gap-1.5"
+      className="bg-white dark:bg-gray-800 border border-slate-200 dark:border-gray-700 rounded-2xl rounded-bl-none px-4 py-3 flex items-center gap-1.5"
       aria-label={kind === 'staff' ? 'المشرف يكتب' : 'المساعد الذكي يكتب'}
     >
       {[0, 1, 2].map((i) => (
@@ -248,10 +251,10 @@ export const ChatComposer = ({
   return (
     <div
       dir="rtl"
-      className="flex-shrink-0 bg-gray-900/90 backdrop-blur border-t border-gray-800 px-3 pt-2"
+      className="flex-shrink-0 bg-white dark:bg-gray-900/90 backdrop-blur border-t border-slate-200 dark:border-gray-800 px-3 pt-2"
       style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
     >
-      <div className="w-full flex items-end gap-2 bg-gray-800 border border-gray-700 focus-within:border-blue-500 rounded-3xl px-3 py-1.5 transition-colors">
+      <div className="w-full flex items-end gap-2 bg-white dark:bg-gray-800 border border-slate-200 dark:border-gray-700 focus-within:border-blue-500 rounded-3xl px-3 py-1.5 transition-colors">
         <textarea
           ref={ref}
           rows={1}
@@ -264,7 +267,7 @@ export const ChatComposer = ({
           autoFocus={autoFocus}
           disabled={disabled}
           style={{ unicodeBidi: 'plaintext', textAlign: 'start' }}
-          className="chat-scroll flex-1 min-w-0 bg-transparent text-white text-[15px] leading-6 py-2 resize-none outline-none border-0 placeholder-gray-500"
+          className="chat-scroll flex-1 min-w-0 bg-transparent text-slate-900 dark:text-white text-[15px] leading-6 py-2 resize-none outline-none border-0 placeholder-gray-500"
         />
         <button
           type="button"
