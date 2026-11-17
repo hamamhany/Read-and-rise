@@ -167,7 +167,6 @@ export const subscribeToUnassignedTickets = (callback) => {
 };
 
 export const subscribeToManagerReviewTickets = (callback) => {
-  // ✅ مراجعات فقط: تقييمات سلبية (بعد استبعاد تذاكر AI في submitRating)
   const q = query(
     collection(db, SUPPORT_TICKETS_COLLECTION),
     where('status', '==', SUPPORT_TICKET_STATUS.RATED_LOW),
@@ -180,7 +179,6 @@ export const subscribeToManagerReviewTickets = (callback) => {
 };
 
 export const subscribeToManagerOpenTickets = (callback) => {
-  // ✅ التذاكر المحوّلة للمدير (بحاجة إلى حل كتذكرة عادية)
   const q = query(
     collection(db, SUPPORT_TICKETS_COLLECTION),
     where('requiresManager', '==', true),
@@ -194,7 +192,6 @@ export const subscribeToManagerOpenTickets = (callback) => {
 };
 
 export const subscribeToLegacyTransfers = (callback) => {
-  // ✅ تذاكر قديمة بحالة MANAGER_PENDING (تحويل جماعي قديم) — تظهر كتذاكر للحل أيضاً
   const q = query(
     collection(db, SUPPORT_TICKETS_COLLECTION),
     where('status', '==', SUPPORT_TICKET_STATUS.MANAGER_PENDING),
@@ -625,9 +622,9 @@ export const submitRating = async (ticketId, rating, ratingCategory, ratingReaso
   const isFull = rating === 5;
   const newStatus = isFull ? SUPPORT_TICKET_STATUS.RATED_FULL : SUPPORT_TICKET_STATUS.RATED_LOW;
 
-  // ✅ إذا لم يكن هناك مشرف بشري، فالتقييم السلبي ضد المساعد الذكي → يُحذف تلقائياً
+  // ✅ الشكوى ضد سند = تقييم سلبي بدون مشرف بشري
   const hadHumanSupervisor = !!(data.assignedSupervisorId);
-  const ratedAgainstAi = !isFull && (data.aiRequestedEnd === true || !hadHumanSupervisor);
+  const ratedAgainstAi = !isFull && !hadHumanSupervisor;
 
   await updateDoc(ticketRef, {
     rating,
@@ -640,6 +637,7 @@ export const submitRating = async (ticketId, rating, ratingCategory, ratingReaso
     updatedAt: serverTimestamp()
   });
 
+  // تحديث تقييم المشرف فقط لو كان مشرف بشري
   if (!ratedAgainstAi && data.assignedSupervisorId) {
     const supRef = doc(db, 'profiles', data.assignedSupervisorId);
     const supSnap = await getDoc(supRef);
@@ -656,10 +654,10 @@ export const submitRating = async (ticketId, rating, ratingCategory, ratingReaso
     }
   }
 
-  // 5 نجوم: راضٍ → حذف. AI-only: يحذف. غير ذلك: يبقى للمدير.
-  if (isFull || ratedAgainstAi) {
+  // ✅ الحذف التلقائي فقط للـ 5 نجوم. التقييم السلبي (سواء سند أو مشرف) يبقى للمدير يراجعه.
+  if (isFull) {
     try { await deleteTicketPermanently(ticketId); }
-    catch (e) { console.warn('auto-delete after rating failed:', e); }
+    catch (e) { console.warn('auto-delete after full rating failed:', e); }
   }
 
   return newStatus;
@@ -684,6 +682,7 @@ export const managerDecide = async (ticketId, decision, managerReason) => {
     updatedAt: serverTimestamp()
   });
 
+  // تعديل تقييم المشرف فقط لو كان مشرف بشري
   if (data.assignedSupervisorId && data.ratedAgainstAi !== true) {
     const supRef = doc(db, 'profiles', data.assignedSupervisorId);
     const supSnap = await getDoc(supRef);

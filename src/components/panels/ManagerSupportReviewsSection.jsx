@@ -108,28 +108,49 @@ const ManagerSupportReviewsSection = ({ user }) => {
         const todayData = todaySnap.exists() ? todaySnap.data() : {};
         const yData = ySnap.exists() ? ySnap.data() : {};
 
+        const buildMinutesMap = (data) => {
+          const map = {};
+          if (data?.minutes && typeof data.minutes === 'object') {
+            Object.entries(data.minutes).forEach(([k, v]) => {
+              const n = Number(k);
+              if (!isNaN(n) && typeof v === 'number') map[n] = (map[n] || 0) + v;
+            });
+          }
+          Object.entries(data || {}).forEach(([k, v]) => {
+            const m = k.match(/^minutes\.(\d+)$/);
+            if (m && typeof v === 'number') {
+              const n = Number(m[1]);
+              map[n] = (map[n] || 0) + v;
+            }
+          });
+          return map;
+        };
+
         const currentMinute = now.getUTCHours() * 60 + now.getUTCMinutes();
         let peak = 0;
         let totalLast24h = 0;
 
-        const tMins = todayData.minutes || {};
+        const tMins = buildMinutesMap(todayData);
         for (let m = 0; m <= currentMinute; m++) {
           const v = tMins[m] || 0;
           if (v > peak) peak = v;
           totalLast24h += v;
         }
-        const yMins = yData.minutes || {};
-        for (let m = currentMinute; m <= 1439; m++) {
+        const yMins = buildMinutesMap(yData);
+        for (let m = currentMinute + 1; m <= 1439; m++) {
           const v = yMins[m] || 0;
           if (v > peak) peak = v;
           totalLast24h += v;
         }
 
+        const serverPeak = Number(todayData.peakPerMinute) || 0;
+        const finalPeak = Math.max(peak, serverPeak);
+
         setAiStats({
-          totalToday: todayData.totalRequests || 0,
-          peakPerMinute: peak,
+          totalToday: Number(todayData.totalRequests) || 0,
+          peakPerMinute: finalPeak,
           totalLast24h,
-          quotaExceeded: todayData.totalQuotaExceeded || 0
+          quotaExceeded: Number(todayData.totalQuotaExceeded) || 0
         });
       } catch (e) {
         console.warn('ai stats load failed:', e);
@@ -230,6 +251,7 @@ const ManagerSupportReviewsSection = ({ user }) => {
     } catch (e) { toast.error(e.message); }
   };
 
+  // ✅ اعتذار: مع مشرف حقيقي = تنبيه للمشرف + اعتذار للطالب. مع سند = اعتذار للطالب فقط.
   const handleApologize = async () => {
     if (!reason.trim()) {
       toast.error(selected.ratedAgainstAi === true
@@ -242,9 +264,13 @@ const ManagerSupportReviewsSection = ({ user }) => {
       if (selected.ratedAgainstAi !== true && supervisor) {
         sendSupervisorRatingWarningMessage(supervisor, selected.rating, reason.trim());
       }
-      if (student) sendApologyToStudentMessage(student);
+      if (student) {
+        sendApologyToStudentMessage(student);
+      }
       await managerDecide(selected.id, 'apologize', reason.trim());
-      toast.success('✅ تم الاعتذار والحذف');
+      toast.success(selected.ratedAgainstAi === true
+        ? '✅ تم الاعتذار للطالب وحذف التذكرة'
+        : '✅ تم الاعتذار وتنبيه المشرف وحذف التذكرة');
       closeModal();
     } catch (e) { toast.error('فشل: ' + e.message); }
     finally { setProcessing(false); }
@@ -252,7 +278,7 @@ const ManagerSupportReviewsSection = ({ user }) => {
 
   const handleReject = async () => {
     const msg = selected.ratedAgainstAi === true
-      ? 'سيتم رفض الشكوى ضد سند وحذف التذكرة. متابعة؟'
+      ? 'سيتم رفض الشكوى ضد المساعد الذكي سند وحذف التذكرة. متابعة؟'
       : 'سيتم إلغاء الشكوى وإعطاء المشرف 5 نجوم وإرسال تحذير للطالب وحذف التذكرة. متابعة؟';
     const ok = await confirm('رفض الشكوى', msg);
     if (!ok) return;
@@ -271,7 +297,7 @@ const ManagerSupportReviewsSection = ({ user }) => {
         sendComplaintRejectedMessage(student, classNames);
       }
       await managerDecide(selected.id, 'reject', '');
-      toast.success('✅ تم الرفض والحذف');
+      toast.success('✅ تم رفض الشكوى وحذف التذكرة');
       closeModal();
     } catch (e) { toast.error('فشل: ' + e.message); }
     finally { setProcessing(false); }
@@ -366,13 +392,9 @@ const ManagerSupportReviewsSection = ({ user }) => {
     finally { setProcessing(false); }
   };
 
-  // ✅ فلترة صارمة:
-  // - استبعاد تذاكر المدير نفسه (تجارب)
-  // - استبعاد تذاكر AI بدون مشرف بشري (فقط ما تم عليه تقييم سلبي)
-  // - استبعاد تذاكر المدير كـ"مشرف" (ما يقيّم نفسه)
+  // ✅ تقييمات سلبية: من أي مشرف (غير المدير نفسه) أو ضد سند
   const visibleReviews = reviews.filter(t =>
     t.studentId !== user.id &&
-    t.assignedSupervisorId != null &&
     t.assignedSupervisorId !== user.id
   );
 
@@ -389,7 +411,6 @@ const ManagerSupportReviewsSection = ({ user }) => {
 
   return (
     <div className="bg-slate-50 dark:bg-gray-800/60 p-6 rounded-2xl border border-rose-300 dark:border-rose-500/20 space-y-4">
-      {/* لوحة AI */}
       <div className="bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-900/30 dark:to-purple-900/20 p-4 rounded-xl border border-indigo-300 dark:border-indigo-500/40">
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <h4 className="text-indigo-800 dark:text-indigo-200 font-bold flex items-center gap-2 text-sm">
@@ -459,7 +480,6 @@ const ManagerSupportReviewsSection = ({ user }) => {
             <FaExclamationTriangle /> مراجعات الدعم الفني
           </h3>
 
-          {/* البلاغات */}
           {visibleReported.length > 0 && (
             <div className="border border-red-300 dark:border-red-500/30 rounded-xl p-3 bg-red-50 dark:bg-red-900/10">
               <p className="text-sm text-red-800 dark:text-red-200 font-bold mb-2 flex items-center gap-2">
@@ -485,13 +505,13 @@ const ManagerSupportReviewsSection = ({ user }) => {
             </div>
           )}
 
-          {/* التقييمات السلبية (فقط اللي فيها مشرف بشري) */}
           {visibleReviews.length > 0 && (
             <div className="space-y-2 max-h-96 overflow-y-auto">
               {visibleReviews.map(t => {
                 const catLabel = SUPPORT_RATING_CATEGORIES.find(c => c.value === t.ratingCategory)?.label || '';
+                const isAi = t.ratedAgainstAi === true || !t.assignedSupervisorId;
                 return (
-                  <div key={t.id} className="p-3 bg-white dark:bg-black/30 rounded-lg border border-rose-300 dark:border-rose-500/30">
+                  <div key={t.id} className={`p-3 bg-white dark:bg-black/30 rounded-lg border ${isAi ? 'border-indigo-300 dark:border-indigo-500/40' : 'border-rose-300 dark:border-rose-500/30'}`}>
                     <div className="flex justify-between items-start gap-2 flex-wrap">
                       <div className="flex-1 min-w-0">
                         <p className="text-slate-900 dark:text-white text-sm">
@@ -499,7 +519,13 @@ const ManagerSupportReviewsSection = ({ user }) => {
                         </p>
                         <p className="text-xs text-rose-800 dark:text-rose-200 mt-1">⭐ {t.rating}/5 — {catLabel}</p>
                         <p className="text-xs text-slate-700 dark:text-gray-300 mt-1 line-clamp-2">"{t.ratingReason}"</p>
-                        <p className="text-xs text-cyan-700 dark:text-cyan-300 mt-1">المشرف: {t.assignedSupervisorName}</p>
+                        {isAi ? (
+                          <p className="text-xs text-indigo-700 dark:text-indigo-300 mt-1 flex items-center gap-1">
+                            <FaRobot size={10} /> الشكوى ضد المساعد الذكي سند
+                          </p>
+                        ) : (
+                          <p className="text-xs text-cyan-700 dark:text-cyan-300 mt-1">المشرف: {t.assignedSupervisorName}</p>
+                        )}
                       </div>
                       <button onClick={() => openReview(t)} className="text-xs bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg">
                         <FaEye /> مراجعة
@@ -511,7 +537,6 @@ const ManagerSupportReviewsSection = ({ user }) => {
             </div>
           )}
 
-          {/* تذاكري النشطة (اللي أنا استلمتها كمدير) */}
           {visibleMyManager.length > 0 && (
             <div className="border-t border-slate-200 dark:border-gray-700 pt-4">
               <p className="text-sm text-emerald-800 dark:text-emerald-200 font-bold mb-2 flex items-center gap-2">
@@ -535,7 +560,6 @@ const ManagerSupportReviewsSection = ({ user }) => {
             </div>
           )}
 
-          {/* تذاكر محوّلة إليك كمدير لحلها (مش "مراجعة تقييم") */}
           {allSolveTickets.length > 0 && (
             <div className="border-t border-slate-200 dark:border-gray-700 pt-4">
               <p className="text-sm text-cyan-800 dark:text-cyan-200 font-bold mb-2 flex items-center gap-2">
@@ -574,7 +598,6 @@ const ManagerSupportReviewsSection = ({ user }) => {
         />
       )}
 
-      {/* مودال البلاغ */}
       {selectedReport && (
         <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] p-4" onClick={closeReportModal}>
           <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-red-300 dark:border-red-500/30" onClick={e => e.stopPropagation()}>
@@ -642,13 +665,12 @@ const ManagerSupportReviewsSection = ({ user }) => {
         </div>
       )}
 
-      {/* مودال المراجعة */}
       {selected && (
         <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] p-4" onClick={closeModal}>
           <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-rose-300 dark:border-rose-500/30" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-bold text-rose-700 dark:text-rose-300">
-                مراجعة تقييم سلبي
+                {selected.ratedAgainstAi === true ? 'شكوى ضد المساعد الذكي سند' : 'مراجعة تقييم سلبي'}
               </h3>
               <button onClick={closeModal} className="text-slate-500 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white text-2xl">✕</button>
             </div>
@@ -660,18 +682,29 @@ const ManagerSupportReviewsSection = ({ user }) => {
               {selected.studentPhone && <p className="text-slate-700 dark:text-gray-300">الهاتف: <span dir="ltr">{selected.studentPhone}</span></p>}
             </div>
 
-            <div className="bg-slate-50 dark:bg-gray-800/60 p-3 rounded-xl mb-3 text-sm">
-              <p className="text-cyan-800 dark:text-cyan-200 font-bold mb-1">🛡️ المشرف:</p>
-              <p className="text-slate-700 dark:text-gray-300">الاسم: {selected.assignedSupervisorName}</p>
-              {supervisor && (
-                <>
-                  <p className="text-slate-700 dark:text-gray-300">الهاتف: <span dir="ltr">{supervisor.phone}</span></p>
-                  {supervisor.ratingCount > 0 && (
-                    <p className="text-slate-700 dark:text-gray-300">التقييم الحالي: ⭐ {supervisor.ratingAverage?.toFixed?.(1) || supervisor.ratingAverage} ({supervisor.ratingCount} تقييم)</p>
-                  )}
-                </>
-              )}
-            </div>
+            {selected.ratedAgainstAi === true ? (
+              <div className="bg-indigo-500/10 p-3 rounded-xl mb-3 text-sm border border-indigo-300 dark:border-indigo-500/30">
+                <p className="text-indigo-800 dark:text-indigo-200 font-bold mb-1 flex items-center gap-2">
+                  <FaRobot /> الشكوى ضد المساعد الذكي سند
+                </p>
+                <p className="text-slate-700 dark:text-gray-300 text-xs">
+                  لم يتدخل أي مشرف بشري — الاعتذار سيُرسل للطالب مباشرة، ولن يُنبَّه أي مشرف.
+                </p>
+              </div>
+            ) : (
+              <div className="bg-slate-50 dark:bg-gray-800/60 p-3 rounded-xl mb-3 text-sm">
+                <p className="text-cyan-800 dark:text-cyan-200 font-bold mb-1">🛡️ المشرف:</p>
+                <p className="text-slate-700 dark:text-gray-300">الاسم: {selected.assignedSupervisorName}</p>
+                {supervisor && (
+                  <>
+                    <p className="text-slate-700 dark:text-gray-300">الهاتف: <span dir="ltr">{supervisor.phone}</span></p>
+                    {supervisor.ratingCount > 0 && (
+                      <p className="text-slate-700 dark:text-gray-300">التقييم الحالي: ⭐ {supervisor.ratingAverage?.toFixed?.(1) || supervisor.ratingAverage} ({supervisor.ratingCount} تقييم)</p>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
 
             <div className="bg-rose-500/10 p-3 rounded-xl mb-3 text-sm border border-rose-300 dark:border-rose-500/30">
               <p className="text-rose-800 dark:text-rose-200 font-bold mb-1">⭐ التقييم:</p>
@@ -697,23 +730,40 @@ const ManagerSupportReviewsSection = ({ user }) => {
             {!mode && (
               <div className="space-y-2">
                 <button onClick={() => setMode('apologize')} className="w-full p-3 bg-amber-100 dark:bg-amber-600/20 hover:bg-amber-200 dark:hover:bg-amber-600/30 border border-amber-300 dark:border-amber-500/40 rounded-xl text-amber-800 dark:text-amber-200 text-sm">
-                  🌸 قبول الشكوى والاعتذار (تنبيه للمشرف + اعتذار للطالب)
+                  {selected.ratedAgainstAi === true
+                    ? '🌸 قبول الشكوى والاعتذار للطالب'
+                    : '🌸 قبول الشكوى والاعتذار (تنبيه للمشرف + اعتذار للطالب)'}
                 </button>
                 <button onClick={handleReject} disabled={processing} className="w-full p-3 bg-red-100 dark:bg-red-600/20 hover:bg-red-200 dark:hover:bg-red-600/30 border border-red-300 dark:border-red-500/40 rounded-xl text-red-800 dark:text-red-200 text-sm disabled:opacity-50">
-                  {processing ? 'جاري المعالجة...' : '🛑 رفض الشكوى (5 نجوم للمشرف + تحذير للطالب)'}
+                  {processing
+                    ? 'جاري المعالجة...'
+                    : selected.ratedAgainstAi === true
+                      ? '🛑 رفض الشكوى ضد سند'
+                      : '🛑 رفض الشكوى (5 نجوم للمشرف + تحذير للطالب)'}
                 </button>
               </div>
             )}
 
             {mode === 'apologize' && (
               <div className="space-y-3">
-                <label className="text-sm text-slate-700 dark:text-gray-300">سبب الاعتذار للمشرف:</label>
+                <label className="text-sm text-slate-700 dark:text-gray-300">
+                  {selected.ratedAgainstAi === true
+                    ? 'سبب الاعتذار (سيُرسل للطالب عبر واتساب):'
+                    : 'سبب الاعتذار (سيُرسل للمشرف عبر واتساب):'}
+                </label>
                 <textarea
                   value={reason}
                   onChange={e => setReason(e.target.value)}
                   className="w-full bg-white dark:bg-gray-800 text-slate-900 dark:text-white p-2 rounded border border-slate-200 dark:border-gray-600 text-sm resize-none h-24"
-                  placeholder="اشرح للمشرف ما الذي أخطأ فيه..."
+                  placeholder={selected.ratedAgainstAi === true
+                    ? 'اشرح للطالب سبب الاعتذار...'
+                    : 'اشرح للمشرف ما الذي أخطأ فيه...'}
                 />
+                <p className="text-[11px] text-slate-500 dark:text-gray-400">
+                  {selected.ratedAgainstAi === true
+                    ? '📤 سيُفتح واتساب برسالة اعتذار للطالب فقط.'
+                    : '📤 سيُفتح واتساب مرتين: رسالة تنبيه للمشرف، ثم رسالة اعتذار للطالب. أرسل كل واحدة على حدة.'}
+                </p>
                 <button onClick={handleApologize} disabled={processing || !reason.trim()} className="w-full bg-amber-600 hover:bg-amber-700 text-white py-2 rounded-lg disabled:opacity-50">
                   {processing ? 'جاري الإرسال والحذف...' : '📤 إرسال وتأكيد الحذف'}
                 </button>
