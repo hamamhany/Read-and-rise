@@ -20,6 +20,9 @@ import SupportPage from './pages/SupportPage';
 import {
   ExamCreatePage, ExamEditPage, ExamTakePage, ExamResultsPage, ExamAnswersPage
 } from './pages/ExamPages';
+// ☀️ الثيم
+import { initTheme } from './utils/theme';
+import ThemeToggle from './components/common/ThemeToggle';
 
 const MainDashboard = ({ user, onLogout }) => {
   if (user.role === 'system_manager') return <SystemManagerPanel user={user} onLogout={onLogout} />;
@@ -35,6 +38,11 @@ const App = () => {
   const [pendingUserForComplete, setPendingUserForComplete] = useState(null);
 
   useDynamicBackground();
+
+  // ☀️ تهيئة الثيم من localStorage قبل أي شيء
+  useEffect(() => {
+    initTheme();
+  }, []);
 
   const handleLogout = async () => {
     await signOut(auth);
@@ -202,36 +210,82 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
-  if (loading) return <div className="container-center min-h-screen text-white"><div className="bg-gray-900 p-8 rounded-2xl border border-gray-700 shadow-xl animate-pulse">جاري التحميل...</div></div>;
+  // ☀️ محتوى الشاشة (نفس المنطق السابق دون تغيير)
+  const renderContent = () => {
+    if (loading) {
+      return (
+        <div className="container-center min-h-screen text-white">
+          <div className="bg-gray-900 p-8 rounded-2xl border border-gray-700 shadow-xl animate-pulse">
+            جاري التحميل...
+          </div>
+        </div>
+      );
+    }
 
-  if (pendingUserForComplete) {
-    return <CompleteProfile user={pendingUserForComplete} onSuccess={handleCompleteProfileSuccess} onCancel={handleLogout} />;
-  }
+    if (pendingUserForComplete) {
+      return (
+        <CompleteProfile
+          user={pendingUserForComplete}
+          onSuccess={handleCompleteProfileSuccess}
+          onCancel={handleLogout}
+        />
+      );
+    }
 
-  if (frozenUser) {
-    return <FrozenAccount user={frozenUser} onLogout={handleLogout} />;
-  }
+    if (frozenUser) {
+      return <FrozenAccount user={frozenUser} onLogout={handleLogout} />;
+    }
 
-  if (!user) {
-    return <Login onLogin={handleLogin} onFrozen={handleFrozen} onCompleteProfile={handleCompleteProfile} />;
-  }
+    if (!user) {
+      return (
+        <Login
+          onLogin={handleLogin}
+          onFrozen={handleFrozen}
+          onCompleteProfile={handleCompleteProfile}
+        />
+      );
+    }
 
+    return (
+      <Routes>
+        <Route
+          path="/"
+          element={
+            <>
+              <MainDashboard user={user} onLogout={handleLogout} />
+              <SupportButton user={user} />
+            </>
+          }
+        />
+        <Route path="/support" element={<SupportPage user={user} />} />
+        <Route
+          path="/exams/new"
+          element={user.role === 'teacher' ? <ExamCreatePage user={user} /> : <Navigate to="/" replace />}
+        />
+        <Route
+          path="/exams/:examId/edit"
+          element={user.role === 'teacher' ? <ExamEditPage user={user} /> : <Navigate to="/" replace />}
+        />
+        <Route
+          path="/exams/:examId/take"
+          element={user.role === 'student' ? <ExamTakePage user={user} /> : <Navigate to="/" replace />}
+        />
+        <Route
+          path="/exams/:examId/results"
+          element={user.role === 'teacher' ? <ExamResultsPage user={user} /> : <Navigate to="/" replace />}
+        />
+        <Route path="/exams/:examId/answers/:resultId" element={<ExamAnswersPage user={user} />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    );
+  };
+
+  // ☀️ زر الثيم يظهر دائماً (حتى قبل تسجيل الدخول)
   return (
-    <Routes>
-      <Route path="/" element={
-        <>
-          <MainDashboard user={user} onLogout={handleLogout} />
-          <SupportButton user={user} />
-        </>
-      } />
-      <Route path="/support" element={<SupportPage user={user} />} />
-      <Route path="/exams/new" element={user.role === 'teacher' ? <ExamCreatePage user={user} /> : <Navigate to="/" replace />} />
-      <Route path="/exams/:examId/edit" element={user.role === 'teacher' ? <ExamEditPage user={user} /> : <Navigate to="/" replace />} />
-      <Route path="/exams/:examId/take" element={user.role === 'student' ? <ExamTakePage user={user} /> : <Navigate to="/" replace />} />
-      <Route path="/exams/:examId/results" element={user.role === 'teacher' ? <ExamResultsPage user={user} /> : <Navigate to="/" replace />} />
-      <Route path="/exams/:examId/answers/:resultId" element={<ExamAnswersPage user={user} />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <>
+      <ThemeToggle />
+      {renderContent()}
+    </>
   );
 };
 

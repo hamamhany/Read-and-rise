@@ -52,7 +52,7 @@ body {
 }
 
 /* =========================================================
-   ✅ جديد: زر الدعم الفني العائم + أنيميشن التموجات
+   ✅ زر الدعم الفني العائم + أنيميشن التموجات
    ========================================================= */
 .support-float-btn {
   position: fixed;
@@ -100,7 +100,7 @@ body {
 }
 
 /* =========================================================
-   ✅ جديد: حركات فقاعة الإغلاق والنقطة الحمراء
+   ✅ حركات فقاعة الإغلاق والنقطة الحمراء
    ========================================================= */
 @keyframes slideUpFade {
   from {
@@ -140,4 +140,155 @@ body {
   .print\:border-none { border: none !important; }
   .print\:inline { display: inline !important; }
   .no-print-border { border: none !important; background: transparent !important; color: black !important; }
+}
+
+/* ============================================
+   ☀️  Light Theme (Sun) — الوضع الفاتح
+   ============================================ */
+
+html.theme-light {
+  color-scheme: light;
+}
+
+html.theme-light body,
+html.theme-light #root {
+  background-color: #f4f9fd !important;
+  color: #0f172a !important;
+}
+
+/* --- الخلفيات الداكنة تصبح بيضاء --- */
+html.theme-light .bg-black,
+html.theme-light .bg-gray-950,
+html.theme-light .bg-gray-900,
+html.theme-light .bg-neutral-950,
+html.theme-light .bg-neutral-900,
+html.theme-light .bg-slate-950,
+html.theme-light .bg-slate-900,
+html.theme-light .bg-zinc-900,
+html.theme-light .bg-zinc-950 {
+  background-color: #ffffff !important;
+}
+
+html.theme-light .bg-gray-800,
+html.theme-light .bg-neutral-800,
+html.theme-light .bg-slate-800,
+html.theme-light .bg-zinc-800 {
+  background-color: #f1f6fb !important;
+}
+
+html.theme-light .bg-gray-700,
+html.theme-light .bg-neutral-700,
+html.theme-light .bg-slate-700,
+html.theme-light .bg-zinc-700 {
+  background-color: #e2edf7 !important;
+}
+
+/* --- النصوص الفاتحة تصبح داكنة --- */
+html.theme-light .text-white,
+html.theme-light .text-gray-50,
+html.theme-light .text-gray-100,
+html.theme-light .text-neutral-100,
+html.theme-light .text-slate-100 {
+  color: #0f172a !important;
+}
+
+html.theme-light .text-gray-200,
+html.theme-light .text-gray-300,
+html.theme-light .text-slate-200,
+html.theme-light .text-slate-300 {
+  color: #1e293b !important;
+}
+
+html.theme-light .text-gray-400,
+html.theme-light .text-gray-500 {
+  color: #475569 !important;
+}
+
+/* --- الحدود --- */
+html.theme-light .border-gray-800,
+html.theme-light .border-gray-700,
+html.theme-light .border-slate-800,
+html.theme-light .border-slate-700,
+html.theme-light .border-neutral-800,
+html.theme-light .border-neutral-700 {
+  border-color: #cbdff1 !important;
+}
+
+/* --- الحقول --- */
+html.theme-light input,
+html.theme-light textarea,
+html.theme-light select {
+  background-color: #f8fbfe !important;
+  color: #0f172a !important;
+  border-color: #cbdff1 !important;
+}
+
+html.theme-light input::placeholder,
+html.theme-light textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* --- ظلال هادئة --- */
+html.theme-light .shadow-lg,
+html.theme-light .shadow-xl,
+html.theme-light .shadow-2xl {
+  box-shadow: 0 10px 30px rgba(56, 189, 248, 0.10) !important;
+}
+
+/* ============================================
+   حركة الأزرق السماوي اللطيفة في الأعلى
+   ============================================ */
+html.theme-light body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 150px;
+  background: linear-gradient(
+    135deg,
+    rgba(56, 189, 248, 0.20),
+    rgba(59, 130, 246, 0.10),
+    rgba(14, 165, 233, 0.18),
+    rgba(125, 211, 252, 0.14),
+    rgba(56, 189, 248, 0.20)
+  );
+  background-size: 300% 300%;
+  animation: skyDrift 14s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+  -webkit-mask-image: linear-gradient(to bottom, black 0%, transparent 100%);
+  mask-image: linear-gradient(to bottom, black 0%, transparent 100%);
+}
+
+@keyframes skyDrift {
+  0%, 100% { background-position: 0% 50%; }
+  50%      { background-position: 100% 50%; }
+}
+
+/* المحتوى فوق الموجة السماوية */
+html.theme-light #root {
+  position: relative;
+  z-index: 1;
+}
+
+/* ============================================
+   ☀️/🌙 زر تبديل الثيم — موضع ثابت (أسفل يمين)
+   يتجاوز أي كلاسات قديمة داخل ThemeToggle.jsx
+   ============================================ */
+.theme-toggle-btn {
+  position: fixed !important;
+  bottom: 16px !important;
+  right: 16px !important;
+  left: auto !important;
+  top: auto !important;
+  z-index: 9999 !important;
+}
+
+/* على شاشات الجوال الصغيرة جداً نخفّض الحجم قليلاً */
+@media (max-width: 480px) {
+  .theme-toggle-btn {
+    bottom: 12px !important;
+    right: 12px !important;
+  }
 }
