@@ -24,6 +24,7 @@ import {
   generateId, sanitizeInput, fetchClassNames, getActiveWarnings
 } from '../../utils/helpers';
 import { createMessageRequest } from '../../services/messageRequests';
+import { purgeClassesWithoutSection } from '../../services/classes';
 import { getExamsByTeacher } from '../../services/exams';
 import { sendNotificationToStudents } from '../../utils/notifications';
 import { MESSAGE_REQUEST_TYPES } from '../../constants';
@@ -353,18 +354,10 @@ const TeacherPanel = ({ user, onLogout }) => {
         }));
         setStudents(studentsList);
 
+        // ✅ حذف فوري لأي شعبة قديمة بدون قسم (وبدون إنشاء شعب افتراضية)
+        try { await purgeClassesWithoutSection(); } catch (e) { console.warn('purge classes failed:', e); }
         const classesSnapshot = await getDocs(query(collection(db, 'classes'), where('teacherId', '==', user.id)));
-        let classesList = classesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        if (classesList.length === 0) {
-          const defaults = [{ name: 'أساسيات البرمجة', teacherId: user.id }, { name: 'بايثون (Python)', teacherId: user.id }];
-          const created = [];
-          for (const cls of defaults) {
-            const ref = doc(collection(db, 'classes'));
-            await setDoc(ref, { ...cls, createdAt: serverTimestamp() });
-            created.push({ id: ref.id, ...cls });
-          }
-          classesList = created;
-        }
+        const classesList = classesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(c => c.sectionId);
         setClasses(classesList);
         if (classesList.length > 0) setSelectedClassForLesson(classesList[0].id);
 
@@ -401,7 +394,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     });
 
     const unsubClasses = onSnapshot(query(collection(db, 'classes'), where('teacherId', '==', user.id)), (snapshot) => {
-      setClasses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setClasses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(c => c.sectionId));
     });
 
     const unsubPending = onSnapshot(query(collection(db, 'profiles'), where('role', '==', 'student'), where('pendingChanges', '!=', null)), async (snapshot) => {

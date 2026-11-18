@@ -7,6 +7,7 @@ export const REVIEW_REQUESTS_COLLECTION = 'reviewRequests';
 export const BLACKLIST_COLLECTION = 'blacklist';
 export const SUPPORT_TICKETS_COLLECTION = 'supportTickets';
 export const PASSWORD_RESET_REQUESTS_COLLECTION = 'passwordResetRequests';
+export const SECTIONS_COLLECTION = 'sections';
 
 export const MESSAGE_REQUEST_RETENTION_MS = 48 * 60 * 60 * 1000;
 

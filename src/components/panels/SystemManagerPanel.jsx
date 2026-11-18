@@ -5,8 +5,7 @@ import {
   FaSignOutAlt, FaUserShield, FaExclamationTriangle, FaWhatsapp,
   FaTimesCircle, FaUsers, FaTrashAlt, FaBell, FaPaperPlane,
   FaChalkboardTeacher, FaBroadcastTower, FaHourglassHalf,
-  FaBan, FaChevronLeft, FaCopy, FaCheckCircle, FaRedoAlt, FaEye,
-  FaLayerGroup
+  FaBan, FaChevronLeft, FaCopy, FaCheckCircle, FaRedoAlt, FaEye, FaLayerGroup
 } from 'react-icons/fa';
 import { db } from '../../firebase';
 import {
@@ -34,14 +33,14 @@ import {
   sendUnactivatedAccountDeletedMessage
 } from '../../utils/whatsapp';
 import { deleteUserCompletely } from '../../services/accountDeletion';
-import { updateClassGender, deleteClassById, moveStudentToClass } from '../../services/classes';
+import { updateClassGender, deleteClassById, moveStudentToClass, purgeClassesWithoutSection, getSections } from '../../services/classes';
 import { approveAnnouncement, rejectAnnouncement } from '../../services/announcements';
 import SystemManagerReviewsSection from './SystemManagerReviewsSection';
 import ManagerSupportReviewsSection from './ManagerSupportReviewsSection';
 import SupervisorsManagerModal from './SupervisorsManagerModal';
 import StudentsManagerModal from './StudentsManagerModal';
 import BlacklistModal from './BlacklistModal';
-import ClassesManagerModal from './ClassesManagerModal';
+import SectionsManagerModal from './SectionsManagerModal';
 import CountUp from '../common/CountUp';
 import { useConfirm, usePrompt } from '../common/ConfirmContext';
 
@@ -143,7 +142,19 @@ const SystemManagerPanel = ({ user, onLogout }) => {
   const [showSupervisorsModal, setShowSupervisorsModal] = useState(false);
   const [showStudentsModal, setShowStudentsModal] = useState(false);
   const [showBlacklistModal, setShowBlacklistModal] = useState(false);
-  const [showClassesModal, setShowClassesModal] = useState(false);
+  const [showSectionsModal, setShowSectionsModal] = useState(false);
+  const [sectionsCount, setSectionsCount] = useState(0);
+
+  // ✅ حذف فوري لأي شعبة قديمة بدون قسم + عدّ الأقسام
+  useEffect(() => {
+    (async () => {
+      try {
+        await purgeClassesWithoutSection();
+        const secs = await getSections();
+        setSectionsCount(secs.length);
+      } catch (e) { console.warn('purge classes failed:', e); }
+    })();
+  }, []);
 
   const [openRequestModal, setOpenRequestModal] = useState(null);
   const [processingAction, setProcessingAction] = useState(false);
@@ -635,6 +646,16 @@ const SystemManagerPanel = ({ user, onLogout }) => {
         <ManagerSupportReviewsSection user={user} />
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <button onClick={() => setShowSectionsModal(true)} className="bg-teal-50 dark:bg-gradient-to-br dark:from-teal-900/40 dark:to-cyan-900/20 p-5 rounded-2xl border border-teal-200 dark:border-teal-500/30 hover:border-teal-400 dark:hover:border-teal-400/60 text-right shadow-lg transition-colors">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center shadow-lg"><FaLayerGroup className="text-white text-xl" /></div>
+                <div><p className="text-slate-900 dark:text-white font-bold">إدارة الأقسام</p><p className="text-xs text-teal-600 dark:text-teal-300 mt-0.5">{sectionsCount} قسم</p></div>
+              </div>
+              <FaChevronLeft className="text-teal-500 dark:text-teal-300" />
+            </div>
+          </button>
+
           <button onClick={() => setShowSupervisorsModal(true)} className="bg-indigo-50 dark:bg-gradient-to-br dark:from-indigo-900/40 dark:to-blue-900/20 p-5 rounded-2xl border border-indigo-200 dark:border-indigo-500/30 hover:border-indigo-400 dark:hover:border-indigo-400/60 text-right shadow-lg transition-colors">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
@@ -652,17 +673,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
                 <div><p className="text-slate-900 dark:text-white font-bold">إدارة الطلاب</p><p className="text-xs text-blue-600 dark:text-blue-300 mt-0.5">{studentsCount} طالب</p></div>
               </div>
               <FaChevronLeft className="text-blue-500 dark:text-blue-300" />
-            </div>
-          </button>
-
-          {/* ✅ زر إدارة الأقسام والشعب */}
-          <button onClick={() => setShowClassesModal(true)} className="bg-cyan-50 dark:bg-gradient-to-br dark:from-cyan-900/40 dark:to-teal-900/20 p-5 rounded-2xl border border-cyan-200 dark:border-cyan-500/30 hover:border-cyan-400 dark:hover:border-cyan-400/60 text-right shadow-lg transition-colors">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-500 to-teal-600 flex items-center justify-center shadow-lg"><FaLayerGroup className="text-white text-xl" /></div>
-                <div><p className="text-slate-900 dark:text-white font-bold">إدارة الشعب والأقسام</p><p className="text-xs text-cyan-600 dark:text-cyan-300 mt-0.5">تنظيم الشعب داخل أقسام</p></div>
-              </div>
-              <FaChevronLeft className="text-cyan-500 dark:text-cyan-300" />
             </div>
           </button>
 
@@ -849,8 +859,8 @@ const SystemManagerPanel = ({ user, onLogout }) => {
 
       <SupervisorsManagerModal isOpen={showSupervisorsModal} onClose={() => setShowSupervisorsModal(false)} user={user} onCountChange={setSupervisorsCount} />
       <StudentsManagerModal isOpen={showStudentsModal} onClose={() => setShowStudentsModal(false)} user={user} onCountChange={setStudentsCount} />
+      <SectionsManagerModal isOpen={showSectionsModal} onClose={() => setShowSectionsModal(false)} user={user} onCountChange={setSectionsCount} />
       <BlacklistModal isOpen={showBlacklistModal} onClose={() => setShowBlacklistModal(false)} onCountChange={setBlacklistCount} />
-      <ClassesManagerModal isOpen={showClassesModal} onClose={() => setShowClassesModal(false)} user={user} />
 
       {showNotificationsModal && (
         <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={handleCloseNotifications}>

@@ -15,7 +15,7 @@ import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
 import { createGeneralAnnouncement, updateAnnouncement, deleteAnnouncement } from '../../services/announcements';
 import { createMessageRequest } from '../../services/messageRequests';
-import { validateStudentEligibility, filterClassesForSupervisor, getClassGenderLabel } from '../../services/classes';
+import { validateStudentEligibility, filterClassesForSupervisor, getClassGenderLabel, purgeClassesWithoutSection } from '../../services/classes';
 import { ANNOUNCEMENTS_LIMIT, MESSAGE_REQUEST_TYPES } from '../../constants';
 import { sanitizeInput, arabicToEnglishNumber, generateId, fetchClassNames, formatSerial, generateNextSerialNumber } from '../../utils/helpers';
 import ReportsReviewSection from './ReportsReviewSection';
@@ -54,6 +54,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
 
   const [classes, setClasses] = useState([]);
   const [classVisibility, setClassVisibility] = useState('all');
+  const [sections, setSections] = useState([]);
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
   const [newStudentName, setNewStudentName] = useState('');
   const [newStudentGender, setNewStudentGender] = useState('');
@@ -172,11 +173,16 @@ const SupervisorPanel = ({ user, onLogout }) => {
   }, []);
 
   useEffect(() => {
+    // ✅ حذف فوري لأي شعبة قديمة بدون قسم
+    purgeClassesWithoutSection().catch(e => console.warn('purge classes failed:', e));
     const qClasses = query(collection(db, 'classes'));
     const unsubClasses = onSnapshot(qClasses, (snapshot) => {
-      setClasses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setClasses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(c => c.sectionId));
     });
-    return () => unsubClasses();
+    const unsubSections = onSnapshot(collection(db, 'sections'), (snapshot) => {
+      setSections(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar')));
+    });
+    return () => { unsubClasses(); unsubSections(); };
   }, []);
 
   useEffect(() => {
@@ -592,11 +598,19 @@ const SupervisorPanel = ({ user, onLogout }) => {
               <div>
                 <label className="text-xs text-slate-500 dark:text-gray-400 mb-1 block">الشعب الدراسية * (اضغط Ctrl لاختيار عدة شعب)</label>
                 <select multiple className="bg-white dark:bg-gray-800 w-full h-24 text-right p-2 border border-slate-200 dark:border-gray-600 rounded-md text-slate-900 dark:text-white" value={newStudentClassIds} onChange={(e) => setNewStudentClassIds(Array.from(e.target.selectedOptions).map(o => o.value))} required>
-                  {availableClasses.map(cls => (
-                    <option key={cls.id} value={cls.id}>
-                      {cls.name} ({getClassGenderLabel(cls.gender)})
-                    </option>
-                  ))}
+                  {sections.map(sec => {
+                    const secClasses = availableClasses.filter(c => c.sectionId === sec.id);
+                    if (secClasses.length === 0) return null;
+                    return (
+                      <optgroup key={sec.id} label={sec.name}>
+                        {secClasses.map(cls => (
+                          <option key={cls.id} value={cls.id}>
+                            {cls.name} ({getClassGenderLabel(cls.gender)})
+                          </option>
+                        ))}
+                      </optgroup>
+                    );
+                  })}
                 </select>
               </div>
               <button type="submit" disabled={studentLoading} className="btn-primary w-full py-3 bg-blue-600 hover:bg-blue-700 rounded-md text-white">
