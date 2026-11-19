@@ -3,7 +3,9 @@ import toast from 'react-hot-toast';
 import {
   FaBell, FaSignOutAlt, FaBullhorn, FaPlus, FaEdit, FaTrashAlt,
   FaSpinner, FaUpload, FaClock, FaUsers, FaGraduationCap, FaUserCog,
-  FaChalkboardTeacher
+  FaChalkboardTeacher, FaLayerGroup, FaFolder, FaFolderOpen, FaChevronLeft,
+  FaHome, FaTimes, FaCheckSquare, FaSquare, FaCheckCircle, FaTimesCircle,
+  FaClipboardCheck, FaArrowLeft
 } from 'react-icons/fa';
 import { db, secondaryAuth, messaging } from '../../firebase';
 import {
@@ -15,21 +17,204 @@ import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
 import { createGeneralAnnouncement, updateAnnouncement, deleteAnnouncement } from '../../services/announcements';
 import { createMessageRequest } from '../../services/messageRequests';
-import { validateStudentEligibility, filterClassesForSupervisor, getClassGenderLabel, purgeClassesWithoutSection, flattenSectionTree } from '../../services/classes';
-import { ANNOUNCEMENTS_LIMIT, MESSAGE_REQUEST_TYPES } from '../../constants';
-import { sanitizeInput, arabicToEnglishNumber, generateId, fetchClassNames, formatSerial, generateNextSerialNumber } from '../../utils/helpers';
+import {
+  validateStudentEligibility, filterClassesForSupervisor, getClassGenderLabel,
+  purgeClassesWithoutSection
+} from '../../services/classes';
+import {
+  subscribeToPendingStudentChanges, approveStudentChanges, rejectStudentChanges
+} from '../../services/supervisor';
+import { ANNOUNCEMENTS_LIMIT, MESSAGE_REQUEST_TYPES, PENDING_FIELD_LABELS } from '../../constants';
+import {
+  sanitizeInput, arabicToEnglishNumber, generateId, fetchClassNames,
+  formatSerial, generateNextSerialNumber
+} from '../../utils/helpers';
 import ReportsReviewSection from './ReportsReviewSection';
 import ReviewVotingSection from './ReviewVotingSection';
 import ResetRequestsSection from './ResetRequestsSection';
 import SupportTicketsSection from './SupportTicketsSection';
-import ClassesManagerModal from './ClassesManagerModal';
+import SectionsManagerModal from './SectionsManagerModal';
 import StudentSerialManagerModal from './StudentSerialManagerModal';
 import TeachersManagerModal from './TeachersManagerModal';
-import { COUNTRIES } from '../../utils/countries';
-import { useConfirm } from '../common/ConfirmContext';
+import { useConfirm, usePrompt } from '../common/ConfirmContext';
+
+/**
+ * ✅ شاشة اختيار الشعب (شجرة) — تُستخدم عند إضافة طالب
+ */
+const ClassTreePickerModal = ({ isOpen, onClose, sections, classes, selectedIds, onConfirm, allowedGenders }) => {
+  const [currentId, setCurrentId] = useState(null);
+  const [tempSelected, setTempSelected] = useState(selectedIds);
+
+  useEffect(() => {
+    if (isOpen) {
+      setTempSelected(selectedIds || []);
+      setCurrentId(null);
+    }
+    // eslint-disable-next-line
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const current = sections.find(s => s.id === currentId) || null;
+  const subSections = sections.filter(s => (s.parentId || null) === currentId);
+  const currentClasses = currentId
+    ? classes.filter(c =>
+        c.sectionId === currentId &&
+        (!allowedGenders || allowedGenders.includes(c.gender))
+      )
+    : [];
+
+  const breadcrumb = [];
+  {
+    let node = current;
+    let guard = 0;
+    while (node && guard < 30) {
+      breadcrumb.unshift(node);
+      const pid = node.parentId;
+      node = pid ? sections.find(s => s.id === pid) : null;
+      guard++;
+    }
+  }
+
+  const toggleClass = (id) => {
+    setTempSelected(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const selectedInfo = tempSelected
+    .map(id => classes.find(c => c.id === id))
+    .filter(Boolean);
+
+  return (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] p-4" onClick={onClose}>
+      <div className="bg-gray-900 rounded-3xl w-full max-w-3xl max-h-[90vh] flex flex-col border border-blue-500/30" onClick={e => e.stopPropagation()} dir="rtl">
+        <div className="flex justify-between items-center p-5 border-b border-gray-700">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center flex-shrink-0">
+              <FaGraduationCap className="text-white" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-xl font-bold text-white">اختيار الشعب</h3>
+              <p className="text-xs text-gray-400">{tempSelected.length} شعبة مختارة — اضغط على الشعبة لتحديدها</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl flex-shrink-0"><FaTimes /></button>
+        </div>
+
+        <div className="px-5 py-3 border-b border-gray-700 flex flex-wrap items-center gap-1 text-sm">
+          {current ? (
+            <>
+              <button onClick={() => setCurrentId(null)} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-gray-300 hover:bg-gray-800">
+                <FaHome /> الرئيسية
+              </button>
+              {breadcrumb.map((node, i) => (
+                <React.Fragment key={node.id}>
+                  <FaChevronLeft className="text-gray-600 text-xs" />
+                  <button
+                    onClick={() => setCurrentId(node.id)}
+                    className={`px-2 py-1 rounded-lg ${i === breadcrumb.length - 1 ? 'text-blue-300 font-bold' : 'text-gray-300 hover:bg-gray-800'}`}
+                  >
+                    {node.name}
+                  </button>
+                </React.Fragment>
+              ))}
+            </>
+          ) : (
+            <span className="inline-flex items-center gap-1 px-2 py-1 text-blue-300 font-bold">
+              <FaHome /> الرئيسية
+            </span>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {subSections.length > 0 && (
+            <div>
+              <p className="text-xs text-gray-500 mb-2">{current ? 'الأقسام الفرعية' : 'الأقسام الرئيسية'} ({subSections.length})</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {subSections.map(sec => (
+                  <button
+                    key={sec.id}
+                    onClick={() => setCurrentId(sec.id)}
+                    className="text-right p-3 bg-black/30 hover:bg-black/50 rounded-xl border border-gray-700 hover:border-blue-500/50 transition flex items-center gap-3"
+                  >
+                    <FaFolder className="text-amber-400 text-2xl flex-shrink-0" />
+                    <span className="flex-1 text-white text-sm truncate">{sec.name}</span>
+                    <FaChevronLeft className="text-gray-500 flex-shrink-0" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {current && currentClasses.length > 0 && (
+            <div>
+              <p className="text-xs text-gray-500 mb-2">الشعب ({currentClasses.length}) — اضغط لتحديد/إلغاء</p>
+              <div className="space-y-2">
+                {currentClasses.map(cls => {
+                  const isSelected = tempSelected.includes(cls.id);
+                  return (
+                    <button
+                      key={cls.id}
+                      onClick={() => toggleClass(cls.id)}
+                      className={`w-full p-3 rounded-xl border flex items-center gap-3 transition ${
+                        isSelected ? 'bg-blue-500/20 border-blue-500' : 'bg-black/30 border-gray-700 hover:border-blue-500/40'
+                      }`}
+                    >
+                      {isSelected
+                        ? <FaCheckSquare className="text-blue-400 text-xl flex-shrink-0" />
+                        : <FaSquare className="text-gray-500 text-xl flex-shrink-0" />}
+                      <div className="flex-1 text-right min-w-0">
+                        <p className="text-white text-sm font-bold truncate">{cls.name}</p>
+                        <p className="text-[11px] text-gray-400 mt-0.5">{getClassGenderLabel(cls.gender)}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {subSections.length === 0 && (!current || currentClasses.length === 0) && (
+            <div className="text-center py-10 text-gray-400">
+              <FaFolderOpen className="text-5xl mx-auto mb-3 text-gray-600" />
+              <p>{current ? 'لا توجد شعب في هذا القسم' : 'لا توجد أقسام'}</p>
+            </div>
+          )}
+        </div>
+
+        <div className="p-5 border-t border-gray-700 space-y-3">
+          {selectedInfo.length > 0 && (
+            <div>
+              <p className="text-xs text-gray-400 mb-1">الشعب المختارة ({selectedInfo.length}):</p>
+              <div className="flex flex-wrap gap-1">
+                {selectedInfo.map(c => (
+                  <span key={c.id} className="text-xs bg-blue-500/20 text-blue-200 px-2 py-1 rounded border border-blue-500/30">
+                    {c.name}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <button onClick={onClose} className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg text-sm">إلغاء</button>
+            <button
+              onClick={() => { onConfirm(tempSelected); onClose(); }}
+              disabled={tempSelected.length === 0}
+              className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-bold"
+            >
+              تأكيد ({tempSelected.length})
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const SupervisorPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
+  const prompt = usePrompt();
 
   const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -61,8 +246,15 @@ const SupervisorPanel = ({ user, onLogout }) => {
   const [newStudentAge, setNewStudentAge] = useState('');
   const [newStudentPhone, setNewStudentPhone] = useState('');
   const [newStudentClassIds, setNewStudentClassIds] = useState([]);
-  const [newStudentCountry, setNewStudentCountry] = useState('');
   const [studentLoading, setStudentLoading] = useState(false);
+  const [showClassPicker, setShowClassPicker] = useState(false);
+
+  // ✅ NEW: تعديلات بانتظار الموافقة
+  const [pendingChanges, setPendingChanges] = useState([]);
+  const [showPendingChangesModal, setShowPendingChangesModal] = useState(false);
+  const [selectedPendingChange, setSelectedPendingChange] = useState(null);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [processingChange, setProcessingChange] = useState(false);
 
   const [showClassesManager, setShowClassesManager] = useState(false);
   const [showSerialManager, setShowSerialManager] = useState(false);
@@ -92,8 +284,15 @@ const SupervisorPanel = ({ user, onLogout }) => {
 
   useEffect(() => {
     if (!permissions.reports) return;
-    const q = query(collection(db, 'messageRequests'), where('type', '==', 'report'), where('reportStatus', '==', 'pending'));
-    const unsub = onSnapshot(q, (snap) => setCounts(prev => ({ ...prev, reports: snap.size })));
+    const q = query(collection(db, 'messageRequests'), where('type', '==', 'report'));
+    const unsub = onSnapshot(q, (snap) => {
+      const pending = snap.docs.filter(d => {
+        const data = d.data();
+        const status = data.reportStatus || data.status || 'pending';
+        return status === 'pending';
+      });
+      setCounts(prev => ({ ...prev, reports: pending.length }));
+    });
     return () => unsub();
   }, [permissions.reports]);
 
@@ -103,6 +302,12 @@ const SupervisorPanel = ({ user, onLogout }) => {
     const unsub = onSnapshot(q, (snap) => setCounts(prev => ({ ...prev, resets: snap.size })));
     return () => unsub();
   }, [permissions.resets]);
+
+  // ✅ NEW: اشتراك في تعديلات الطلاب المعلقة
+  useEffect(() => {
+    const unsub = subscribeToPendingStudentChanges(setPendingChanges);
+    return () => unsub();
+  }, []);
 
   const requestNotificationPermission = async () => {
     try {
@@ -173,7 +378,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
   }, []);
 
   useEffect(() => {
-    // ✅ حذف فوري لأي شعبة قديمة بدون قسم
     purgeClassesWithoutSection().catch(e => console.warn('purge classes failed:', e));
     const qClasses = query(collection(db, 'classes'));
     const unsubClasses = onSnapshot(qClasses, (snapshot) => {
@@ -224,11 +428,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
         await updateAnnouncement(editingAnnouncementId, updates);
         toast.success('تم تحديث الإعلان. سيراجعه المدير قبل النشر.');
       } else {
-        // ✅ إنشاء بحالة pending_approval (بانتظار موافقة المدير)
-        await createGeneralAnnouncement(
-          title, body, scheduledFor,
-          user.id, user.name || user.username || 'مشرف'
-        );
+        await createGeneralAnnouncement(title, body, scheduledFor, user.id, user.name || user.username || 'مشرف');
         toast.success('✅ تم إرسال الإعلان للمدير للموافقة قبل النشر.');
       }
       setAnnouncementTitle(''); setAnnouncementBody(''); setCharCount(0);
@@ -290,6 +490,45 @@ const SupervisorPanel = ({ user, onLogout }) => {
     setNotificationIdsAtOpen([]);
   };
 
+  // ✅ NEW: موافقة على تعديلات طالب
+  const handleApproveChanges = async () => {
+    if (!selectedPendingChange) return;
+    const ok = await confirm('الموافقة على التعديلات', `سيتم تطبيق تعديلات الطالب "${selectedPendingChange.name}" على ملفه. متابعة؟`);
+    if (!ok) return;
+    setProcessingChange(true);
+    try {
+      await approveStudentChanges(selectedPendingChange.id, user.id, user.name || user.username || 'مشرف');
+      toast.success('✅ تم اعتماد التعديلات وتطبيقها');
+      setSelectedPendingChange(null);
+      setRejectionReason('');
+    } catch (e) {
+      toast.error('فشل: ' + e.message);
+    } finally {
+      setProcessingChange(false);
+    }
+  };
+
+  // ✅ NEW: رفض تعديلات طالب
+  const handleRejectChanges = async () => {
+    if (!selectedPendingChange) return;
+    setProcessingChange(true);
+    try {
+      await rejectStudentChanges(
+        selectedPendingChange.id,
+        rejectionReason.trim(),
+        user.id,
+        user.name || user.username || 'مشرف'
+      );
+      toast.success('تم رفض التعديلات وإبلاغ الطالب');
+      setSelectedPendingChange(null);
+      setRejectionReason('');
+    } catch (e) {
+      toast.error('فشل: ' + e.message);
+    } finally {
+      setProcessingChange(false);
+    }
+  };
+
   const generateNextUsernameNumber = async () => {
     const counterRef = doc(db, 'settings', 'userCounter');
     try {
@@ -315,7 +554,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
   const handleAddStudent = async (e) => {
     e.preventDefault();
     if (newStudentClassIds.length === 0) return toast.error('يرجى اختيار شعبة واحدة على الأقل.');
-    if (!newStudentCountry) return toast.error('يرجى اختيار البلد.');
 
     const sanitizedName = sanitizeInput(newStudentName);
     const sanitizedGender = sanitizeInput(newStudentGender);
@@ -323,7 +561,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
     const sanitizedPhone = sanitizeInput(arabicToEnglishNumber(newStudentPhone));
 
     if (!sanitizedName || !sanitizedGender || !sanitizedAge || !sanitizedPhone) {
-      return toast.error('جميع الحقول مطلوبة.');
+      return toast.error('جميع الحقول المطلوبة يجب تعبئتها.');
     }
 
     const phoneDigits = sanitizedPhone.replace(/[^\d]/g, '');
@@ -392,9 +630,11 @@ const SupervisorPanel = ({ user, onLogout }) => {
       await setDoc(doc(db, 'profiles', newId), {
         email, username: newUsername, name: sanitizedName, gender: sanitizedGender,
         age: ageNum, phone: normalizedPhone, classIds: newStudentClassIds, role: 'student',
-        serialNumber, country: newStudentCountry,
+        serialNumber,
+        country: '',
         isFrozen: false, infoVerified: false, isProfileComplete: false,
-        pendingChanges: null, reviewResult: null, reviewExpiry: null,
+        pendingChanges: null, pendingChangesStatus: null,
+        reviewResult: null, reviewExpiry: null,
         warnings: [], createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
         uid: firebaseUser.uid
       });
@@ -416,7 +656,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
 
       toast.success(`✅ تم إنشاء حساب الطالب بنجاح باسم: ${newUsername} — التسلسلي: ${serialNumber}`);
       setNewStudentName(''); setNewStudentGender(''); setNewStudentAge('');
-      setNewStudentPhone(''); setNewStudentClassIds([]); setNewStudentCountry('');
+      setNewStudentPhone(''); setNewStudentClassIds([]);
       setShowAddStudentModal(false);
     } catch (err) {
       toast.error('فشل إضافة الطالب: ' + (err.message || 'خطأ غير معروف'));
@@ -432,6 +672,15 @@ const SupervisorPanel = ({ user, onLogout }) => {
   const canPublish = user.canPublishAnnouncements !== false;
 
   const availableClasses = filterClassesForSupervisor(classes, user.gender, classVisibility);
+  const allowedGenders = classVisibility === 'all'
+    ? ['ذكر', 'أنثى', 'مختلط']
+    : user.gender === 'أنثى'
+      ? ['أنثى', 'مختلط']
+      : ['ذكر', 'مختلط'];
+
+  const selectedClassesNames = newStudentClassIds
+    .map(id => classes.find(c => c.id === id)?.name)
+    .filter(Boolean);
 
   const getAnnouncementStatusBadge = (item) => {
     if (item.status === 'pending_approval') {
@@ -444,6 +693,28 @@ const SupervisorPanel = ({ user, onLogout }) => {
       return <span className="text-xs text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-950/40 px-2 py-0.5 rounded-full">✅ منشور</span>;
     }
     return null;
+  };
+
+  // بيانات التعديل المحدد للعرض
+  const renderPendingFields = (student) => {
+    if (!student?.pendingChanges) return null;
+    const entries = Object.entries(student.pendingChanges).filter(
+      ([k]) => !['submittedAt', 'submittedBy', 'submittedByName'].includes(k)
+    );
+    return entries.map(([field, val]) => (
+      <div key={field} className="bg-slate-50 dark:bg-gray-800/60 p-3 rounded-lg border border-slate-200 dark:border-gray-700">
+        <p className="text-xs text-slate-500 dark:text-gray-400 mb-1 font-bold">{PENDING_FIELD_LABELS[field] || field}</p>
+        <div className="flex items-center gap-2 flex-wrap text-sm">
+          <span className="bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 px-2 py-1 rounded border border-red-300 dark:border-red-500/30">
+            {val.from || '(فارغ)'}
+          </span>
+          <FaArrowLeft className="text-slate-400 dark:text-gray-500 text-xs" />
+          <span className="bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 px-2 py-1 rounded border border-green-300 dark:border-green-500/30 font-bold">
+            {val.to || '(فارغ)'}
+          </span>
+        </div>
+      </div>
+    ));
   };
 
   return (
@@ -465,12 +736,32 @@ const SupervisorPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
+        {/* ✅ NEW: تعديلات بانتظار الموافقة */}
+        {pendingChanges.length > 0 && (
+          <div className="bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/10 p-6 rounded-2xl border-2 border-amber-400 dark:border-amber-500/40">
+            <div className="flex justify-between items-center flex-wrap gap-3">
+              <div>
+                <h3 className="text-xl font-semibold text-amber-800 dark:text-amber-200 flex items-center gap-2">
+                  <FaClipboardCheck /> تعديلات بانتظار موافقتك ({pendingChanges.length})
+                </h3>
+                <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">طلاب عدّلوا بياناتهم وينتظرون قرارك</p>
+              </div>
+              <button
+                onClick={() => setShowPendingChangesModal(true)}
+                className="bg-amber-600 hover:bg-amber-700 text-white py-2 px-5 rounded-lg font-bold flex items-center gap-2"
+              >
+                مراجعة التعديلات
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="bg-slate-50 dark:bg-gray-800/60 p-6 rounded-2xl border border-blue-300 dark:border-blue-500/20 flex justify-between items-center flex-wrap gap-4">
           <div>
             <h3 className="text-xl font-semibold text-blue-800 dark:text-blue-200 flex items-center gap-2">
               <FaUsers /> إدارة الطلاب
             </h3>
-            <p className="text-sm text-slate-500 dark:text-gray-400 mt-1">يمكنك إضافة حسابات الطلاب الجدد من هنا.</p>
+            <p className="text-sm text-slate-500 dark:text-gray-400 mt-1">يمكنك إضافة حسابات الطلاب الجدد من هنا (البلد يختاره الطالب لاحقاً).</p>
           </div>
           <button
             onClick={() => setShowAddStudentModal(true)}
@@ -482,14 +773,14 @@ const SupervisorPanel = ({ user, onLogout }) => {
 
         <div className="bg-slate-50 dark:bg-gray-800/60 p-6 rounded-2xl border border-indigo-300 dark:border-indigo-500/20">
           <h3 className="text-xl font-semibold text-indigo-800 dark:text-indigo-200 flex items-center gap-2 mb-3">
-            <FaGraduationCap /> إدارة الشعب والمعلمين
+            <FaGraduationCap /> الشعب والمعلمين
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <button
               onClick={() => setShowClassesManager(true)}
               className="bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2"
             >
-              <FaGraduationCap /> إدارة الشعب ({availableClasses.length})
+              <FaLayerGroup /> إدارة الشعب والأقسام
             </button>
             <button
               onClick={() => setShowTeachersManager(true)}
@@ -506,7 +797,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {permissions.reports && counts.reports > 0 && <ReportsReviewSection user={user} />}
+        {permissions.reports && <ReportsReviewSection user={user} />}
 
         <ReviewVotingSection user={user} />
 
@@ -566,6 +857,99 @@ const SupervisorPanel = ({ user, onLogout }) => {
         )}
       </div>
 
+      {/* ✅ NEW: Modal — قائمة التعديلات المعلقة */}
+      {showPendingChangesModal && (
+        <div className="fixed inset-0 bg-black/60 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => { setShowPendingChangesModal(false); setSelectedPendingChange(null); setRejectionReason(''); }}>
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl max-w-2xl w-full border border-amber-300 dark:border-amber-500/30 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold text-amber-700 dark:text-amber-300 flex items-center gap-2">
+                <FaClipboardCheck /> مراجعة التعديلات
+              </h3>
+              <button onClick={() => { setShowPendingChangesModal(false); setSelectedPendingChange(null); setRejectionReason(''); }} className="text-slate-500 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white text-2xl"><FaTimes /></button>
+            </div>
+
+            {!selectedPendingChange ? (
+              <div className="space-y-3">
+                {pendingChanges.length === 0 ? (
+                  <p className="text-slate-500 dark:text-gray-400 text-center py-6">لا توجد تعديلات معلقة.</p>
+                ) : pendingChanges.map(s => (
+                  <button
+                    key={s.id}
+                    onClick={() => setSelectedPendingChange(s)}
+                    className="w-full p-4 bg-slate-50 dark:bg-black/30 rounded-xl border border-slate-200 dark:border-gray-700 hover:bg-slate-100 dark:hover:bg-gray-800/60 transition text-right flex justify-between items-center gap-3"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-slate-900 dark:text-white font-bold text-sm">{s.name || 'بدون اسم'}</p>
+                      <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">
+                        الرقم التسلسلي: <span dir="ltr">{s.serialNumber || '—'}</span>
+                      </p>
+                      <p className="text-[11px] text-amber-700 dark:text-amber-300 mt-1">
+                        {Object.keys(s.pendingChanges || {}).filter(k => !['submittedAt', 'submittedBy', 'submittedByName'].includes(k)).length} تعديل
+                      </p>
+                    </div>
+                    <FaChevronLeft className="text-slate-400 dark:text-gray-500" />
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <button
+                  onClick={() => { setSelectedPendingChange(null); setRejectionReason(''); }}
+                  className="text-sm text-slate-500 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white inline-flex items-center gap-1"
+                >
+                  <FaArrowLeft className="rotate-180" /> رجوع للقائمة
+                </button>
+
+                <div className="bg-slate-50 dark:bg-gray-800/60 p-4 rounded-xl border border-slate-200 dark:border-gray-700">
+                  <p className="text-slate-900 dark:text-white font-bold mb-1">{selectedPendingChange.name || 'بدون اسم'}</p>
+                  <p className="text-xs text-slate-500 dark:text-gray-400">
+                    الرقم التسلسلي: <span dir="ltr">{selectedPendingChange.serialNumber || '—'}</span>
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">
+                    الجنس: {selectedPendingChange.gender || '—'} • العمر: {selectedPendingChange.age || '—'}
+                  </p>
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-bold text-slate-700 dark:text-gray-300 mb-2">التعديلات المطلوبة:</h4>
+                  <div className="space-y-2">
+                    {renderPendingFields(selectedPendingChange)}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-sm text-slate-700 dark:text-gray-300 block mb-1">سبب الرفض (اختياري — سيُرسل للطالب):</label>
+                  <textarea
+                    className="w-full bg-white dark:bg-gray-800 text-right p-2 border border-slate-200 dark:border-gray-600 rounded-md text-slate-900 dark:text-white resize-none h-20 text-sm"
+                    value={rejectionReason}
+                    onChange={(e) => setRejectionReason(e.target.value)}
+                    placeholder="اتركه فارغاً للموافقة، أو اكتب سبب الرفض..."
+                  />
+                </div>
+
+                <div className="flex gap-2 flex-wrap">
+                  <button
+                    onClick={handleApproveChanges}
+                    disabled={processingChange}
+                    className="flex-1 min-w-[150px] bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2"
+                  >
+                    <FaCheckCircle /> {processingChange ? '...' : 'الموافقة وتطبيق'}
+                  </button>
+                  <button
+                    onClick={handleRejectChanges}
+                    disabled={processingChange}
+                    className="flex-1 min-w-[150px] bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2"
+                  >
+                    <FaTimesCircle /> {processingChange ? '...' : 'رفض التعديلات'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* نموذج إضافة طالب */}
       {showAddStudentModal && (
         <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowAddStudentModal(false)}>
           <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-blue-300 dark:border-blue-500/30 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -581,38 +965,23 @@ const SupervisorPanel = ({ user, onLogout }) => {
               <input type="text" inputMode="numeric" placeholder="رقم الهاتف * (مع رمز الدولة بدون +)" className="bg-white dark:bg-gray-800 w-full text-right p-2 border border-slate-200 dark:border-gray-600 rounded-md text-slate-900 dark:text-white" value={newStudentPhone} onChange={e => setNewStudentPhone(arabicToEnglishNumber(e.target.value))} required />
 
               <div>
-                <label className="text-xs text-slate-500 dark:text-gray-400 mb-1 block">البلد *</label>
-                <select
-                  className="bg-white dark:bg-gray-800 w-full text-right p-2 border border-slate-200 dark:border-gray-600 rounded-md text-slate-900 dark:text-white"
-                  value={newStudentCountry}
-                  onChange={e => setNewStudentCountry(e.target.value)}
-                  required
+                <label className="text-xs text-slate-500 dark:text-gray-400 mb-1 block">الشعب الدراسية *</label>
+                <button
+                  type="button"
+                  onClick={() => setShowClassPicker(true)}
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-md font-bold flex items-center justify-center gap-2"
                 >
-                  <option value="">اختر البلد</option>
-                  {COUNTRIES.map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
+                  <FaLayerGroup /> اختيار الشعب ({newStudentClassIds.length})
+                </button>
+                {selectedClassesNames.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {selectedClassesNames.map((name, i) => (
+                      <span key={i} className="text-xs bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 px-2 py-1 rounded border border-indigo-500/30">{name}</span>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              <div>
-                <label className="text-xs text-slate-500 dark:text-gray-400 mb-1 block">الشعب الدراسية * (اضغط Ctrl لاختيار عدة شعب)</label>
-                <select multiple className="bg-white dark:bg-gray-800 w-full h-24 text-right p-2 border border-slate-200 dark:border-gray-600 rounded-md text-slate-900 dark:text-white" value={newStudentClassIds} onChange={(e) => setNewStudentClassIds(Array.from(e.target.selectedOptions).map(o => o.value))} required>
-                  {flattenSectionTree(sections).map(sec => {
-                    const secClasses = availableClasses.filter(c => c.sectionId === sec.id);
-                    if (secClasses.length === 0) return null;
-                    return (
-                      <optgroup key={sec.id} label={sec.path}>
-                        {secClasses.map(cls => (
-                          <option key={cls.id} value={cls.id}>
-                            {cls.name} ({getClassGenderLabel(cls.gender)})
-                          </option>
-                        ))}
-                      </optgroup>
-                    );
-                  })}
-                </select>
-              </div>
               <button type="submit" disabled={studentLoading} className="btn-primary w-full py-3 bg-blue-600 hover:bg-blue-700 rounded-md text-white">
                 {studentLoading ? 'جاري الإنشاء...' : 'إنشاء الحساب'}
               </button>
@@ -705,10 +1074,21 @@ const SupervisorPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      <ClassesManagerModal
+      <ClassTreePickerModal
+        isOpen={showClassPicker}
+        onClose={() => setShowClassPicker(false)}
+        sections={sections}
+        classes={availableClasses}
+        selectedIds={newStudentClassIds}
+        onConfirm={(ids) => setNewStudentClassIds(ids)}
+        allowedGenders={allowedGenders}
+      />
+
+      <SectionsManagerModal
         isOpen={showClassesManager}
         onClose={() => setShowClassesManager(false)}
         user={user}
+        mode="supervisor"
       />
       <StudentSerialManagerModal
         isOpen={showSerialManager}

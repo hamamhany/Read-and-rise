@@ -6,12 +6,12 @@ import { signOut, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc, setDoc, query, collection, where, getDocs, serverTimestamp } from 'firebase/firestore';
 import { sanitizeInput } from '../../utils/helpers';
 import { COUNTRIES } from '../../utils/countries';
+import { PENDING_CHANGES_STATUS } from '../../constants';
 
 const CompleteProfile = ({ user, onSuccess, onCancel }) => {
   const isFemaleTeacher = user.role === 'teacher' && user.gender === 'أنثى';
-
-  // ✅ البلد إجباري لكل المستخدمين (طالب، معلم، مشرف)
   const requiresCountry = ['student', 'teacher', 'supervisor'].includes(user.role);
+  const isStudent = user.role === 'student';
 
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -36,7 +36,6 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
     if (newPassword !== confirmPassword) { setError('كلمة المرور غير متطابقة مع تأكيدها'); return; }
     if (newPassword.length < 6) { setError('كلمة المرور يجب أن تكون 6 أحرف على الأقل'); return; }
     if (isFemaleTeacher && !newNickname.trim()) { setError('اسم الشهرة مطلوب'); return; }
-    // ✅ البلد إجباري
     if (requiresCountry && !newCountry) { setError('يرجى اختيار البلد'); return; }
 
     const email = `${cleanUsername}@readandrise.com`;
@@ -89,14 +88,36 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
         updatedAt: serverTimestamp()
       };
 
-      // ✅ حفظ البلد (إجباري)
-      if (requiresCountry) {
-        updateData.country = newCountry;
+      // ✅ الطالب: البلد يذهب لـ pendingChanges بانتظار موافقة المشرف
+      //    المعلم/المشرف: البلد يُحفظ مباشرة (ليسوا تحت مشرف)
+      const pendingChangesObj = {};
+
+      if (requiresCountry && newCountry) {
+        if (isStudent) {
+          pendingChangesObj.country = { from: user.country || '', to: newCountry };
+        } else {
+          updateData.country = newCountry;
+        }
       }
 
+      // تعديلات اسم/شهرة المعلمة — تحفظ مباشرة (كما كانت)
       if (isFemaleTeacher) {
         updateData.nickname = sanitizeInput(newNickname);
         updateData.name = sanitizeInput(newName) || '';
+      }
+
+      // ✅ تجميع التعديلات المعلقة للطالب
+      if (Object.keys(pendingChangesObj).length > 0) {
+        updateData.pendingChanges = {
+          ...pendingChangesObj,
+          submittedAt: serverTimestamp(),
+          submittedBy: user.id,
+          submittedByName: user.name || user.nickname || user.username
+        };
+        updateData.pendingChangesStatus = PENDING_CHANGES_STATUS.PENDING;
+      } else {
+        updateData.pendingChanges = null;
+        updateData.pendingChangesStatus = null;
       }
 
       await setDoc(doc(db, 'profiles', user.id), updateData, { merge: true });
@@ -112,7 +133,13 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
       let updatedProfile = {};
       if (updatedDocSnap.exists()) updatedProfile = updatedDocSnap.data();
 
-      toast.success('تم تفعيل حسابك بنجاح! يمكنك الآن استخدام اسم المستخدم الجديد وكلمة المرور.');
+      // ✅ رسالة نجاح مع تنبيه للموافقة للطالب
+      if (isStudent && Object.keys(pendingChangesObj).length > 0) {
+        toast.success('✅ تم تفعيل حسابك! البلد المختار قيد موافقة المشرف وسيُطبَّق قريباً.');
+      } else {
+        toast.success('تم تفعيل حسابك بنجاح! يمكنك الآن استخدام اسم المستخدم الجديد وكلمة المرور.');
+      }
+
       onSuccess({
         ...user,
         username: cleanUsername,
@@ -206,7 +233,11 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
                     <option key={c} value={c}>{c}</option>
                   ))}
                 </select>
-                <p className="text-[10px] text-gray-500 mt-1">لا يمكن تغيير البلد لاحقاً</p>
+                <p className="text-[10px] text-gray-500 mt-1">
+                  {isStudent
+                    ? 'سيُرسل اختيارك للمشرف للموافقة قبل تطبيقه'
+                    : 'لا يمكن تغيير البلد لاحقاً'}
+                </p>
               </div>
             )}
 

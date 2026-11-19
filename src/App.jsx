@@ -31,6 +31,31 @@ const MainDashboard = ({ user, onLogout }) => {
   return <StudentPanel user={user} onLogout={onLogout} />;
 };
 
+// ✅ غلاف انتقال بين الشاشات (فقط بصري — لا يغيّر أي منطق)
+const PageTransition = ({ children }) => (
+  <div className="animate-panel-in">{children}</div>
+);
+
+// ✅ شاشة تحميل أولية أنيقة
+const PremiumLoader = () => (
+  <div className="container-center min-h-screen relative" dir="rtl">
+    <div className="flex flex-col items-center gap-6 animate-panel-in">
+      <div className="relative w-32 h-32 flex items-center justify-center">
+        <img
+          src="/images/logo.png"
+          alt="logo"
+          className="w-24 h-24 object-contain animate-logo-breathe select-none"
+          onError={(e) => { e.target.style.display = 'none'; }}
+        />
+        <div className="absolute inset-0 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 border-r-purple-500 animate-spin" />
+      </div>
+      <p className="text-slate-600 dark:text-gray-300 text-sm font-medium tracking-wide animate-pulse">
+        جاري التحميل...
+      </p>
+    </div>
+  </div>
+);
+
 const App = () => {
   const [user, setUser] = useState(null);
   const [frozenUser, setFrozenUser] = useState(null);
@@ -210,39 +235,41 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
-  // ☀️ محتوى الشاشة (نفس المنطق السابق دون تغيير)
+  // ☀️ محتوى الشاشة
   const renderContent = () => {
     if (loading) {
-      return (
-        <div className="container-center min-h-screen text-white">
-          <div className="bg-gray-900 p-8 rounded-2xl border border-gray-700 shadow-xl animate-pulse">
-            جاري التحميل...
-          </div>
-        </div>
-      );
+      return <PremiumLoader />;
     }
 
     if (pendingUserForComplete) {
       return (
-        <CompleteProfile
-          user={pendingUserForComplete}
-          onSuccess={handleCompleteProfileSuccess}
-          onCancel={handleLogout}
-        />
+        <PageTransition key="complete-profile">
+          <CompleteProfile
+            user={pendingUserForComplete}
+            onSuccess={handleCompleteProfileSuccess}
+            onCancel={handleLogout}
+          />
+        </PageTransition>
       );
     }
 
     if (frozenUser) {
-      return <FrozenAccount user={frozenUser} onLogout={handleLogout} />;
+      return (
+        <PageTransition key="frozen">
+          <FrozenAccount user={frozenUser} onLogout={handleLogout} />
+        </PageTransition>
+      );
     }
 
     if (!user) {
       return (
-        <Login
-          onLogin={handleLogin}
-          onFrozen={handleFrozen}
-          onCompleteProfile={handleCompleteProfile}
-        />
+        <PageTransition key="login">
+          <Login
+            onLogin={handleLogin}
+            onFrozen={handleFrozen}
+            onCompleteProfile={handleCompleteProfile}
+          />
+        </PageTransition>
       );
     }
 
@@ -251,10 +278,10 @@ const App = () => {
         <Route
           path="/"
           element={
-            <>
+            <PageTransition key={`dash-${user.id}`}>
               <MainDashboard user={user} onLogout={handleLogout} />
               <SupportButton user={user} />
-            </>
+            </PageTransition>
           }
         />
         <Route path="/support" element={<SupportPage user={user} />} />
@@ -297,12 +324,26 @@ const Root = () => (
         toastOptions={{
           duration: 3000,
           style: {
-            background: '#1e293b',
+            background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
             color: '#fff',
-            border: '1px solid rgba(255,255,255,0.15)',
+            border: '1px solid rgba(139, 92, 246, 0.35)',
             borderRadius: '16px',
             padding: '16px',
-            direction: 'rtl'
+            direction: 'rtl',
+            boxShadow: '0 14px 40px -12px rgba(99, 102, 241, 0.45), 0 6px 18px -6px rgba(139, 92, 246, 0.3)',
+            animation: 'modalIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) both'
+          },
+          success: {
+            style: {
+              background: 'linear-gradient(135deg, #064e3b 0%, #065f46 100%)',
+              border: '1px solid rgba(34, 197, 94, 0.45)',
+            }
+          },
+          error: {
+            style: {
+              background: 'linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%)',
+              border: '1px solid rgba(239, 68, 68, 0.45)',
+            }
           }
         }}
       />

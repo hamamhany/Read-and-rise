@@ -198,3 +198,19 @@ export const EXAM_RESULT_STATUS = {
 };
 
 export const MAX_EXAM_ATTEMPTS = 1; // ✅ محاولة واحدة فقط
+// ✅ حالات تعديلات الملف المعلّقة (الطالب يعدّل → المشرف يوافق)
+export const PENDING_CHANGES_STATUS = {
+  PENDING: 'pending_approval',
+  APPROVED: 'approved',
+  REJECTED: 'rejected'
+};
+
+// ✅ تسميات الحقول للتعديلات (لعرض قبل/بعد)
+export const PENDING_FIELD_LABELS = {
+  country: 'البلد',
+  name: 'الاسم',
+  nickname: 'اسم الشهرة',
+  phone: 'رقم الهاتف',
+  age: 'العمر',
+  gender: 'الجنس'
+};

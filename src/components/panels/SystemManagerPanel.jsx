@@ -5,7 +5,8 @@ import {
   FaSignOutAlt, FaUserShield, FaExclamationTriangle, FaWhatsapp,
   FaTimesCircle, FaUsers, FaTrashAlt, FaBell, FaPaperPlane,
   FaChalkboardTeacher, FaBroadcastTower, FaHourglassHalf,
-  FaBan, FaChevronLeft, FaCopy, FaCheckCircle, FaRedoAlt, FaEye, FaLayerGroup
+  FaBan, FaChevronLeft, FaCopy, FaCheckCircle, FaRedoAlt, FaEye, FaLayerGroup,
+  FaChevronDown, FaChevronUp, FaSyncAlt, FaDownload
 } from 'react-icons/fa';
 import { db } from '../../firebase';
 import {
@@ -33,7 +34,7 @@ import {
   sendUnactivatedAccountDeletedMessage
 } from '../../utils/whatsapp';
 import { deleteUserCompletely } from '../../services/accountDeletion';
-import { updateClassGender, deleteClassById, moveStudentToClass, purgeClassesWithoutSection, getSections } from '../../services/classes';
+import { updateClassGender, deleteClassById, moveStudentToClass, purgeClassesWithoutSection } from '../../services/classes';
 import { approveAnnouncement, rejectAnnouncement } from '../../services/announcements';
 import SystemManagerReviewsSection from './SystemManagerReviewsSection';
 import ManagerSupportReviewsSection from './ManagerSupportReviewsSection';
@@ -116,6 +117,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
   const prompt = usePrompt();
 
+  // ✅ البيانات المحمّلة بشكل Lazy
   const [messageRequests, setMessageRequests] = useState([]);
   const [pendingAnnouncements, setPendingAnnouncements] = useState([]);
   const [allLessonTimes, setAllLessonTimes] = useState([]);
@@ -123,10 +125,24 @@ const SystemManagerPanel = ({ user, onLogout }) => {
   const [activeLecturesCount, setActiveLecturesCount] = useState(0);
   const [liveCountdown, setLiveCountdown] = useState({ d: 0, h: 0, m: 0, s: 0 });
 
+  // ✅ عدادات (getCountFromServer — رخيصة جداً)
   const [studentsCount, setStudentsCount] = useState(0);
   const [supervisorsCount, setSupervisorsCount] = useState(0);
   const [teachersCount, setTeachersCount] = useState(0);
   const [blacklistCount, setBlacklistCount] = useState(0);
+  const [sectionsCount, setSectionsCount] = useState(0);
+  const [pendingCount, setPendingCount] = useState(0);
+
+  // ✅ حالات Lazy Loading لكل قسم
+  const [requestsOpen, setRequestsOpen] = useState(false);
+  const [requestsLoaded, setRequestsLoaded] = useState(false);
+  const [requestsLoading, setRequestsLoading] = useState(false);
+
+  const [announcementsOpen, setAnnouncementsOpen] = useState(false);
+  const [announcementsLoaded, setAnnouncementsLoaded] = useState(false);
+
+  const [lessonTimesLoaded, setLessonTimesLoaded] = useState(false);
+  const [loadingLessonTimes, setLoadingLessonTimes] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState([]);
@@ -143,22 +159,35 @@ const SystemManagerPanel = ({ user, onLogout }) => {
   const [showStudentsModal, setShowStudentsModal] = useState(false);
   const [showBlacklistModal, setShowBlacklistModal] = useState(false);
   const [showSectionsModal, setShowSectionsModal] = useState(false);
-  const [sectionsCount, setSectionsCount] = useState(0);
-
-  // ✅ حذف فوري لأي شعبة قديمة بدون قسم + عدّ الأقسام
-  useEffect(() => {
-    (async () => {
-      try {
-        await purgeClassesWithoutSection();
-        const secs = await getSections();
-        setSectionsCount(secs.length);
-      } catch (e) { console.warn('purge classes failed:', e); }
-    })();
-  }, []);
 
   const [openRequestModal, setOpenRequestModal] = useState(null);
   const [processingAction, setProcessingAction] = useState(false);
 
+  // ✅ 1) حذف الشعب اليتيمة + جلب عدد الأقسام (رخيص - count فقط)
+  useEffect(() => {
+    (async () => {
+      try {
+        await purgeClassesWithoutSection();
+        const secsCount = await getCountFromServer(collection(db, 'sections'));
+        setSectionsCount(secsCount.data().count);
+      } catch (e) { console.warn('purge classes failed:', e); }
+    })();
+  }, []);
+
+  // ✅ 2) تحميل الإشعارات فقط (خفيفة، ضرورية للجرس)
+  useEffect(() => {
+    if (!user) return;
+    const notifRef = collection(db, 'notifications', user.id, 'userNotifications');
+    const qNotif = query(notifRef, orderBy('createdAt', 'desc'));
+    const unsubscribeNotif = onSnapshot(qNotif, (snapshot) => {
+      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setNotifications(list);
+      setUnreadCount(list.filter(n => !n.read).length);
+    });
+    return () => unsubscribeNotif();
+  }, [user.id]);
+
+  // ✅ 3) setupOnMessageListener
   useEffect(() => {
     const unsub = setupOnMessageListener((payload) => {
       toast.custom(() => (
@@ -171,59 +200,83 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     return () => unsub();
   }, []);
 
+  // ✅ 4) cleanup الطلبات القديمة (عملية كتابة - لا تُكلف قراءة)
   useEffect(() => {
     cleanupOldApprovedRequests().catch(err => console.warn('cleanup initial failed:', err));
   }, []);
 
+  // ✅ 5) العدادات الأساسية (getCountFromServer — رخيصة جداً)
   useEffect(() => {
     (async () => {
       try {
-        const [s, sup, t, bl] = await Promise.all([
+        const [s, sup, t, bl, pc, pr] = await Promise.all([
           getCountFromServer(query(collection(db, 'profiles'), where('role', '==', 'student'))),
           getCountFromServer(query(collection(db, 'profiles'), where('role', '==', 'supervisor'))),
           getCountFromServer(query(collection(db, 'profiles'), where('role', '==', 'teacher'))),
-          getCountFromServer(collection(db, 'blacklist'))
+          getCountFromServer(collection(db, 'blacklist')),
+          getCountFromServer(query(collection(db, 'messageRequests'), where('status', '==', 'pending'))),
+          getCountFromServer(query(collection(db, 'messageRequests'), where('status', '==', 'pending'), where('type', '==', 'report')))
         ]);
         setStudentsCount(s.data().count);
         setSupervisorsCount(sup.data().count);
         setTeachersCount(t.data().count);
         setBlacklistCount(bl.data().count);
+        setPendingCount(Math.max(0, pc.data().count - pr.data().count));
       } catch (e) { console.warn('count load failed:', e); }
+      finally { setLoading(false); }
     })();
   }, []);
 
+  // ✅ 6) Lazy: تحميل طلبات الرسائل فقط عند فتح القسم
   useEffect(() => {
-    const qRequests = query(collection(db, 'messageRequests'), orderBy('createdAt', 'desc'));
-    const unsubRequests = onSnapshot(qRequests, (snapshot) => {
+    if (!requestsOpen) return;
+    setRequestsLoading(true);
+    const q = query(collection(db, 'messageRequests'), orderBy('createdAt', 'desc'));
+    const unsub = onSnapshot(q, (snapshot) => {
       setMessageRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setRequestsLoaded(true);
+      setRequestsLoading(false);
+    }, (err) => {
+      console.warn('requests load failed:', err);
+      setRequestsLoading(false);
     });
+    return () => unsub();
+  }, [requestsOpen]);
 
-    const unsubLessonTimes = onSnapshot(collection(db, 'teachers'), (snapshot) => {
+  // ✅ 7) Lazy: تحميل الإعلانات المعلقة فقط عند فتح القسم
+  useEffect(() => {
+    if (!announcementsOpen) return;
+    const q = query(collection(db, 'announcements'), where('status', '==', 'pending_approval'));
+    const unsub = onSnapshot(q, (snap) => {
+      setPendingAnnouncements(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setAnnouncementsLoaded(true);
+    }, (err) => {
+      console.warn('announcements load failed:', err);
+    });
+    return () => unsub();
+  }, [announcementsOpen]);
+
+  // ✅ 8) Lazy: تحميل أوقات الدروس عند الضغط على زر "تحميل"
+  const loadLessonTimes = async () => {
+    if (lessonTimesLoaded || loadingLessonTimes) return;
+    setLoadingLessonTimes(true);
+    try {
+      const snap = await getDocs(collection(db, 'teachers'));
       const times = [];
-      snapshot.docs.forEach(docSnap => {
+      snap.docs.forEach(docSnap => {
         const data = docSnap.data();
         (data.lessonTimes || []).forEach(t => times.push({ teacherId: docSnap.id, ...t }));
       });
       setAllLessonTimes(times);
-    });
+      setLessonTimesLoaded(true);
+    } catch (e) {
+      toast.error('فشل تحميل أوقات الدروس: ' + e.message);
+    } finally {
+      setLoadingLessonTimes(false);
+    }
+  };
 
-    const qAnn = query(collection(db, 'announcements'), where('status', '==', 'pending_approval'));
-    const unsubAnn = onSnapshot(qAnn, (snap) => {
-      setPendingAnnouncements(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-
-    const notifRef = collection(db, 'notifications', user.id, 'userNotifications');
-    const qNotif = query(notifRef, orderBy('createdAt', 'desc'));
-    const unsubNotif = onSnapshot(qNotif, (snapshot) => {
-      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setNotifications(list);
-      setUnreadCount(list.filter(n => !n.read).length);
-    });
-
-    setLoading(false);
-    return () => { unsubRequests(); unsubLessonTimes(); unsubAnn(); unsubNotif(); };
-  }, [user.id]);
-
+  // ✅ 9) الحصة القادمة - فقط بعد التحميل
   useEffect(() => {
     if (allLessonTimes.length === 0) { setNextGlobalLesson(null); setActiveLecturesCount(0); return; }
     const tick = () => {
@@ -533,7 +586,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     return r.status === requestFilter;
   });
 
-  const pendingCount = messageRequests.filter(r => r.status === 'pending' && r.type !== 'report').length;
   const pad2 = (n) => String(n).padStart(2, '0');
 
   if (loading) return <div className="text-center text-slate-500 dark:text-gray-400 p-8">جاري التحميل...</div>;
@@ -558,6 +610,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
+        {/* ✅ بطاقات العدادات — كلها getCountFromServer (رخصة جداً) */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-gradient-to-br from-red-100 to-red-50 dark:from-red-900/50 dark:to-red-900/20 p-6 rounded-2xl border border-red-200 dark:border-red-500/30 shadow-xl">
             <div className="flex items-center gap-3 mb-3">
@@ -591,20 +644,40 @@ const SystemManagerPanel = ({ user, onLogout }) => {
             <p className="text-4xl font-black text-slate-900 dark:text-white"><CountUp value={teachersCount} /></p>
           </div>
 
+          {/* ✅ بطاقة المحاضرات النشطة — تعتمد على lessonTimes المحملة lazily */}
           <div className="bg-gradient-to-br from-purple-100 to-purple-50 dark:from-purple-900/50 dark:to-purple-900/20 p-6 rounded-2xl border border-purple-200 dark:border-purple-500/30 shadow-xl">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-fuchsia-600 flex items-center justify-center shadow-lg"><FaBroadcastTower className="text-white text-xl" /></div>
               <div><p className="text-xs text-purple-600 dark:text-purple-300 uppercase tracking-widest font-semibold">محاضرات</p><h3 className="text-sm font-bold text-purple-900 dark:text-purple-100">نشطة الآن</h3></div>
             </div>
-            <p className="text-4xl font-black text-slate-900 dark:text-white"><CountUp value={activeLecturesCount} /></p>
+            {lessonTimesLoaded ? (
+              <p className="text-4xl font-black text-slate-900 dark:text-white"><CountUp value={activeLecturesCount} /></p>
+            ) : (
+              <button
+                onClick={loadLessonTimes}
+                disabled={loadingLessonTimes}
+                className="text-sm text-purple-700 dark:text-purple-300 hover:text-purple-900 dark:hover:text-purple-100 font-bold inline-flex items-center gap-2 disabled:opacity-50"
+              >
+                {loadingLessonTimes ? 'جاري التحميل...' : <><FaDownload /> تحميل</>}
+              </button>
+            )}
           </div>
 
+          {/* ✅ بطاقة الحصة القادمة — lazy */}
           <div className="bg-gradient-to-br from-amber-100 to-amber-50 dark:from-amber-900/50 dark:to-amber-900/20 p-6 rounded-2xl border border-amber-200 dark:border-amber-500/30 shadow-xl">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500 to-yellow-600 flex items-center justify-center shadow-lg"><FaHourglassHalf className="text-white text-xl" /></div>
               <div><p className="text-xs text-amber-600 dark:text-amber-300 uppercase tracking-widest font-semibold">الحصة القادمة</p></div>
             </div>
-            {nextGlobalLesson ? (
+            {!lessonTimesLoaded ? (
+              <button
+                onClick={loadLessonTimes}
+                disabled={loadingLessonTimes}
+                className="text-sm text-amber-700 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-100 font-bold inline-flex items-center gap-2 disabled:opacity-50"
+              >
+                {loadingLessonTimes ? 'جاري التحميل...' : <><FaDownload /> تحميل</>}
+              </button>
+            ) : nextGlobalLesson ? (
               <p className="text-3xl font-black text-slate-900 dark:text-white tabular-nums" dir="ltr">
                 {liveCountdown.d > 0 && <span className="text-amber-600 dark:text-amber-200">{liveCountdown.d}d </span>}
                 {pad2(liveCountdown.h)}:{pad2(liveCountdown.m)}:{pad2(liveCountdown.s)}
@@ -613,34 +686,55 @@ const SystemManagerPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {pendingAnnouncements.length > 0 && (
-          <div className="bg-blue-50 dark:bg-gray-800/60 p-6 rounded-2xl border border-blue-200 dark:border-blue-500/30">
-            <h3 className="text-xl font-semibold text-blue-700 dark:text-blue-300 flex items-center gap-2 mb-3">
-              <FaBroadcastTower /> إعلانات بانتظار موافقتك ({pendingAnnouncements.length})
+        {/* ✅ الإعلانات المعلقة — Lazy (تُحمَّل عند فتح القسم) */}
+        <div className="bg-blue-50 dark:bg-gray-800/60 rounded-2xl border border-blue-200 dark:border-blue-500/30 overflow-hidden">
+          <button
+            onClick={() => setAnnouncementsOpen(v => !v)}
+            className="w-full p-6 flex justify-between items-center gap-3 hover:bg-blue-100/50 dark:hover:bg-gray-700/30 transition text-right"
+          >
+            <h3 className="text-xl font-semibold text-blue-700 dark:text-blue-300 flex items-center gap-2">
+              <FaBroadcastTower /> إعلانات بانتظار موافقتك {announcementsLoaded && `(${pendingAnnouncements.length})`}
             </h3>
-            <div className="space-y-3 max-h-80 overflow-y-auto">
-              {pendingAnnouncements.map(ann => (
-                <div key={ann.id} className="p-4 bg-white dark:bg-black/30 rounded-xl border border-blue-200 dark:border-blue-500/20">
-                  <div className="flex justify-between items-start gap-2 flex-wrap mb-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-slate-900 dark:text-white font-bold">{ann.title}</p>
-                      <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">من: {ann.requestedByName || 'مشرف'}</p>
-                      <p className="text-sm text-slate-700 dark:text-gray-300 mt-2 line-clamp-3 whitespace-pre-wrap">{ann.body}</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-2 mt-2 flex-wrap">
-                    <button onClick={() => handleApproveAnnouncement(ann)} className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold">
-                      <FaCheckCircle className="inline me-1" /> نشر
-                    </button>
-                    <button onClick={() => handleRejectAnnouncement(ann)} className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold">
-                      <FaTimesCircle className="inline me-1" /> رفض
-                    </button>
-                  </div>
+            {announcementsOpen
+              ? <FaChevronUp className="text-blue-600 dark:text-blue-300" />
+              : <FaChevronDown className="text-blue-600 dark:text-blue-300" />}
+          </button>
+
+          {announcementsOpen && (
+            <div className="p-6 pt-0">
+              {!announcementsLoaded ? (
+                <div className="text-center py-6 text-gray-400">
+                  <FaSyncAlt className="animate-spin text-2xl mx-auto mb-2" />
+                  <p className="text-sm">جاري التحميل...</p>
                 </div>
-              ))}
+              ) : pendingAnnouncements.length === 0 ? (
+                <p className="text-slate-500 dark:text-gray-400 text-center py-4">لا توجد إعلانات معلقة.</p>
+              ) : (
+                <div className="space-y-3 max-h-80 overflow-y-auto">
+                  {pendingAnnouncements.map(ann => (
+                    <div key={ann.id} className="p-4 bg-white dark:bg-black/30 rounded-xl border border-blue-200 dark:border-blue-500/20">
+                      <div className="flex justify-between items-start gap-2 flex-wrap mb-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-slate-900 dark:text-white font-bold">{ann.title}</p>
+                          <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">من: {ann.requestedByName || 'مشرف'}</p>
+                          <p className="text-sm text-slate-700 dark:text-gray-300 mt-2 line-clamp-3 whitespace-pre-wrap">{ann.body}</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 mt-2 flex-wrap">
+                        <button onClick={() => handleApproveAnnouncement(ann)} className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold">
+                          <FaCheckCircle className="inline me-1" /> نشر
+                        </button>
+                        <button onClick={() => handleRejectAnnouncement(ann)} className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold">
+                          <FaTimesCircle className="inline me-1" /> رفض
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         <SystemManagerReviewsSection user={user} />
         <ManagerSupportReviewsSection user={user} />
@@ -687,96 +781,122 @@ const SystemManagerPanel = ({ user, onLogout }) => {
           </button>
         </div>
 
-        <div className="bg-amber-50 dark:bg-gray-800/60 p-6 rounded-2xl border border-amber-200 dark:border-amber-500/30">
-          <div className="flex justify-between items-center flex-wrap gap-3 mb-4">
-            <h3 className="text-xl font-semibold text-amber-700 dark:text-amber-300 flex items-center gap-2">
-              <FaPaperPlane /> طلبات الرسائل والإجراءات ({filteredRequests.length})
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              <button onClick={() => setRequestFilter('pending')} className={`px-3 py-1 rounded-lg text-xs transition-colors ${requestFilter === 'pending' ? 'bg-amber-600 text-white' : 'bg-slate-200 dark:bg-gray-700 text-slate-700 dark:text-gray-300'}`}>قيد المراجعة ({pendingCount})</button>
-              <button onClick={() => setRequestFilter('approved')} className={`px-3 py-1 rounded-lg text-xs transition-colors ${requestFilter === 'approved' ? 'bg-green-600 text-white' : 'bg-slate-200 dark:bg-gray-700 text-slate-700 dark:text-gray-300'}`}>معتمدة</button>
-              <button onClick={() => setRequestFilter('rejected')} className={`px-3 py-1 rounded-lg text-xs transition-colors ${requestFilter === 'rejected' ? 'bg-red-600 text-white' : 'bg-slate-200 dark:bg-gray-700 text-slate-700 dark:text-gray-300'}`}>مرفوضة</button>
-              <button onClick={() => setRequestFilter('all')} className={`px-3 py-1 rounded-lg text-xs transition-colors ${requestFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-slate-200 dark:bg-gray-700 text-slate-700 dark:text-gray-300'}`}>الكل</button>
+        {/* ✅ طلبات الرسائل — Lazy (تُحمَّل عند فتح القسم) */}
+        <div className="bg-amber-50 dark:bg-gray-800/60 rounded-2xl border border-amber-200 dark:border-amber-500/30 overflow-hidden">
+          <button
+            onClick={() => setRequestsOpen(v => !v)}
+            className="w-full p-6 flex justify-between items-center gap-3 hover:bg-amber-100/50 dark:hover:bg-gray-700/30 transition text-right"
+          >
+            <div className="text-right">
+              <h3 className="text-xl font-semibold text-amber-700 dark:text-amber-300 flex items-center gap-2">
+                <FaPaperPlane /> طلبات الرسائل والإجراءات {requestsLoaded && `(${filteredRequests.length})`}
+              </h3>
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                {pendingCount > 0 ? `⏳ ${pendingCount} طلب بانتظار المراجعة` : 'لا توجد طلبات معلقة حالياً'}
+              </p>
             </div>
-          </div>
-          <p className="text-xs text-slate-500 dark:text-gray-500 mb-3">📌 اضغط "فتح" لمراجعة الطلب — إرسال (فاتح واتساب) / تم الإرسال (تنفيذ + مسح) / رفض</p>
+            {requestsOpen
+              ? <FaChevronUp className="text-amber-600 dark:text-amber-300" />
+              : <FaChevronDown className="text-amber-600 dark:text-amber-300" />}
+          </button>
 
-          {filteredRequests.length === 0 ? (
-            <p className="text-slate-500 dark:text-gray-400 text-center py-6">لا توجد طلبات في هذا التصنيف.</p>
-          ) : (
-            <div className="space-y-3 max-h-[600px] overflow-y-auto">
-              {filteredRequests.map(request => {
-                const isPending = request.status === 'pending';
-                const isApproved = request.status === 'approved';
-                const isRejected = request.status === 'rejected';
-                const isActionType = ACTION_TYPES.includes(request.type);
-                const statusBadge = isPending ? (
-                  <span className="text-xs bg-amber-500/20 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded-full">⏳ قيد المراجعة</span>
-                ) : isApproved ? (
-                  <span className="text-xs bg-green-500/20 text-green-700 dark:text-green-300 px-2 py-0.5 rounded-full">✅ تم</span>
-                ) : (
-                  <span className="text-xs bg-red-500/20 text-red-700 dark:text-red-300 px-2 py-0.5 rounded-full">❌ مرفوض</span>
-                );
-
-                return (
-                  <div key={request.id} className="p-4 bg-white dark:bg-black/30 rounded-xl border border-gray-200 dark:border-gray-700 space-y-2">
-                    <div className="flex flex-wrap justify-between items-start gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-amber-600 dark:text-amber-300 font-bold text-sm">{MESSAGE_REQUEST_TYPE_LABELS[request.type] || request.type}</span>
-                          {statusBadge}
-                        </div>
-                        <p className="text-slate-900 dark:text-white text-sm mt-1">
-                          <strong>{request.targetName}</strong>
-                          {request.targetClass && <span className="text-slate-500 dark:text-gray-400 text-xs mr-2">({request.targetClass})</span>}
-                        </p>
-                        <p className="text-xs text-slate-500 dark:text-gray-400 mt-0.5">مقدم من: {request.requestedByName || 'مشرف'}</p>
-                        <p className="text-[10px] text-slate-400 dark:text-gray-500 mt-1">
-                          {request.createdAt?.toDate?.() ? new Date(request.createdAt.toDate()).toLocaleString('ar-EG') : ''}
-                        </p>
-                      </div>
-                      <div className="flex flex-col gap-2">
-                        {isPending && (
-                          <>
-                            {isActionType ? (
-                              <button onClick={async () => {
-                                const ok = await confirm('تنفيذ الإجراء', 'تنفيذ هذا الإجراء مباشرة؟');
-                                if (!ok) return;
-                                setProcessingAction(true);
-                                try {
-                                  await executeRequestAction(request);
-                                  await deleteMessageRequest(request.id);
-                                  toast.success('✅ تم التنفيذ');
-                                } catch (e) { toast.error('فشل: ' + e.message); }
-                                finally { setProcessingAction(false); }
-                              }} disabled={processingAction} className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg">
-                                ✅ موافقة وتنفيذ
-                              </button>
-                            ) : (
-                              <button onClick={() => setOpenRequestModal(request)} className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg">
-                                <FaEye className="inline me-1" /> فتح
-                              </button>
-                            )}
-                            <button onClick={() => handleRejectRequest(request.id)} className="text-xs bg-orange-600 hover:bg-orange-700 text-white px-3 py-1.5 rounded-lg">
-                              <FaTimesCircle className="inline me-1" /> رفض
-                            </button>
-                          </>
-                        )}
-                        {isRejected && (
-                          <button onClick={() => handleResendRejected(request.id)} className="text-xs bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg">
-                            <FaRedoAlt className="inline me-1" /> إعادة للقائمة
-                          </button>
-                        )}
-                        {isApproved && (
-                          <button onClick={() => handleDeleteRequest(request.id)} className="text-xs bg-slate-500 hover:bg-slate-600 dark:bg-gray-600 dark:hover:bg-gray-700 text-white px-3 py-1.5 rounded-lg">
-                            <FaTrashAlt className="inline me-1" /> حذف
-                          </button>
-                        )}
-                      </div>
-                    </div>
+          {requestsOpen && (
+            <div className="px-6 pb-6 pt-0">
+              {requestsLoading && !requestsLoaded ? (
+                <div className="text-center py-6 text-gray-400">
+                  <FaSyncAlt className="animate-spin text-2xl mx-auto mb-2" />
+                  <p className="text-sm">جاري تحميل الطلبات...</p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    <button onClick={() => setRequestFilter('pending')} className={`px-3 py-1 rounded-lg text-xs transition-colors ${requestFilter === 'pending' ? 'bg-amber-600 text-white' : 'bg-slate-200 dark:bg-gray-700 text-slate-700 dark:text-gray-300'}`}>قيد المراجعة ({messageRequests.filter(r => r.status === 'pending' && r.type !== 'report').length})</button>
+                    <button onClick={() => setRequestFilter('approved')} className={`px-3 py-1 rounded-lg text-xs transition-colors ${requestFilter === 'approved' ? 'bg-green-600 text-white' : 'bg-slate-200 dark:bg-gray-700 text-slate-700 dark:text-gray-300'}`}>معتمدة</button>
+                    <button onClick={() => setRequestFilter('rejected')} className={`px-3 py-1 rounded-lg text-xs transition-colors ${requestFilter === 'rejected' ? 'bg-red-600 text-white' : 'bg-slate-200 dark:bg-gray-700 text-slate-700 dark:text-gray-300'}`}>مرفوضة</button>
+                    <button onClick={() => setRequestFilter('all')} className={`px-3 py-1 rounded-lg text-xs transition-colors ${requestFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-slate-200 dark:bg-gray-700 text-slate-700 dark:text-gray-300'}`}>الكل</button>
                   </div>
-                );
-              })}
+                  <p className="text-xs text-slate-500 dark:text-gray-500 mb-3">📌 اضغط "فتح" لمراجعة الطلب — إرسال (فاتح واتساب) / تم الإرسال (تنفيذ + مسح) / رفض</p>
+
+                  {filteredRequests.length === 0 ? (
+                    <p className="text-slate-500 dark:text-gray-400 text-center py-6">لا توجد طلبات في هذا التصنيف.</p>
+                  ) : (
+                    <div className="space-y-3 max-h-[600px] overflow-y-auto">
+                      {filteredRequests.map(request => {
+                        const isPending = request.status === 'pending';
+                        const isApproved = request.status === 'approved';
+                        const isRejected = request.status === 'rejected';
+                        const isActionType = ACTION_TYPES.includes(request.type);
+                        const statusBadge = isPending ? (
+                          <span className="text-xs bg-amber-500/20 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded-full">⏳ قيد المراجعة</span>
+                        ) : isApproved ? (
+                          <span className="text-xs bg-green-500/20 text-green-700 dark:text-green-300 px-2 py-0.5 rounded-full">✅ تم</span>
+                        ) : (
+                          <span className="text-xs bg-red-500/20 text-red-700 dark:text-red-300 px-2 py-0.5 rounded-full">❌ مرفوض</span>
+                        );
+
+                        return (
+                          <div key={request.id} className="p-4 bg-white dark:bg-black/30 rounded-xl border border-gray-200 dark:border-gray-700 space-y-2">
+                            <div className="flex flex-wrap justify-between items-start gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="text-amber-600 dark:text-amber-300 font-bold text-sm">{MESSAGE_REQUEST_TYPE_LABELS[request.type] || request.type}</span>
+                                  {statusBadge}
+                                </div>
+                                <p className="text-slate-900 dark:text-white text-sm mt-1">
+                                  <strong>{request.targetName}</strong>
+                                  {request.targetClass && <span className="text-slate-500 dark:text-gray-400 text-xs mr-2">({request.targetClass})</span>}
+                                </p>
+                                <p className="text-xs text-slate-500 dark:text-gray-400 mt-0.5">مقدم من: {request.requestedByName || 'مشرف'}</p>
+                                <p className="text-[10px] text-slate-400 dark:text-gray-500 mt-1">
+                                  {request.createdAt?.toDate?.() ? new Date(request.createdAt.toDate()).toLocaleString('ar-EG') : ''}
+                                </p>
+                              </div>
+                              <div className="flex flex-col gap-2">
+                                {isPending && (
+                                  <>
+                                    {isActionType ? (
+                                      <button onClick={async () => {
+                                        const ok = await confirm('تنفيذ الإجراء', 'تنفيذ هذا الإجراء مباشرة؟');
+                                        if (!ok) return;
+                                        setProcessingAction(true);
+                                        try {
+                                          await executeRequestAction(request);
+                                          await deleteMessageRequest(request.id);
+                                          toast.success('✅ تم التنفيذ');
+                                        } catch (e) { toast.error('فشل: ' + e.message); }
+                                        finally { setProcessingAction(false); }
+                                      }} disabled={processingAction} className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg">
+                                        ✅ موافقة وتنفيذ
+                                      </button>
+                                    ) : (
+                                      <button onClick={() => setOpenRequestModal(request)} className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg">
+                                        <FaEye className="inline me-1" /> فتح
+                                      </button>
+                                    )}
+                                    <button onClick={() => handleRejectRequest(request.id)} className="text-xs bg-orange-600 hover:bg-orange-700 text-white px-3 py-1.5 rounded-lg">
+                                      <FaTimesCircle className="inline me-1" /> رفض
+                                    </button>
+                                  </>
+                                )}
+                                {isRejected && (
+                                  <button onClick={() => handleResendRejected(request.id)} className="text-xs bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg">
+                                    <FaRedoAlt className="inline me-1" /> إعادة للقائمة
+                                  </button>
+                                )}
+                                {isApproved && (
+                                  <button onClick={() => handleDeleteRequest(request.id)} className="text-xs bg-slate-500 hover:bg-slate-600 dark:bg-gray-600 dark:hover:bg-gray-700 text-white px-3 py-1.5 rounded-lg">
+                                    <FaTrashAlt className="inline me-1" /> حذف
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
         </div>
@@ -859,7 +979,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
 
       <SupervisorsManagerModal isOpen={showSupervisorsModal} onClose={() => setShowSupervisorsModal(false)} user={user} onCountChange={setSupervisorsCount} />
       <StudentsManagerModal isOpen={showStudentsModal} onClose={() => setShowStudentsModal(false)} user={user} onCountChange={setStudentsCount} />
-      <SectionsManagerModal isOpen={showSectionsModal} onClose={() => setShowSectionsModal(false)} user={user} onCountChange={setSectionsCount} />
+      <SectionsManagerModal isOpen={showSectionsModal} onClose={() => setShowSectionsModal(false)} user={user} onCountChange={setSectionsCount} mode="manager" />
       <BlacklistModal isOpen={showBlacklistModal} onClose={() => setShowBlacklistModal(false)} onCountChange={setBlacklistCount} />
 
       {showNotificationsModal && (

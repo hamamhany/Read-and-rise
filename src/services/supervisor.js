@@ -3,10 +3,10 @@ import { secondaryAuth, db } from '../firebase';
 import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import {
   collection, doc, setDoc, getDocs, query, where, limit,
-  serverTimestamp
+  serverTimestamp, onSnapshot, updateDoc, getDoc
 } from 'firebase/firestore';
 import { generateId } from '../utils/helpers';
-import { CLASS_VISIBILITY } from '../constants';
+import { CLASS_VISIBILITY, PENDING_CHANGES_STATUS } from '../constants';
 
 /**
  * توليد اسم مستخدم فريد للمشرف
@@ -25,14 +25,6 @@ const generateUniqueSupervisorUsername = async () => {
 
 /**
  * إنشاء حساب مشرف جديد
- * @param {string} name - الاسم الكامل
- * @param {string} gender - ذكر / أنثى
- * @param {number} age - العمر
- * @param {string} phone - رقم الهاتف (مع رمز الدولة)
- * @param {string} createdBy - ID المدير المنشئ
- * @param {Object} permissions - { reports, resets, support }
- * @param {string} classVisibility - 'all' | 'own_gender'
- * @returns {Object} { id, name, username, tempPassword, email }
  */
 export const createSupervisorAccount = async (
   name,
@@ -100,4 +92,123 @@ export const createSupervisorAccount = async (
     tempPassword,
     email
   };
+};
+
+// =========================================================
+// ✅ تعديلات الملف المعلّقة — الطالب يعدّل → المشرف يوافق/يرفض
+// =========================================================
+
+const SKIP_FIELDS = ['submittedAt', 'submittedBy', 'submittedByName'];
+
+/**
+ * اشتراك مباشر في قائمة الطلاب الذين لديهم تعديلات معلّقة
+ * @param {Function} callback - يُستدعى بقائمة الطلاب
+ * @returns {Function} unsubscribe
+ */
+export const subscribeToPendingStudentChanges = (callback) => {
+  const q = query(
+    collection(db, 'profiles'),
+    where('role', '==', 'student'),
+    where('pendingChangesStatus', '==', PENDING_CHANGES_STATUS.PENDING)
+  );
+  return onSnapshot(
+    q,
+    (snap) => callback(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+    (err) => {
+      console.warn('subscribeToPendingStudentChanges error:', err.message);
+      callback([]);
+    }
+  );
+};
+
+/**
+ * إرسال إشعار للمستخدم (يظهر في مركز إشعاراته)
+ */
+const sendUserNotification = async (userId, title, body, type = 'pending_changes') => {
+  try {
+    await setDoc(doc(collection(db, 'notifications', userId, 'userNotifications')), {
+      title,
+      body,
+      type,
+      createdAt: serverTimestamp(),
+      read: false
+    });
+  } catch (e) {
+    console.warn('sendUserNotification failed:', e.message);
+  }
+};
+
+/**
+ * الموافقة على تعديلات طالب — تطبّق القيم الجديدة على ملفه
+ * @param {string} studentId
+ * @param {string} supervisorId
+ * @param {string} supervisorName
+ */
+export const approveStudentChanges = async (studentId, supervisorId, supervisorName) => {
+  const studentRef = doc(db, 'profiles', studentId);
+  const snap = await getDoc(studentRef);
+  if (!snap.exists()) throw new Error('الطالب غير موجود');
+
+  const data = snap.data();
+  if (data.pendingChangesStatus !== PENDING_CHANGES_STATUS.PENDING) {
+    throw new Error('لا توجد تعديلات معلّقة على هذا الطالب');
+  }
+  const pending = data.pendingChanges || {};
+
+  const updates = {};
+
+  // تطبيق القيم الجديدة
+  Object.entries(pending).forEach(([field, val]) => {
+    if (SKIP_FIELDS.includes(field)) return;
+    if (val && typeof val === 'object' && 'to' in val) {
+      updates[field] = val.to;
+    }
+  });
+
+  updates.pendingChanges = null;
+  updates.pendingChangesStatus = PENDING_CHANGES_STATUS.APPROVED;
+  updates.approvedChangesBy = supervisorId;
+  updates.approvedChangesByName = supervisorName || 'مشرف';
+  updates.approvedChangesAt = serverTimestamp();
+  updates.updatedAt = serverTimestamp();
+
+  await updateDoc(studentRef, updates);
+
+  await sendUserNotification(
+    studentId,
+    '✅ تم اعتماد تعديلاتك',
+    'وافق المشرف على تعديلات ملفك وتم تطبيقها.',
+    'pending_changes_approved'
+  );
+};
+
+/**
+ * رفض تعديلات طالب — تُمحى القيم الجديدة، ولا يُطبَّق شيء
+ */
+export const rejectStudentChanges = async (studentId, reason, supervisorId, supervisorName) => {
+  const studentRef = doc(db, 'profiles', studentId);
+  const snap = await getDoc(studentRef);
+  if (!snap.exists()) throw new Error('الطالب غير موجود');
+
+  const data = snap.data();
+  if (data.pendingChangesStatus !== PENDING_CHANGES_STATUS.PENDING) {
+    throw new Error('لا توجد تعديلات معلّقة على هذا الطالب');
+  }
+
+  await updateDoc(studentRef, {
+    pendingChanges: null,
+    pendingChangesStatus: PENDING_CHANGES_STATUS.REJECTED,
+    pendingChangesRejectionReason: reason || '',
+    rejectedChangesBy: supervisorId,
+    rejectedChangesByName: supervisorName || 'مشرف',
+    rejectedChangesAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
+
+  await sendUserNotification(
+    studentId,
+    '❌ تم رفض تعديلاتك',
+    reason ? `سبب الرفض: ${reason}` : 'تم رفض التعديلات من قبل المشرف.',
+    'pending_changes_rejected'
+  );
 };

@@ -22,6 +22,16 @@ export const createMessageRequest = async (data) => {
       processedBy: null,
       rejectionReason: null
     };
+
+    // ✅ إصلاح جذري: أي بلاغ يجب أن يحمل reportStatus: 'pending' و claimedBy: null
+    //    حتى يظهر في ReportsReviewSection عند المشرفين
+    if (data?.type === 'report') {
+      request.reportStatus = 'pending';
+      request.claimedBy = null;
+      request.claimedByName = null;
+      request.claimedAt = null;
+    }
+
     const docRef = await addDoc(collection(db, MESSAGE_REQUESTS_COLLECTION), request);
     return docRef.id;
   } catch (err) {

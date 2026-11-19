@@ -4,7 +4,7 @@ import { FaExclamationTriangle, FaEye, FaTimes, FaPaperPlane, FaBan, FaDownload,
 import { db } from '../../firebase';
 import {
   collection, query, where, onSnapshot, doc, updateDoc, serverTimestamp,
-  getDocs, runTransaction, limit, orderBy
+  getDocs, runTransaction, limit
 } from 'firebase/firestore';
 import { MESSAGE_REQUEST_TYPES, REPORT_STATUS } from '../../constants';
 import { createMessageRequest } from '../../services/messageRequests';
@@ -28,15 +28,20 @@ const ReportsReviewSection = ({ user }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [hasEverLoaded, setHasEverLoaded] = useState(false);
 
+  // ✅ استعلام بسيط جداً — type فقط (فهرس تلقائي)
+  //    الفلترة (reportStatus / claimedBy) من جهة العميل — يتجنب مشاكل الفهارس
   useEffect(() => {
     const q = query(
       collection(db, 'messageRequests'),
-      where('type', '==', 'report'),
-      where('reportStatus', '==', 'pending'),
-      where('claimedBy', '==', user.id)
+      where('type', '==', 'report')
     );
     const unsub = onSnapshot(q, (snap) => {
-      setReports(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const claimed = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(d => d.reportStatus === 'pending' && d.claimedBy === user.id);
+      setReports(claimed);
+    }, (err) => {
+      console.warn('reports snapshot error:', err.message);
     });
     return () => unsub();
   }, [user.id]);
@@ -44,26 +49,30 @@ const ReportsReviewSection = ({ user }) => {
   const loadReports = async () => {
     setIsLoading(true);
     try {
-      const q = query(
-        collection(db, 'messageRequests'),
-        where('type', '==', 'report'),
-        where('reportStatus', '==', 'pending'),
-        orderBy('createdAt', 'desc'),
-        limit(40)
+      // ✅ استعلام بسيط — type فقط
+      const snap = await getDocs(
+        query(collection(db, 'messageRequests'), where('type', '==', 'report'))
       );
-      const snap = await getDocs(q);
       const now = Date.now();
       const candidates = [];
       for (const d of snap.docs) {
         const data = d.data();
-        if (data.claimedBy === user.id) continue;
+        if (data.reportStatus !== 'pending') continue;  // فلترة على العميل
+        if (data.claimedBy === user.id) continue;       // المحجوز عليه من قبلنا
         const claimAge = data.claimedAt?.toMillis?.() ? now - data.claimedAt.toMillis() : Infinity;
         const isLocked = data.claimedBy && claimAge < CLAIM_DURATION_MS;
         if (!isLocked) candidates.push(d);
       }
 
+      // ترتيب من الأحدث للأقدم
+      candidates.sort((a, b) => {
+        const aT = a.data().createdAt?.toMillis?.() || 0;
+        const bT = b.data().createdAt?.toMillis?.() || 0;
+        return bT - aT;
+      });
+
       let claimedCount = 0;
-      for (const d of candidates) {
+      for (const d of candidates.slice(0, 10)) {
         if (claimedCount >= 5) break;
         try {
           await runTransaction(db, async (trans) => {

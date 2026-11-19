@@ -101,6 +101,7 @@ export const renameSection = async (sectionId, name) => {
 
 /**
  * حذف قسم مع كل ما بداخله (أقسام فرعية + شعب) — ممنوع إذا كان فيه طلاب
+ * (هذه الدالة القديمة، بقيت موجودة للاستخدامات القديمة فقط)
  */
 export const deleteSection = async (sectionId) => {
   const all = await getSections();
@@ -124,6 +125,73 @@ export const deleteSection = async (sectionId) => {
     const batch = writeBatch(db);
     refs.slice(i, i + 400).forEach(r => batch.delete(r));
     await batch.commit();
+  }
+};
+
+/**
+ * ✅ حذف قسم مع نقل شعبه وأقسامه الفرعية تلقائياً إلى القسم الأب
+ * - لو كان القسم رئيسي (بدون أب) → يرفض ويعطي التنبيه المطلوب
+ * - لو كان فرعي → ينقل كل شيء للأب ثم يحذفه
+ */
+export const deleteSectionMergingIntoParent = async (sectionId) => {
+  const all = await getSections();
+  const current = all.find(s => s.id === sectionId);
+  if (!current) throw new Error('القسم غير موجود');
+
+  if (!current.parentId) {
+    throw new Error('لا يمكنك حذف قسم رئيسي يجب نقل الشعب إلى مكان اخر');
+  }
+  const parentId = current.parentId;
+
+  // 1) نقل الشعب المباشرة إلى الأب
+  const classesSnap = await getDocs(query(collection(db, 'classes'), where('sectionId', '==', sectionId)));
+  for (const clsDoc of classesSnap.docs) {
+    await updateDoc(clsDoc.ref, { sectionId: parentId, updatedAt: serverTimestamp() });
+  }
+
+  // 2) نقل الأقسام الفرعية المباشرة إلى الأب (مع الحفاظ على محتواها)
+  const directSubs = all.filter(s => s.parentId === sectionId);
+  for (const sub of directSubs) {
+    await updateDoc(doc(db, SECTIONS_COLLECTION, sub.id), {
+      parentId,
+      updatedAt: serverTimestamp()
+    });
+  }
+
+  // 3) حذف القسم نفسه (أصبح فارغاً)
+  await deleteDoc(doc(db, SECTIONS_COLLECTION, sectionId));
+};
+
+/**
+ * ✅ نقل كل محتوى قسم (شعبه + أقسامه الفرعية) إلى قسم آخر
+ * - منع النقل داخل نفس القسم أو أحد أبنائه
+ */
+export const moveSectionContentToSection = async (fromSectionId, toSectionId) => {
+  if (fromSectionId === toSectionId) throw new Error('لا يمكن النقل إلى نفس القسم');
+  const all = await getSections();
+  const from = all.find(s => s.id === fromSectionId);
+  const to = all.find(s => s.id === toSectionId);
+  if (!from) throw new Error('القسم المصدر غير موجود');
+  if (!to) throw new Error('القسم الهدف غير موجود');
+
+  const descendants = getDescendantSectionIds(all, fromSectionId);
+  if (descendants.includes(toSectionId)) {
+    throw new Error('لا يمكن نقل المحتوى إلى قسم يقع داخل نفس القسم');
+  }
+
+  // 1) نقل الشعب المباشرة
+  const classesSnap = await getDocs(query(collection(db, 'classes'), where('sectionId', '==', fromSectionId)));
+  for (const clsDoc of classesSnap.docs) {
+    await updateDoc(clsDoc.ref, { sectionId: toSectionId, updatedAt: serverTimestamp() });
+  }
+
+  // 2) نقل الأقسام الفرعية المباشرة
+  const directSubs = all.filter(s => s.parentId === fromSectionId);
+  for (const sub of directSubs) {
+    await updateDoc(doc(db, SECTIONS_COLLECTION, sub.id), {
+      parentId: toSectionId,
+      updatedAt: serverTimestamp()
+    });
   }
 };
 
