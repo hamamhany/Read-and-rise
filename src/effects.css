@@ -54,7 +54,6 @@ html body {
   position: absolute;
   border-radius: 50%;
   opacity: 0.8;
-  will-change: transform;
 }
 .fx-blob.b1 {
   width: 60vmax; height: 60vmax; top: -22vmax; left: -18vmax;
@@ -268,15 +267,11 @@ html.theme-light #root .rounded-2xl.border:not(.fixed):not([class*="max-w-"]):ho
   border-color: rgba(56, 189, 248, 0.7);
 }
 
-/* الحاوية الرئيسية للوحات: توهّج نابض ناعم */
-@keyframes fxGlowPulse {
-  0%, 100% { box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.18), 0 20px 70px -20px rgba(139, 92, 246, 0.45); }
-  50%      { box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.25), 0 20px 80px -18px rgba(56, 189, 248, 0.45); }
-}
+/* الحاوية الرئيسية للوحات: توهّج ثابت (بدون أنيميشن مكلف) */
 #root .container-center > .rounded-3xl.max-w-4xl,
 #root .container-center > .rounded-3xl.max-w-5xl,
 #root .container-center > .rounded-3xl.max-w-6xl {
-  animation: fxRise 0.7s var(--fx-ease) backwards, fxGlowPulse 7s ease-in-out 0.8s infinite;
+  box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.2), 0 20px 60px -24px rgba(139, 92, 246, 0.45);
 }
 
 /* =========================================================
@@ -295,20 +290,22 @@ html.theme-light #root .rounded-2xl.border:not(.fixed):not([class*="max-w-"]):ho
 #root button svg { transition: transform 0.3s var(--fx-ease); }
 #root button:not(:disabled):hover > svg { transform: scale(1.18) rotate(-8deg); }
 
-/* لمعة تمر فوق الأزرار المميزة (أضِف الكلاس fx-shine) */
+/* لمعة تمر فوق الأزرار المميزة (أضِف الكلاس fx-shine) — تستخدم transform فقط (خفيفة) */
 .fx-shine { position: relative; overflow: hidden; }
 .fx-shine::after {
   content: '';
   position: absolute;
-  top: 0; bottom: 0;
+  top: 0; bottom: 0; left: 0;
   width: 55%;
-  left: -80%;
   background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.38), transparent);
-  transform: skewX(-20deg);
+  transform: translateX(-160%) skewX(-20deg);
   animation: fxShine 3.4s ease-in-out infinite;
   pointer-events: none;
 }
-@keyframes fxShine { 0%, 55% { left: -80%; } 100% { left: 140%; } }
+@keyframes fxShine {
+  0%, 55% { transform: translateX(-160%) skewX(-20deg); }
+  100%    { transform: translateX(300%) skewX(-20deg); }
+}
 .btn-primary { position: relative; overflow: hidden; }
 
 /* تموّج الضغط (Ripple) */
@@ -331,7 +328,7 @@ html.theme-light #root .rounded-2xl.border:not(.fixed):not([class*="max-w-"]):ho
 /* =========================================================
    النصوص المتدرجة تتحرك ببطء
    ========================================================= */
-#root .bg-clip-text.text-transparent[class*="bg-gradient"] {
+html:not(.fx-lite) #root .bg-clip-text.text-transparent[class*="bg-gradient"] {
   background-size: 220% 100%;
   background-repeat: no-repeat;
   animation: fxTextFlow 7s ease-in-out infinite;
@@ -396,11 +393,6 @@ html.theme-dark #root [class*="dark:bg-gradient-to-"] {
 /* =========================================================
    زر الثيم
    ========================================================= */
-@keyframes fxToggleGlow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.55); }
-  50%      { box-shadow: 0 0 0 12px rgba(139, 92, 246, 0); }
-}
-.theme-toggle-btn { animation: fxToggleGlow 2.8s ease-out infinite; }
 .theme-toggle-btn:hover { transform: scale(1.12) rotate(18deg) !important; }
 @keyframes fxSpinIn {
   from { opacity: 0; transform: rotate(-180deg) scale(0.3); }
@@ -461,6 +453,46 @@ html.theme-dark .fx-digit { text-shadow: 0 0 18px rgba(167, 139, 250, 0.65); }
   animation: fxShimmer 1.4s linear infinite;
 }
 @keyframes fxShimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+
+/* =========================================================
+   ⚡ الوضع الخفيف (للأجهزة الضعيفة) — يُفعَّل تلقائياً من perf.js
+   يلغي كل ما يستهلك المعالج/كرت الشاشة ويُبقي الحركات الخفيفة
+   ========================================================= */
+html.fx-lite .fx-blob { animation: none; opacity: 0.5; }
+html.fx-lite .fx-grid,
+html.fx-lite .fx-canvas,
+html.fx-lite .fx-cursor-glow { display: none; }
+html.fx-lite .fx-shine::after,
+html.fx-lite .fx-glow-border::before,
+html.fx-lite .fx-dot { animation: none; }
+html.fx-lite .fx-glow-border::before { opacity: 0.6; }
+html.fx-lite [data-fx-tilt] { transform: none !important; will-change: auto; }
+html.fx-lite .fx-splash-ring { animation-duration: 2.4s; }
+
+/* إلغاء الضبابية (backdrop-filter) — أثقل تأثير على الأجهزة القديمة */
+html.fx-lite [class*="backdrop-blur"],
+html.fx-lite [style*="backdrop-filter"],
+html.fx-lite .fx-tile,
+html.fx-lite .glass,
+html.fx-lite .glass-glow,
+html.fx-lite .input-glass {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* دخول البطاقات: ظهور تدريجي فقط (بدون حركة وتكبير) */
+html.fx-lite #root .rounded-3xl:not(.fixed):not([class*="animate-"]),
+html.fx-lite #root .rounded-2xl:not(.fixed):not([class*="animate-"]) {
+  animation: fxFade 0.3s ease backwards;
+}
+html.fx-lite #root .fixed.inset-0 > *:not([class*="animate-"]) {
+  animation: fxFade 0.25s ease backwards;
+}
+html.fx-lite #root .rounded-2xl.border:not(.fixed):not([class*="max-w-"]):hover {
+  translate: none;
+  box-shadow: none;
+}
+html.fx-lite #root button:not(:disabled):hover { filter: none; }
 
 /* =========================================================
    طباعة: إخفاء كل المؤثرات

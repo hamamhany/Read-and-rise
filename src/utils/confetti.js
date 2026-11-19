@@ -109,7 +109,9 @@ export function fireConfetti({
 
   const ox = x * window.innerWidth;
   const oy = y * window.innerHeight;
-  const room = Math.max(0, 520 - parts.length);
+  const lite = document.documentElement.classList.contains('fx-lite');
+  if (lite) count = Math.round(count * 0.4);
+  const room = Math.max(0, (lite ? 150 : 520) - parts.length);
 
   for (let i = 0; i < Math.min(count, room); i++) {
     const a = ((angle + (Math.random() - 0.5) * spread) * Math.PI) / 180;

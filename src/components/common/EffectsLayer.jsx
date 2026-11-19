@@ -2,13 +2,14 @@
 // ✨ طبقة المؤثرات: شاشة بداية + خلفية حية + جزيئات + توهّج المؤشر + شريط التمرير + تموّج الأزرار + إمالة 3D
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { isLite } from '../../utils/perf';
 
 const prefersReducedMotion = () =>
   typeof window !== 'undefined' &&
   window.matchMedia &&
   window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-const SPLASH_MS = 1900;
+const getSplashMs = () => (isLite() ? 1200 : 1900);
 
 /* ---------------------------------------------------------
    شاشة البداية (تُرسم خارج #root حتى لا تتأثر بالثيم)
@@ -22,11 +23,12 @@ const Splash = () => {
       root.classList.remove('fx-wait');
       return;
     }
+    const ms = getSplashMs();
     const t1 = setTimeout(() => {
       setPhase('leaving');
       root.classList.remove('fx-wait'); // يبدأ ظهور واجهة التطبيق بحركاتها
-    }, SPLASH_MS);
-    const t2 = setTimeout(() => setPhase('gone'), SPLASH_MS + 800);
+    }, ms);
+    const t2 = setTimeout(() => setPhase('gone'), ms + 800);
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
@@ -64,10 +66,18 @@ const EffectsLayer = () => {
   const progressRef = useRef(null);
   const pointer = useRef({ x: -9999, y: -9999 });
 
+  // ⚡ الوضع الخفيف: بدون جزيئات ولا توهّج مؤشر (للأجهزة الضعيفة)
+  const [lite, setLiteState] = useState(isLite());
+  useEffect(() => {
+    const onMode = (e) => setLiteState(e.detail === 'lite');
+    window.addEventListener('fx-mode-change', onMode);
+    return () => window.removeEventListener('fx-mode-change', onMode);
+  }, []);
+
   /* ✦ الجزيئات المترابطة التي تتفاعل مع المؤشر */
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || prefersReducedMotion()) return undefined;
+    if (lite || !canvas || prefersReducedMotion()) return undefined;
     const ctx = canvas.getContext('2d');
     if (!ctx) return undefined;
 
@@ -84,7 +94,7 @@ const EffectsLayer = () => {
       canvas.width = w * dpr;
       canvas.height = h * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const target = Math.max(18, Math.min(64, Math.floor((w * h) / 24000)));
+      const target = Math.max(14, Math.min(38, Math.floor((w * h) / 34000)));
       parts = Array.from({ length: target }, () => ({
         x: Math.random() * w,
         y: Math.random() * h,
@@ -94,8 +104,12 @@ const EffectsLayer = () => {
       }));
     };
 
-    const step = () => {
+    let lastT = 0;
+    const step = (t) => {
       if (!running) return;
+      // نحدّد الرسم بـ 30 إطار/ثانية لتخفيف الحمل
+      if (t - lastT < 33) { raf = requestAnimationFrame(step); return; }
+      lastT = t;
       ctx.clearRect(0, 0, w, h);
       const light = document.documentElement.classList.contains('theme-light');
       const rgb = light ? '79,70,229' : '196,181,253';
@@ -167,12 +181,12 @@ const EffectsLayer = () => {
       window.removeEventListener('resize', build);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, []);
+  }, [lite]);
 
   /* ✦ المؤشر: توهّج + إمالة 3D للبطاقات التي عليها data-fx-tilt */
   useEffect(() => {
     const fine = window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-    if (!fine) return undefined;
+    if (!fine || lite) return undefined;
 
     let raf = 0;
     let tiltEl = null;
@@ -225,7 +239,7 @@ const EffectsLayer = () => {
       window.removeEventListener('pointermove', onMove);
       document.documentElement.removeEventListener('mouseleave', onLeave);
     };
-  }, []);
+  }, [lite]);
 
   /* ✦ شريط تقدّم التمرير */
   useEffect(() => {
@@ -299,9 +313,9 @@ const EffectsLayer = () => {
         <div className="fx-blob b2" />
         <div className="fx-blob b3" />
         <div className="fx-grid" />
-        <canvas className="fx-canvas" ref={canvasRef} />
+        {!lite && <canvas className="fx-canvas" ref={canvasRef} />}
       </div>
-      <div className="fx-cursor-glow" ref={glowRef} aria-hidden="true" />
+      {!lite && <div className="fx-cursor-glow" ref={glowRef} aria-hidden="true" />}
     </>
   );
 };
