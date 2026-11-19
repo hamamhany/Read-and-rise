@@ -13,7 +13,7 @@ import {
   getClassGenderLabel, getTeacherDisplayName,
   filterClassesForSupervisor, getAllowedClassGenders,
   findAffectedStudents, getEligibleClassesForStudent,
-  getSections, purgeClassesWithoutSection
+  getSections, purgeClassesWithoutSection, flattenSectionTree, getSectionPath
 } from '../../services/classes';
 import { createMessageRequest } from '../../services/messageRequests';
 import { CLASS_GENDER, MESSAGE_REQUEST_TYPES } from '../../constants';
@@ -258,8 +258,8 @@ const ClassesManagerModal = ({ isOpen, onClose, user }) => {
                   required
                 >
                   <option value="">اختر القسم</option>
-                  {sections.map(sec => (
-                    <option key={sec.id} value={sec.id}>{sec.name}</option>
+                  {flattenSectionTree(sections).map(sec => (
+                    <option key={sec.id} value={sec.id}>{sec.path}</option>
                   ))}
                 </select>
                 {sections.length === 0 && (
@@ -322,13 +322,13 @@ const ClassesManagerModal = ({ isOpen, onClose, user }) => {
             <p className="text-gray-400 text-center py-8">لا توجد شعب متاحة لعرضها.</p>
           ) : (
             <div className="space-y-5">
-              {sections.map(section => {
+              {flattenSectionTree(sections).map(section => {
                 const sectionClasses = visibleClasses.filter(c => c.sectionId === section.id);
                 if (sectionClasses.length === 0) return null;
                 return (
                   <div key={section.id}>
                     <h4 className="text-sm font-bold text-teal-300 mb-2 flex items-center gap-2">
-                      <FaLayerGroup /> {section.name}
+                      <FaLayerGroup /> {section.path}
                       <span className="text-xs text-gray-500 font-normal">({sectionClasses.length})</span>
                     </h4>
                     <div className="space-y-2">

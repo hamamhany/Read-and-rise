@@ -1054,7 +1054,6 @@ table { max-width: 100%; }
 .fixed.inset-0.flex.items-center.justify-center > * {
   margin-top: auto;
   margin-bottom: auto;
-  max-width: 100%;
 }
 
 /* الشاشات الكاملة (الاختبارات، الدعم...) */

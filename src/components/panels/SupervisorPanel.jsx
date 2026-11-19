@@ -15,7 +15,7 @@ import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
 import { createGeneralAnnouncement, updateAnnouncement, deleteAnnouncement } from '../../services/announcements';
 import { createMessageRequest } from '../../services/messageRequests';
-import { validateStudentEligibility, filterClassesForSupervisor, getClassGenderLabel, purgeClassesWithoutSection } from '../../services/classes';
+import { validateStudentEligibility, filterClassesForSupervisor, getClassGenderLabel, purgeClassesWithoutSection, flattenSectionTree } from '../../services/classes';
 import { ANNOUNCEMENTS_LIMIT, MESSAGE_REQUEST_TYPES } from '../../constants';
 import { sanitizeInput, arabicToEnglishNumber, generateId, fetchClassNames, formatSerial, generateNextSerialNumber } from '../../utils/helpers';
 import ReportsReviewSection from './ReportsReviewSection';
@@ -598,11 +598,11 @@ const SupervisorPanel = ({ user, onLogout }) => {
               <div>
                 <label className="text-xs text-slate-500 dark:text-gray-400 mb-1 block">الشعب الدراسية * (اضغط Ctrl لاختيار عدة شعب)</label>
                 <select multiple className="bg-white dark:bg-gray-800 w-full h-24 text-right p-2 border border-slate-200 dark:border-gray-600 rounded-md text-slate-900 dark:text-white" value={newStudentClassIds} onChange={(e) => setNewStudentClassIds(Array.from(e.target.selectedOptions).map(o => o.value))} required>
-                  {sections.map(sec => {
+                  {flattenSectionTree(sections).map(sec => {
                     const secClasses = availableClasses.filter(c => c.sectionId === sec.id);
                     if (secClasses.length === 0) return null;
                     return (
-                      <optgroup key={sec.id} label={sec.name}>
+                      <optgroup key={sec.id} label={sec.path}>
                         {secClasses.map(cls => (
                           <option key={cls.id} value={cls.id}>
                             {cls.name} ({getClassGenderLabel(cls.gender)})

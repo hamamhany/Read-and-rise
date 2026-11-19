@@ -8,25 +8,75 @@ import {
 } from '../constants';
 
 // =========================================================
-// ✅ الأقسام — كل شعبة يجب أن تكون داخل قسم (ينشئه المدير)
+// ✅ الأقسام — مثل المجلدات: قسم رئيسي، وبداخله أقسام فرعية وشعب
+// كل شعبة يجب أن تكون داخل قسم (ينشئه المدير)
+// القسم الرئيسي: parentId = null
 // =========================================================
 
 export const getSections = async () => {
   const snap = await getDocs(collection(db, SECTIONS_COLLECTION));
   return snap.docs
-    .map(d => ({ id: d.id, ...d.data() }))
+    .map(d => ({ id: d.id, parentId: null, ...d.data() }))
     .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
 };
 
-export const createSection = async ({ name, createdBy }) => {
+/** مسار القسم كاملاً: "الرئيسي / الفرعي / ..." */
+export const getSectionPath = (sections, sectionId) => {
+  const parts = [];
+  let current = sections.find(s => s.id === sectionId);
+  let guard = 0;
+  while (current && guard < 30) {
+    parts.unshift(current.name);
+    current = current.parentId ? sections.find(s => s.id === current.parentId) : null;
+    guard++;
+  }
+  return parts.join(' / ');
+};
+
+/** كل الأقسام الموجودة تحت قسم معيّن (أبناء وأحفاد) */
+export const getDescendantSectionIds = (sections, sectionId) => {
+  const result = [];
+  const stack = [sectionId];
+  while (stack.length) {
+    const id = stack.pop();
+    sections.forEach(s => {
+      if (s.parentId === id) {
+        result.push(s.id);
+        stack.push(s.id);
+      }
+    });
+  }
+  return result;
+};
+
+/** قائمة الأقسام مرتّبة كشجرة مع العمق (للاختيار من قائمة) */
+export const flattenSectionTree = (sections) => {
+  const out = [];
+  const walk = (parentId, depth) => {
+    sections
+      .filter(s => (s.parentId || null) === parentId)
+      .forEach(s => {
+        out.push({ ...s, depth, path: getSectionPath(sections, s.id) });
+        walk(s.id, depth + 1);
+      });
+  };
+  walk(null, 0);
+  return out;
+};
+
+export const createSection = async ({ name, createdBy, parentId = null }) => {
   const clean = (name || '').trim();
   if (!clean) throw new Error('اسم القسم مطلوب');
   const existing = await getSections();
-  if (existing.some(s => (s.name || '').trim() === clean)) {
-    throw new Error('يوجد قسم بنفس الاسم');
+  if (parentId && !existing.some(s => s.id === parentId)) {
+    throw new Error('القسم الأب غير موجود');
+  }
+  if (existing.some(s => (s.parentId || null) === (parentId || null) && (s.name || '').trim() === clean)) {
+    throw new Error('يوجد قسم بنفس الاسم في هذا المكان');
   }
   const ref = await addDoc(collection(db, SECTIONS_COLLECTION), {
     name: clean,
+    parentId: parentId || null,
     createdBy: createdBy || '',
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
@@ -34,32 +84,94 @@ export const createSection = async ({ name, createdBy }) => {
   return ref.id;
 };
 
+export const renameSection = async (sectionId, name) => {
+  const clean = (name || '').trim();
+  if (!clean) throw new Error('اسم القسم مطلوب');
+  const all = await getSections();
+  const current = all.find(s => s.id === sectionId);
+  if (!current) throw new Error('القسم غير موجود');
+  if (all.some(s => s.id !== sectionId && (s.parentId || null) === (current.parentId || null) && (s.name || '').trim() === clean)) {
+    throw new Error('يوجد قسم بنفس الاسم في هذا المكان');
+  }
+  await updateDoc(doc(db, SECTIONS_COLLECTION, sectionId), {
+    name: clean,
+    updatedAt: serverTimestamp()
+  });
+};
+
 /**
- * حذف قسم مع كل الشعب التي بداخله — ممنوع إذا كان فيه طلاب
+ * حذف قسم مع كل ما بداخله (أقسام فرعية + شعب) — ممنوع إذا كان فيه طلاب
  */
 export const deleteSection = async (sectionId) => {
-  const classesSnap = await getDocs(query(collection(db, 'classes'), where('sectionId', '==', sectionId)));
+  const all = await getSections();
+  const ids = [sectionId, ...getDescendantSectionIds(all, sectionId)];
+
+  const classDocs = [];
+  for (const id of ids) {
+    const snap = await getDocs(query(collection(db, 'classes'), where('sectionId', '==', id)));
+    snap.docs.forEach(d => classDocs.push(d));
+  }
   const counts = await getClassStudentCounts();
-  const withStudents = classesSnap.docs.filter(d => (counts[d.id] || 0) > 0);
-  if (withStudents.length > 0) {
+  if (classDocs.some(d => (counts[d.id] || 0) > 0)) {
     throw new Error('لا يمكن حذف قسم فيه شعب تحتوي على طلاب. انقل الطلاب أولاً.');
   }
-  const batch = writeBatch(db);
-  classesSnap.docs.forEach(d => batch.delete(d.ref));
-  batch.delete(doc(db, SECTIONS_COLLECTION, sectionId));
-  await batch.commit();
+
+  const refs = [
+    ...classDocs.map(d => d.ref),
+    ...ids.map(id => doc(db, SECTIONS_COLLECTION, id))
+  ];
+  for (let i = 0; i < refs.length; i += 400) {
+    const batch = writeBatch(db);
+    refs.slice(i, i + 400).forEach(r => batch.delete(r));
+    await batch.commit();
+  }
+};
+
+/** نقل شعبة من قسم إلى قسم آخر */
+export const moveClassToSection = async (classId, sectionId) => {
+  const sectionSnap = await getDoc(doc(db, SECTIONS_COLLECTION, sectionId));
+  if (!sectionSnap.exists()) throw new Error('القسم غير موجود');
+  await updateDoc(doc(db, 'classes', classId), {
+    sectionId,
+    updatedAt: serverTimestamp()
+  });
 };
 
 /**
  * ✅ حذف فوري من السيرفر لأي شعبة بدون قسم (أو قسمها محذوف)
  * ويُزال معرّفها من حسابات الطلاب المرتبطين بها
+ * cleanSections: (للمدير فقط) يحذف أيضاً أي قسم فرعي قسمه الأب محذوف
  */
-export const purgeClassesWithoutSection = async () => {
+export const purgeClassesWithoutSection = async ({ cleanSections = false } = {}) => {
   const [classesSnap, sectionsSnap] = await Promise.all([
     getDocs(collection(db, 'classes')),
     getDocs(collection(db, SECTIONS_COLLECTION))
   ]);
-  const validSectionIds = new Set(sectionsSnap.docs.map(d => d.id));
+
+  let validSectionIds = new Set(sectionsSnap.docs.map(d => d.id));
+
+  if (cleanSections) {
+    // أقسام فرعية بلا أب موجود = يتيمة → تُحذف
+    let changed = true;
+    let remaining = sectionsSnap.docs;
+    while (changed) {
+      changed = false;
+      const ids = new Set(remaining.map(d => d.id));
+      const orphanSecs = remaining.filter(d => {
+        const pid = d.data().parentId;
+        return pid && !ids.has(pid);
+      });
+      if (orphanSecs.length > 0) {
+        for (const o of orphanSecs) {
+          try { await deleteDoc(o.ref); } catch (e) { console.warn('orphan section delete failed:', e); }
+        }
+        remaining = remaining.filter(d => !orphanSecs.includes(d));
+        changed = true;
+      }
+    }
+    validSectionIds = new Set(remaining.map(d => d.id));
+  }
+
   const orphans = classesSnap.docs.filter(d => {
     const sid = d.data().sectionId;
     return !sid || !validSectionIds.has(sid);
