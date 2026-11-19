@@ -6,6 +6,15 @@
     <meta name="theme-color" content="#1a1a2e" />
     <title>الفرسان التقنيين - اقرآ وارتق</title>
 
+    <!-- ✨ يبقي الواجهة مخفية خلف شاشة البداية حتى تنتهي (مع حماية احتياطية 4 ثوانٍ) -->
+    <script>
+      (function () {
+        var r = document.documentElement;
+        r.classList.add('fx-wait');
+        setTimeout(function () { r.classList.remove('fx-wait'); }, 4000);
+      })();
+    </script>
+
     <!-- ✅ Meta tags للـ PWA (مصححة - بدون تحذيرات) -->
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -21,11 +30,14 @@
     <!-- أيقونات Apple (لأجهزة iOS) -->
     <link rel="apple-touch-icon" href="/icons/icon-192.svg">
 
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Inter:wght@300;400;600;700&display=swap');
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body {
-        font-family: 'Inter', sans-serif;
+        font-family: 'Cairo', 'Inter', sans-serif;
         background: #0f0e1a;
         min-height: 100vh;
         min-height: 100dvh;

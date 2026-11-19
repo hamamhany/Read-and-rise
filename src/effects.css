@@ -1,0 +1,465 @@
+/* =========================================================
+   ✨ effects.css — طبقة المؤثرات البصرية (ملف جديد)
+   لا يغيّر أي منطق في التطبيق، فقط يضيف تأثيرات فوق التصميم الحالي
+   ========================================================= */
+
+:root {
+  --fx-violet: #8b5cf6;
+  --fx-sky: #38bdf8;
+  --fx-pink: #f472b6;
+  --fx-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html { scroll-behavior: smooth; }
+
+/* خط عربي أنيق (Cairo) مع بقاء Inter للأرقام والإنجليزي */
+html body {
+  font-family: 'Cairo', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection { background: rgba(139, 92, 246, 0.45); color: #fff; }
+
+/* =========================================================
+   شريط التمرير المخصص
+   ========================================================= */
+@supports not selector(::-webkit-scrollbar) {
+  * { scrollbar-width: thin; scrollbar-color: rgba(139, 92, 246, 0.7) transparent; }
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #8b5cf6, #38bdf8);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #a78bfa, #7dd3fc);
+  background-clip: padding-box;
+}
+
+/* =========================================================
+   الخلفية الحية: Aurora + شبكة + جزيئات
+   ========================================================= */
+.fx-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+.fx-blob {
+  position: absolute;
+  border-radius: 50%;
+  opacity: 0.8;
+  will-change: transform;
+}
+.fx-blob.b1 {
+  width: 60vmax; height: 60vmax; top: -22vmax; left: -18vmax;
+  background: radial-gradient(circle, rgba(124, 58, 237, 0.55), rgba(124, 58, 237, 0) 65%);
+  animation: fxDrift1 24s ease-in-out infinite;
+}
+.fx-blob.b2 {
+  width: 54vmax; height: 54vmax; bottom: -22vmax; right: -16vmax;
+  background: radial-gradient(circle, rgba(14, 165, 233, 0.5), rgba(14, 165, 233, 0) 65%);
+  animation: fxDrift2 28s ease-in-out infinite;
+}
+.fx-blob.b3 {
+  width: 44vmax; height: 44vmax; top: 30vh; left: 35vw;
+  background: radial-gradient(circle, rgba(236, 72, 153, 0.35), rgba(236, 72, 153, 0) 65%);
+  animation: fxDrift3 32s ease-in-out infinite;
+}
+@keyframes fxDrift1 {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  33% { transform: translate3d(14vw, 10vh, 0) scale(1.15); }
+  66% { transform: translate3d(5vw, 22vh, 0) scale(0.95); }
+}
+@keyframes fxDrift2 {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  40% { transform: translate3d(-16vw, -12vh, 0) scale(1.12); }
+  70% { transform: translate3d(-6vw, -22vh, 0) scale(0.92); }
+}
+@keyframes fxDrift3 {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(-22vw, 12vh, 0) scale(1.25); }
+}
+.fx-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 52px 52px;
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 25%, transparent 75%);
+  mask-image: radial-gradient(ellipse at center, #000 25%, transparent 75%);
+}
+.fx-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* الوضع الفاتح: ألوان باستيلية هادئة */
+html.theme-light .fx-blob { opacity: 0.45; }
+html.theme-light .fx-grid {
+  background-image:
+    linear-gradient(rgba(15, 23, 42, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15, 23, 42, 0.05) 1px, transparent 1px);
+}
+
+/* توهّج خلف المؤشر (للشاشات التي فيها ماوس فقط) */
+.fx-cursor-glow {
+  position: fixed;
+  top: 0; left: 0;
+  width: 460px; height: 460px;
+  margin: -230px 0 0 -230px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.16), rgba(56, 189, 248, 0.06) 45%, transparent 70%);
+  pointer-events: none;
+  z-index: 5;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  will-change: transform;
+}
+.fx-cursor-glow.on { opacity: 1; }
+html.theme-light .fx-cursor-glow {
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.2), rgba(139, 92, 246, 0.07) 45%, transparent 70%);
+}
+@media (hover: none), (max-width: 640px) {
+  .fx-cursor-glow { display: none; }
+  .fx-grid { background-size: 36px 36px; }
+}
+
+/* شريط تقدّم التمرير */
+.fx-progress {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  z-index: 100000;
+  transform-origin: right center;
+  transform: scaleX(0);
+  opacity: 0;
+  background: linear-gradient(90deg, #8b5cf6, #38bdf8, #f472b6);
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.8);
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+/* =========================================================
+   شاشة البداية (Splash)
+   ========================================================= */
+html.fx-wait #root *,
+html.fx-wait #root *::before,
+html.fx-wait #root *::after {
+  animation-play-state: paused !important;
+}
+.fx-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 100001;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  color: #fff;
+  background:
+    radial-gradient(60vmax 60vmax at 20% 15%, rgba(124, 58, 237, 0.45), transparent 60%),
+    radial-gradient(55vmax 55vmax at 85% 90%, rgba(14, 165, 233, 0.4), transparent 60%),
+    #0b0a1a;
+  transition: opacity 0.7s ease, visibility 0.7s ease, transform 0.7s var(--fx-ease);
+}
+.fx-splash.leaving { opacity: 0; visibility: hidden; transform: scale(1.08); }
+.fx-splash-logo-wrap {
+  position: relative;
+  width: 132px; height: 132px;
+  display: flex; align-items: center; justify-content: center;
+}
+.fx-splash-ring {
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0 55%, #8b5cf6, #38bdf8, #f472b6, transparent);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+  animation: fxRotate 1.6s linear infinite;
+}
+.fx-splash-logo {
+  width: 92px; height: 92px; object-fit: contain;
+  filter: drop-shadow(0 0 22px rgba(139, 92, 246, 0.75));
+  animation: fxLogoIn 0.9s cubic-bezier(0.2, 0.9, 0.3, 1.4) both, fxFloat 3s ease-in-out 0.9s infinite;
+}
+.fx-splash-title {
+  font-size: 1.7rem; font-weight: 800; letter-spacing: 0.02em;
+  background: linear-gradient(90deg, #c4b5fd, #7dd3fc, #f9a8d4);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: fxRise 0.8s var(--fx-ease) 0.25s both;
+}
+.fx-splash-sub {
+  font-size: 1rem; color: rgba(255, 255, 255, 0.7);
+  animation: fxRise 0.8s var(--fx-ease) 0.45s both;
+}
+.fx-splash-bar {
+  width: 190px; height: 4px; margin-top: 10px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12); overflow: hidden;
+}
+.fx-splash-bar > i {
+  display: block; height: 100%; width: 100%;
+  transform-origin: right center;
+  background: linear-gradient(90deg, #8b5cf6, #38bdf8);
+  animation: fxBar 1.7s cubic-bezier(0.5, 0, 0.2, 1) forwards;
+}
+@keyframes fxBar { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes fxRotate { to { transform: rotate(360deg); } }
+@keyframes fxFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+@keyframes fxLogoIn { from { opacity: 0; transform: scale(0.3) rotate(-25deg); } to { opacity: 1; transform: none; } }
+
+/* =========================================================
+   حركات الدخول (تعمل تلقائياً على كل البطاقات والنوافذ)
+   ========================================================= */
+@keyframes fxRise {
+  from { opacity: 0; transform: translateY(20px) scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes fxFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fxPop {
+  0%   { opacity: 0; transform: translateY(26px) scale(0.9); }
+  60%  { opacity: 1; }
+  100% { opacity: 1; transform: none; }
+}
+
+.fx-page { animation: fxFade 0.5s ease backwards; }
+
+#root .rounded-3xl:not(.fixed):not([class*="animate-"]),
+#root .rounded-2xl:not(.fixed):not([class*="animate-"]) {
+  animation: fxRise 0.65s var(--fx-ease) backwards;
+}
+
+/* تأخير متدرّج للعناصر المتجاورة */
+#root :is(.grid, .space-y-2, .space-y-3, .space-y-4, .space-y-6) > :nth-child(2) { animation-delay: 0.07s; }
+#root :is(.grid, .space-y-2, .space-y-3, .space-y-4, .space-y-6) > :nth-child(3) { animation-delay: 0.14s; }
+#root :is(.grid, .space-y-2, .space-y-3, .space-y-4, .space-y-6) > :nth-child(4) { animation-delay: 0.21s; }
+#root :is(.grid, .space-y-2, .space-y-3, .space-y-4, .space-y-6) > :nth-child(5) { animation-delay: 0.28s; }
+#root :is(.grid, .space-y-2, .space-y-3, .space-y-4, .space-y-6) > :nth-child(6) { animation-delay: 0.35s; }
+#root :is(.grid, .space-y-2, .space-y-3, .space-y-4, .space-y-6) > :nth-child(7) { animation-delay: 0.42s; }
+#root :is(.grid, .space-y-2, .space-y-3, .space-y-4, .space-y-6) > :nth-child(n+8) { animation-delay: 0.5s; }
+
+/* النوافذ المنبثقة: خلفية تظهر بنعومة + نافذة تقفز بحركة زنبركية */
+#root .fixed.inset-0:not([class*="animate-"]) { animation: fxFade 0.28s ease-out backwards; }
+#root .fixed.inset-0 > *:not([class*="animate-"]) {
+  animation: fxPop 0.5s cubic-bezier(0.34, 1.4, 0.5, 1) backwards;
+}
+
+/* عناصر قوائم الخيارات (ChoiceModal) */
+.fx-stagger { animation: fxRise 0.5s var(--fx-ease) backwards; }
+
+/* =========================================================
+   البطاقات: رفع + توهّج عند المرور
+   ========================================================= */
+#root .rounded-2xl.border:not(.fixed):not([class*="max-w-"]) {
+  transition-property: translate, box-shadow, border-color, background-color, color, opacity;
+  transition-duration: 0.35s;
+  transition-timing-function: var(--fx-ease);
+}
+#root .rounded-2xl.border:not(.fixed):not([class*="max-w-"]):hover {
+  translate: 0 -4px;
+  box-shadow: 0 18px 44px -14px rgba(139, 92, 246, 0.5);
+  border-color: rgba(167, 139, 250, 0.6);
+}
+html.theme-light #root .rounded-2xl.border:not(.fixed):not([class*="max-w-"]):hover {
+  box-shadow: 0 18px 44px -14px rgba(14, 165, 233, 0.4);
+  border-color: rgba(56, 189, 248, 0.7);
+}
+
+/* الحاوية الرئيسية للوحات: توهّج نابض ناعم */
+@keyframes fxGlowPulse {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.18), 0 20px 70px -20px rgba(139, 92, 246, 0.45); }
+  50%      { box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.25), 0 20px 80px -18px rgba(56, 189, 248, 0.45); }
+}
+#root .container-center > .rounded-3xl.max-w-4xl,
+#root .container-center > .rounded-3xl.max-w-5xl,
+#root .container-center > .rounded-3xl.max-w-6xl {
+  animation: fxRise 0.7s var(--fx-ease) backwards, fxGlowPulse 7s ease-in-out 0.8s infinite;
+}
+
+/* =========================================================
+   الأزرار: تفاعل + لمعان + أيقونات حيّة
+   ========================================================= */
+#root button:not(:disabled) {
+  transition-property: transform, box-shadow, filter, background-color, color, border-color, opacity;
+  transition-duration: 0.25s;
+  transition-timing-function: var(--fx-ease);
+}
+#root button:not(:disabled):hover { filter: brightness(1.1) saturate(1.1); }
+#root button:not(:disabled):active { transform: scale(0.95); }
+#root button[class*="bg-"]:not([class*="bg-transparent"]):not(:disabled):hover {
+  box-shadow: 0 10px 26px -8px rgba(99, 102, 241, 0.65) !important;
+}
+#root button svg { transition: transform 0.3s var(--fx-ease); }
+#root button:not(:disabled):hover > svg { transform: scale(1.18) rotate(-8deg); }
+
+/* لمعة تمر فوق الأزرار المميزة (أضِف الكلاس fx-shine) */
+.fx-shine { position: relative; overflow: hidden; }
+.fx-shine::after {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 55%;
+  left: -80%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.38), transparent);
+  transform: skewX(-20deg);
+  animation: fxShine 3.4s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes fxShine { 0%, 55% { left: -80%; } 100% { left: 140%; } }
+.btn-primary { position: relative; overflow: hidden; }
+
+/* تموّج الضغط (Ripple) */
+.fx-ripple-host {
+  position: fixed;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 100003;
+}
+.fx-ripple {
+  position: absolute;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.28;
+  transform: scale(0);
+  animation: fxRipple 0.65s ease-out forwards;
+}
+@keyframes fxRipple { to { transform: scale(1); opacity: 0; } }
+
+/* =========================================================
+   النصوص المتدرجة تتحرك ببطء
+   ========================================================= */
+#root .bg-clip-text.text-transparent[class*="bg-gradient"] {
+  background-size: 220% 100%;
+  background-repeat: no-repeat;
+  animation: fxTextFlow 7s ease-in-out infinite;
+}
+@keyframes fxTextFlow { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+
+/* =========================================================
+   الحقول
+   ========================================================= */
+#root input:focus,
+#root select:focus,
+#root textarea:focus {
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.25), 0 0 24px rgba(139, 92, 246, 0.25);
+}
+html.theme-light #root input:focus,
+html.theme-light #root select:focus,
+html.theme-light #root textarea:focus {
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.25), 0 0 24px rgba(56, 189, 248, 0.22);
+}
+#root :focus-visible { outline: 2px solid rgba(167, 139, 250, 0.9); outline-offset: 2px; }
+
+/* =========================================================
+   بطاقة الدخول: إطار متوهّج دوّار + إمالة ثلاثية الأبعاد
+   ========================================================= */
+@property --fx-angle { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
+.fx-glow-border { position: relative; }
+.fx-glow-border::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 2px;
+  background: conic-gradient(from var(--fx-angle), transparent 0 62%, #8b5cf6, #38bdf8, #f472b6, transparent);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: fxAngle 5s linear infinite;
+  pointer-events: none;
+  z-index: 20;
+}
+@keyframes fxAngle { to { --fx-angle: 360deg; } }
+
+[data-fx-tilt] {
+  transform: perspective(1000px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+  transition: transform 0.25s ease-out;
+  will-change: transform;
+}
+
+/* =========================================================
+   زر الثيم
+   ========================================================= */
+@keyframes fxToggleGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.55); }
+  50%      { box-shadow: 0 0 0 12px rgba(139, 92, 246, 0); }
+}
+.theme-toggle-btn { animation: fxToggleGlow 2.8s ease-out infinite; }
+.theme-toggle-btn:hover { transform: scale(1.12) rotate(18deg) !important; }
+@keyframes fxSpinIn {
+  from { opacity: 0; transform: rotate(-180deg) scale(0.3); }
+  to   { opacity: 1; transform: none; }
+}
+.fx-icon-spin { animation: fxSpinIn 0.6s var(--fx-ease); }
+
+/* انتقال دائري عند تبديل الثيم (View Transitions) */
+::view-transition-old(root),
+::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-old(root) { z-index: 1; }
+::view-transition-new(root) { z-index: 2147483646; }
+
+/* =========================================================
+   مؤقّت العد التنازلي + العدّادات
+   ========================================================= */
+.fx-tile {
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.fx-tile::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; top: 50%;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+}
+html.theme-dark .fx-digit { text-shadow: 0 0 18px rgba(167, 139, 250, 0.65); }
+@keyframes fxTick {
+  from { opacity: 0; transform: translateY(-12px) scale(0.9); }
+  to   { opacity: 1; transform: none; }
+}
+.fx-tick { display: inline-block; animation: fxTick 0.4s var(--fx-ease); }
+@keyframes fxBreathe { 0%, 100% { opacity: 0.65; } 50% { opacity: 1; } }
+.fx-breathe { animation: fxBreathe 2.4s ease-in-out infinite; }
+@keyframes fxDot { 0%, 100% { transform: scale(1); opacity: 0.5; } 50% { transform: scale(1.8); opacity: 1; } }
+.fx-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #34d399; animation: fxDot 1s ease-in-out infinite; }
+
+/* =========================================================
+   شاشة التحميل + هياكل تحميل (Skeleton)
+   ========================================================= */
+.fx-loader { position: relative; width: 64px; height: 64px; }
+.fx-loader span {
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  animation: fxRotate 1.2s linear infinite;
+}
+.fx-loader span:nth-child(1) { border-top-color: #8b5cf6; }
+.fx-loader span:nth-child(2) { inset: 9px; border-top-color: #38bdf8; animation-duration: 0.9s; animation-direction: reverse; }
+.fx-loader span:nth-child(3) { inset: 18px; border-top-color: #f472b6; animation-duration: 0.7s; }
+.fx-skeleton {
+  background: linear-gradient(100deg, rgba(148, 163, 184, 0.14) 30%, rgba(148, 163, 184, 0.3) 50%, rgba(148, 163, 184, 0.14) 70%);
+  background-size: 220% 100%;
+  animation: fxShimmer 1.4s linear infinite;
+}
+@keyframes fxShimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+
+/* =========================================================
+   طباعة: إخفاء كل المؤثرات
+   ========================================================= */
+@media print {
+  .fx-bg, .fx-cursor-glow, .fx-progress, .fx-splash, .fx-ripple-host { display: none !important; }
+}
+
+/* =========================================================
+   احترام من يفضّل تقليل الحركة
+   ========================================================= */
+@media (prefers-reduced-motion: reduce) {
+  .fx-blob, .fx-splash, .fx-glow-border::before, .fx-shine::after { animation: none !important; }
+  .fx-cursor-glow { display: none; }
+}

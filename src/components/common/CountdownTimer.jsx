@@ -13,6 +13,8 @@ const parseDate = (val) => {
   }
 };
 
+const pad = (n) => String(n).padStart(2, '0');
+
 export const CountdownTimer = ({ targetDate }) => {
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
   const [isEnded, setIsEnded] = useState(true);
@@ -58,7 +60,7 @@ export const CountdownTimer = ({ targetDate }) => {
   if (isEnded) {
     return (
       <div className="text-center py-3">
-        <span className="inline-block px-4 py-2 bg-gray-800/60 rounded-xl text-gray-400 text-sm border border-gray-700">
+        <span className="inline-block px-4 py-2 bg-gray-800/60 rounded-xl text-gray-400 text-sm border border-gray-700 fx-breathe">
           ⏳ لا توجد حصة قادمة حالياً
         </span>
       </div>
@@ -67,10 +69,20 @@ export const CountdownTimer = ({ targetDate }) => {
 
   return (
     <div className="flex gap-4 text-center flex-wrap justify-center">
-      {Object.entries(timeLeft).map(([unit, value]) => (
-        <div key={unit} className="bg-gray-800/80 p-4 min-w-[85px] rounded-2xl border border-gray-700 shadow-md">
-          <div className="text-3xl font-bold text-purple-300 drop-shadow">{value}</div>
-          <div className="text-xs uppercase tracking-wider text-gray-400 mt-1">{labels[unit]}</div>
+      {Object.entries(timeLeft).map(([unit, value], i) => (
+        <div
+          key={unit}
+          style={{ animationDelay: `${i * 0.08}s` }}
+          className="fx-tile bg-gray-800/80 p-4 min-w-[85px] rounded-2xl border border-gray-700 shadow-md"
+        >
+          {/* key = القيمة، فيُعاد تشغيل حركة "التكّة" مع كل تغيير */}
+          <div key={value} className="fx-tick fx-digit text-3xl font-bold text-purple-300 drop-shadow" style={{ fontVariantNumeric: 'tabular-nums' }}>
+            {pad(value)}
+          </div>
+          <div className="text-xs uppercase tracking-wider text-gray-400 mt-1 flex items-center justify-center gap-1.5">
+            {unit === 'seconds' && <span className="fx-dot" />}
+            {labels[unit]}
+          </div>
         </div>
       ))}
     </div>

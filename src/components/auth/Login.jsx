@@ -236,23 +236,13 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
     <div className="container-center relative min-h-screen overflow-hidden" dir="rtl">
       <div className="absolute inset-0 bg-white/20 dark:bg-black/20 backdrop-blur-[2px]" />
       <div className="relative z-10 w-full max-w-md px-4">
-        {/* ✅ البطاقة الرئيسية مع أنيميشن دخول */}
-        <div className="bg-white/95 dark:bg-gray-900/95 p-6 rounded-3xl shadow-2xl border border-gray-300 dark:border-gray-700 flex flex-col items-center relative overflow-hidden min-h-[440px] justify-center animate-panel-in">
-
-          {/* ✅ شعار الخلفية الطافي */}
+        <div data-fx-tilt className="fx-glow-border bg-white/95 dark:bg-gray-900/95 p-6 rounded-3xl shadow-2xl border border-gray-300 dark:border-gray-700 flex flex-col items-center relative overflow-hidden min-h-[440px] justify-center">
           <div className="absolute inset-0 flex items-start justify-center pt-6 pointer-events-none z-0 overflow-hidden">
-            <img
-              src="/images/logo.png"
-              alt=""
-              className="w-96 h-96 md:w-[420px] md:h-[420px] object-contain opacity-10 dark:opacity-15 animate-logo-bg select-none"
-              onError={(e) => e.target.style.display = 'none'}
-            />
+            <img src="/images/logo.png" alt="" className="w-96 h-96 md:w-[420px] md:h-[420px] object-contain opacity-10 dark:opacity-15 animate-logo-bg select-none" onError={(e) => e.target.style.display = 'none'} />
           </div>
-
           <div className="w-full z-10 flex flex-col items-center space-y-4">
             <div className="text-center space-y-1 w-full">
-              {/* ✅ عنوان بتدرج متحرك */}
-              <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600 dark:from-purple-400 dark:via-pink-400 dark:to-purple-400 text-transparent bg-clip-text title-gradient-shimmer">
+              <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 dark:from-purple-400 dark:to-pink-400 text-transparent bg-clip-text">
                 الفرسان التقنيين - اقرآ وارتق
               </h2>
               <div className="w-full max-w-[310px] bg-slate-100 dark:bg-black/50 border border-gray-300 dark:border-gray-700 px-4 py-1.5 rounded-full mx-auto shadow-inner">
@@ -269,7 +259,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
                 </span>
                 <input
                   type="text"
-                  className="w-full bg-slate-50 dark:bg-gray-800/80 text-right pr-24 pl-4 py-3 text-base border-2 border-gray-300 dark:border-gray-600 rounded-xl text-slate-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition-all duration-200 outline-none input-glow"
+                  className="w-full bg-slate-50 dark:bg-gray-800/80 text-right pr-24 pl-4 py-3 text-base border-2 border-gray-300 dark:border-gray-600 rounded-xl text-slate-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition-all duration-200 outline-none"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
@@ -282,7 +272,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
                 </span>
                 <input
                   type={showPassword ? "text" : "password"}
-                  className="w-full bg-slate-50 dark:bg-gray-800/80 text-right pr-24 pl-12 py-3 text-base border-2 border-gray-300 dark:border-gray-600 rounded-xl text-slate-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition-all duration-200 outline-none input-glow"
+                  className="w-full bg-slate-50 dark:bg-gray-800/80 text-right pr-24 pl-12 py-3 text-base border-2 border-gray-300 dark:border-gray-600 rounded-xl text-slate-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition-all duration-200 outline-none"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
@@ -290,25 +280,21 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-medium text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 transition-colors bg-white dark:bg-white/5 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 hover:border-purple-400/50 shadow-sm btn-press"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-medium text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 transition-colors bg-white dark:bg-white/5 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 hover:border-purple-400/50 shadow-sm"
                 >
                   {showPassword ? "إخفاء" : "إظهار"}
                 </button>
               </div>
 
               {error && (
-                <div
-                  key={error}
-                  className="text-red-600 dark:text-red-400 text-sm text-center bg-red-50 dark:bg-red-500/10 py-2 px-3 rounded-lg border border-red-200 dark:border-red-500/20 shake-error"
-                >
+                <div className="text-red-600 dark:text-red-400 text-sm text-center bg-red-50 dark:bg-red-500/10 py-2 px-3 rounded-lg border border-red-200 dark:border-red-500/20">
                   {error}
                 </div>
               )}
 
-              {/* ✅ زر الدخول بأنيميشن (shimmer + glow + press) */}
               <button
                 type="submit"
-                className="w-full py-3 text-lg font-semibold tracking-wide shadow-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl transition-all duration-300 transform hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2 btn-shimmer btn-hover-glow btn-press"
+                className="fx-shine w-full py-3 text-lg font-semibold tracking-wide shadow-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl transition-all duration-300 transform hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2"
                 disabled={loading}
               >
                 {loading ? (
@@ -323,7 +309,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
 
             <button
               onClick={() => setShowResetModal(true)}
-              className="text-sm text-slate-500 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-300 transition-colors mt-1 link-underline"
+              className="text-sm text-slate-500 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-300 transition-colors mt-1 underline decoration-dotted underline-offset-2"
             >
               نسيت كلمة المرور أو اسم المستخدم؟
             </button>
@@ -337,16 +323,9 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
 
       <LoginSupportButton />
 
-      {/* ✅ نافذة استعادة الدخول بأنيميشن (backdrop + modal) */}
       {showResetModal && (
-        <div
-          className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-backdrop-in"
-          onClick={() => setShowResetModal(false)}
-        >
-          <div
-            className="bg-white dark:bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-purple-200 dark:border-purple-500/30 shadow-2xl animate-modal-in"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowResetModal(false)}>
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-purple-200 dark:border-purple-500/30 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-2xl font-bold text-center text-purple-600 dark:text-purple-300 mb-2">
               <FaUnlockAlt className="inline-block me-2" /> استعادة بيانات الدخول
             </h3>
@@ -357,22 +336,11 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
             <div className="space-y-3">
               <div>
                 <label className="block text-sm text-slate-700 dark:text-gray-300 mb-1">الاسم الكامل <span className="text-red-500 dark:text-red-400">*</span></label>
-                <input
-                  type="text"
-                  className="w-full bg-slate-50 dark:bg-gray-800 text-right p-2 border border-gray-300 dark:border-gray-600 rounded-md text-slate-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition outline-none input-glow"
-                  value={resetName}
-                  onChange={(e) => setResetName(e.target.value)}
-                  required
-                />
+                <input type="text" className="w-full bg-slate-50 dark:bg-gray-800 text-right p-2 border border-gray-300 dark:border-gray-600 rounded-md text-slate-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition outline-none" value={resetName} onChange={(e) => setResetName(e.target.value)} required />
               </div>
               <div>
                 <label className="block text-sm text-slate-700 dark:text-gray-300 mb-1">الجنس <span className="text-red-500 dark:text-red-400">*</span></label>
-                <select
-                  className="w-full bg-slate-50 dark:bg-gray-800 text-right p-2 border border-gray-300 dark:border-gray-600 rounded-md text-slate-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition outline-none input-glow"
-                  value={resetGender}
-                  onChange={(e) => setResetGender(e.target.value)}
-                  required
-                >
+                <select className="w-full bg-slate-50 dark:bg-gray-800 text-right p-2 border border-gray-300 dark:border-gray-600 rounded-md text-slate-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition outline-none" value={resetGender} onChange={(e) => setResetGender(e.target.value)} required>
                   <option value="">اختر</option>
                   <option value="ذكر">ذكر</option>
                   <option value="أنثى">أنثى</option>
@@ -381,39 +349,16 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-sm text-slate-700 dark:text-gray-300 mb-1">العمر <span className="text-red-500 dark:text-red-400">*</span></label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    className="w-full bg-slate-50 dark:bg-gray-800 text-right p-2 border border-gray-300 dark:border-gray-600 rounded-md text-slate-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition outline-none input-glow"
-                    value={resetAge}
-                    onChange={(e) => setResetAge(e.target.value)}
-                    required
-                  />
+                  <input type="text" inputMode="numeric" className="w-full bg-slate-50 dark:bg-gray-800 text-right p-2 border border-gray-300 dark:border-gray-600 rounded-md text-slate-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition outline-none" value={resetAge} onChange={(e) => setResetAge(e.target.value)} required />
                 </div>
                 <div>
                   <label className="block text-sm text-slate-700 dark:text-gray-300 mb-1">الرقم التسلسلي <span className="text-red-500 dark:text-red-400">*</span></label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="مثال: 000123"
-                    className="w-full bg-slate-50 dark:bg-gray-800 text-right p-2 border border-gray-300 dark:border-gray-600 rounded-md text-slate-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition outline-none input-glow"
-                    value={resetSerial}
-                    onChange={(e) => setResetSerial(e.target.value)}
-                    required
-                  />
+                  <input type="text" inputMode="numeric" placeholder="مثال: 000123" className="w-full bg-slate-50 dark:bg-gray-800 text-right p-2 border border-gray-300 dark:border-gray-600 rounded-md text-slate-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition outline-none" value={resetSerial} onChange={(e) => setResetSerial(e.target.value)} required />
                 </div>
               </div>
               <div>
                 <label className="block text-sm text-slate-700 dark:text-gray-300 mb-1">رقم الهاتف (للتواصل) <span className="text-red-500 dark:text-red-400">*</span></label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="مثال: 9627XXXXXXXX"
-                  className="w-full bg-slate-50 dark:bg-gray-800 text-right p-2 border border-gray-300 dark:border-gray-600 rounded-md text-slate-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition outline-none input-glow"
-                  value={resetPhone}
-                  onChange={(e) => setResetPhone(e.target.value)}
-                  required
-                />
+                <input type="text" inputMode="numeric" placeholder="مثال: 9627XXXXXXXX" className="w-full bg-slate-50 dark:bg-gray-800 text-right p-2 border border-gray-300 dark:border-gray-600 rounded-md text-slate-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition outline-none" value={resetPhone} onChange={(e) => setResetPhone(e.target.value)} required />
                 <p className="text-[10px] text-slate-500 dark:text-gray-500 mt-1">أدخل الرقم مع رمز الدولة، بدون + وبدون صفر بادئ</p>
               </div>
 
@@ -422,28 +367,12 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
               </div>
 
               {resetError && (
-                <p
-                  key={resetError}
-                  className="text-red-600 dark:text-red-400 text-sm text-center bg-red-50 dark:bg-red-500/10 py-2 px-3 rounded-lg border border-red-200 dark:border-red-500/20 whitespace-pre-line shake-error"
-                >
-                  {resetError}
-                </p>
+                <p className="text-red-600 dark:text-red-400 text-sm text-center bg-red-50 dark:bg-red-500/10 py-2 px-3 rounded-lg border border-red-200 dark:border-red-500/20 whitespace-pre-line">{resetError}</p>
               )}
 
               <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowResetModal(false)}
-                  className="flex-1 py-2 px-4 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-xl text-slate-800 dark:text-white text-sm transition btn-press"
-                >
-                  إلغاء
-                </button>
-                <button
-                  type="button"
-                  onClick={handleResetRequest}
-                  disabled={resetLoading}
-                  className="flex-1 py-2 px-4 bg-purple-600 hover:bg-purple-700 rounded-xl text-white text-sm font-semibold transition disabled:opacity-60 btn-shimmer btn-hover-glow btn-press"
-                >
+                <button type="button" onClick={() => setShowResetModal(false)} className="flex-1 py-2 px-4 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-xl text-slate-800 dark:text-white text-sm transition">إلغاء</button>
+                <button type="button" onClick={handleResetRequest} disabled={resetLoading} className="flex-1 py-2 px-4 bg-purple-600 hover:bg-purple-700 rounded-xl text-white text-sm font-semibold transition disabled:opacity-60">
                   {resetLoading ? 'جاري الإرسال...' : 'تدقيق'}
                 </button>
               </div>

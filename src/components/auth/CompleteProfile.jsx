@@ -171,7 +171,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
     <div className="container-center min-h-screen relative" dir="rtl">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-md" />
       <div className="relative z-10 w-full max-w-md px-4">
-        <div className="bg-gray-900 p-6 rounded-3xl shadow-2xl border border-gray-700 flex flex-col items-center">
+        <div className="fx-glow-border bg-gray-900 p-6 rounded-3xl shadow-2xl border border-gray-700 flex flex-col items-center">
           <h2 className="text-2xl font-bold bg-gradient-to-r from-green-400 to-blue-400 text-transparent bg-clip-text mb-4">
             إكمال تفعيل الحساب
           </h2>
@@ -271,7 +271,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
             <button
               type="submit"
               disabled={loading}
-              className="btn-primary w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-md disabled:opacity-60"
+              className="btn-primary fx-shine w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-md disabled:opacity-60"
             >
               {loading ? 'جاري التفعيل...' : 'تفعيل الحساب'}
             </button>

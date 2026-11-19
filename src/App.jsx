@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import toast, { Toaster } from 'react-hot-toast';
 import { auth } from './services/firebaseAuth';
 import { db } from './firebase';
@@ -23,6 +23,12 @@ import {
 // ☀️ الثيم
 import { initTheme } from './utils/theme';
 import ThemeToggle from './components/common/ThemeToggle';
+// ✨ المؤثرات البصرية
+import EffectsLayer from './components/common/EffectsLayer';
+import { installToastConfetti } from './utils/confetti';
+
+// 🎉 كل رسالة نجاح تُطلق قصاصات ملونة خفيفة
+installToastConfetti(toast);
 
 const MainDashboard = ({ user, onLogout }) => {
   if (user.role === 'system_manager') return <SystemManagerPanel user={user} onLogout={onLogout} />;
@@ -31,36 +37,12 @@ const MainDashboard = ({ user, onLogout }) => {
   return <StudentPanel user={user} onLogout={onLogout} />;
 };
 
-// ✅ غلاف انتقال بين الشاشات (فقط بصري — لا يغيّر أي منطق)
-const PageTransition = ({ children }) => (
-  <div className="animate-panel-in">{children}</div>
-);
-
-// ✅ شاشة تحميل أولية أنيقة
-const PremiumLoader = () => (
-  <div className="container-center min-h-screen relative" dir="rtl">
-    <div className="flex flex-col items-center gap-6 animate-panel-in">
-      <div className="relative w-32 h-32 flex items-center justify-center">
-        <img
-          src="/images/logo.png"
-          alt="logo"
-          className="w-24 h-24 object-contain animate-logo-breathe select-none"
-          onError={(e) => { e.target.style.display = 'none'; }}
-        />
-        <div className="absolute inset-0 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 border-r-purple-500 animate-spin" />
-      </div>
-      <p className="text-slate-600 dark:text-gray-300 text-sm font-medium tracking-wide animate-pulse">
-        جاري التحميل...
-      </p>
-    </div>
-  </div>
-);
-
 const App = () => {
   const [user, setUser] = useState(null);
   const [frozenUser, setFrozenUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [pendingUserForComplete, setPendingUserForComplete] = useState(null);
+  const location = useLocation();
 
   useDynamicBackground();
 
@@ -235,41 +217,45 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
-  // ☀️ محتوى الشاشة
+  // ☀️ محتوى الشاشة (نفس المنطق السابق دون تغيير)
   const renderContent = () => {
     if (loading) {
-      return <PremiumLoader />;
+      return (
+        <div className="container-center min-h-screen">
+          <div className="flex flex-col items-center gap-6">
+            <div className="fx-loader"><span /><span /><span /></div>
+            <div className="text-gray-300 text-sm tracking-wide fx-breathe">جاري التحميل...</div>
+            <div className="w-72 space-y-3">
+              <div className="fx-skeleton h-12 rounded-xl" />
+              <div className="fx-skeleton h-12 rounded-xl" />
+              <div className="fx-skeleton h-12 w-2/3 rounded-xl" />
+            </div>
+          </div>
+        </div>
+      );
     }
 
     if (pendingUserForComplete) {
       return (
-        <PageTransition key="complete-profile">
-          <CompleteProfile
-            user={pendingUserForComplete}
-            onSuccess={handleCompleteProfileSuccess}
-            onCancel={handleLogout}
-          />
-        </PageTransition>
+        <CompleteProfile
+          user={pendingUserForComplete}
+          onSuccess={handleCompleteProfileSuccess}
+          onCancel={handleLogout}
+        />
       );
     }
 
     if (frozenUser) {
-      return (
-        <PageTransition key="frozen">
-          <FrozenAccount user={frozenUser} onLogout={handleLogout} />
-        </PageTransition>
-      );
+      return <FrozenAccount user={frozenUser} onLogout={handleLogout} />;
     }
 
     if (!user) {
       return (
-        <PageTransition key="login">
-          <Login
-            onLogin={handleLogin}
-            onFrozen={handleFrozen}
-            onCompleteProfile={handleCompleteProfile}
-          />
-        </PageTransition>
+        <Login
+          onLogin={handleLogin}
+          onFrozen={handleFrozen}
+          onCompleteProfile={handleCompleteProfile}
+        />
       );
     }
 
@@ -278,10 +264,10 @@ const App = () => {
         <Route
           path="/"
           element={
-            <PageTransition key={`dash-${user.id}`}>
+            <>
               <MainDashboard user={user} onLogout={handleLogout} />
               <SupportButton user={user} />
-            </PageTransition>
+            </>
           }
         />
         <Route path="/support" element={<SupportPage user={user} />} />
@@ -308,10 +294,24 @@ const App = () => {
   };
 
   // ☀️ زر الثيم يظهر دائماً (حتى قبل تسجيل الدخول)
+  // ✨ مفتاح الشاشة: يعيد تشغيل حركة الدخول عند الانتقال بين (تحميل / دخول / لوحة / صفحة)
+  const screenKey = loading
+    ? 'loading'
+    : pendingUserForComplete
+      ? 'complete'
+      : frozenUser
+        ? 'frozen'
+        : !user
+          ? 'login'
+          : `app:${location.pathname}`;
+
   return (
     <>
+      <EffectsLayer />
       <ThemeToggle />
-      {renderContent()}
+      <div key={screenKey} className="fx-page">
+        {renderContent()}
+      </div>
     </>
   );
 };
@@ -322,29 +322,20 @@ const Root = () => (
       <Toaster
         position="top-center"
         toastOptions={{
-          duration: 3000,
+          duration: 3200,
           style: {
-            background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+            background: 'rgba(15, 23, 42, 0.88)',
+            backdropFilter: 'blur(14px)',
+            WebkitBackdropFilter: 'blur(14px)',
             color: '#fff',
-            border: '1px solid rgba(139, 92, 246, 0.35)',
-            borderRadius: '16px',
-            padding: '16px',
+            border: '1px solid rgba(167, 139, 250, 0.35)',
+            borderRadius: '18px',
+            padding: '14px 18px',
             direction: 'rtl',
-            boxShadow: '0 14px 40px -12px rgba(99, 102, 241, 0.45), 0 6px 18px -6px rgba(139, 92, 246, 0.3)',
-            animation: 'modalIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) both'
+            boxShadow: '0 12px 40px -10px rgba(99, 102, 241, 0.55)'
           },
-          success: {
-            style: {
-              background: 'linear-gradient(135deg, #064e3b 0%, #065f46 100%)',
-              border: '1px solid rgba(34, 197, 94, 0.45)',
-            }
-          },
-          error: {
-            style: {
-              background: 'linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%)',
-              border: '1px solid rgba(239, 68, 68, 0.45)',
-            }
-          }
+          success: { iconTheme: { primary: '#34d399', secondary: '#0f172a' } },
+          error: { iconTheme: { primary: '#f87171', secondary: '#0f172a' } }
         }}
       />
       <App />

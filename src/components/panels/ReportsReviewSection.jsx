@@ -96,7 +96,7 @@ const ReportsReviewSection = ({ user }) => {
 
       setHasEverLoaded(true);
       if (claimedCount === 0) {
-        toast('لا توجد بلاغات جديدة متاحة حالياً — قد يكون حجزها مشرف آخر.', { icon: 'ℹ️' });
+        toast('لا توجد بلاغات جديدة متاحة حالياً.', { icon: 'ℹ️' });
       } else {
         toast.success(`تم تحميل ${claimedCount} بلاغ جديد.`);
       }
