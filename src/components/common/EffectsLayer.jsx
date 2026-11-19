@@ -49,7 +49,7 @@ const Splash = () => {
           onError={(e) => { e.currentTarget.style.display = 'none'; }}
         />
       </div>
-      <h1 className="fx-splash-title">الفرسان التقنيين</h1>
+      <h1 className="fx-splash-title"> المنصة الإلكترونية </h1>
       <p className="fx-splash-sub">اقرآ وارتق</p>
       <div className="fx-splash-bar"><i /></div>
     </div>,

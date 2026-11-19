@@ -243,7 +243,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
           <div className="w-full z-10 flex flex-col items-center space-y-4">
             <div className="text-center space-y-1 w-full">
               <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 dark:from-purple-400 dark:to-pink-400 text-transparent bg-clip-text">
-                الفرسان التقنيين - اقرآ وارتق
+                المنصة الإلكترونية - اقرآ وارتق
               </h2>
               <div className="w-full max-w-[310px] bg-slate-100 dark:bg-black/50 border border-gray-300 dark:border-gray-700 px-4 py-1.5 rounded-full mx-auto shadow-inner">
                 <span className="text-sm font-semibold text-slate-700 dark:text-gray-200 tracking-wide">

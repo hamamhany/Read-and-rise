@@ -62,7 +62,7 @@ const PrintStudentsModal = ({ isOpen, onClose, students }) => {
         </style>
       </head>
       <body>
-        <h1>قائمة الطلاب - الفرسان التقنيين</h1>
+        <h1>قائمة الطلاب - المنصة الإلكترونية</h1>
         <p class="date">التاريخ: ${new Date().toLocaleDateString('ar-EG')} — إجمالي الطلاب: ${sortedStudents.length}</p>
         <table>
           <thead>
@@ -201,7 +201,7 @@ const PrintStudentsModal = ({ isOpen, onClose, students }) => {
         </div>
 
         <div className="text-center mb-4">
-          <h1 className="text-2xl font-bold text-white">قائمة الطلاب - الفرسان التقنيين</h1>
+          <h1 className="text-2xl font-bold text-white">قائمة الطلاب -المنصة الإلكترونية</h1>
           <p className="text-sm text-gray-400">التاريخ: {new Date().toLocaleDateString('ar-EG')} — إجمالي الطلاب: {sortedStudents.length}</p>
         </div>
 
