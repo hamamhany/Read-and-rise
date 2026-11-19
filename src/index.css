@@ -1001,3 +1001,140 @@ html.theme-light #root {
     right: 12px !important;
   }
 }
+
+/* =========================================================
+   📱 التجاوب مع كل الأجهزة + النوافذ المنبثقة
+   (جوال / أيباد / لابتوب — عمودي وأفقي)
+   ========================================================= */
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ارتفاع الشاشة الحقيقي على الجوال (يتجاهل شريط المتصفح المتحرك) */
+.min-h-screen,
+.container-center {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* مساحة آمنة حول النوتش/الحواف (الأجهزة الحديثة) */
+body {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* لا شيء يتجاوز عرض الشاشة */
+img, video, canvas, svg { max-width: 100%; }
+table { max-width: 100%; }
+.break-anywhere, p, h1, h2, h3, h4, td, th { overflow-wrap: anywhere; }
+
+/* ---------------------------------------------------------
+   النوافذ المنبثقة المتمركزة (ملحوظة: نحافظ على كلاسات
+   fixed + inset-0 لأن زر الثيم يعتمد عليها)
+   - إذا الشاشة تتسع للنافذة: تبقى بالمنتصف بدون تمرير
+   - إذا الشاشة قصيرة (أيباد/جوال أفقي): تتمرر الطبقة كاملة طلوعاً ونزولاً
+   --------------------------------------------------------- */
+.fixed.inset-0.flex.items-center.justify-center {
+  align-items: flex-start;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-top: max(1rem, env(safe-area-inset-top, 0px));
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+  padding-left: max(1rem, env(safe-area-inset-left, 0px));
+  padding-right: max(1rem, env(safe-area-inset-right, 0px));
+}
+
+/* margin:auto = توسيط عمودي ذكي لا يقصّ أعلى النافذة أبداً */
+.fixed.inset-0.flex.items-center.justify-center > * {
+  margin-top: auto;
+  margin-bottom: auto;
+  max-width: 100%;
+}
+
+/* الشاشات الكاملة (الاختبارات، الدعم...) */
+.fixed.inset-0.overflow-y-auto,
+.fixed.inset-0.overflow-auto {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ارتفاع النوافذ بوحدة dvh بدل vh (يصلح مشكلة شريط سفاري والكيبورد) */
+[class~="max-h-[90vh]"] { max-height: 90vh; max-height: 90dvh; }
+[class~="max-h-[80vh]"] { max-height: 80vh; max-height: 80dvh; }
+[class~="max-h-[70vh]"] { max-height: 70vh; max-height: 70dvh; }
+[class~="max-h-[55vh]"] { max-height: 55vh; max-height: 55dvh; }
+
+/* النوافذ الطويلة: إذا لم تحدد ارتفاعاً أقصى فلا تتجاوز الشاشة */
+.fixed.inset-0.flex.items-center.justify-center > .overflow-y-auto {
+  max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
+}
+
+/* الأزرار العائمة تبتعد عن حافة الجهاز */
+.fixed.bottom-6.left-6 {
+  bottom: max(1.5rem, env(safe-area-inset-bottom, 0px));
+  left: max(1.5rem, env(safe-area-inset-left, 0px));
+}
+.theme-toggle-btn {
+  bottom: max(16px, env(safe-area-inset-bottom, 0px)) !important;
+  right: max(16px, env(safe-area-inset-right, 0px)) !important;
+}
+
+/* ---------------------------------------------------------
+   📱 الجوال (حتى 640px)
+   --------------------------------------------------------- */
+@media (max-width: 640px) {
+  .p-8 { padding: 1.25rem; }
+  .p-6 { padding: 1rem; }
+  .text-3xl { font-size: 1.5rem; line-height: 2rem; }
+  .text-2xl { font-size: 1.25rem; line-height: 1.75rem; }
+  .text-4xl { font-size: 1.875rem; line-height: 2.25rem; }
+
+  /* حقول بحجم مريح للّمس */
+  select, textarea,
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) { min-height: 40px; }
+}
+
+/* ---------------------------------------------------------
+   📱 الجوال الصغير جداً (حتى 380px)
+   --------------------------------------------------------- */
+@media (max-width: 380px) {
+  .fixed.inset-0.flex.items-center.justify-center {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+  .p-5 { padding: 0.875rem; }
+}
+
+/* ---------------------------------------------------------
+   📱 الشاشات القصيرة (جوال أفقي / أيباد أفقي)
+   --------------------------------------------------------- */
+@media (max-height: 520px) {
+  .fixed.inset-0.flex.items-center.justify-center {
+    padding-top: max(0.5rem, env(safe-area-inset-top, 0px));
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+  }
+  .container-center { align-items: flex-start; }
+}
+
+/* ---------------------------------------------------------
+   🖥️ الشاشات الكبيرة: لا تتمدد النوافذ بلا حدود
+   --------------------------------------------------------- */
+@media (min-width: 1536px) {
+  .max-w-5xl { max-width: 64rem; }
+}
+
+/* احترام من يفضّل تقليل الحركة */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
