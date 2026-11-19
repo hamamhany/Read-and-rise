@@ -276,6 +276,12 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     }
   };
 
+  // ✅ تحميل أوقات الدروس تلقائياً عند فتح اللوحة (بدون الضغط على زر "تحميل")
+  useEffect(() => {
+    loadLessonTimes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ✅ 9) الحصة القادمة - فقط بعد التحميل
   useEffect(() => {
     if (allLessonTimes.length === 0) { setNextGlobalLesson(null); setActiveLecturesCount(0); return; }

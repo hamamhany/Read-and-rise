@@ -341,17 +341,30 @@ html.theme-light #root .rounded-2xl.border:not(.fixed):not([class*="max-w-"]):ho
 /* =========================================================
    الحقول
    ========================================================= */
-#root input:focus,
-#root select:focus,
-#root textarea:focus {
+#root input[class*="border"]:not([class*="border-0"]):not([class*="border-none"]):not(.bg-transparent):focus,
+#root select[class*="border"]:focus,
+#root textarea[class*="border"]:not([class*="border-0"]):not([class*="border-none"]):not(.bg-transparent):focus {
   box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.25), 0 0 24px rgba(139, 92, 246, 0.25);
 }
-html.theme-light #root input:focus,
-html.theme-light #root select:focus,
-html.theme-light #root textarea:focus {
+html.theme-light #root input[class*="border"]:not([class*="border-0"]):not([class*="border-none"]):not(.bg-transparent):focus,
+html.theme-light #root select[class*="border"]:focus,
+html.theme-light #root textarea[class*="border"]:not([class*="border-0"]):not([class*="border-none"]):not(.bg-transparent):focus {
   box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.25), 0 0 24px rgba(56, 189, 248, 0.22);
 }
-#root :focus-visible { outline: 2px solid rgba(167, 139, 250, 0.9); outline-offset: 2px; }
+/* حلقة التركيز للوحة المفاتيح: للأزرار والروابط فقط (ليست حقول الكتابة) */
+#root :is(button, a, summary, [role="button"]):focus-visible {
+  outline: 2px solid rgba(167, 139, 250, 0.9);
+  outline-offset: 2px;
+}
+/* حقول الكتابة: لا إطار مستطيل إضافي */
+#root input:focus-visible,
+#root textarea:focus-visible { outline: none; }
+
+/* بطاقات خلفيتها الفاتحة تبقى في الوضع الداكن (مثل bg-indigo-50 + dark:bg-gradient):
+   نضع قاعدة داكنة تحتها حتى يظهر التدرج الداكن كما صُمّم */
+html.theme-dark #root [class*="dark:bg-gradient-to-"] {
+  background-color: rgba(15, 23, 42, 0.55);
+}
 
 /* =========================================================
    بطاقة الدخول: إطار متوهّج دوّار + إمالة ثلاثية الأبعاد
