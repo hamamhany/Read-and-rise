@@ -245,7 +245,7 @@ const SupervisorsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
           <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl"><FaTimes /></button>
         </div>
 
-        <div className="p-5 border-b border-gray-700 space-y-3">
+        <div className={`p-5 border-b border-gray-700 space-y-3 ${showAddForm ? 'flex-1 min-h-0 overflow-y-auto' : ''}`}>
           <div className="flex gap-2 flex-wrap">
             <button
               onClick={() => setShowAddForm(!showAddForm)}
@@ -253,7 +253,7 @@ const SupervisorsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
             >
               <FaPlus /> {showAddForm ? 'إغلاق النموذج' : 'إضافة مشرف'}
             </button>
-            <div className="flex-1 flex gap-2 min-w-[200px]">
+            <div className={`flex-1 flex gap-2 min-w-[200px] ${showAddForm ? 'hidden' : ''}`}>
               <input
                 type="text"
                 placeholder="ابحث بالاسم أو اسم المستخدم أو رقم الهاتف"
@@ -330,6 +330,7 @@ const SupervisorsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
           )}
         </div>
 
+        {!showAddForm && (
         <div className="flex-1 overflow-y-auto p-5">
           {loading ? (
             <div className="text-center py-8 text-gray-400">
@@ -369,6 +370,7 @@ const SupervisorsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
             </div>
           )}
         </div>
+        )}
 
         {!searchMode && (
           <div className="p-4 border-t border-gray-700 flex justify-between items-center gap-2">

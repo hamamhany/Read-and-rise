@@ -227,7 +227,7 @@ const ClassesManagerModal = ({ isOpen, onClose, user }) => {
           <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl"><FaTimes /></button>
         </div>
 
-        <div className="p-5 border-b border-gray-700">
+        <div className={`p-5 border-b border-gray-700 ${showAddForm ? 'flex-1 min-h-0 overflow-y-auto' : ''}`}>
           <button
             onClick={() => setShowAddForm(!showAddForm)}
             className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-bold inline-flex items-center gap-2"
@@ -312,6 +312,7 @@ const ClassesManagerModal = ({ isOpen, onClose, user }) => {
           )}
         </div>
 
+        {!showAddForm && (
         <div className="flex-1 overflow-y-auto p-5">
           {loading ? (
             <div className="text-center py-8 text-gray-400">
@@ -383,6 +384,7 @@ const ClassesManagerModal = ({ isOpen, onClose, user }) => {
             </div>
           )}
         </div>
+        )}
       </div>
 
       {/* ✅ مودال تغيير جنس الشعبة */}

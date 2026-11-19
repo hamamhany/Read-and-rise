@@ -1137,3 +1137,24 @@ table { max-width: 100%; }
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---------------------------------------------------------
+   ✅ إصلاح: خلفية الصندوق أقصر من المحتوى في الشاشات القصيرة
+   الكتل العلوية (بحث/أزرار) داخل النوافذ لا تتجاوز نصف الشاشة
+   وتتمرر داخلياً بدل أن تخرج من الصندوق
+   --------------------------------------------------------- */
+[class~="max-h-[90vh]"].flex-col > .border-b:not(.flex-1),
+[class~="max-h-[85vh]"].flex-col > .border-b:not(.flex-1) {
+  flex-shrink: 0;
+  max-height: 45vh;
+  max-height: 45dvh;
+  overflow-y: auto;
+}
+[class~="max-h-[90vh]"].flex-col > *,
+[class~="max-h-[85vh]"].flex-col > * {
+  min-height: 0;
+}
+[class~="max-h-[90vh]"].flex-col > .flex-1,
+[class~="max-h-[85vh]"].flex-col > .flex-1 {
+  flex: 1 1 0%;
+}
