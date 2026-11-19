@@ -761,7 +761,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
             <h3 className="text-xl font-semibold text-blue-800 dark:text-blue-200 flex items-center gap-2">
               <FaUsers /> إدارة الطلاب
             </h3>
-            <p className="text-sm text-slate-500 dark:text-gray-400 mt-1">يمكنك إضافة حسابات الطلاب الجدد من هنا (البلد يختاره الطالب لاحقاً).</p>
+            <p className="text-sm text-slate-500 dark:text-gray-400 mt-1">يمكنك إضافة حسابات الطلاب الجدد من هنا .</p>
           </div>
           <button
             onClick={() => setShowAddStudentModal(true)}
