@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { FaClock, FaTimes } from 'react-icons/fa';
 import { submitExamResult } from '../../services/exams';
 import { useConfirm } from '../common/ConfirmContext';
+import { celebrate } from '../../utils/confetti';
 
 const formatDuration = (seconds) => {
   if (!seconds || seconds < 0) return '—';
@@ -113,6 +114,7 @@ const ExamTakingModal = ({ exam, student, onClose }) => {
           `✅ تم تسليم الاختبار!\nسيتم تصحيحه من قِبل المعلم قريباً.`,
           { duration: 5000 }
         );
+        celebrate();
       } else {
         const percent = result.totalPoints > 0 ? Math.round((result.score / result.totalPoints) * 100) : 0;
         toast.success(
@@ -121,6 +123,7 @@ const ExamTakingModal = ({ exam, student, onClose }) => {
             : `✅ تم التسليم!\nنتيجتك: ${result.score}/${result.totalPoints} (${percent}%)`,
           { duration: 6000 }
         );
+        if (percent >= 50) celebrate();
       }
       setTimeout(() => onClose(), 1200);
     } catch (err) {
@@ -130,6 +133,10 @@ const ExamTakingModal = ({ exam, student, onClose }) => {
       setSubmitted(false);
     }
   };
+
+  const totalQuestions = exam.questions.length;
+  const answeredCount = Object.values(answers).filter(v => v !== '' && v !== undefined && v !== null).length;
+  const progressPct = totalQuestions > 0 ? Math.round((answeredCount / totalQuestions) * 100) : 0;
 
   const formatTime = (secs) => {
     if (secs === null) return '—';
@@ -165,6 +172,13 @@ const ExamTakingModal = ({ exam, student, onClose }) => {
               )}
             </div>
           </div>
+          <div className="mt-3 h-2 rounded-full bg-gray-700/60 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-blue-500 via-purple-500 to-emerald-400 transition-all duration-500"
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
+          <p className="text-xs text-gray-400 mt-1">أجبت على {answeredCount} من {totalQuestions}</p>
         </div>
 
         {tabSwitches > 0 && (
@@ -190,9 +204,9 @@ const ExamTakingModal = ({ exam, student, onClose }) => {
                   {q.options.filter(o => o && o.trim()).map((opt, i) => (
                     <label
                       key={i}
-                      className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition ${
+                      className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200 active:scale-[0.98] ${
                         answers[q.id] === opt
-                          ? 'bg-blue-900/40 border-2 border-blue-500/60 text-white'
+                          ? 'bg-blue-900/40 border-2 border-blue-500/60 text-white shadow-lg shadow-blue-500/20'
                           : 'bg-gray-800 border border-gray-700 hover:border-gray-500 text-gray-200'
                       }`}
                     >
@@ -215,9 +229,9 @@ const ExamTakingModal = ({ exam, student, onClose }) => {
                   {['صح', 'خطأ'].map(opt => (
                     <label
                       key={opt}
-                      className={`flex items-center justify-center gap-2 p-3 rounded-lg cursor-pointer transition font-bold ${
+                      className={`flex items-center justify-center gap-2 p-3 rounded-lg cursor-pointer transition-all duration-200 active:scale-[0.98] font-bold ${
                         answers[q.id] === opt
-                          ? 'bg-blue-900/40 border-2 border-blue-500/60 text-white'
+                          ? 'bg-blue-900/40 border-2 border-blue-500/60 text-white shadow-lg shadow-blue-500/20'
                           : 'bg-gray-800 border border-gray-700 hover:border-gray-500 text-gray-200'
                       }`}
                     >
@@ -259,7 +273,7 @@ const ExamTakingModal = ({ exam, student, onClose }) => {
           <button
             onClick={() => handleSubmit(false)}
             disabled={submitting}
-            className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white py-3 rounded-xl font-bold"
+            className="fx-shine flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white py-3 rounded-xl font-bold"
           >
             {submitting ? 'جاري التسليم...' : 'تسليم الاختبار'}
           </button>

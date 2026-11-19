@@ -9,12 +9,16 @@ import ExamAnswersDetailModal from '../components/panels/ExamAnswersDetailModal'
 
 const Loading = () => (
   <div className="min-h-screen flex items-center justify-center bg-gray-950 text-gray-400">
-    <div className="text-lg">جاري التحميل...</div>
+    <div className="flex flex-col items-center gap-5">
+      <div className="fx-loader"><span /><span /><span /></div>
+      <div className="text-lg fx-breathe">جاري التحميل...</div>
+    </div>
   </div>
 );
 
 const NotFound = ({ onBack }) => (
   <div className="min-h-screen flex flex-col items-center justify-center bg-gray-950 text-gray-400 gap-4">
+    <div className="text-5xl">🔍</div>
     <div className="text-lg">لم يتم العثور على البيانات</div>
     <button onClick={onBack} className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg">
       رجوع
