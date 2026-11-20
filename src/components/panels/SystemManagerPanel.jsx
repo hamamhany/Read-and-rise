@@ -349,7 +349,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     const currentDate = new Date().toLocaleDateString('ar-EG', { timeZone: 'Asia/Amman' });
     switch (request.type) {
       case 'activation':
-        return `الموضوع: تأكيد تفعيل حسابك في المنصة الإلكترونية - اقرأ وارتق\n\nعزيزي الطالب ${studentObj.name}،\nالرقم التسلسلي: ${studentObj.serialNumber || 'غير مسجل'}\nاسم المستخدم: ${request.payload?.username}\nكلمة المرور: ${request.payload?.password}\n\nسجّل الدخول من: https://read-and-rise-two.vercel.app/`;
+        return `الموضوع: تأكيد تفعيل حسابك في المنصة الإلكترونية - اقرأ وارتق\n\nعزيزي الطالب ${studentObj.name}،\nالرقم التسلسلي: ${studentObj.serialNumber || 'غير مسجل'}\n  اسم المستخدم: ${request.payload?.username}\nكلمة المرور: ${request.payload?.password}\n\nسجّل الدخول من: https://read-and-rise-two.vercel.app/`;
       case 'warning':
         return `إنذار رقم ${request.payload?.warningNumber} — ${request.targetName}\nالسبب: ${request.payload?.description}\nالرقم التسلسلي: ${request.payload?.serialNumber || 'غير مسجل'}`;
       case 'notice':
