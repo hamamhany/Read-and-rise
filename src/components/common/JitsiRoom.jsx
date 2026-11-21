@@ -23,7 +23,29 @@ function loadJitsiScript() {
   });
 }
 
-const JitsiRoom = ({ roomName, displayName, onClose }) => {
+// يطلب ملء الشاشة — لازم يُستدعى مباشرة عند ضغطة الزر
+export function enterFullscreen() {
+  try {
+    const el = document.documentElement;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (req && !document.fullscreenElement) {
+      const r = req.call(el);
+      if (r && r.catch) r.catch(() => {});
+    }
+  } catch (e) { /* بعض الأجهزة (مثل iPhone) لا تدعمها، والغرفة تبقى تملأ الصفحة */ }
+}
+
+export function exitFullscreen() {
+  try {
+    if (document.fullscreenElement) {
+      const r = document.exitFullscreen();
+      if (r && r.catch) r.catch(() => {});
+    }
+  } catch (e) { /* ignore */ }
+}
+
+// role: 'teacher' (رئيس الجلسة) أو 'student' (طالب عادي)
+const JitsiRoom = ({ roomName, displayName, role = 'student', onClose }) => {
   const containerRef = useRef(null);
   const apiRef = useRef(null);
   const [theme, setThemeState] = useState(getStoredTheme());
@@ -39,7 +61,18 @@ const JitsiRoom = ({ roomName, displayName, onClose }) => {
 
   useEffect(() => {
     let disposed = false;
-    const lockedName = displayName || 'طالب';
+    const isTeacher = role === 'teacher';
+    const lockedName = displayName || (isTeacher ? 'المعلم' : 'طالب');
+    // أزرار أقل للطالب: بدون تسجيل أو بث أو دعوات
+    const studentToolbar = [
+      'microphone', 'camera', 'desktop', 'chat', 'raisehand',
+      'tileview', 'fullscreen', 'hangup', 'settings', 'select-background'
+    ];
+    const teacherToolbar = [
+      'microphone', 'camera', 'desktop', 'chat', 'raisehand', 'participants-pane',
+      'tileview', 'fullscreen', 'recording', 'mute-everyone', 'mute-video-everyone',
+      'security', 'hangup', 'settings', 'select-background'
+    ];
 
     loadJitsiScript()
       .then(() => {
@@ -62,8 +95,10 @@ const JitsiRoom = ({ roomName, displayName, onClose }) => {
           },
           interfaceConfigOverwrite: {
             SETTINGS_SECTIONS: ['devices', 'language', 'moderator', 'sounds'], // بدون "profile"
-            SHOW_JITSI_WATERMARK: false,
-            SHOW_BRAND_WATERMARK: false
+            // منع الشعار من تحويل الطالب إلى موقع Jitsi
+            JITSI_WATERMARK_LINK: '',
+            BRAND_WATERMARK_LINK: '',
+            TOOLBAR_BUTTONS: isTeacher ? teacherToolbar : studentToolbar
           }
         });
         apiRef.current = api;
@@ -87,13 +122,14 @@ const JitsiRoom = ({ roomName, displayName, onClose }) => {
 
     return () => {
       disposed = true;
+      exitFullscreen();
       if (apiRef.current) {
         try { apiRef.current.dispose(); } catch (e) { /* ignore */ }
         apiRef.current = null;
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomName, displayName]);
+  }, [roomName, displayName, role]);
 
   const isLight = theme === 'light';
 

@@ -27,7 +27,8 @@ import { createMessageRequest } from '../../services/messageRequests';
 import { purgeClassesWithoutSection } from '../../services/classes';
 import { getExamsByTeacher } from '../../services/exams';
 import { sendNotificationToStudents } from '../../utils/notifications';
-import { MESSAGE_REQUEST_TYPES } from '../../constants';
+import { MESSAGE_REQUEST_TYPES, JITSI_ROOM_NAME } from '../../constants';
+import JitsiRoom, { enterFullscreen } from '../common/JitsiRoom';
 
 const TeacherPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -72,6 +73,7 @@ const TeacherPanel = ({ user, onLogout }) => {
 
   // Exam states (تم إزالة showExamManager, editingExam, showExamResults, selectedExam)
   const [exams, setExams] = useState([]);
+  const [showLessonRoom, setShowLessonRoom] = useState(false);
 
   const requestNotificationPermission = async () => {
     try {
@@ -607,13 +609,21 @@ const TeacherPanel = ({ user, onLogout }) => {
             <CountdownTimer targetDate={nextLesson ? nextLesson.date : null} />
             {nextLesson && (
               <div className="flex gap-2 mt-2">
-                <button onClick={() => toast.success('تم إنشاء الحصة!')} className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-xl text-sm font-bold shadow-lg">
+                <button onClick={() => { enterFullscreen(); setShowLessonRoom(true); }} className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-xl text-sm font-bold shadow-lg">
                   <FaVideo className="inline-block me-2" /> إنشاء غرفة
                 </button>
                 <button onClick={() => setShowApologyModal(true)} className="flex-1 bg-orange-600 hover:bg-orange-700 text-white px-4 py-3 rounded-xl text-sm font-bold shadow-lg">
                   <FaExclamationTriangle className="inline-block me-2" /> اعتذار عن الحصة
                 </button>
               </div>
+            )}
+            {showLessonRoom && (
+              <JitsiRoom
+                roomName={JITSI_ROOM_NAME}
+                displayName={user.name || user.username || 'المعلم'}
+                role="teacher"
+                onClose={() => setShowLessonRoom(false)}
+              />
             )}
           </div>
         </div>

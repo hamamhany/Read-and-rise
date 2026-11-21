@@ -19,7 +19,7 @@ import { sanitizeInput, arabicToEnglishNumber, fetchClassNames } from '../../uti
 import { recordAttendance, processStudentAbsences } from '../../services/attendance';
 import { sendUrgentReminderMessage, sendContactTeacherMessage } from '../../utils/whatsapp';
 import { getActiveExamsForStudent, getStudentAttemptsCount, getStudentExamResult } from '../../services/exams';
-import JitsiRoom from '../common/JitsiRoom';
+import JitsiRoom, { enterFullscreen, exitFullscreen } from '../common/JitsiRoom';
 import { JITSI_ROOM_NAME } from '../../constants';
 
 const StudentPanel = ({ user, onLogout }) => {
@@ -417,6 +417,7 @@ const StudentPanel = ({ user, onLogout }) => {
   const nextLesson = getNextLessonTime();
 
   const handleJoinLesson = async () => {
+    enterFullscreen(); // ملء الشاشة فوراً مع الضغطة
     setIsRecordingAttendance(true);
     try {
       await recordAttendance(user.id);
@@ -429,6 +430,7 @@ const StudentPanel = ({ user, onLogout }) => {
       toast.success('✅ تم تسجيل حضورك بنجاح!');
       setShowLessonRoom(true); // الدخول مباشرة إلى الغرفة
     } catch (err) {
+      exitFullscreen();
       toast.error('فشل تسجيل الحضور: ' + err.message);
     } finally {
       setIsRecordingAttendance(false);
@@ -620,6 +622,7 @@ const StudentPanel = ({ user, onLogout }) => {
             <JitsiRoom
               roomName={JITSI_ROOM_NAME}
               displayName={profile?.name || user?.name || ''}
+              role="student"
               onClose={() => setShowLessonRoom(false)}
             />
           )}
