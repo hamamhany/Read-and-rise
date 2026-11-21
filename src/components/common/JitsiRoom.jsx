@@ -25,6 +25,9 @@ const TOOLBAR_BUTTONS = [
   'shortcuts', 'tileview', 'toggle-camera', 'videoquality', 'whiteboard'
 ];
 
+// أزرار لا تظهر إلا لرئيس الجلسة (المعلم)
+const MODERATOR_ONLY_BUTTONS = ['invite', 'sharedvideo'];
+
 // تحميل سكربت Jitsi مرة واحدة فقط من سيرفرك
 function loadJitsiScript() {
   return new Promise((resolve, reject) => {
@@ -233,8 +236,10 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
             defaultLanguage: 'ar',
             startWithAudioMuted: true,
             subject: tokenData.className ? `حصة ${tokenData.className}` : 'الحصة المباشرة', // عنوان الاجتماع بدل اسم الغرفة التقني
-            // زر الدعوة للمعلم فقط (الطالب لا يراه)
-            toolbarButtons: moderator ? TOOLBAR_BUTTONS : TOOLBAR_BUTTONS.filter((b) => b !== 'invite'),
+            // أزرار للمعلم فقط (الطالب لا يراها): الدعوة ومشاركة فيديو يوتيوب
+            toolbarButtons: moderator
+              ? TOOLBAR_BUTTONS
+              : TOOLBAR_BUTTONS.filter((b) => !MODERATOR_ONLY_BUTTONS.includes(b)),
             disableInviteFunctions: !moderator,
             // زر "ادعُ أحداً": نلتقط الضغطة ونعرض رقماً من 30 خانة بدل الرابط
             buttonsWithNotifyClick: [
