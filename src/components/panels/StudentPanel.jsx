@@ -622,7 +622,6 @@ const StudentPanel = ({ user, onLogout }) => {
             <JitsiRoom
               roomName={JITSI_ROOM_NAME}
               displayName={profile?.name || user?.name || ''}
-              role="student"
               onClose={() => setShowLessonRoom(false)}
             />
           )}

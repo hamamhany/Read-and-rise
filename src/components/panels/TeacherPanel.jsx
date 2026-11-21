@@ -621,7 +621,6 @@ const TeacherPanel = ({ user, onLogout }) => {
               <JitsiRoom
                 roomName={JITSI_ROOM_NAME}
                 displayName={user.name || user.username || 'المعلم'}
-                role="teacher"
                 onClose={() => setShowLessonRoom(false)}
               />
             )}
