@@ -227,7 +227,10 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
           jwt: tokenData.jwt,
           userInfo: { displayName: lockedName },
           configOverwrite: {
-            prejoinConfig: { enabled: false },   // بدون شاشة "أدخل اسمك"
+            prejoinConfig: { enabled: false, hideDisplayName: true }, // بدون شاشة "أدخل اسمك" وبدون حقل الاسم
+            // غرفة الانتظار: طرق تلقائي بدون نموذج، وبدون خيار إدخال كلمة مرور
+            lobby: { autoKnock: true },
+            securityUi: { disableLobbyPassword: true },
             prejoinPageEnabled: false,
             requireDisplayName: false,
             readOnlyName: true,                  // منع تعديل الاسم
@@ -462,7 +465,8 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
         <button
           type="button"
           onClick={handleToggleLobby}
-          className={`absolute z-10 top-3 left-3 flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold text-white shadow-lg backdrop-blur-sm ${
+          style={{ top: 84, left: 12 }} /* تحت شعار Jitsi */
+          className={`absolute z-10 flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold text-white shadow-lg backdrop-blur-sm ${
             lobbyOn ? 'bg-green-600/90 hover:bg-green-700' : 'bg-black/60 hover:bg-black/80'
           }`}
         >
