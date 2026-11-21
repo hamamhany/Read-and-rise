@@ -19,6 +19,8 @@ import { sanitizeInput, arabicToEnglishNumber, fetchClassNames } from '../../uti
 import { recordAttendance, processStudentAbsences } from '../../services/attendance';
 import { sendUrgentReminderMessage, sendContactTeacherMessage } from '../../utils/whatsapp';
 import { getActiveExamsForStudent, getStudentAttemptsCount, getStudentExamResult } from '../../services/exams';
+import JitsiRoom from '../common/JitsiRoom';
+import { JITSI_ROOM_NAME } from '../../constants';
 
 const StudentPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -55,6 +57,7 @@ const StudentPanel = ({ user, onLogout }) => {
   const [classStudentCount, setClassStudentCount] = useState({});
 
   const [isRecordingAttendance, setIsRecordingAttendance] = useState(false);
+  const [showLessonRoom, setShowLessonRoom] = useState(false);
   const absenceProcessedRef = useRef(false);
 
   // Exam states (تم إزالة selectedExam, showExamModal, reviewingExam, showReviewAnswers)
@@ -424,6 +427,7 @@ const StudentPanel = ({ user, onLogout }) => {
         absenceWarningSent: false
       } : prev);
       toast.success('✅ تم تسجيل حضورك بنجاح!');
+      setShowLessonRoom(true); // الدخول مباشرة إلى الغرفة
     } catch (err) {
       toast.error('فشل تسجيل الحضور: ' + err.message);
     } finally {
@@ -612,6 +616,13 @@ const StudentPanel = ({ user, onLogout }) => {
               </div>
             )}
           </div>
+          {showLessonRoom && (
+            <JitsiRoom
+              roomName={JITSI_ROOM_NAME}
+              displayName={profile?.name || user?.name || ''}
+              onClose={() => setShowLessonRoom(false)}
+            />
+          )}
         </div>
 
         <div className="bg-slate-50 dark:bg-gray-800/60 p-6 rounded-2xl border border-slate-200 dark:border-gray-700 space-y-3">
