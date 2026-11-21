@@ -623,7 +623,7 @@ const StudentPanel = ({ user, onLogout }) => {
                   className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl text-lg font-bold shadow-lg transition-all duration-300 transform hover:scale-105 w-full text-center block"
                 >
                   <FaVideo className="inline-block me-2" />
-                  🎯 انضم إلى غرفة الصف الآن{joinableSessions.length > 1 && sess.className ? ` — ${sess.className}` : ''} (تسجيل حضور)
+                  🎯 انضم إلى غرفة الصف الآن{joinableSessions.length > 1 && sess.className ? ` — ${sess.className}` : ''} 
                 </button>
               ))
             ) : (
