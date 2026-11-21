@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { FaCopy, FaExpand } from 'react-icons/fa';
+import { FaCopy, FaExpand, FaLock, FaLockOpen } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import { getStoredTheme } from '../../utils/theme';
 import { JITSI_DOMAIN } from '../../constants';
@@ -13,14 +13,15 @@ const HEARTBEAT_MS = 30 * 1000; // نبضة الطالب/المعلم كل 30 ث
 
 // الأزرار الظاهرة في شريط Jitsi.
 // المحذوف عمداً: fullscreen (نتحكم به من المنصة) و stats (حالة المتحدث)
-// و embedmeeting (ضمّن الملتقى) و profile (الاسم مقفل).
+// و embedmeeting (ضمّن الملتقى) و profile (الاسم مقفل) و security (نافذة الأمان:
+// نستبدلها بزر «غرفة الانتظار» الخاص بنا فقط).
 // ملاحظة: زر noisesuppression (قمع الضوضاء) باقٍ ظاهراً.
 const TOOLBAR_BUTTONS = [
   'camera', 'chat', 'closedcaptions', 'desktop', 'download', 'etherpad', 'feedback',
   'filmstrip', 'hangup', 'help', 'highlight', 'invite', 'linktosalesforce',
   'livestreaming', 'microphone', 'mute-everyone', 'mute-video-everyone',
   'noisesuppression', 'participants-pane', 'raisehand', 'reactions', 'recording',
-  'security', 'select-background', 'settings', 'shareaudio', 'sharedvideo',
+  'select-background', 'settings', 'shareaudio', 'sharedvideo',
   'shortcuts', 'tileview', 'toggle-camera', 'videoquality', 'whiteboard'
 ];
 
@@ -94,8 +95,8 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
   const [error, setError] = useState(null);       // { message }
   const [loading, setLoading] = useState(true);
   const [isModerator, setIsModerator] = useState(false);
-  const [askEnd, setAskEnd] = useState(false);    // نافذة المعلم عند الضغط على إنهاء المكالمة
-  const [attempt, setAttempt] = useState(0);      // لإعادة الدخول بعد "العودة إلى الغرفة"
+  const [lobbyOn, setLobbyOn] = useState(false);  // غرفة الانتظار (للمعلم)
+  const [askEnd, setAskEnd] = useState(false);    // نافذة المعلم عند الضغط على زر الخروج
   const [showInvite, setShowInvite] = useState(false);
   const [inviteNumber, setInviteNumber] = useState('');
   const [fsLost, setFsLost] = useState(false);
@@ -234,7 +235,13 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
             subject: tokenData.className ? `حصة ${tokenData.className}` : 'الحصة المباشرة', // عنوان الاجتماع بدل اسم الغرفة التقني
             toolbarButtons: TOOLBAR_BUTTONS,
             // زر "ادعُ أحداً": نلتقط الضغطة ونعرض رقماً من 30 خانة بدل الرابط
-            buttonsWithNotifyClick: [{ key: 'invite', preventExecution: true }]
+            buttonsWithNotifyClick: [
+              { key: 'invite', preventExecution: true },
+              // زر الخروج: نمنع قائمة Jitsi («إنهاء الاجتماع للجميع / اترك الاجتماع») ونخرج مباشرة
+              { key: 'hangup', preventExecution: true },
+              { key: 'hangup-menu', preventExecution: true },
+              { key: 'end-meeting', preventExecution: true }
+            ]
           },
           interfaceConfigOverwrite: {
             SETTINGS_SECTIONS: ['devices', 'language', 'moderator', 'sounds'], // بدون "profile"
@@ -274,19 +281,15 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
             setInviteNumber((prev) => prev || generateInviteNumber());
             setShowInvite(true);
           }
-        });
-
-        // زر إنهاء المكالمة داخل Jitsi
-        api.addListener('readyToClose', () => {
-          if (closingRef.current) return;
-          if (moderator) {
-            // المعلم: يختار بين إنهاء الحصة للجميع أو الخروج فقط
-            shutdownApi();
-            setAskEnd(true);
-          } else {
-            closeRoom();
+          if (e && (e.key === 'hangup' || e.key === 'hangup-menu')) {
+            // المعلم: نافذتنا (إنهاء للجميع / خروج فقط) بدل قائمة Jitsi. الطالب: خروج مباشر
+            if (moderator) setAskEnd(true);
+            else closeRoom();
           }
         });
+
+        // احتياط: إن أُغلقت المكالمة من داخل Jitsi بطريقة أخرى نخرج مباشرة
+        api.addListener('readyToClose', () => closeRoom());
 
         // متابعة الحصة: إذا أنهاها المعلم (أو بدأت حصة جديدة) يخرج الجميع
         unsubSession = subscribeToLiveSession(classId, (s) => {
@@ -344,11 +347,11 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [classId, attempt]);
+  }, [classId]);
 
   const handleEndForAll = async () => {
+    closingRef.current = true;
     try {
-      closingRef.current = true;
       await endLiveSession(classId);
       toast.success('✅ تم إنهاء الحصة.');
     } catch (e) {
@@ -360,6 +363,17 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
   const handleLeaveOnly = () => {
     closingRef.current = true;
     if (onCloseRef.current) onCloseRef.current();
+  };
+
+  // غرفة الانتظار: الخيار الوحيد المتاح من نافذة الأمان
+  const handleToggleLobby = () => {
+    const next = !lobbyOn;
+    try {
+      if (apiRef.current) apiRef.current.executeCommand('toggleLobby', next);
+      setLobbyOn(next);
+    } catch (e) {
+      toast.error('تعذر تغيير غرفة الانتظار.');
+    }
   };
 
   const handleCopyInvite = async () => {
@@ -403,7 +417,7 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
 
       <div ref={containerRef} className="absolute inset-0" />
 
-      {/* نافذة المعلم عند الضغط على إنهاء المكالمة */}
+      {/* نافذة المعلم عند الضغط على زر الخروج */}
       {askEnd && (
         <div className="absolute inset-0 z-30 flex items-center justify-center p-4 bg-black/80">
           <div className="bg-white dark:bg-gray-900 text-slate-900 dark:text-white rounded-3xl p-6 max-w-md w-full space-y-3 border border-slate-200 dark:border-gray-700">
@@ -427,13 +441,27 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
             </button>
             <button
               type="button"
-              onClick={() => setAttempt((a) => a + 1)}
+              onClick={() => setAskEnd(false)}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold"
             >
               العودة إلى الغرفة
             </button>
           </div>
         </div>
+      )}
+
+      {/* زر غرفة الانتظار (للمعلم فقط) */}
+      {isModerator && !loading && !error && (
+        <button
+          type="button"
+          onClick={handleToggleLobby}
+          className={`absolute z-10 top-3 left-3 flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold text-white shadow-lg backdrop-blur-sm ${
+            lobbyOn ? 'bg-green-600/90 hover:bg-green-700' : 'bg-black/60 hover:bg-black/80'
+          }`}
+        >
+          {lobbyOn ? <FaLock /> : <FaLockOpen />}
+          غرفة الانتظار: {lobbyOn ? 'مفعّلة' : 'معطّلة'}
+        </button>
       )}
 
       {/* نافذة رقم الدعوة (30 خانة) */}
@@ -475,7 +503,7 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
       )}
 
       {/* الخروج من ملء الشاشة */}
-      {fsLost && !loading && !error && !askEnd && (
+      {fsLost && !loading && !error && (
         <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-5 p-6 text-center bg-black/85">
           <p className="text-white text-lg max-w-md leading-8">
             خرجت من وضع ملء الشاشة. للمتابعة في الحصة يجب العودة إلى ملء الشاشة.
