@@ -135,7 +135,7 @@ const CompleteProfile = ({ user, onSuccess, onCancel }) => {
 
       // ✅ رسالة نجاح مع تنبيه للموافقة للطالب
       if (isStudent && Object.keys(pendingChangesObj).length > 0) {
-        toast.success('✅ تم تفعيل حسابك! البلد المختار قيد موافقة المشرف وسيُطبَّق قريباً.');
+        toast.success(' تم تفعيل حسابك! البلد المختار قيد موافقة المشرف وسيُطبَّق قريباً.');
       } else {
         toast.success('تم تفعيل حسابك بنجاح! يمكنك الآن استخدام اسم المستخدم الجديد وكلمة المرور.');
       }

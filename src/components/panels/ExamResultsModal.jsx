@@ -79,7 +79,7 @@ const ExamResultsModal = ({ isOpen, onClose, exam, onEdit, onDelete }) => {
           <td style="text-align:center;font-family:monospace;">${escapeHtml(r.studentSerial || '—')}</td>
           <td style="text-align:center;">${r.timeTakenSeconds ? Math.floor(r.timeTakenSeconds / 60) + 'د ' + (r.timeTakenSeconds % 60) + 'ث' : '—'}</td>
           <td style="text-align:center;font-weight:bold;">${r.score || 0}/${total} (${pct}%)</td>
-          <td style="text-align:center;">${r.correctionStatus === 'pending_correction' ? '⏳ قيد التصحيح' : r.correctionStatus === 'manually_corrected' ? '✅ مصحح يدوياً' : '✓ تلقائي'}</td>
+          <td style="text-align:center;">${r.correctionStatus === 'pending_correction' ? '⏳ قيد التصحيح' : r.correctionStatus === 'manually_corrected' ? ' مصحح يدوياً' : '✓ تلقائي'}</td>
         </tr>
       `;
     }).join('');
@@ -139,7 +139,7 @@ const ExamResultsModal = ({ isOpen, onClose, exam, onEdit, onDelete }) => {
     if (!ok) return;
     try {
       await deleteExam(exam.id);
-      toast.success('✅ تم حذف الاختبار وكل نتائجه');
+      toast.success(' تم حذف الاختبار وكل نتائجه');
       if (onDelete) onDelete();
       else onClose();
     } catch (e) {

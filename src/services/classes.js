@@ -282,7 +282,7 @@ export const createClass = async ({ name, teacherId, gender, sectionId }) => {
 };
 
 /**
- * ✅ تحديث جنس الشعبة — مباشر (يُستخدم من قبل المدير فقط بعد الموافقة)
+ *  تحديث جنس الشعبة — مباشر (يُستخدم من قبل المدير فقط بعد الموافقة)
  */
 export const updateClassGender = async (classId, gender) => {
   await updateDoc(doc(db, 'classes', classId), {
@@ -370,7 +370,7 @@ export const getAllowedClassGenders = (supervisorGender, visibilityMode) => {
 };
 
 /**
- * ✅ كشف الطلاب المتضررين من تغيير جنس الشعبة
+ *  كشف الطلاب المتضررين من تغيير جنس الشعبة
  * يعيد قائمة الطلاب اللي ما يتوافقوا مع الجنس الجديد
  */
 export const findAffectedStudents = async (classId, newGender) => {
@@ -397,7 +397,7 @@ export const findAffectedStudents = async (classId, newGender) => {
 };
 
 /**
- * ✅ نقل طالب من شعبة إلى أخرى — مباشر (يستخدمه المدير بعد الموافقة)
+ *  نقل طالب من شعبة إلى أخرى — مباشر (يستخدمه المدير بعد الموافقة)
  */
 export const moveStudentToClass = async (studentId, fromClassId, toClassId) => {
   const studentRef = doc(db, 'profiles', studentId);
@@ -417,7 +417,7 @@ export const moveStudentToClass = async (studentId, fromClassId, toClassId) => {
 };
 
 /**
- * ✅ البحث عن الشعب المتوافقة مع طالب (لنقله)
+ *  البحث عن الشعب المتوافقة مع طالب (لنقله)
  */
 export const getEligibleClassesForStudent = async (student, excludeClassId = null) => {
   const snap = await getDocs(collection(db, 'classes'));

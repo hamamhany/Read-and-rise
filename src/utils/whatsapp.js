@@ -2,7 +2,7 @@ import toast from 'react-hot-toast';
 import { TEACHER_PHONE } from '../constants';
 
 // =========================================================
-// ✅ توحيد وتنظيف رقم الهاتف (يدعم كل الدول)
+//  توحيد وتنظيف رقم الهاتف (يدعم كل الدول)
 // =========================================================
 const normalizePhone = (phone) => {
   if (!phone) return { valid: false, reason: 'empty' };
@@ -17,7 +17,7 @@ const normalizePhone = (phone) => {
 };
 
 // =========================================================
-// ✅ دالة موحّدة لفتح واتساب مع التحقق الكامل
+//  دالة موحّدة لفتح واتساب مع التحقق الكامل
 // =========================================================
 const openWhatsApp = (phone, rawMessage, successMsg) => {
   const result = normalizePhone(phone);
@@ -67,7 +67,7 @@ const openWhatsApp = (phone, rawMessage, successMsg) => {
   return true;
 };
 
-// ✅ مساعد لسطر الرقم التسلسلي
+//  مساعد لسطر الرقم التسلسلي
 const serialLine = (student) => `الرقم التسلسلي: ${student?.serialNumber || 'غير مسجل'}\n`;
 
 // =========================================================
@@ -77,7 +77,7 @@ export const sendWhatsAppToTeacher = (message) => {
   return openWhatsApp(
     TEACHER_PHONE,
     message,
-    '✅ تم فتح واتساب على جهازك — اضغط زر "إرسال" داخل واتساب لإرسال الرسالة إلى المعلم.'
+    ' تم فتح واتساب على جهازك — اضغط زر "إرسال" داخل واتساب لإرسال الرسالة إلى المعلم.'
   );
 };
 
@@ -132,12 +132,12 @@ export const sendWarningMessage = (student, warningNumber, description) => {
   return openWhatsApp(
     phone,
     fullMessage,
-    `✅ تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال الإنذار إلى ولي أمر الطالب ${studentName}.`
+    ` تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال الإنذار إلى ولي أمر الطالب ${studentName}.`
   );
 };
 
 // =========================================================
-// ✅ تنبيه تحذيري (أخف من الإنذار)
+//  تنبيه تحذيري (أخف من الإنذار)
 // =========================================================
 export const sendNoticeMessage = (student, description) => {
   const phone = student.phone || '';
@@ -162,12 +162,12 @@ export const sendNoticeMessage = (student, description) => {
   return openWhatsApp(
     phone,
     message,
-    `✅ تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال التنبيه إلى ولي أمر الطالب ${studentName}.`
+    ` تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال التنبيه إلى ولي أمر الطالب ${studentName}.`
   );
 };
 
 // =========================================================
-// ✅ رسالة الحظر النهائي (Blacklist)
+//  رسالة الحظر النهائي (Blacklist)
 // =========================================================
 export const sendPermanentBanMessage = (student, reason) => {
   const phone = student.phone || '';
@@ -193,7 +193,7 @@ export const sendPermanentBanMessage = (student, reason) => {
   return openWhatsApp(
     phone,
     message,
-    `✅ تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال إشعار الحظر النهائي إلى ولي أمر الطالب.`
+    ` تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال إشعار الحظر النهائي إلى ولي أمر الطالب.`
   );
 };
 
@@ -241,7 +241,7 @@ export const sendSupervisorWarningMessage = (supervisor, warningNumber, descript
   return openWhatsApp(
     phone,
     fullMessage,
-    `✅ تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال الإنذار إلى المشرف ${supervisorName}.`
+    ` تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال الإنذار إلى المشرف ${supervisorName}.`
   );
 };
 
@@ -283,7 +283,7 @@ export const sendActivationMessage = (student, tempUsername, tempPassword) => {
   return openWhatsApp(
     phone,
     message,
-    `✅ تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال بيانات التفعيل إلى الطالب ${studentName}.`
+    ` تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال بيانات التفعيل إلى الطالب ${studentName}.`
   );
 };
 
@@ -315,12 +315,12 @@ export const sendSupervisorActivationMessage = (supervisor, tempUsername, tempPa
   return openWhatsApp(
     phone,
     message,
-    `✅ تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال بيانات الدخول إلى المشرف ${supervisorName}.`
+    ` تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال بيانات الدخول إلى المشرف ${supervisorName}.`
   );
 };
 
 // =========================================================
-// ✅ إشعار تجميد طالب (قالب جديد مع سبب ديناميكي)
+//  إشعار تجميد طالب (قالب جديد مع سبب ديناميكي)
 // =========================================================
 export const sendFreezeMessage = (student, reason = '') => {
   const phone = student.phone || '';
@@ -349,7 +349,7 @@ export const sendFreezeMessage = (student, reason = '') => {
   return openWhatsApp(
     phone,
     message,
-    `✅ تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال إشعار التجميد.`
+    ` تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال إشعار التجميد.`
   );
 };
 
@@ -381,7 +381,7 @@ export const sendDeleteMessage = (student) => {
   return openWhatsApp(
     phone,
     message,
-    `✅ تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال إشعار الحذف إلى ولي أمر الطالب ${studentName}.`
+    ` تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال إشعار الحذف إلى ولي أمر الطالب ${studentName}.`
   );
 };
 
@@ -421,7 +421,7 @@ export const sendResetPasswordMessage = (student, tempPassword) => {
   return openWhatsApp(
     phone,
     message,
-    `✅ تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال بيانات الدخول الجديدة إلى الطالب ${studentName}.`
+    ` تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال بيانات الدخول الجديدة إلى الطالب ${studentName}.`
   );
 };
 
@@ -450,7 +450,7 @@ export const sendDataUpdateApprovalMessage = (student, newData) => {
   return openWhatsApp(
     phone,
     message,
-    `✅ تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال إشعار الموافقة إلى الطالب ${studentName}.`
+    ` تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال إشعار الموافقة إلى الطالب ${studentName}.`
   );
 };
 
@@ -480,7 +480,7 @@ export const sendDataUpdateRejectionMessage = (student, reason = 'عدم مطا�
   return openWhatsApp(
     phone,
     message,
-    `✅ تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال إشعار الرفض إلى الطالب ${studentName}.`
+    ` تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال إشعار الرفض إلى الطالب ${studentName}.`
   );
 };
 
@@ -507,7 +507,7 @@ export const sendGeneralMessageToStudent = (student, subject, body) => {
   return openWhatsApp(
     phone,
     fullMessage,
-    `✅ تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال الرسالة إلى الطالب ${studentName}.`
+    ` تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال الرسالة إلى الطالب ${studentName}.`
   );
 };
 
@@ -533,7 +533,7 @@ export const sendReportMessage = (student, reason, studentClass) => {
   return openWhatsApp(
     phone,
     message,
-    `✅ تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال البلاغ إلى ولي أمر الطالب ${studentName}.`
+    ` تم فتح واتساب على جهازك — اضغط زر "إرسال" لإرسال البلاغ إلى ولي أمر الطالب ${studentName}.`
   );
 };
 
@@ -596,7 +596,7 @@ export const sendContactTeacherMessage = (student, requestType = 'تحديث') =
 };
 
 // =========================================================
-// ✅ إنذار الغياب المتكرر
+//  إنذار الغياب المتكرر
 // =========================================================
 export const sendAbsenceWarningMessage = (student, absenceCount = 10) => {
   const phone = student.phone || '';
@@ -624,11 +624,11 @@ export const sendAbsenceWarningMessage = (student, absenceCount = 10) => {
     `صادر عن: قسم إدارة المعلومات بالأكاديمية\n\n` +
     `التاريخ: ${currentDate}`;
 
-  return openWhatsApp(phone, message, `✅ تم فتح واتساب — اضغط "إرسال" لإرسال إنذار الغياب للطالب ${studentName}.`);
+  return openWhatsApp(phone, message, ` تم فتح واتساب — اضغط "إرسال" لإرسال إنذار الغياب للطالب ${studentName}.`);
 };
 
 // =========================================================
-// ✅ إشعار التجميد التلقائي
+//  إشعار التجميد التلقائي
 // =========================================================
 export const sendAutoFreezeMessage = (student, absenceCount = 13) => {
   const phone = student.phone || '';
@@ -656,11 +656,11 @@ export const sendAutoFreezeMessage = (student, absenceCount = 13) => {
     `صادر عن: قسم إدارة المعلومات بالأكاديمية\n\n` +
     `التاريخ: ${currentDate}`;
 
-  return openWhatsApp(phone, message, `✅ تم فتح واتساب — اضغط "إرسال" لإرسال إشعار التجميد للطالب ${studentName}.`);
+  return openWhatsApp(phone, message, ` تم فتح واتساب — اضغط "إرسال" لإرسال إشعار التجميد للطالب ${studentName}.`);
 };
 
 // =========================================================
-// ✅ إشعار الحذف التلقائي بعد التجميد
+//  إشعار الحذف التلقائي بعد التجميد
 // =========================================================
 export const sendAutoDeleteMessage = (student) => {
   const phone = student.phone || '';
@@ -687,11 +687,11 @@ export const sendAutoDeleteMessage = (student) => {
     `صادر عن: قسم إدارة المعلومات بالأكاديمية\n\n` +
     `التاريخ: ${currentDate}`;
 
-  return openWhatsApp(phone, message, `✅ تم فتح واتساب — اضغط "إرسال" لإرسال إشعار الحذف النهائي.`);
+  return openWhatsApp(phone, message, ` تم فتح واتساب — اضغط "إرسال" لإرسال إشعار الحذف النهائي.`);
 };
 
 // =========================================================
-// ✅ الموافقة على استعادة بيانات الدخول
+//  الموافقة على استعادة بيانات الدخول
 // =========================================================
 export const sendPasswordResetApprovalMessage = (student, newUsername, newPassword) => {
   const phone = student.phone || '';
@@ -722,12 +722,12 @@ export const sendPasswordResetApprovalMessage = (student, newUsername, newPasswo
   return openWhatsApp(
     phone,
     message,
-    `✅ تم فتح واتساب — اضغط "إرسال" لإرسال بيانات الدخول الجديدة للطالب ${studentName}.`
+    ` تم فتح واتساب — اضغط "إرسال" لإرسال بيانات الدخول الجديدة للطالب ${studentName}.`
   );
 };
 
 // =========================================================
-// ✅ رفض استعادة بيانات الدخول
+//  رفض استعادة بيانات الدخول
 // =========================================================
 export const sendPasswordResetRejectionMessage = (student) => {
   const phone = student.phone || '';
@@ -752,12 +752,12 @@ export const sendPasswordResetRejectionMessage = (student) => {
   return openWhatsApp(
     phone,
     message,
-    `✅ تم فتح واتساب — اضغط "إرسال" لإرسال إشعار الرفض.`
+    ` تم فتح واتساب — اضغط "إرسال" لإرسال إشعار الرفض.`
   );
 };
 
 // =========================================================
-// ✅ رسائل نظام الدعم الفني (قرارات المدير)
+//  رسائل نظام الدعم الفني (قرارات المدير)
 // =========================================================
 
 // ⚠️ تنبيه للمشرف عن تقييم سلبي
@@ -780,7 +780,7 @@ export const sendSupervisorRatingWarningMessage = (supervisor, rating, reason) =
     `صادر عن: قسم إدارة المعلومات بالأكاديمية\n` +
     `التاريخ: ${currentDate}`;
 
-  return openWhatsApp(phone, message, `✅ تم فتح واتساب — اضغط "إرسال" لإرسال التنبيه للمشرف.`);
+  return openWhatsApp(phone, message, ` تم فتح واتساب — اضغط "إرسال" لإرسال التنبيه للمشرف.`);
 };
 
 // 🌸 اعتذار رسمي للطالب
@@ -829,11 +829,11 @@ export const sendComplaintRejectedMessage = (student, studentClass) => {
     `صادر عن: قسم إدارة المعلومات بالأكاديمية\n` +
     `التاريخ: ${currentDate}`;
 
-  return openWhatsApp(phone, message, `✅ تم فتح واتساب — اضغط "إرسال" لإرسال التحذير للطالب.`);
+  return openWhatsApp(phone, message, ` تم فتح واتساب — اضغط "إرسال" لإرسال التحذير للطالب.`);
 };
 
 // =========================================================
-// ✅ رسائل نظام بلاغات الدعم الفني
+//  رسائل نظام بلاغات الدعم الفني
 // =========================================================
 
 // إشعار رفض البلاغ → للمشرف الذي قدّم البلاغ
@@ -858,7 +858,7 @@ export const sendReportRejectedMessage = (supervisor) => {
     `صادر عن: قسم إدارة المعلومات بالأكاديمية\n\n` +
     `التاريخ: ${currentDate}`;
 
-  return openWhatsApp(phone, message, `✅ تم فتح واتساب — اضغط "إرسال" لإرسال إشعار رفض البلاغ للمشرف.`);
+  return openWhatsApp(phone, message, ` تم فتح واتساب — اضغط "إرسال" لإرسال إشعار رفض البلاغ للمشرف.`);
 };
 
 // إشعار إغلاق حساب المُبلَّغ عنه + إدراجه بالقائمة السوداء
@@ -885,7 +885,7 @@ export const sendReportAccountClosedMessage = (student) => {
     `صادر عن: قسم إدارة المعلومات بالأكاديمية\n\n` +
     `التاريخ: ${currentDate}`;
 
-  return openWhatsApp(phone, message, `✅ تم فتح واتساب — اضغط "إرسال" لإرسال إشعار إغلاق الحساب.`);
+  return openWhatsApp(phone, message, ` تم فتح واتساب — اضغط "إرسال" لإرسال إشعار إغلاق الحساب.`);
 };
 
 // إشعار تنبيه إداري للمُبلَّغ عنه
@@ -910,9 +910,9 @@ export const sendReportWarningMessage = (student) => {
     `صادر عن: قسم إدارة المعلومات بالأكاديمية\n\n` +
     `التاريخ: ${currentDate}`;
 
-  return openWhatsApp(phone, message, `✅ تم فتح واتساب — اضغط "إرسال" لإرسال التنبيه الإداري للمُبلَّغ عنه.`);
+  return openWhatsApp(phone, message, ` تم فتح واتساب — اضغط "إرسال" لإرسال التنبيه الإداري للمُبلَّغ عنه.`);
 };
-// ✅ أضف هذه الدالة في نهاية ملف whatsapp.js
+//  أضف هذه الدالة في نهاية ملف whatsapp.js
 
 /**
  * فتح واتساب لإرسال إشعار فك التجميد للطالب
@@ -957,7 +957,7 @@ export const sendUnfreezeMessage = (student) => {
   return !!win;
 };
 // =========================================================
-// ✅ رسائل جديدة — عدم تفعيل الحساب
+//  رسائل جديدة — عدم تفعيل الحساب
 // =========================================================
 
 /**
@@ -989,7 +989,7 @@ export const sendUnactivatedAccountReminderMessage = (student) => {
     `---\n\n**صادر عن:** قسم إدارة المعلومات بالأكاديمية\n\n**التاريخ:** ${currentDate}`;
 
   return openWhatsApp(phone, message,
-    `✅ تم فتح واتساب — اضغط "إرسال" لإرسال تنبيه عدم التفعيل للطالب ${studentName}.`);
+    ` تم فتح واتساب — اضغط "إرسال" لإرسال تنبيه عدم التفعيل للطالب ${studentName}.`);
 };
 
 /**
@@ -1012,5 +1012,5 @@ export const sendUnactivatedAccountDeletedMessage = (student) => {
     `---\n\n**صادر عن:** قسم إدارة المعلومات بالأكاديمية\n\n**التاريخ:** ${currentDate}`;
 
   return openWhatsApp(phone, message,
-    `✅ تم فتح واتساب — اضغط "إرسال" لإرسال إشعار الحذف النهائي.`);
+    ` تم فتح واتساب — اضغط "إرسال" لإرسال إشعار الحذف النهائي.`);
 };

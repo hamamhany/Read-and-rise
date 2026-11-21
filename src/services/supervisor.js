@@ -95,7 +95,7 @@ export const createSupervisorAccount = async (
 };
 
 // =========================================================
-// ✅ تعديلات الملف المعلّقة — الطالب يعدّل → المشرف يوافق/يرفض
+//  تعديلات الملف المعلّقة — الطالب يعدّل → المشرف يوافق/يرفض
 // =========================================================
 
 const SKIP_FIELDS = ['submittedAt', 'submittedBy', 'submittedByName'];
@@ -176,7 +176,7 @@ export const approveStudentChanges = async (studentId, supervisorId, supervisorN
 
   await sendUserNotification(
     studentId,
-    '✅ تم اعتماد تعديلاتك',
+    ' تم اعتماد تعديلاتك',
     'وافق المشرف على تعديلات ملفك وتم تطبيقها.',
     'pending_changes_approved'
   );

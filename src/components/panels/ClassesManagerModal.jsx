@@ -102,7 +102,7 @@ const ClassesManagerModal = ({ isOpen, onClose, user }) => {
     setSubmitting(true);
     try {
       await createClass({ name: newName, teacherId: newTeacherId, gender: newGender, sectionId: newSectionId });
-      toast.success('✅ تم إنشاء الشعبة');
+      toast.success(' تم إنشاء الشعبة');
       setNewName('');
       setNewGender(getAllowedClassGenders(user?.gender, classVisibility)[0]);
       setShowAddForm(false);
@@ -136,7 +136,7 @@ const ClassesManagerModal = ({ isOpen, onClose, user }) => {
         requestedByName: user.name || user.username || 'مشرف',
         payload: { className: cls.name, classId: cls.id }
       });
-      toast.success('✅ تم إرسال طلب الحذف للمدير للموافقة');
+      toast.success(' تم إرسال طلب الحذف للمدير للموافقة');
     } catch (e) {
       toast.error('فشل: ' + e.message);
     }
@@ -192,7 +192,7 @@ const ClassesManagerModal = ({ isOpen, onClose, user }) => {
           transfers // [{ studentId, studentName, toClassId, toClassName }]
         }
       });
-      toast.success('✅ تم إرسال طلب التغيير للمدير للموافقة');
+      toast.success(' تم إرسال طلب التغيير للمدير للموافقة');
       setShowGenderChangeModal(false);
       setGenderChangeClass(null);
       setAffectedStudents([]);

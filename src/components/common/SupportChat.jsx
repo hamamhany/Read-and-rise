@@ -346,7 +346,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
     setClaiming(true);
     try {
       await claimTicket(ticketId, user.id, user.name || user.username || 'مشرف', isManager);
-      toast.success('✅ تم حجز التذكرة بنجاح');
+      toast.success(' تم حجز التذكرة بنجاح');
     } catch (e) {
       toast.error('فشل الحجز: ' + e.message);
     } finally {
@@ -382,7 +382,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
         ticketId, finalReason, user.id,
         user.name || user.username || 'فريق الدعم'
       );
-      toast.success('✅ تم إرسال طلب الرقم لصاحب التذكرة');
+      toast.success(' تم إرسال طلب الرقم لصاحب التذكرة');
       setShowContactModal(false);
       setContactReason('');
       setCustomReason('');
@@ -405,7 +405,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
           ? approveCustomNumber.replace(/[^\d]/g, '')
           : null
       });
-      toast.success('✅ تمت الموافقة');
+      toast.success(' تمت الموافقة');
       setShowApproveContactModal(false);
       setApproveContactMode('registered');
       setApproveCustomNumber('');
@@ -462,7 +462,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
     setSubmittingRating(true);
     try {
       await submitRating(ticketId, rating, ratingCategory, ratingReason.trim());
-      toast.success(rating === 5 ? '✅ شكراً لتقييمك' : '✅ تم إرسال تقييمك');
+      toast.success(rating === 5 ? ' شكراً لتقييمك' : ' تم إرسال تقييمك');
       setShowRating(false);
       setTimeout(onClose, 1500);
     } catch (e) { toast.error('فشل: ' + e.message); }
@@ -483,7 +483,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
         reportReason,
         reportDetails.trim()
       );
-      toast.success('✅ تم إرسال البلاغ للإدارة — المحادثة محوّلة للمراجعة');
+      toast.success(' تم إرسال البلاغ للإدارة — المحادثة محوّلة للمراجعة');
       setShowReportModal(false);
       setReportReason('');
       setReportDetails('');
@@ -538,7 +538,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
   const renderNotice = (key) => (
     <div key={key} className="flex justify-center chat-in-left">
       <span className="inline-flex items-center gap-2 text-xs text-green-300 bg-green-900/20 border border-green-500/20 rounded-full px-4 py-1.5">
-        ✅ {isCreator
+         {isCreator
           ? `تم استلام طلبك من قبل ${ticket.assignedSupervisorName}`
           : `استلم ${ticket.assignedSupervisorName} هذه التذكرة`}
       </span>
@@ -666,7 +666,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
 
         {isCreator && contactStatus === CONTACT_REQUEST_STATUS.APPROVED && (
           <div className="mx-3 mt-2 p-2 bg-green-500/10 border border-green-500/30 rounded-lg text-xs text-green-200">
-            ✅ وافقت على {contactRequest?.mode === 'other' ? 'التواصل عبر رقم بديل' : 'مشاركة رقمك المسجل'} مع فريق الدعم.
+             وافقت على {contactRequest?.mode === 'other' ? 'التواصل عبر رقم بديل' : 'مشاركة رقمك المسجل'} مع فريق الدعم.
           </div>
         )}
         </div>
@@ -770,7 +770,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
 
         {ticket.status === SUPPORT_TICKET_STATUS.AWAITING_RATING && isCreator && !showRating && (
           <div className="px-4 py-5 bg-green-500/5 border-t border-green-500/30 text-center">
-            <p className="text-green-200 text-sm font-bold mb-3">✅ يرجى تقييم الخدمة</p>
+            <p className="text-green-200 text-sm font-bold mb-3"> يرجى تقييم الخدمة</p>
             <button onClick={() => setShowRating(true)} className="bg-yellow-600 hover:bg-yellow-700 text-white px-8 py-2.5 rounded-xl font-bold text-sm transition shadow-lg shadow-yellow-900/30">
               <FaStar className="inline me-1" /> تقييم
             </button>

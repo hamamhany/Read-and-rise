@@ -622,7 +622,7 @@ export const submitRating = async (ticketId, rating, ratingCategory, ratingReaso
   const isFull = rating === 5;
   const newStatus = isFull ? SUPPORT_TICKET_STATUS.RATED_FULL : SUPPORT_TICKET_STATUS.RATED_LOW;
 
-  // ✅ الشكوى ضد سند = تقييم سلبي بدون مشرف بشري
+  //  الشكوى ضد سند = تقييم سلبي بدون مشرف بشري
   const hadHumanSupervisor = !!(data.assignedSupervisorId);
   const ratedAgainstAi = !isFull && !hadHumanSupervisor;
 
@@ -654,7 +654,7 @@ export const submitRating = async (ticketId, rating, ratingCategory, ratingReaso
     }
   }
 
-  // ✅ الحذف التلقائي فقط للـ 5 نجوم. التقييم السلبي (سواء سند أو مشرف) يبقى للمدير يراجعه.
+  //  الحذف التلقائي فقط للـ 5 نجوم. التقييم السلبي (سواء سند أو مشرف) يبقى للمدير يراجعه.
   if (isFull) {
     try { await deleteTicketPermanently(ticketId); }
     catch (e) { console.warn('auto-delete after full rating failed:', e); }

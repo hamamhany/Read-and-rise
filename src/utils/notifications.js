@@ -57,7 +57,7 @@ export const sendNotificationToTeacher = async (teacherId, title, body, type, re
   }
 };
 
-// ✅ إشعار تصحيح/تعديل الاختبار للطالب
+//  إشعار تصحيح/تعديل الاختبار للطالب
 export const sendExamCorrectionNotification = async (studentId, examTitle, newScore, totalPoints, oldScore, wasPending) => {
   if (!studentId) return;
   try {
@@ -75,7 +75,7 @@ export const sendExamCorrectionNotification = async (studentId, examTitle, newSc
     }
 
     const notification = {
-      title: '✅ تم تصحيح اختبارك',
+      title: ' تم تصحيح اختبارك',
       body,
       type: 'exam_correction',
       relatedId: null,
@@ -88,7 +88,7 @@ export const sendExamCorrectionNotification = async (studentId, examTitle, newSc
   }
 };
 
-// ✅ إشعار المدير بوجود إجابات بانتظار المراجعة (التصحيح الشخصي)
+//  إشعار المدير بوجود إجابات بانتظار المراجعة (التصحيح الشخصي)
 export const sendExamManualCorrectionAlertToManager = async (managerId, count, examTitle, submissionDate) => {
   if (!managerId) return;
   try {

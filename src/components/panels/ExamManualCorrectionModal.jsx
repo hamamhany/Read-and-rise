@@ -120,7 +120,7 @@ const ExamManualCorrectionModal = ({ isOpen, onClose, exam }) => {
       }
 
       toast.success(
-        `✅ تم حفظ التصحيح — العلامة: ${result.newScore}/${result.newTotalPoints}`
+        ` تم حفظ التصحيح — العلامة: ${result.newScore}/${result.newTotalPoints}`
       );
 
       await loadResults();
@@ -201,7 +201,7 @@ const ExamManualCorrectionModal = ({ isOpen, onClose, exam }) => {
                           )}
                           {!isPending && status === EXAM_RESULT_STATUS.MANUALLY_CORRECTED && (
                             <span className="text-[10px] bg-green-500/20 text-green-300 px-2 py-0.5 rounded border border-green-500/30">
-                              ✅ تم التصحيح يدوياً
+                               تم التصحيح يدوياً
                             </span>
                           )}
                           {hasDraft && isPending && (

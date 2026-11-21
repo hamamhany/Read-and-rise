@@ -17,7 +17,7 @@ const generateUniqueUsername = async () => {
 };
 
 /**
- * ✅ إنشاء حساب معلم — بدون بلد (البلد يختاره المعلم عند إكمال حسابه)
+ *  إنشاء حساب معلم — بدون بلد (البلد يختاره المعلم عند إكمال حسابه)
  */
 export const createTeacherAccount = async ({
   name,
@@ -58,7 +58,7 @@ export const createTeacherAccount = async ({
     gender,
     age: parseInt(age),
     phone,
-    country: '', // ✅ يختاره المعلم عند إكمال الحساب
+    country: '', //  يختاره المعلم عند إكمال الحساب
     role: 'teacher',
     isProfileComplete: false,
     infoVerified: false,

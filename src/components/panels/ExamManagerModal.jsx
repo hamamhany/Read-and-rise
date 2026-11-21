@@ -264,15 +264,15 @@ const ExamManagerModal = ({ isOpen, onClose, classes, teacherId, exam = null }) 
 
         if (regradeResult.notifications.length > 0) {
           toast.success(
-            `✅ تم تحديث الاختبار وإعادة تصحيح ${regradeResult.updatedResults.length} نتيجة — تم إشعار ${regradeResult.notifications.length} طالب`,
+            ` تم تحديث الاختبار وإعادة تصحيح ${regradeResult.updatedResults.length} نتيجة — تم إشعار ${regradeResult.notifications.length} طالب`,
             { duration: 6000 }
           );
         } else {
-          toast.success('✅ تم تحديث الاختبار وإعادة تصحيح النتائج');
+          toast.success(' تم تحديث الاختبار وإعادة تصحيح النتائج');
         }
       } else {
         await createExam(examData);
-        toast.success('✅ تم إنشاء الاختبار بنجاح');
+        toast.success(' تم إنشاء الاختبار بنجاح');
       }
       onClose(true);
     } catch (error) {

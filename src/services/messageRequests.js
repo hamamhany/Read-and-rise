@@ -23,7 +23,7 @@ export const createMessageRequest = async (data) => {
       rejectionReason: null
     };
 
-    // ✅ إصلاح جذري: أي بلاغ يجب أن يحمل reportStatus: 'pending' و claimedBy: null
+    //  إصلاح جذري: أي بلاغ يجب أن يحمل reportStatus: 'pending' و claimedBy: null
     //    حتى يظهر في ReportsReviewSection عند المشرفين
     if (data?.type === 'report') {
       request.reportStatus = 'pending';
@@ -63,7 +63,7 @@ export const updateMessageRequestStatus = async (
 };
 
 /**
- * ✅ إعادة طلب مرفوض إلى قائمة الانتظار (pending)
+ *  إعادة طلب مرفوض إلى قائمة الانتظار (pending)
  */
 export const resendRejectedRequest = async (id) => {
   try {

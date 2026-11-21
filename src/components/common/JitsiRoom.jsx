@@ -349,7 +349,7 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
     try {
       closingRef.current = true;
       await endLiveSession(classId);
-      toast.success('✅ تم إنهاء الحصة.');
+      toast.success(' تم إنهاء الحصة.');
     } catch (e) {
       toast.error('تعذر إنهاء الحصة: ' + (e.message || ''));
     }

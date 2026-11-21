@@ -3,7 +3,7 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import toast from 'react-hot-toast';
 
-// ✅ تحميل ملف Excel
+//  تحميل ملف Excel
 export const downloadExcel = async ({ headers, rows, sheetName, filename }) => {
   try {
     const workbook = new ExcelJS.Workbook();
@@ -57,7 +57,7 @@ export const downloadExcel = async ({ headers, rows, sheetName, filename }) => {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    toast.success('✅ تم تحميل ملف Excel');
+    toast.success(' تم تحميل ملف Excel');
     return true;
   } catch (err) {
     console.error('Excel export error:', err);
@@ -66,7 +66,7 @@ export const downloadExcel = async ({ headers, rows, sheetName, filename }) => {
   }
 };
 
-// ✅ تحميل ملف PDF من HTML
+//  تحميل ملف PDF من HTML
 export const downloadPDFFromHTML = async ({ html, filename, orientation = 'landscape' }) => {
   const container = document.createElement('div');
   container.style.cssText = 'position:fixed;left:-99999px;top:0;width:1400px;background:#ffffff;padding:40px;direction:rtl;font-family:Arial,Tahoma,sans-serif;';
@@ -88,7 +88,7 @@ export const downloadPDFFromHTML = async ({ html, filename, orientation = 'lands
 
     pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
     pdf.save(filename || `export_${new Date().toISOString().slice(0, 10)}.pdf`);
-    toast.success('✅ تم تحميل ملف PDF');
+    toast.success(' تم تحميل ملف PDF');
     return true;
   } catch (err) {
     console.error('PDF export error:', err);

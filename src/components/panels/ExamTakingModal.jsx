@@ -111,7 +111,7 @@ const ExamTakingModal = ({ exam, student, onClose }) => {
 
       if (isManual) {
         toast.success(
-          `✅ تم تسليم الاختبار!\nسيتم تصحيحه من قِبل المعلم قريباً.`,
+          ` تم تسليم الاختبار!\nسيتم تصحيحه من قِبل المعلم قريباً.`,
           { duration: 5000 }
         );
         celebrate();
