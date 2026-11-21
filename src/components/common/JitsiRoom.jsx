@@ -47,20 +47,26 @@ export function exitFullscreen() {
 
 // يطلب "تذكرة دخول" من خادم المنصة: الخادم هو من يحدد الاسم ومن هو رئيس الجلسة
 async function fetchJitsiToken(roomName) {
+  const user = auth.currentUser;
+  if (!user) throw new Error('لم يتم العثور على حساب مسجّل الدخول، أعد تسجيل الدخول.');
+  const idToken = await user.getIdToken();
+  let res;
   try {
-    const user = auth.currentUser;
-    if (!user) return null;
-    const idToken = await user.getIdToken();
-    const res = await fetch('/api/jitsi-token', {
+    res = await fetch('/api/jitsi-token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
       body: JSON.stringify({ roomName })
     });
-    if (!res.ok) return null;
-    return await res.json(); // { jwt, name, moderator }
   } catch (e) {
-    return null;
+    throw new Error('تعذر الاتصال بخادم المنصة (api/jitsi-token).');
   }
+  let data = null;
+  try { data = await res.json(); } catch (e) { /* ignore */ }
+  if (!res.ok || !data || !data.jwt) {
+    const reason = (data && data.error) ? data.error : `رمز الخطأ ${res.status}`;
+    throw new Error('تعذر الحصول على تصريح الدخول: ' + reason);
+  }
+  return data; // { jwt, name, moderator }
 }
 
 const JitsiRoom = ({ roomName, displayName, onClose }) => {
