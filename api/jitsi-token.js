@@ -327,6 +327,7 @@ async function actionJoin(db, req, body) {
     moderator: isModerator,
     roomName,
     avatar,
+    className: session.className || '',
     sessionNumber: session.sessionNumber,
     deviceTracked
   };

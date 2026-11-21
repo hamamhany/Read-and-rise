@@ -231,6 +231,7 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
             disableDeepLinking: true,
             defaultLanguage: 'ar',
             startWithAudioMuted: true,
+            subject: tokenData.className ? `حصة ${tokenData.className}` : 'الحصة المباشرة', // عنوان الاجتماع بدل اسم الغرفة التقني
             toolbarButtons: TOOLBAR_BUTTONS,
             // زر "ادعُ أحداً": نلتقط الضغطة ونعرض رقماً من 30 خانة بدل الرابط
             buttonsWithNotifyClick: [{ key: 'invite', preventExecution: true }]
@@ -349,7 +350,7 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
     try {
       closingRef.current = true;
       await endLiveSession(classId);
-      toast.success(' تم إنهاء الحصة.');
+      toast.success('✅ تم إنهاء الحصة.');
     } catch (e) {
       toast.error('تعذر إنهاء الحصة: ' + (e.message || ''));
     }
