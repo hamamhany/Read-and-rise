@@ -273,9 +273,9 @@ async function actionJoin(db, req, body) {
     throw fail(403, 'forbidden', 'غير مسموح لهذا الحساب بدخول الحصة.');
   }
 
-  // جهاز واحد لكل حساب طالب
+  // جهاز واحد لكل حساب (طالب أو معلم أو مدير)
   let deviceTracked = false;
-  if (isStudent) {
+  {
     if (!validDeviceId(deviceId)) throw fail(400, 'bad-request', 'deviceId مطلوب');
     const devRef = db.collection(DEVICE_COLLECTION).doc(decoded.uid);
     await db.runTransaction(async (tx) => {
@@ -291,7 +291,7 @@ async function actionJoin(db, req, body) {
         deviceId,
         classId,
         profileId: profileDoc.id,
-        role: 'student',
+        role,
         lastSeenMs: now
       });
     });

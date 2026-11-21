@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { FaCopy, FaExpand, FaLock, FaLockOpen } from 'react-icons/fa';
+import { FaCopy, FaExpand } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import { getStoredTheme } from '../../utils/theme';
 import { JITSI_DOMAIN } from '../../constants';
@@ -98,7 +98,6 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
   const [error, setError] = useState(null);       // { message }
   const [loading, setLoading] = useState(true);
   const [isModerator, setIsModerator] = useState(false);
-  const [lobbyOn, setLobbyOn] = useState(false);  // غرفة الانتظار (للمعلم)
   const [askEnd, setAskEnd] = useState(false);    // نافذة المعلم عند الضغط على زر الخروج
   const [showInvite, setShowInvite] = useState(false);
   const [inviteNumber, setInviteNumber] = useState('');
@@ -228,9 +227,8 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
           userInfo: { displayName: lockedName },
           configOverwrite: {
             prejoinConfig: { enabled: false, hideDisplayName: true }, // بدون شاشة "أدخل اسمك" وبدون حقل الاسم
-            // غرفة الانتظار: طرق تلقائي بدون نموذج، وبدون خيار إدخال كلمة مرور
-            lobby: { autoKnock: true },
-            securityUi: { disableLobbyPassword: true },
+            // غرفة الانتظار ملغاة نهائياً: إخفاء زرها وخيار كلمة المرور
+            securityUi: { hideLobbyButton: true, disableLobbyPassword: true },
             prejoinPageEnabled: false,
             requireDisplayName: false,
             readOnlyName: true,                  // منع تعديل الاسم
@@ -313,11 +311,8 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
         const beat = async () => {
           try {
             cachedToken = await getFreshIdToken();
-            if (moderator) {
-              await callLiveApi('ping', { classId });
-            } else if (deviceTracked) {
-              await callLiveApi('heartbeat', { classId, deviceId });
-            }
+            if (deviceTracked) await callLiveApi('heartbeat', { classId, deviceId });
+            if (moderator) await callLiveApi('ping', { classId });
           } catch (e) {
             if (e && e.code === 'device-conflict' && !closingRef.current) {
               shutdownApi();
@@ -373,17 +368,6 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
   const handleLeaveOnly = () => {
     closingRef.current = true;
     if (onCloseRef.current) onCloseRef.current();
-  };
-
-  // غرفة الانتظار: الخيار الوحيد المتاح من نافذة الأمان
-  const handleToggleLobby = () => {
-    const next = !lobbyOn;
-    try {
-      if (apiRef.current) apiRef.current.executeCommand('toggleLobby', next);
-      setLobbyOn(next);
-    } catch (e) {
-      toast.error('تعذر تغيير غرفة الانتظار.');
-    }
   };
 
   const handleCopyInvite = async () => {
@@ -458,21 +442,6 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
             </button>
           </div>
         </div>
-      )}
-
-      {/* زر غرفة الانتظار (للمعلم فقط) */}
-      {isModerator && !loading && !error && (
-        <button
-          type="button"
-          onClick={handleToggleLobby}
-          style={{ top: 84, left: 12 }} /* تحت شعار Jitsi */
-          className={`absolute z-10 flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold text-white shadow-lg backdrop-blur-sm ${
-            lobbyOn ? 'bg-green-600/90 hover:bg-green-700' : 'bg-black/60 hover:bg-black/80'
-          }`}
-        >
-          {lobbyOn ? <FaLock /> : <FaLockOpen />}
-          غرفة الانتظار: {lobbyOn ? 'مفعّلة' : 'معطّلة'}
-        </button>
       )}
 
       {/* نافذة رقم الدعوة (30 خانة) */}
