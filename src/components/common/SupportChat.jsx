@@ -23,7 +23,7 @@ import { useConfirm } from './ConfirmContext';
 import { askAssistant, buildAiHistory, useAiTyping } from '../../utils/askAssistant';
 import { formatRelativeTime } from '../../utils/helpers';
 import {
-  BotAvatar, SupportAvatar, SupervisorAvatar, TypingBubble, ChatComposer,
+  BotAvatar, SupportAvatar, SupervisorAvatar, MessageAvatar, TypingBubble, ChatComposer,
   playIncomingSound, prepareIncomingSound, RichText
 } from './ChatParts';
 
@@ -688,7 +688,11 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
                 <React.Fragment key={m.id}>
                   {!hidden && (
                     <div className={`flex items-end gap-2 ${isCreatorMsg ? 'justify-start' : 'flex-row-reverse justify-start'} ${isNew ? (isCreatorMsg ? 'chat-in-right' : 'chat-in-left') : ''}`}>
-                      {!isCreatorMsg && (isAI ? <BotAvatar /> : !isSystem ? <SupervisorAvatar /> : null)}
+                      {isAI
+                        ? <BotAvatar />
+                        : !isSystem
+                          ? <MessageAvatar role={isCreatorMsg ? ((m.senderRole && m.senderRole !== 'system') ? m.senderRole : 'student') : m.senderRole} />
+                          : null}
                       <div className={`max-w-[85%] sm:max-w-[70%] px-3 py-2 rounded-2xl ${fullPage ? 'text-[15px]' : 'text-sm'} ${isNew && isMe ? 'chat-glow' : ''} ${
                         isAI
                           ? 'bg-gray-800 text-gray-100 border border-gray-700'

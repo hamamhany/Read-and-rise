@@ -7,6 +7,16 @@ const SupportButton = ({ user }) => {
   const navigate = useNavigate();
   const [hasUnread, setHasUnread] = useState(false);
   const [showBubble, setShowBubble] = useState(false);
+  // يُخفى الزر أثناء وجود المستخدم داخل غرفة الحصة المباشرة
+  const [inLessonRoom, setInLessonRoom] = useState(
+    typeof document !== 'undefined' && document.body.dataset.inLessonRoom === '1'
+  );
+
+  useEffect(() => {
+    const handler = (e) => setInLessonRoom(!!e.detail);
+    window.addEventListener('lesson-room-change', handler);
+    return () => window.removeEventListener('lesson-room-change', handler);
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -30,7 +40,7 @@ const SupportButton = ({ user }) => {
     return () => clearInterval(int);
   }, [user]);
 
-  if (!user) return null;
+  if (!user || inLessonRoom) return null;
 
   // الدعم صار شاشة مستقلة على الرابط /support
   const openSupport = () => navigate('/support');

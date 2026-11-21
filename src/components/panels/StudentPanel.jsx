@@ -17,10 +17,10 @@ import { useConfirm } from '../common/ConfirmContext';
 import { CountdownTimer, HomeworkTextCountdown } from '../common/CountdownTimer';
 import { sanitizeInput, arabicToEnglishNumber, fetchClassNames } from '../../utils/helpers';
 import { recordAttendance, processStudentAbsences } from '../../services/attendance';
+import { subscribeToLiveSessions, isSessionJoinable } from '../../services/liveSessions';
 import { sendUrgentReminderMessage, sendContactTeacherMessage } from '../../utils/whatsapp';
 import { getActiveExamsForStudent, getStudentAttemptsCount, getStudentExamResult } from '../../services/exams';
-import JitsiRoom, { enterFullscreen, exitFullscreen } from '../common/JitsiRoom';
-import { JITSI_ROOM_NAME } from '../../constants';
+import JitsiRoom, { enterFullscreen } from '../common/JitsiRoom';
 
 const StudentPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -56,8 +56,9 @@ const StudentPanel = ({ user, onLogout }) => {
 
   const [classStudentCount, setClassStudentCount] = useState({});
 
-  const [isRecordingAttendance, setIsRecordingAttendance] = useState(false);
-  const [showLessonRoom, setShowLessonRoom] = useState(false);
+  const [lessonRoomClassId, setLessonRoomClassId] = useState(null);
+  const [liveSessions, setLiveSessions] = useState([]);
+  const [, setLiveTick] = useState(0);
   const absenceProcessedRef = useRef(false);
 
   // Exam states (تم إزالة selectedExam, showExamModal, reviewingExam, showReviewAnswers)
@@ -281,6 +282,20 @@ const StudentPanel = ({ user, onLogout }) => {
     return () => { unsubscribeTeacher(); unsubscribeProfile(); unsubscribeNotif(); };
   }, [user.id]);
 
+  // ✅ متابعة الحصص المباشرة لشعب الطالب (يظهر زر الانضمام فقط حين يفتح المعلم حصة)
+  const classIdsKey = (profile?.classIds || []).join(',');
+  useEffect(() => {
+    const ids = classIdsKey ? classIdsKey.split(',') : [];
+    const unsub = subscribeToLiveSessions(ids, setLiveSessions);
+    return () => unsub();
+  }, [classIdsKey]);
+
+  // إعادة تقييم "هل الحصة ما زالت ظاهرة" كل 15 ثانية
+  useEffect(() => {
+    const t = setInterval(() => setLiveTick((n) => n + 1), 15000);
+    return () => clearInterval(t);
+  }, []);
+
   // ✅ تحميل الاختبارات المتاحة + نتائج الطالب (بدون showExamModal)
   useEffect(() => {
     if (!profile?.classIds || profile.classIds.length === 0) return;
@@ -416,9 +431,14 @@ const StudentPanel = ({ user, onLogout }) => {
 
   const nextLesson = getNextLessonTime();
 
-  const handleJoinLesson = async () => {
-    enterFullscreen(); // ملء الشاشة فوراً مع الضغطة
-    setIsRecordingAttendance(true);
+  // ✅ الضغط على زر الانضمام: ملء الشاشة فوراً ثم فتح غرفة الشعبة
+  // (تسجيل الحضور يتم بعد نجاح الدخول فعلياً، داخل handleLessonJoined)
+  const handleJoinLesson = (classId) => {
+    enterFullscreen();
+    setLessonRoomClassId(classId);
+  };
+
+  const handleLessonJoined = async () => {
     try {
       await recordAttendance(user.id);
       setProfile(prev => prev ? {
@@ -428,14 +448,12 @@ const StudentPanel = ({ user, onLogout }) => {
         absenceWarningSent: false
       } : prev);
       toast.success('✅ تم تسجيل حضورك بنجاح!');
-      setShowLessonRoom(true); // الدخول مباشرة إلى الغرفة
     } catch (err) {
-      exitFullscreen();
       toast.error('فشل تسجيل الحضور: ' + err.message);
-    } finally {
-      setIsRecordingAttendance(false);
     }
   };
+
+  const joinableSessions = liveSessions.filter(sess => isSessionJoinable(sess));
 
   const openProfileModal = () => {
     if (hasPendingRequest) return setShowPendingRequestModal(true);
@@ -597,14 +615,22 @@ const StudentPanel = ({ user, onLogout }) => {
           <h3 className="text-xl font-semibold mb-4 text-blue-800 dark:text-blue-200">الوقت المتبقي لحصتك القادمة</h3>
           <CountdownTimer targetDate={nextLesson ? nextLesson.date : null} />
           <div className="mt-4 flex flex-col items-center gap-2 w-full">
-            <button
-              onClick={handleJoinLesson}
-              disabled={isRecordingAttendance}
-              className="bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white px-6 py-3 rounded-xl text-lg font-bold shadow-lg transition-all duration-300 transform hover:scale-105 w-full text-center block"
-            >
-              <FaVideo className="inline-block me-2" />
-              {isRecordingAttendance ? 'جاري تسجيل الحضور...' : '🎯 انضم إلى غرفة الصف الآن (تسجيل حضور)'}
-            </button>
+            {joinableSessions.length > 0 ? (
+              joinableSessions.map(sess => (
+                <button
+                  key={sess.classId}
+                  onClick={() => handleJoinLesson(sess.classId)}
+                  className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl text-lg font-bold shadow-lg transition-all duration-300 transform hover:scale-105 w-full text-center block"
+                >
+                  <FaVideo className="inline-block me-2" />
+                  🎯 انضم إلى غرفة الصف الآن{joinableSessions.length > 1 && sess.className ? ` — ${sess.className}` : ''} (تسجيل حضور)
+                </button>
+              ))
+            ) : (
+              <p className="text-slate-500 dark:text-gray-400 text-sm text-center py-2">
+                لا توجد حصة مباشرة الآن. سيظهر زر الانضمام هنا عندما يبدأ المعلم الحصة.
+              </p>
+            )}
 
             {profile?.consecutiveAbsences > 0 && (
               <div className={`mt-3 p-3 rounded-xl border text-sm text-center w-full ${
@@ -618,11 +644,12 @@ const StudentPanel = ({ user, onLogout }) => {
               </div>
             )}
           </div>
-          {showLessonRoom && (
+          {lessonRoomClassId && (
             <JitsiRoom
-              roomName={JITSI_ROOM_NAME}
+              classId={lessonRoomClassId}
               displayName={profile?.name || user?.name || ''}
-              onClose={() => setShowLessonRoom(false)}
+              onJoined={handleLessonJoined}
+              onClose={() => setLessonRoomClassId(null)}
             />
           )}
         </div>

@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { FaPaperPlane, FaRobot, FaHeadset, FaUserTie } from 'react-icons/fa';
+import { FaPaperPlane, FaRobot, FaHeadset, FaUserTie, FaUserGraduate, FaChalkboardTeacher } from 'react-icons/fa';
+import { getRoleAvatarUrl } from '../../utils/avatars';
 
 // ===== مسارات الصور والصوت (عدّلها هنا إذا اختلف اسم الملف أو الامتداد) =====
 export const BOT_IMAGE = '/images/shat-boot.png';              // صورة المساعد الذكي
@@ -173,6 +174,24 @@ export const SupervisorAvatar = ({ size = 32 }) => (
   <ImgAvatar src={SUPERVISOR_IMAGE} alt="المشرف" size={size} Fallback={FaUserTie}
     fallbackClass="bg-emerald-600/40 border-emerald-400/40 text-emerald-800 dark:text-emerald-200" />
 );
+
+// صورة المرسل حسب نوع حسابه (طالب / معلم / مدير) — صور ثابتة من public/images
+// أي دور آخر (مثل المشرف) يستخدم صورة المشرف المعتادة
+export const MessageAvatar = ({ role, size = 32 }) => {
+  const url = getRoleAvatarUrl(role);
+  if (!url) return <SupervisorAvatar size={size} />;
+  const isTeacher = role === 'teacher';
+  const isManager = role === 'system_manager';
+  return (
+    <ImgAvatar
+      src={url}
+      alt={isManager ? 'المدير' : isTeacher ? 'المعلم' : 'الطالب'}
+      size={size}
+      Fallback={isManager ? FaUserTie : isTeacher ? FaChalkboardTeacher : FaUserGraduate}
+      fallbackClass="bg-slate-500/30 border-slate-400/40 text-slate-800 dark:text-slate-200"
+    />
+  );
+};
 
 // فقاعة "يكتب الآن": ثلاث نقاط تتنطط بجانب صورة المساعد أو المشرف (على اليسار)
 export const TypingBubble = ({ kind = 'ai' }) => (
