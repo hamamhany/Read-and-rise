@@ -67,7 +67,7 @@ export default async function handler(req, res) {
       aud: appId,
       iss: appId,
       sub: domain,
-      room: roomName,
+      room: roomName.toLowerCase(),
       nbf: now - 10,
       exp: now + 60 * 60 * 6, // صالحة 6 ساعات
       context: {

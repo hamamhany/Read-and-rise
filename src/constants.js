@@ -218,4 +218,4 @@ export const PENDING_FIELD_LABELS = {
 // ✅ إعدادات المحاضرات المباشرة (Jitsi)
 // =========================================================
 export const JITSI_DOMAIN = 'meet.194.146.38.131.sslip.io';
-export const JITSI_ROOM_NAME = 'ReadAndRise-Classroom'; // اسم الغرفة (غيّره إذا بدك)
+export const JITSI_ROOM_NAME = 'readandrise-classroom'; // اسم الغرفة — أحرف صغيرة فقط (Jitsi يحوّلها لصغيرة)

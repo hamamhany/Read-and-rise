@@ -78,6 +78,33 @@ const JitsiRoom = ({ roomName, displayName, onClose }) => {
     return () => window.removeEventListener('theme-change', handler);
   }, []);
 
+  // قفل تمرير الصفحة الخلفية أثناء وجود الغرفة (يشمل الآيفون والأيباد)
+  useEffect(() => {
+    const scrollY = window.scrollY || 0;
+    const body = document.body;
+    const html = document.documentElement;
+    const prev = {
+      bodyOverflow: body.style.overflow, bodyPosition: body.style.position,
+      bodyTop: body.style.top, bodyWidth: body.style.width,
+      htmlOverflow: html.style.overflow, htmlOverscroll: html.style.overscrollBehavior
+    };
+    html.style.overflow = 'hidden';
+    html.style.overscrollBehavior = 'none';
+    body.style.overflow = 'hidden';
+    body.style.position = 'fixed';
+    body.style.top = `-${scrollY}px`;
+    body.style.width = '100%';
+    return () => {
+      body.style.overflow = prev.bodyOverflow;
+      body.style.position = prev.bodyPosition;
+      body.style.top = prev.bodyTop;
+      body.style.width = prev.bodyWidth;
+      html.style.overflow = prev.htmlOverflow;
+      html.style.overscrollBehavior = prev.htmlOverscroll;
+      window.scrollTo(0, scrollY);
+    };
+  }, []);
+
   useEffect(() => {
     let disposed = false;
 
@@ -158,7 +185,8 @@ const JitsiRoom = ({ roomName, displayName, onClose }) => {
 
   return (
     <div
-      className={`fixed inset-0 z-[9999] ${isLight ? 'bg-slate-100' : 'bg-gray-950'}`}
+      className={`fixed inset-0 z-[9999] overflow-hidden ${isLight ? 'bg-slate-100' : 'bg-gray-950'}`}
+      style={{ height: '100dvh', overscrollBehavior: 'none' }}
       dir="rtl"
     >
       {loading && !error && (
