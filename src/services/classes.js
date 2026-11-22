@@ -430,3 +430,75 @@ export const getEligibleClassesForStudent = async (student, excludeClassId = nul
   });
   return eligible;
 };
+
+/**
+ * ✅ تغيير معلم الشعبة (للمدير فقط)
+ */
+export const updateClassTeacher = async (classId, teacherId) => {
+  if (!classId || !teacherId) throw new Error('بيانات ناقصة');
+  await updateDoc(doc(db, 'classes', classId), {
+    teacherId,
+    updatedAt: serverTimestamp()
+  });
+};
+
+/**
+ * ✅ اسم المعلم كما يراه المشرف:
+ *  - معلم ذكر: يظهر اسمه.
+ *  - معلمة: مشرفة أنثى ترى اللقب، أما المشرف الذكر فيرى اللقب إن وُجد وإلا ********
+ */
+export const getTeacherNameForSupervisor = (teacher, supervisorGender) => {
+  if (!teacher) return 'غير محدد';
+  if (teacher.gender !== 'أنثى') return teacher.name || teacher.username || 'معلم';
+  if (supervisorGender === 'أنثى') return teacher.nickname || 'معلمة';
+  return teacher.nickname || '********';
+};
+
+/**
+ * ✅ الحصة القادمة لشعبة من جدول حصص المعلم (lessonTimes)
+ * يعيد كائن Date أو null
+ */
+export const getNextLessonForClass = (lessonTimes, classId) => {
+  if (!Array.isArray(lessonTimes) || lessonTimes.length === 0) return null;
+  const now = new Date();
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  let nearest = null;
+  const consider = (d) => { if (d && (!nearest || d < nearest)) nearest = d; };
+
+  for (const lt of lessonTimes) {
+    if (!lt || !lt.time) continue;
+    if (classId && lt.classId && lt.classId !== classId) continue;
+    const { hours, minutes } = lt.time;
+    if (typeof hours !== 'number' || typeof minutes !== 'number') continue;
+
+    if (lt.type === 'once') {
+      const d = new Date(lt.date);
+      if (!isNaN(d.getTime()) && d > now) consider(d);
+    } else if (lt.type === 'recurring') {
+      const dayIndex = days.indexOf(lt.day);
+      if (dayIndex === -1) continue;
+      let diff = dayIndex - now.getDay();
+      if (diff < 0) diff += 7;
+      if (diff === 0) {
+        const t = new Date(now); t.setHours(hours, minutes, 0, 0);
+        if (t <= now) diff = 7;
+      }
+      const next = new Date(now);
+      next.setDate(now.getDate() + diff);
+      next.setHours(hours, minutes, 0, 0);
+      let guard = 0;
+      while (guard < 60 && lt.cancelledDates?.includes(next.toISOString().split('T')[0])) {
+        next.setDate(next.getDate() + 7);
+        guard++;
+      }
+      consider(next);
+    } else if (lt.type === 'monthly') {
+      const md = parseInt(lt.monthDay);
+      if (!md) continue;
+      let next = new Date(now.getFullYear(), now.getMonth(), md, hours, minutes, 0, 0);
+      if (next <= now) next = new Date(now.getFullYear(), now.getMonth() + 1, md, hours, minutes, 0, 0);
+      consider(next);
+    }
+  }
+  return nearest;
+};

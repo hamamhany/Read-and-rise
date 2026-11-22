@@ -11,7 +11,7 @@ import {
 } from 'firebase/firestore';
 import { createMessageRequest } from '../../services/messageRequests';
 import { MESSAGE_REQUEST_TYPES } from '../../constants';
-import { fetchClassNames } from '../../utils/helpers';
+import { fetchClassNames, arabicToEnglishNumber } from '../../utils/helpers';
 import { useConfirm } from '../common/ConfirmContext';
 
 const PAGE_SIZE = 20;
@@ -94,7 +94,7 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
   };
 
   const doSearch = async () => {
-    const term = searchTerm.trim();
+    const term = arabicToEnglishNumber(searchTerm).trim(); // الأرقام العربية تتحول لإنجليزية
     if (!term) {
       setPageDocs([null]);
       loadPage(0);

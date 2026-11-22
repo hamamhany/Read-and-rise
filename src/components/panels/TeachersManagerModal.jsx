@@ -7,7 +7,7 @@ import { db } from '../../firebase';
 import { createTeacherAccount } from '../../services/teacherAuth';
 import { createMessageRequest } from '../../services/messageRequests';
 import { MESSAGE_REQUEST_TYPES } from '../../constants';
-import { sanitizeInput, arabicToEnglishNumber } from '../../utils/helpers';
+import { sanitizeInput, arabicToEnglishNumber, assignTeacherSerial } from '../../utils/helpers';
 
 /**
  * ✅ إدارة المعلمين — فقط إضافة معلم جديد (المشرف لا يرى قائمة المعلمين)
@@ -60,6 +60,9 @@ const TeachersManagerModal = ({ isOpen, onClose, user }) => {
         phone: normalizedPhone,
         createdBy: user.id
       });
+
+      // ✅ الرقم التسلسلي للمعلم (يبدأ بـ 2026 ومن 8 أرقام)
+      try { await assignTeacherSerial(result.id); } catch (err) { console.warn('assignTeacherSerial failed:', err); }
 
       try {
         await createMessageRequest({

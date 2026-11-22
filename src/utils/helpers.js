@@ -131,6 +131,34 @@ export const generateNextSerialNumber = async () => {
 };
 
 // =========================================================
+// الرقم التسلسلي للمعلم: 8 أرقام تبدأ بـ 2026 (مثال: 20260001)
+// =========================================================
+export const TEACHER_SERIAL_PREFIX = 2026;
+export const formatTeacherSerial = (n) =>
+  `${TEACHER_SERIAL_PREFIX}${String(n).padStart(4, '0')}`;
+
+// يعيّن رقماً للمعلم إن لم يكن له رقم (آمن ضد التكرار: داخل Transaction)
+export const assignTeacherSerial = async (profileId) => {
+  const counterRef = doc(db, 'settings', 'teacherSerialCounter');
+  const profileRef = doc(db, 'profiles', profileId);
+  let assigned = null;
+  await runTransaction(db, async (transaction) => {
+    const profileSnap = await transaction.get(profileRef);
+    if (!profileSnap.exists()) return;
+    const existing = profileSnap.data().serialNumber;
+    if (existing) { assigned = existing; return; }
+    const counterSnap = await transaction.get(counterRef);
+    const next = counterSnap.exists() ? (counterSnap.data().lastSerial || 0) + 1 : 1;
+    if (next > 9999) throw new Error('تم استهلاك أرقام المعلمين المتاحة (9999)');
+    assigned = formatTeacherSerial(next);
+    if (counterSnap.exists()) transaction.update(counterRef, { lastSerial: next });
+    else transaction.set(counterRef, { lastSerial: next });
+    transaction.update(profileRef, { serialNumber: assigned });
+  });
+  return assigned;
+};
+
+// =========================================================
 //  تنسيق الوقت النسبي بالعربية ("منذ كذا")
 // يستخدم في الدردشة بدل عرض الساعة التقليدية.
 // يتعامل مع التصريف العربي الصحيح: دقيقة/دقيقتين/دقائق/دقيقة...

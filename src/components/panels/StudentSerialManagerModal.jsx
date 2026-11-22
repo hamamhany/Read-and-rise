@@ -9,7 +9,7 @@ import {
   collection, query, where, getDocs, doc, getDoc, limit
 } from 'firebase/firestore';
 import { useConfirm } from '../common/ConfirmContext';
-import { fetchClassNames } from '../../utils/helpers';
+import { fetchClassNames, arabicToEnglishNumber } from '../../utils/helpers';
 import {
   getClassGenderLabel, filterClassesForSupervisor, getTeacherDisplayName,
   getEligibleClassesForStudent
@@ -40,7 +40,7 @@ const StudentSerialManagerModal = ({ isOpen, onClose, user }) => {
   const [resetting, setResetting] = useState(false);
 
   const searchStudents = async () => {
-    const term = serialInput.trim();
+    const term = arabicToEnglishNumber(serialInput).trim();
     if (!term) return toast.error('أدخل الرقم التسلسلي');
 
     setSearching(true);
@@ -230,7 +230,7 @@ const StudentSerialManagerModal = ({ isOpen, onClose, user }) => {
                   inputMode="numeric"
                   placeholder="أدخل الرقم التسلسلي..."
                   value={serialInput}
-                  onChange={e => setSerialInput(e.target.value)}
+                  onChange={e => setSerialInput(arabicToEnglishNumber(e.target.value))}
                   onKeyDown={e => { if (e.key === 'Enter' && !searching) searchStudents(); }}
                   className="flex-1 min-w-[200px] bg-gray-800 text-center p-3 border border-gray-600 rounded-lg text-white font-mono text-lg tracking-wider"
                   dir="ltr"

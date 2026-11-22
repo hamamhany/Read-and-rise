@@ -7,17 +7,18 @@ import {
   FaSearch, FaArrowLeft, FaTimesCircle
 } from 'react-icons/fa';
 import { db } from '../../firebase';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, getDoc, doc, query, where } from 'firebase/firestore';
 import {
   getSections, createSection, renameSection,
   getDescendantSectionIds, getSectionPath,
   moveClassToSection, createClass, deleteClassById,
   getClassStudentCounts, purgeClassesWithoutSection,
   getClassGenderLabel, getTeacherDisplayName,
-  deleteSectionMergingIntoParent, moveSectionContentToSection
+  deleteSectionMergingIntoParent, moveSectionContentToSection,
+  updateClassTeacher, getTeacherNameForSupervisor, getNextLessonForClass
 } from '../../services/classes';
 import { CLASS_GENDER } from '../../constants';
-import { sanitizeInput } from '../../utils/helpers';
+import { sanitizeInput, arabicToEnglishNumber, getActiveWarnings } from '../../utils/helpers';
 import { useConfirm, usePrompt } from '../common/ConfirmContext';
 
 /**
@@ -56,6 +57,13 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
 
   // وضع النقل (مدير فقط)
   const [moveMode, setMoveMode] = useState(null);
+
+  // ✅ نافذة تفاصيل الشعبة
+  const [selectedClass, setSelectedClass] = useState(null);
+  const [classDetails, setClassDetails] = useState(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [newTeacherId, setNewTeacherId] = useState('');
+  const [savingTeacher, setSavingTeacher] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -317,9 +325,69 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
   const handleTransferHere = () => handleTransferTo(currentId);
   const goUp = () => setCurrentId(current?.parentId || null);
 
+  // اسم المعلم كما يراه المستخدم الحالي (المشرف له قواعد خاصة)
+  const teacherNameFor = (teacherId) => {
+    const t = getTeacherById(teacherId);
+    return isManager ? getTeacherDisplayName(t) : getTeacherNameForSupervisor(t, user?.gender);
+  };
+
+  const openClassDetails = async (cls) => {
+    setSelectedClass(cls);
+    setClassDetails(null);
+    setNewTeacherId(cls.teacherId || '');
+    setDetailsLoading(true);
+    try {
+      const [studentsSnap, teacherSnap] = await Promise.all([
+        getDocs(query(collection(db, 'profiles'), where('role', '==', 'student'), where('classIds', 'array-contains', cls.id))),
+        cls.teacherId ? getDoc(doc(db, 'teachers', cls.teacherId)) : Promise.resolve(null)
+      ]);
+      let warnedStudents = 0;
+      let totalWarnings = 0;
+      studentsSnap.docs.forEach(d => {
+        const n = getActiveWarnings(d.data().warnings || []).length;
+        if (n > 0) warnedStudents++;
+        totalWarnings += n;
+      });
+      const lessonTimes = teacherSnap && teacherSnap.exists() ? (teacherSnap.data().lessonTimes || []) : [];
+      const next = getNextLessonForClass(lessonTimes, cls.id);
+      setClassDetails({
+        studentCount: studentsSnap.size,
+        warnedStudents,
+        totalWarnings,
+        nextLesson: next
+          ? next.toLocaleString('ar-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+          : 'لا توجد حصة قادمة'
+      });
+    } catch (e) {
+      toast.error('فشل تحميل تفاصيل الشعبة: ' + e.message);
+    } finally {
+      setDetailsLoading(false);
+    }
+  };
+
+  const closeClassDetails = () => { setSelectedClass(null); setClassDetails(null); };
+
+  const handleChangeTeacher = async () => {
+    if (!selectedClass || !newTeacherId || newTeacherId === selectedClass.teacherId) return;
+    const ok = await confirm('تغيير معلم الشعبة', `سيصبح معلم الشعبة «${selectedClass.name}» هو ${getTeacherDisplayName(getTeacherById(newTeacherId))}. هل أنت متأكد؟`);
+    if (!ok) return;
+    setSavingTeacher(true);
+    try {
+      await updateClassTeacher(selectedClass.id, newTeacherId);
+      toast.success('تم تغيير المعلم.');
+      setSelectedClass({ ...selectedClass, teacherId: newTeacherId });
+      setClasses(prev => prev.map(c => c.id === selectedClass.id ? { ...c, teacherId: newTeacherId } : c));
+      openClassDetails({ ...selectedClass, teacherId: newTeacherId });
+    } catch (e) {
+      toast.error('فشل: ' + e.message);
+    } finally {
+      setSavingTeacher(false);
+    }
+  };
+
   // فلترة المعلمين حسب البحث
   const filteredTeachers = teachers.filter(t => {
-    const q = teacherSearch.trim();
+    const q = arabicToEnglishNumber(teacherSearch).trim();
     if (!q) return true;
     return (
       (t.serialNumber || '').includes(q) ||
@@ -615,7 +683,7 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
                   <p className="text-xs text-gray-500 mb-2">الشعب ({currentClasses.length})</p>
                   <div className="space-y-2">
                     {currentClasses.map(cls => {
-                      const teacherName = getTeacherDisplayName(getTeacherById(cls.teacherId));
+                      const teacherName = teacherNameFor(cls.teacherId);
                       const genderColor = cls.gender === CLASS_GENDER.MALE
                         ? 'text-blue-300 bg-blue-500/10 border-blue-500/30'
                         : cls.gender === CLASS_GENDER.FEMALE
@@ -623,7 +691,7 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
                           : 'text-purple-300 bg-purple-500/10 border-purple-500/30';
                       return (
                         <div key={cls.id} className="p-4 bg-black/30 rounded-xl border border-gray-700 flex flex-wrap justify-between items-center gap-3">
-                          <div className="flex-1 min-w-0">
+                          <div className="flex-1 min-w-0 cursor-pointer hover:opacity-80" onClick={() => openClassDetails(cls)} title="اضغط لعرض تفاصيل الشعبة">
                             <p className="text-white font-bold text-sm flex items-center gap-2">
                               <FaGraduationCap className="text-indigo-300" /> {cls.name}
                             </p>
@@ -676,6 +744,55 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
           )}
         </div>
       </div>
+
+      {/* ✅ نافذة تفاصيل الشعبة */}
+      {selectedClass && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[75] p-4" onClick={closeClassDetails}>
+          <div className="bg-gray-900 rounded-3xl w-full max-w-md border border-indigo-500/40 p-6 space-y-4" onClick={e => e.stopPropagation()} dir="rtl">
+            <div className="flex justify-between items-center">
+              <h3 className="text-xl font-bold text-white flex items-center gap-2"><FaGraduationCap className="text-indigo-300" /> {selectedClass.name}</h3>
+              <button onClick={closeClassDetails} className="text-gray-400 hover:text-white text-2xl"><FaTimes /></button>
+            </div>
+
+            {detailsLoading || !classDetails ? (
+              <div className="text-center py-8 text-gray-400"><FaSpinner className="animate-spin inline-block me-2" /> جاري التحميل...</div>
+            ) : (
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between bg-black/30 rounded-xl p-3"><span className="text-gray-400">عدد الطلاب</span><strong className="text-cyan-300">{classDetails.studentCount}</strong></div>
+                <div className="flex justify-between bg-black/30 rounded-xl p-3"><span className="text-gray-400">الحصة القادمة</span><strong className="text-white">{classDetails.nextLesson}</strong></div>
+                <div className="flex justify-between bg-black/30 rounded-xl p-3"><span className="text-gray-400">اسم المعلم</span><strong className="text-white">{teacherNameFor(selectedClass.teacherId)}</strong></div>
+                <div className="flex justify-between bg-black/30 rounded-xl p-3"><span className="text-gray-400">جنس الشعبة</span><strong className="text-white">{getClassGenderLabel(selectedClass.gender)}</strong></div>
+                <div className="flex justify-between bg-black/30 rounded-xl p-3"><span className="text-gray-400">طلاب لديهم إنذارات</span><strong className="text-amber-300">{classDetails.warnedStudents}</strong></div>
+                <div className="flex justify-between bg-black/30 rounded-xl p-3"><span className="text-gray-400">مجموع إنذارات الطلاب</span><strong className="text-amber-300">{classDetails.totalWarnings}</strong></div>
+              </div>
+            )}
+
+            {isManager && (
+              <div className="border-t border-gray-700 pt-4 space-y-2">
+                <label className="text-xs text-gray-400 block">تغيير معلم الشعبة</label>
+                <select
+                  value={newTeacherId}
+                  onChange={e => setNewTeacherId(e.target.value)}
+                  className="w-full bg-gray-800 text-right p-2 rounded-lg text-white text-sm border border-gray-600"
+                >
+                  {teachers.map(t => (
+                    <option key={t.id} value={t.id}>{getTeacherDisplayName(t)}{t.serialNumber ? ` (#${t.serialNumber})` : ''}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleChangeTeacher}
+                  disabled={savingTeacher || !newTeacherId || newTeacherId === selectedClass.teacherId}
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-bold"
+                >
+                  {savingTeacher ? 'جاري الحفظ...' : 'حفظ المعلم الجديد'}
+                </button>
+              </div>
+            )}
+
+            <button onClick={closeClassDetails} className="w-full bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg text-sm">إغلاق</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

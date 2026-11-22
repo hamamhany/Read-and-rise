@@ -19,7 +19,7 @@ import { createGeneralAnnouncement, updateAnnouncement, deleteAnnouncement } fro
 import { createMessageRequest } from '../../services/messageRequests';
 import {
   validateStudentEligibility, filterClassesForSupervisor, getClassGenderLabel,
-  purgeClassesWithoutSection
+  getAllowedClassGenders, purgeClassesWithoutSection
 } from '../../services/classes';
 import {
   subscribeToPendingStudentChanges, approveStudentChanges, rejectStudentChanges
@@ -672,11 +672,8 @@ const SupervisorPanel = ({ user, onLogout }) => {
   const canPublish = user.canPublishAnnouncements !== false;
 
   const availableClasses = filterClassesForSupervisor(classes, user.gender, classVisibility);
-  const allowedGenders = classVisibility === 'all'
-    ? ['ذكر', 'أنثى', 'مختلط']
-    : user.gender === 'أنثى'
-      ? ['أنثى', 'مختلط']
-      : ['ذكر', 'مختلط'];
+  // قيم جنس الشعبة المخزنة: male / female / mixed (وليست كلمات عربية)
+  const allowedGenders = getAllowedClassGenders(user.gender, classVisibility);
 
   const selectedClassesNames = newStudentClassIds
     .map(id => classes.find(c => c.id === id)?.name)
