@@ -21,14 +21,19 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="اقرآ وارتق" />
 
-    <!-- أيقونة التبويب -->
+    <!-- أيقونة التبويب (favicon) - data URI يعمل دائماً -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='80' fill='%2300D2FF'>⟨▷⟩</text></svg>" />
+
+    <!-- أيقونات PNG للمتصفحات (تبويب + قوائم) -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192x192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512x512.png" />
 
     <!-- ربط ملف المانيفست -->
     <link rel="manifest" href="/manifest.json" />
 
-    <!-- أيقونات Apple (لأجهزة iOS) -->
-    <link rel="apple-touch-icon" href="/icons/icon-192.svg">
+    <!-- أيقونات Apple (لأجهزة iOS) - PNG بدل SVG لأن iOS لا يدعم SVG -->
+    <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192x192.png" />
+    <link rel="apple-touch-icon" sizes="512x512" href="/icons/icon-512x512.png" />
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

@@ -11,7 +11,7 @@ const firebaseConfig = {
   projectId: "read-and-rise-new",
   storageBucket: "read-and-rise-new.firebasestorage.app",
   messagingSenderId: "36140681803",
-  appId: "1:36140681803:web:7ad63562be2a7ba56c5bce",  // ✅ تم التصحيح
+  appId: "1:36140681803:web:7ad63562be2a7ba56c5bce",
   measurementId: "G-YJXD3GHYD2"
 };
 
@@ -24,7 +24,8 @@ messaging.onBackgroundMessage((payload) => {
     payload.notification?.title || 'إشعار جديد',
     {
       body: payload.notification?.body || '',
-      icon: '/logo.png'
+      icon: '/icons/icon-192x192.png',
+      badge: '/icons/icon-192x192.png'
     }
   );
 });

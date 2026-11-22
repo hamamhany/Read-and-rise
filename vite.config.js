@@ -8,6 +8,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      includeAssets: ['icons/icon-192x192.png', 'icons/icon-512x512.png'],
       manifest: {
         name: 'Read and Rise',
         short_name: 'ReadRise',
@@ -16,22 +17,24 @@ export default defineConfig({
         display: 'standalone',
         icons: [
           {
-            src: 'icon-192.svg',
+            src: 'icons/icon-192x192.png',
             sizes: '192x192',
-            type: 'image/svg+xml'
+            type: 'image/png',
+            purpose: 'any'
           },
           {
-            src: 'icon-512.svg',
+            src: 'icons/icon-512x512.png',
             sizes: '512x512',
-            type: 'image/svg+xml'
+            type: 'image/png',
+            purpose: 'any'
           }
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,jsx,tsx}'], // أضفنا jsx و tsx
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,jsx,tsx}'],
         navigateFallbackDenylist: [/^\/api/],
         cleanupOutdatedCaches: true,
-        maximumFileSizeToCacheInBytes: 20 * 1024 * 1024 // رفع الحد إلى 20 ميجابايت
+        maximumFileSizeToCacheInBytes: 20 * 1024 * 1024
       },
       devOptions: {
         enabled: true
@@ -39,7 +42,7 @@ export default defineConfig({
     })
   ],
   resolve: {
-    extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'] // إضافة دعم jsx
+    extensions: ['.js', '.jsx', '.ts', '.tsx', '.json']
   },
   server: {
     port: 3000,
