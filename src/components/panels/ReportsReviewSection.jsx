@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { FaExclamationTriangle, FaEye, FaTimes, FaPaperPlane, FaBan, FaDownload, FaSpinner } from 'react-icons/fa';
 import { db } from '../../firebase';
@@ -27,8 +27,6 @@ const ReportsReviewSection = ({ user }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [hasEverLoaded, setHasEverLoaded] = useState(false);
-  const reportsCountRef = useRef(0);
-  const loadingRef = useRef(false);
 
   // ✅ استعلام بسيط جداً — type فقط (فهرس تلقائي)
   //    الفلترة (reportStatus / claimedBy) من جهة العميل — يتجنب مشاكل الفهارس
@@ -41,7 +39,6 @@ const ReportsReviewSection = ({ user }) => {
       const claimed = snap.docs
         .map(d => ({ id: d.id, ...d.data() }))
         .filter(d => d.reportStatus === 'pending' && d.claimedBy === user.id);
-      reportsCountRef.current = claimed.length;
       setReports(claimed);
     }, (err) => {
       console.warn('reports snapshot error:', err.message);
@@ -49,10 +46,7 @@ const ReportsReviewSection = ({ user }) => {
     return () => unsub();
   }, [user.id]);
 
-  // silent=true: بحث تلقائي في الخلفية بدون رسائل
-  const loadReports = async (silent = false) => {
-    if (loadingRef.current) return;
-    loadingRef.current = true;
+  const loadReports = async () => {
     setIsLoading(true);
     try {
       // ✅ استعلام بسيط — type فقط
@@ -79,7 +73,7 @@ const ReportsReviewSection = ({ user }) => {
 
       let claimedCount = 0;
       for (const d of candidates.slice(0, 10)) {
-        if (reportsCountRef.current + claimedCount >= 5) break;
+        if (claimedCount >= 5) break;
         try {
           await runTransaction(db, async (trans) => {
             const ref = doc(db, 'messageRequests', d.id);
@@ -101,29 +95,18 @@ const ReportsReviewSection = ({ user }) => {
       }
 
       setHasEverLoaded(true);
-      if (!silent) {
-        if (claimedCount === 0) {
-          toast('لا توجد بلاغات جديدة متاحة حالياً.', { icon: 'ℹ️' });
-        } else {
-          toast.success(`تم تحميل ${claimedCount} بلاغ جديد.`);
-        }
+      if (claimedCount === 0) {
+        toast('لا توجد بلاغات جديدة متاحة حالياً.', { icon: 'ℹ️' });
+      } else {
+        toast.success(`تم تحميل ${claimedCount} بلاغ جديد.`);
       }
     } catch (e) {
       console.error(e);
-      if (!silent) toast.error('فشل تحميل البلاغات: ' + e.message);
+      toast.error('فشل تحميل البلاغات: ' + e.message);
     } finally {
-      loadingRef.current = false;
       setIsLoading(false);
     }
   };
-
-  // ✅ بحث تلقائي في الخلفية: عند فتح اللوحة ثم كل دقيقتين
-  useEffect(() => {
-    loadReports(true);
-    const t = setInterval(() => loadReports(true), 2 * 60 * 1000);
-    return () => clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user.id]);
 
   const openReport = (r) => {
     setSelected(r);
@@ -249,8 +232,28 @@ const ReportsReviewSection = ({ user }) => {
     ? getActiveWarnings(selected.targetActiveWarnings || [])
     : [];
 
-  // ✅ تبقى القائمة مخفية تماماً إلا إذا وُجدت بلاغات
-  if (reports.length === 0 && !showModal) return null;
+  if (hasEverLoaded && reports.length === 0) return null;
+
+  if (!hasEverLoaded && reports.length === 0) {
+    return (
+      <div className="bg-gray-800/60 p-6 rounded-2xl border border-red-500/20 text-center">
+        <h3 className="text-xl font-semibold text-red-300 flex items-center gap-2 mb-3 justify-center">
+          <FaExclamationTriangle /> البلاغات المعلّقة
+        </h3>
+        <p className="text-gray-400 text-sm mb-4">
+          لا يتم تحميل البلاغات تلقائياً. اضغط الزر لتحميل حتى 5 بلاغات محجوزة لك (لن يستلمها مشرف آخر لمدة 10 دقائق).
+        </p>
+        <button
+          onClick={loadReports}
+          disabled={isLoading}
+          className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-6 py-3 rounded-xl font-bold inline-flex items-center gap-2"
+        >
+          {isLoading ? <FaSpinner className="animate-spin" /> : <FaDownload />}
+          {isLoading ? 'جاري التحميل...' : 'تحميل البلاغات'}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-gray-800/60 p-6 rounded-2xl border border-red-500/20">
@@ -259,7 +262,7 @@ const ReportsReviewSection = ({ user }) => {
           <FaExclamationTriangle /> بلاغاتك المحجوزة ({reports.length})
         </h3>
         <button
-          onClick={() => loadReports(false)}
+          onClick={loadReports}
           disabled={isLoading}
           className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
         >
