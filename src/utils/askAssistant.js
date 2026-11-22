@@ -94,3 +94,46 @@ export async function askAssistant({
     changePending(ticketId, -1);
   }
 }
+/**
+ * ✅ مراجعة محتوى الإعلان قبل النشر (عبر المساعد الذكي سند)
+ * - يستدعي /api/gemini بوضع المراجعة (mode: 'moderation')
+ * - يعيد { safe, reason, confidence }
+ * - إذا فشل الاتصال: { safe: false, error: true, reason } → يُرسَل للمدير للمراجعة اليدوية
+ */
+export const reviewAnnouncementContent = async (title, body) => {
+  try {
+    const response = await fetch('/api/gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mode: 'moderation',
+        title: title || '',
+        body: body || ''
+      })
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      return {
+        safe: false,
+        error: true,
+        reason: data?.error || `HTTP ${response.status}`,
+        confidence: 0
+      };
+    }
+
+    return {
+      safe: data.safe === true,
+      reason: data.reason || '',
+      confidence: Number(data.confidence) || 0
+    };
+  } catch (e) {
+    return {
+      safe: false,
+      error: true,
+      reason: 'تعذر الاتصال بالمراجعة الآلية: ' + e.message,
+      confidence: 0
+    };
+  }
+};

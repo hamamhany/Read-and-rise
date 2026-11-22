@@ -174,3 +174,19 @@ export const notifySystemManagers = async (title, body, type, relatedId = null) 
     return 0;
   }
 };
+/** ✅ إرسال إشعار لكل مستخدمي النظام (طلاب + معلمين + مشرفين + مديرين) */
+export const sendNotificationToAllUsers = async (title, body, type, relatedId = null) => {
+  try {
+    const roles = ['student', 'teacher', 'supervisor', 'system_manager'];
+    const q = query(collection(db, 'profiles'), where('role', 'in', roles));
+    const snapshot = await getDocs(q);
+    for (const docSnap of snapshot.docs) {
+      await setDoc(doc(collection(db, 'notifications', docSnap.id, 'userNotifications')), {
+        title, body, type, relatedId,
+        createdAt: serverTimestamp(), read: false, readAt: null
+      });
+    }
+  } catch (err) {
+    console.error('Error sending to all users:', err);
+  }
+};

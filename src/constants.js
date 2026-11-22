@@ -223,6 +223,7 @@ export const JITSI_ROOM_NAME = 'readandrise-classroom'; // اسم الغرفة �
 // ✅ الإعلانات المستهدفة (تحديد المستلمين)
 // =========================================================
 export const ANNOUNCEMENT_AUDIENCE = {
+  ALL_SYSTEM: 'all_system',
   ALL_STUDENTS: 'all_students',
   ALL_TEACHERS: 'all_teachers',
   ALL_SUPERVISORS: 'all_supervisors',
@@ -230,6 +231,7 @@ export const ANNOUNCEMENT_AUDIENCE = {
 };
 
 export const ANNOUNCEMENT_AUDIENCE_LABELS = {
+  all_system: 'جميع النظام',
   all_students: 'جميع الطلاب',
   all_teachers: 'جميع المعلمين',
   all_supervisors: 'جميع المشرفين',

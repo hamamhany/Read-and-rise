@@ -13,6 +13,7 @@ import {
   sendNotificationToAllTeachers,
   sendNotificationToAllSupervisors,
   sendNotificationToStudents,
+  sendNotificationToAllUsers,
   notifySystemManagers
 } from '../utils/notifications';
 
@@ -74,6 +75,9 @@ export const createTargetedAnnouncement = async ({
   if (!cleanTitle || !cleanBody) throw new Error('العنوان والمحتوى مطلوبان');
   if (audience === ANNOUNCEMENT_AUDIENCE.CLASSES && (!targetClassIds || targetClassIds.length === 0)) {
     throw new Error('اختر شعبة واحدة على الأقل');
+  }
+  if (audience === ANNOUNCEMENT_AUDIENCE.ALL_SYSTEM && requestedByRole !== 'system_manager') {
+    throw new Error('فقط مدير النظام يمكنه إرسال إعلانات لجميع النظام');
   }
 
   const isAutoApproved = moderationResult.safe === true && !moderationResult.error;
@@ -160,7 +164,9 @@ export const publishAnnouncementToAudience = async (announcementId, data) => {
   const { title, body, audience, targetClassIds } = data;
 
   try {
-    if (audience === ANNOUNCEMENT_AUDIENCE.ALL_STUDENTS) {
+    if (audience === ANNOUNCEMENT_AUDIENCE.ALL_SYSTEM) {
+      await sendNotificationToAllUsers(title, body, 'general_announcement', announcementId);
+    } else if (audience === ANNOUNCEMENT_AUDIENCE.ALL_STUDENTS) {
       await sendNotificationToAllStudents(title, body, 'general_announcement', announcementId);
     } else if (audience === ANNOUNCEMENT_AUDIENCE.ALL_TEACHERS) {
       await sendNotificationToAllTeachers(title, body, 'general_announcement', announcementId);
@@ -289,6 +295,6 @@ export const moderateAnnouncementContent = async (title, body) => {
     return { safe: true, reason: '', confidence: 0 };
   } catch (err) {
     console.warn('Sanad moderation failed:', err);
-    return { safe: false, reason: 'تعذر الاتصال بسانـد — سيُراجع يدوياً', confidence: 0, error: true };
+    return { safe: false, reason: 'تعذر الاتصال بسند — سيُراجع يدوياً', confidence: 0, error: true };
   }
 };
