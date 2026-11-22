@@ -6,7 +6,9 @@ import {
   FaTimesCircle, FaUsers, FaTrashAlt, FaBell, FaPaperPlane,
   FaChalkboardTeacher, FaBroadcastTower, FaHourglassHalf,
   FaBan, FaChevronLeft, FaCopy, FaCheckCircle, FaRedoAlt, FaEye, FaLayerGroup,
-  FaChevronDown, FaChevronUp, FaSyncAlt, FaDownload
+  FaChevronDown, FaChevronUp, FaSyncAlt, FaDownload,
+  FaBullhorn, FaPlus, FaSearch, FaUserGraduate, FaUserTie, FaTimes,
+  FaFolderOpen, FaSpinner, FaUpload, FaClock
 } from 'react-icons/fa';
 import { db } from '../../firebase';
 import {
@@ -18,7 +20,8 @@ import { auth } from '../../services/firebaseAuth';
 import { requestNotificationPermission, setupOnMessageListener } from '../../utils/pushNotifications';
 import { messaging } from '../../firebase';
 import {
-  MESSAGE_REQUEST_TYPE_LABELS, MESSAGE_REQUEST_STATUS, MESSAGE_REQUEST_TYPES
+  MESSAGE_REQUEST_TYPE_LABELS, MESSAGE_REQUEST_STATUS, MESSAGE_REQUEST_TYPES,
+  ANNOUNCEMENT_AUDIENCE, ANNOUNCEMENT_AUDIENCE_LABELS
 } from '../../constants';
 import {
   updateMessageRequestStatus, deleteMessageRequest,
@@ -35,7 +38,10 @@ import {
 } from '../../utils/whatsapp';
 import { deleteUserCompletely } from '../../services/accountDeletion';
 import { updateClassGender, deleteClassById, moveStudentToClass, purgeClassesWithoutSection, setStudentClasses } from '../../services/classes';
-import { approveAnnouncement, rejectAnnouncement } from '../../services/announcements';
+import {
+  approveAnnouncement, rejectAnnouncement,
+  createTargetedAnnouncement, moderateAnnouncementContent
+} from '../../services/announcements';
 import SystemManagerReviewsSection from './SystemManagerReviewsSection';
 import ManagerSupportReviewsSection from './ManagerSupportReviewsSection';
 import SupervisorsManagerModal from './SupervisorsManagerModal';
@@ -44,6 +50,7 @@ import BlacklistModal from './BlacklistModal';
 import SectionsManagerModal from './SectionsManagerModal';
 import CountUp from '../common/CountUp';
 import { useConfirm, usePrompt } from '../common/ConfirmContext';
+import { sanitizeInput, arabicToEnglishNumber } from '../../utils/helpers';
 
 const computeNextGlobalLesson = (allTimes) => {
   const now = new Date();
@@ -113,11 +120,122 @@ const computeActiveLectures = (allTimes) => {
 
 const ACTION_TYPES = ['class_gender_change', 'class_delete', 'student_class_transfer'];
 
+/**
+ * ✅ Modal اختيار الشعب للمدير — قائمة مسطحة مع بحث
+ */
+const ManagerClassPickerModal = ({ isOpen, onClose, selectedIds, onConfirm }) => {
+  const [classes, setClasses] = useState([]);
+  const [sections, setSections] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [tempSelected, setTempSelected] = useState(selectedIds || []);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setTempSelected(selectedIds || []);
+    setLoading(true);
+    Promise.all([
+      getDocs(collection(db, 'classes')),
+      getDocs(collection(db, 'sections'))
+    ]).then(([clsSnap, secSnap]) => {
+      setClasses(clsSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(c => c.sectionId));
+      setSections(secSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setLoading(false);
+    }).catch(() => setLoading(false));
+    // eslint-disable-next-line
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const sectionsMap = Object.fromEntries(sections.map(s => [s.id, s]));
+  const filteredClasses = classes.filter(c => {
+    if (!searchTerm) return true;
+    return (c.name || '').toLowerCase().includes(searchTerm.toLowerCase());
+  }).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
+
+  const toggle = (id) => {
+    setTempSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[80] p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col border border-purple-300 dark:border-purple-500/30" onClick={e => e.stopPropagation()} dir="rtl">
+        <div className="flex justify-between items-center p-5 border-b border-slate-200 dark:border-gray-700">
+          <div>
+            <h3 className="text-xl font-bold text-slate-900 dark:text-white">اختيار الشعب</h3>
+            <p className="text-xs text-slate-500 dark:text-gray-400">{tempSelected.length} شعبة مختارة</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 dark:text-gray-400 dark:hover:text-white text-2xl"><FaTimes /></button>
+        </div>
+
+        <div className="p-4 border-b border-slate-200 dark:border-gray-700">
+          <div className="relative">
+            <FaSearch className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-gray-500 text-sm" />
+            <input
+              type="text"
+              placeholder="بحث عن شعبة..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-slate-50 dark:bg-gray-800 text-right pr-9 pl-3 py-2 border border-slate-200 dark:border-gray-600 rounded-md text-slate-900 dark:text-white text-sm"
+            />
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-1">
+          {loading ? (
+            <div className="text-center py-6">
+              <FaSpinner className="animate-spin text-2xl text-gray-400 mx-auto mb-2" />
+              <p className="text-slate-400 dark:text-gray-500 text-sm">جاري التحميل...</p>
+            </div>
+          ) : filteredClasses.length === 0 ? (
+            <p className="text-center text-slate-400 dark:text-gray-500 py-6">لا توجد شعب مطابقة</p>
+          ) : filteredClasses.map(cls => {
+            const isSelected = tempSelected.includes(cls.id);
+            const sectionName = sectionsMap[cls.sectionId]?.name || '';
+            return (
+              <button
+                key={cls.id}
+                onClick={() => toggle(cls.id)}
+                className={`w-full p-3 rounded-lg border flex items-center gap-3 text-right transition ${
+                  isSelected
+                    ? 'bg-purple-500/15 border-purple-500 dark:bg-purple-500/20'
+                    : 'bg-slate-50 dark:bg-gray-800/60 border-slate-200 dark:border-gray-700 hover:border-purple-400/50'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  readOnly
+                  className="accent-purple-500 pointer-events-none"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-slate-900 dark:text-white font-bold text-sm truncate">{cls.name}</p>
+                  {sectionName && <p className="text-xs text-slate-500 dark:text-gray-400 mt-0.5">{sectionName}</p>}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="p-4 border-t border-slate-200 dark:border-gray-700 flex gap-2">
+          <button onClick={onClose} className="flex-1 bg-slate-200 dark:bg-gray-700 hover:bg-slate-300 dark:hover:bg-gray-600 text-slate-900 dark:text-white py-2 rounded-lg text-sm">إلغاء</button>
+          <button
+            onClick={() => { onConfirm(tempSelected); onClose(); }}
+            disabled={tempSelected.length === 0}
+            className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-bold"
+          >
+            تأكيد ({tempSelected.length})
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const SystemManagerPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
   const prompt = usePrompt();
 
-  // ✅ البيانات المحمّلة بشكل Lazy
   const [messageRequests, setMessageRequests] = useState([]);
   const [pendingAnnouncements, setPendingAnnouncements] = useState([]);
   const [allLessonTimes, setAllLessonTimes] = useState([]);
@@ -125,7 +243,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
   const [activeLecturesCount, setActiveLecturesCount] = useState(0);
   const [liveCountdown, setLiveCountdown] = useState({ d: 0, h: 0, m: 0, s: 0 });
 
-  // ✅ عدادات (getCountFromServer — رخيصة جداً)
   const [studentsCount, setStudentsCount] = useState(0);
   const [supervisorsCount, setSupervisorsCount] = useState(0);
   const [teachersCount, setTeachersCount] = useState(0);
@@ -133,7 +250,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
   const [sectionsCount, setSectionsCount] = useState(0);
   const [pendingCount, setPendingCount] = useState(0);
 
-  // ✅ حالات Lazy Loading لكل قسم
   const [requestsOpen, setRequestsOpen] = useState(false);
   const [requestsLoaded, setRequestsLoaded] = useState(false);
   const [requestsLoading, setRequestsLoading] = useState(false);
@@ -163,7 +279,21 @@ const SystemManagerPanel = ({ user, onLogout }) => {
   const [openRequestModal, setOpenRequestModal] = useState(null);
   const [processingAction, setProcessingAction] = useState(false);
 
-  // ✅ 1) حذف الشعب اليتيمة + جلب عدد الأقسام (رخيص - count فقط)
+  // ✅ إشعار جديد من المدير
+  const [showManagerAnnModal, setShowManagerAnnModal] = useState(false);
+  const [managerAnnTitle, setManagerAnnTitle] = useState('');
+  const [managerAnnBody, setManagerAnnBody] = useState('');
+  const [managerAnnCharCount, setManagerAnnCharCount] = useState(0);
+  const [managerAnnAudience, setManagerAnnAudience] = useState(ANNOUNCEMENT_AUDIENCE.ALL_STUDENTS);
+  const [managerAnnTargetClasses, setManagerAnnTargetClasses] = useState([]);
+  const [managerAnnPublishType, setManagerAnnPublishType] = useState('now');
+  const [managerAnnDelayHours, setManagerAnnDelayHours] = useState('');
+  const [managerAnnDelayMinutes, setManagerAnnDelayMinutes] = useState('');
+  const [managerAnnDelayError, setManagerAnnDelayError] = useState('');
+  const [managerModerating, setManagerModerating] = useState(false);
+  const [showManagerClassPicker, setShowManagerClassPicker] = useState(false);
+
+  // ✅ 1) purge orphan classes + sections count
   useEffect(() => {
     (async () => {
       try {
@@ -174,7 +304,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     })();
   }, []);
 
-  // ✅ 2) تحميل الإشعارات فقط (خفيفة، ضرورية للجرس)
+  // ✅ 2) notifications
   useEffect(() => {
     if (!user) return;
     const notifRef = collection(db, 'notifications', user.id, 'userNotifications');
@@ -187,7 +317,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     return () => unsubscribeNotif();
   }, [user.id]);
 
-  // ✅ 3) setupOnMessageListener
+  // ✅ 3) onMessage listener
   useEffect(() => {
     const unsub = setupOnMessageListener((payload) => {
       toast.custom(() => (
@@ -200,12 +330,12 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     return () => unsub();
   }, []);
 
-  // ✅ 4) cleanup الطلبات القديمة (عملية كتابة - لا تُكلف قراءة)
+  // ✅ 4) cleanup old requests
   useEffect(() => {
     cleanupOldApprovedRequests().catch(err => console.warn('cleanup initial failed:', err));
   }, []);
 
-  // ✅ 5) العدادات الأساسية (getCountFromServer — رخيصة جداً)
+  // ✅ 5) counters
   useEffect(() => {
     (async () => {
       try {
@@ -227,7 +357,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     })();
   }, []);
 
-  // ✅ 6) Lazy: تحميل طلبات الرسائل فقط عند فتح القسم
+  // ✅ 6) Lazy requests
   useEffect(() => {
     if (!requestsOpen) return;
     setRequestsLoading(true);
@@ -243,12 +373,13 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     return () => unsub();
   }, [requestsOpen]);
 
-  // ✅ 7) Lazy: تحميل الإعلانات المعلقة فقط عند فتح القسم
+  // ✅ 7) Lazy announcements (both pending + all for manager to see own)
   useEffect(() => {
     if (!announcementsOpen) return;
-    const q = query(collection(db, 'announcements'), where('status', '==', 'pending_approval'));
+    const q = query(collection(db, 'announcements'), orderBy('createdAt', 'desc'));
     const unsub = onSnapshot(q, (snap) => {
-      setPendingAnnouncements(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setPendingAnnouncements(all.filter(a => a.status === 'pending_approval'));
       setAnnouncementsLoaded(true);
     }, (err) => {
       console.warn('announcements load failed:', err);
@@ -256,7 +387,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     return () => unsub();
   }, [announcementsOpen]);
 
-  // ✅ 8) Lazy: تحميل أوقات الدروس عند الضغط على زر "تحميل"
+  // ✅ 8) Load lessonTimes
   const loadLessonTimes = async () => {
     if (lessonTimesLoaded || loadingLessonTimes) return;
     setLoadingLessonTimes(true);
@@ -276,13 +407,12 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ✅ تحميل أوقات الدروس تلقائياً عند فتح اللوحة (بدون الضغط على زر "تحميل")
   useEffect(() => {
     loadLessonTimes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ 9) الحصة القادمة - فقط بعد التحميل
+  // ✅ 9) Next lesson
   useEffect(() => {
     if (allLessonTimes.length === 0) { setNextGlobalLesson(null); setActiveLecturesCount(0); return; }
     const tick = () => {
@@ -445,7 +575,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
         break;
       case 'student_class_transfer':
         if (Array.isArray(request.payload.finalClassIds)) {
-          // تعديل شعب (حذف/إضافة) — يُطبَّق كاملاً وبشرط بقاء شعبة واحدة على الأقل
           await setStudentClasses(request.payload.studentId, request.payload.finalClassIds);
         } else {
           await moveStudentToClass(request.payload.studentId, request.payload.fromClassId, request.payload.toClassId);
@@ -548,9 +677,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     try {
       await resendRejectedRequest(requestId);
       toast.success('✅ تم إرجاع الطلب لقائمة الانتظار');
-    } catch (err) {
-      toast.error('فشل: ' + err.message);
-    }
+    } catch (err) { toast.error('فشل: ' + err.message); }
   };
 
   const handleDeleteRequest = async (requestId) => {
@@ -562,23 +689,15 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     } catch (err) { toast.error('فشل الحذف: ' + err.message); }
   };
 
+  // ✅ الموافقة على إعلان بانتظار المراجعة — تُنشر لجمهورها حسب audience
   const handleApproveAnnouncement = async (ann) => {
-    const ok = await confirm('نشر الإعلان', `نشر الإعلان "${ann.title}" لجميع الطلاب؟`);
+    const audLabel = ann.audienceLabel || ANNOUNCEMENT_AUDIENCE_LABELS[ann.audience] || 'الجميع';
+    const ok = await confirm('نشر الإعلان', `نشر "${ann.title}" إلى: ${audLabel}؟`);
     if (!ok) return;
     try {
+      // approveAnnouncement يتولى publishAnnouncementToAudience بناءً على audience
       await approveAnnouncement(ann.id, user.id, user.name || 'مدير');
-      const studentsSnap = await getDocs(query(collection(db, 'profiles'), where('role', '==', 'student')));
-      for (const s of studentsSnap.docs) {
-        await setDoc(doc(collection(db, 'notifications', s.id, 'userNotifications')), {
-          title: ann.title,
-          body: ann.body,
-          type: 'general_announcement',
-          relatedId: ann.id,
-          createdAt: serverTimestamp(),
-          read: false
-        });
-      }
-      toast.success('✅ تم نشر الإعلان وإشعار جميع الطلاب');
+      toast.success(`✅ تم نشر الإعلان إلى: ${audLabel}`);
     } catch (e) {
       toast.error('فشل: ' + e.message);
     }
@@ -593,6 +712,68 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     } catch (e) { toast.error('فشل: ' + e.message); }
   };
 
+  // ✅ إنشاء إعلان من المدير (يمر بفحص سند)
+  const handleCreateManagerAnnouncement = async () => {
+    const title = sanitizeInput(managerAnnTitle);
+    const body = sanitizeInput(managerAnnBody);
+    if (!title || !body) { toast.error('يرجى إدخال العنوان والمحتوى.'); return; }
+    if (body.length > 10000) { toast.error('نص الإشعار طويل جداً (الحد الأقصى 10000 حرف).'); return; }
+    if (managerAnnAudience === ANNOUNCEMENT_AUDIENCE.CLASSES && managerAnnTargetClasses.length === 0) {
+      toast.error('اختر شعبة واحدة على الأقل');
+      return;
+    }
+
+    let scheduledFor = null;
+    if (managerAnnPublishType === 'schedule') {
+      const h = parseInt(arabicToEnglishNumber(managerAnnDelayHours));
+      const m = parseInt(arabicToEnglishNumber(managerAnnDelayMinutes));
+      if (isNaN(h) || h < 0 || isNaN(m) || m < 0 || m > 59) {
+        setManagerAnnDelayError('يرجى إدخال ساعات صحيحة (0-24) ودقائق (0-59)');
+        return;
+      }
+      if (h === 0 && m === 0) { setManagerAnnDelayError('يرجى إدخال وقت أكبر من صفر'); return; }
+      if (h > 24) { setManagerAnnDelayError('الحد الأقصى 24 ساعة.'); return; }
+      setManagerAnnDelayError('');
+      scheduledFor = new Date(Date.now() + h * 3600000 + m * 60000);
+    }
+
+    setManagerModerating(true);
+    try {
+      toast.loading('جاري فحص المحتوى بواسطة سند...', { id: 'sanad-mgr' });
+      const moderationResult = await moderateAnnouncementContent(title, body);
+      toast.dismiss('sanad-mgr');
+
+      await createTargetedAnnouncement({
+        title, body, scheduledFor,
+        requestedBy: user.id,
+        requestedByName: user.name || user.username || 'مدير',
+        requestedByRole: 'system_manager',
+        audience: managerAnnAudience,
+        targetClassIds: managerAnnAudience === ANNOUNCEMENT_AUDIENCE.CLASSES ? managerAnnTargetClasses : [],
+        moderationResult
+      });
+
+      if (moderationResult.safe && !moderationResult.error) {
+        toast.success(scheduledFor
+          ? '✅ المحتوى آمن — سيُنشر في الموعد'
+          : '✅ المحتوى آمن — تم النشر');
+      } else {
+        toast.success('✅ تم حفظ الإعلان بانتظار مراجعة');
+      }
+
+      // reset
+      setManagerAnnTitle(''); setManagerAnnBody(''); setManagerAnnCharCount(0);
+      setManagerAnnPublishType('now'); setManagerAnnDelayHours(''); setManagerAnnDelayMinutes('');
+      setManagerAnnDelayError(''); setManagerAnnAudience(ANNOUNCEMENT_AUDIENCE.ALL_STUDENTS);
+      setManagerAnnTargetClasses([]); setShowManagerAnnModal(false);
+    } catch (e) {
+      toast.dismiss('sanad-mgr');
+      toast.error('فشل: ' + e.message);
+    } finally {
+      setManagerModerating(false);
+    }
+  };
+
   const filteredRequests = messageRequests.filter(r => {
     if (r.type === 'report') return false;
     if (requestFilter === 'all') return true;
@@ -600,6 +781,24 @@ const SystemManagerPanel = ({ user, onLogout }) => {
   });
 
   const pad2 = (n) => String(n).padStart(2, '0');
+
+  const getAudienceBadge = (ann) => {
+    const aud = ann.audience || 'all_students';
+    const label = ann.audienceLabel || ANNOUNCEMENT_AUDIENCE_LABELS[aud] || 'الجميع';
+    const icons = { all_students: '👥', all_teachers: '🎓', all_supervisors: '🛡️', classes: '🏫' };
+    const colors = {
+      all_students: 'text-cyan-700 dark:text-cyan-300 bg-cyan-50 dark:bg-cyan-950/40',
+      all_teachers: 'text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40',
+      all_supervisors: 'text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/40',
+      classes: 'text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40'
+    };
+    return (
+      <span className={`text-xs px-2 py-0.5 rounded-full ${colors[aud] || colors.all_students}`}>
+        {icons[aud] || '📢'} {label}
+        {aud === 'classes' && ann.targetClassIds?.length > 0 && ` (${ann.targetClassIds.length})`}
+      </span>
+    );
+  };
 
   if (loading) return <div className="text-center text-slate-500 dark:text-gray-400 p-8">جاري التحميل...</div>;
 
@@ -623,7 +822,25 @@ const SystemManagerPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* ✅ بطاقات العدادات — كلها getCountFromServer (رخصة جداً) */}
+        {/* ✅ بطاقة "إشعار جديد من المدير" */}
+        <div className="bg-gradient-to-br from-purple-50 to-fuchsia-50 dark:from-purple-900/30 dark:to-fuchsia-900/20 p-5 rounded-2xl border-2 border-purple-300 dark:border-purple-500/40">
+          <div className="flex justify-between items-center flex-wrap gap-3">
+            <div>
+              <h3 className="text-xl font-semibold text-purple-800 dark:text-purple-200 flex items-center gap-2">
+                <FaBullhorn /> إشعار جديد
+              </h3>
+              <p className="text-sm text-purple-700 dark:text-purple-300 mt-1">أرسل إعلاناً مستهدفاً (يمر بفحص سند)</p>
+            </div>
+            <button
+              onClick={() => setShowManagerAnnModal(true)}
+              className="bg-purple-600 hover:bg-purple-700 text-white py-2 px-5 rounded-lg font-bold flex items-center gap-2"
+            >
+              <FaPlus /> إشعار جديد
+            </button>
+          </div>
+        </div>
+
+        {/* ✅ عدادات */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-gradient-to-br from-red-100 to-red-50 dark:from-red-900/50 dark:to-red-900/20 p-6 rounded-2xl border border-red-200 dark:border-red-500/30 shadow-xl">
             <div className="flex items-center gap-3 mb-3">
@@ -657,7 +874,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
             <p className="text-4xl font-black text-slate-900 dark:text-white"><CountUp value={teachersCount} /></p>
           </div>
 
-          {/* ✅ بطاقة المحاضرات النشطة — تعتمد على lessonTimes المحملة lazily */}
           <div className="bg-gradient-to-br from-purple-100 to-purple-50 dark:from-purple-900/50 dark:to-purple-900/20 p-6 rounded-2xl border border-purple-200 dark:border-purple-500/30 shadow-xl">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-fuchsia-600 flex items-center justify-center shadow-lg"><FaBroadcastTower className="text-white text-xl" /></div>
@@ -666,28 +882,19 @@ const SystemManagerPanel = ({ user, onLogout }) => {
             {lessonTimesLoaded ? (
               <p className="text-4xl font-black text-slate-900 dark:text-white"><CountUp value={activeLecturesCount} /></p>
             ) : (
-              <button
-                onClick={loadLessonTimes}
-                disabled={loadingLessonTimes}
-                className="text-sm text-purple-700 dark:text-purple-300 hover:text-purple-900 dark:hover:text-purple-100 font-bold inline-flex items-center gap-2 disabled:opacity-50"
-              >
+              <button onClick={loadLessonTimes} disabled={loadingLessonTimes} className="text-sm text-purple-700 dark:text-purple-300 hover:text-purple-900 dark:hover:text-purple-100 font-bold inline-flex items-center gap-2 disabled:opacity-50">
                 {loadingLessonTimes ? 'جاري التحميل...' : <><FaDownload /> تحميل</>}
               </button>
             )}
           </div>
 
-          {/* ✅ بطاقة الحصة القادمة — lazy */}
           <div className="bg-gradient-to-br from-amber-100 to-amber-50 dark:from-amber-900/50 dark:to-amber-900/20 p-6 rounded-2xl border border-amber-200 dark:border-amber-500/30 shadow-xl">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500 to-yellow-600 flex items-center justify-center shadow-lg"><FaHourglassHalf className="text-white text-xl" /></div>
               <div><p className="text-xs text-amber-600 dark:text-amber-300 uppercase tracking-widest font-semibold">الحصة القادمة</p></div>
             </div>
             {!lessonTimesLoaded ? (
-              <button
-                onClick={loadLessonTimes}
-                disabled={loadingLessonTimes}
-                className="text-sm text-amber-700 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-100 font-bold inline-flex items-center gap-2 disabled:opacity-50"
-              >
+              <button onClick={loadLessonTimes} disabled={loadingLessonTimes} className="text-sm text-amber-700 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-100 font-bold inline-flex items-center gap-2 disabled:opacity-50">
                 {loadingLessonTimes ? 'جاري التحميل...' : <><FaDownload /> تحميل</>}
               </button>
             ) : nextGlobalLesson ? (
@@ -699,12 +906,9 @@ const SystemManagerPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* ✅ الإعلانات المعلقة — Lazy (تُحمَّل عند فتح القسم) */}
+        {/* ✅ إعلانات بانتظار الموافقة */}
         <div className="bg-blue-50 dark:bg-gray-800/60 rounded-2xl border border-blue-200 dark:border-blue-500/30 overflow-hidden">
-          <button
-            onClick={() => setAnnouncementsOpen(v => !v)}
-            className="w-full p-6 flex justify-between items-center gap-3 hover:bg-blue-100/50 dark:hover:bg-gray-700/30 transition text-right"
-          >
+          <button onClick={() => setAnnouncementsOpen(v => !v)} className="w-full p-6 flex justify-between items-center gap-3 hover:bg-blue-100/50 dark:hover:bg-gray-700/30 transition text-right">
             <h3 className="text-xl font-semibold text-blue-700 dark:text-blue-300 flex items-center gap-2">
               <FaBroadcastTower /> إعلانات بانتظار موافقتك {announcementsLoaded && `(${pendingAnnouncements.length})`}
             </h3>
@@ -723,14 +927,25 @@ const SystemManagerPanel = ({ user, onLogout }) => {
               ) : pendingAnnouncements.length === 0 ? (
                 <p className="text-slate-500 dark:text-gray-400 text-center py-4">لا توجد إعلانات معلقة.</p>
               ) : (
-                <div className="space-y-3 max-h-80 overflow-y-auto">
+                <div className="space-y-3 max-h-96 overflow-y-auto">
                   {pendingAnnouncements.map(ann => (
                     <div key={ann.id} className="p-4 bg-white dark:bg-black/30 rounded-xl border border-blue-200 dark:border-blue-500/20">
                       <div className="flex justify-between items-start gap-2 flex-wrap mb-2">
                         <div className="flex-1 min-w-0">
-                          <p className="text-slate-900 dark:text-white font-bold">{ann.title}</p>
-                          <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">من: {ann.requestedByName || 'مشرف'}</p>
-                          <p className="text-sm text-slate-700 dark:text-gray-300 mt-2 line-clamp-3 whitespace-pre-wrap">{ann.body}</p>
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <p className="text-slate-900 dark:text-white font-bold">{ann.title}</p>
+                            {getAudienceBadge(ann)}
+                          </div>
+                          <p className="text-xs text-slate-500 dark:text-gray-400">
+                            من: {ann.requestedByName || 'مشرف'}
+                            {ann.requestedByRole && ` (${ann.requestedByRole === 'teacher' ? 'معلم' : ann.requestedByRole === 'supervisor' ? 'مشرف' : 'مدير'})`}
+                          </p>
+                          <p className="text-sm text-slate-700 dark:text-gray-300 mt-2 whitespace-pre-wrap">{ann.body}</p>
+                          {ann.moderation?.reason && (
+                            <p className="text-xs text-amber-700 dark:text-amber-300 bg-amber-500/10 px-2 py-1 rounded mt-2 inline-block border border-amber-300 dark:border-amber-500/30">
+                              ⚠️ سبب الإيقاف: {ann.moderation.reason}
+                            </p>
+                          )}
                         </div>
                       </div>
                       <div className="flex gap-2 mt-2 flex-wrap">
@@ -794,12 +1009,9 @@ const SystemManagerPanel = ({ user, onLogout }) => {
           </button>
         </div>
 
-        {/* ✅ طلبات الرسائل — Lazy (تُحمَّل عند فتح القسم) */}
+        {/* ✅ طلبات الرسائل — Lazy */}
         <div className="bg-amber-50 dark:bg-gray-800/60 rounded-2xl border border-amber-200 dark:border-amber-500/30 overflow-hidden">
-          <button
-            onClick={() => setRequestsOpen(v => !v)}
-            className="w-full p-6 flex justify-between items-center gap-3 hover:bg-amber-100/50 dark:hover:bg-gray-700/30 transition text-right"
-          >
+          <button onClick={() => setRequestsOpen(v => !v)} className="w-full p-6 flex justify-between items-center gap-3 hover:bg-amber-100/50 dark:hover:bg-gray-700/30 transition text-right">
             <div className="text-right">
               <h3 className="text-xl font-semibold text-amber-700 dark:text-amber-300 flex items-center gap-2">
                 <FaPaperPlane /> طلبات الرسائل والإجراءات {requestsLoaded && `(${filteredRequests.length})`}
@@ -915,6 +1127,126 @@ const SystemManagerPanel = ({ user, onLogout }) => {
         </div>
       </div>
 
+      {/* ✅ Modal إنشاء إشعار من المدير */}
+      {showManagerAnnModal && (
+        <div className="fixed inset-0 bg-black/60 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowManagerAnnModal(false)}>
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl max-w-2xl w-full border border-purple-300 dark:border-purple-500/30 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold text-purple-700 dark:text-purple-300">
+                <FaBullhorn className="inline-block me-2" /> إشعار جديد من المدير
+              </h3>
+              <button onClick={() => setShowManagerAnnModal(false)} className="text-slate-400 hover:text-slate-700 dark:text-gray-400 dark:hover:text-white text-2xl"><FaTimes /></button>
+            </div>
+
+            <div className="bg-purple-500/10 border border-purple-300 dark:border-purple-500/20 rounded-lg p-2 text-xs text-purple-800 dark:text-purple-200 mb-3">
+              ℹ️ يتم فحص المحتوى تلقائياً بواسطة <strong>سند</strong> قبل الإرسال.
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-slate-700 dark:text-gray-300 mb-1">العنوان <span className="text-red-700 dark:text-red-400">*</span></label>
+                <input type="text" className="w-full bg-white dark:bg-gray-800 text-right p-2 border border-slate-200 dark:border-gray-600 rounded-md text-slate-900 dark:text-white" value={managerAnnTitle} onChange={(e) => setManagerAnnTitle(e.target.value)} />
+              </div>
+
+              <div>
+                <label className="block text-sm text-slate-700 dark:text-gray-300 mb-1">المحتوى <span className="text-red-700 dark:text-red-400">*</span></label>
+                <textarea className="w-full bg-white dark:bg-gray-800 text-right p-2 border border-slate-200 dark:border-gray-600 rounded-md text-slate-900 dark:text-white resize-none h-32" value={managerAnnBody} onChange={(e) => { if (e.target.value.length <= 10000) { setManagerAnnBody(e.target.value); setManagerAnnCharCount(e.target.value.length); } else { toast.error('الحد الأقصى 10000 حرف'); } }} />
+                <div className="text-xs text-slate-500 dark:text-gray-400 mt-1 text-left">{managerAnnCharCount} / 10000</div>
+              </div>
+
+              <div>
+                <label className="block text-sm text-slate-700 dark:text-gray-300 mb-2">الجمهور المستهدف</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { value: ANNOUNCEMENT_AUDIENCE.ALL_STUDENTS, icon: FaUserGraduate, label: 'جميع الطلاب' },
+                    { value: ANNOUNCEMENT_AUDIENCE.ALL_TEACHERS, icon: FaChalkboardTeacher, label: 'جميع المعلمين' },
+                    { value: ANNOUNCEMENT_AUDIENCE.ALL_SUPERVISORS, icon: FaUserTie, label: 'جميع المشرفين' },
+                    { value: ANNOUNCEMENT_AUDIENCE.CLASSES, icon: FaLayerGroup, label: 'شعب محددة' }
+                  ].map(opt => {
+                    const Icon = opt.icon;
+                    const selected = managerAnnAudience === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setManagerAnnAudience(opt.value)}
+                        className={`p-3 rounded-lg border-2 transition flex items-center gap-2 text-sm font-bold ${
+                          selected
+                            ? 'border-purple-500 bg-purple-500/15 text-purple-800 dark:text-purple-200'
+                            : 'border-slate-200 dark:border-gray-700 text-slate-600 dark:text-gray-300 hover:border-purple-400/50'
+                        }`}
+                      >
+                        <Icon /> {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {managerAnnAudience === ANNOUNCEMENT_AUDIENCE.CLASSES && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setShowManagerClassPicker(true)}
+                    className="w-full py-2.5 rounded-md font-bold flex items-center justify-center gap-2 border-2 border-dashed border-purple-400 dark:border-purple-500/60 text-purple-700 dark:text-purple-300 bg-purple-50/50 dark:bg-purple-500/5 hover:bg-purple-100/70 dark:hover:bg-purple-500/15 transition"
+                  >
+                    <FaFolderOpen /> اختيار الشعب
+                    {managerAnnTargetClasses.length > 0 && (
+                      <span className="bg-purple-600 text-white text-xs font-bold px-2 py-0.5 rounded-full min-w-[22px]">{managerAnnTargetClasses.length}</span>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-4 items-center">
+                <label className="flex items-center gap-2 text-slate-700 dark:text-gray-300">
+                  <input type="radio" value="now" checked={managerAnnPublishType === 'now'} onChange={() => setManagerAnnPublishType('now')} className="accent-purple-500" />
+                  <FaUpload className="inline-block me-1" /> نشر فوراً
+                </label>
+                <label className="flex items-center gap-2 text-slate-700 dark:text-gray-300">
+                  <input type="radio" value="schedule" checked={managerAnnPublishType === 'schedule'} onChange={() => setManagerAnnPublishType('schedule')} className="accent-purple-500" />
+                  <FaClock className="inline-block me-1" /> نشر مجدول
+                </label>
+              </div>
+
+              {managerAnnPublishType === 'schedule' && (
+                <div className="flex flex-wrap gap-4 items-center">
+                  <div><label className="block text-sm text-slate-700 dark:text-gray-300">ساعات</label><input type="text" inputMode="numeric" className="w-20 bg-white dark:bg-gray-800 text-center p-2 border border-slate-200 dark:border-gray-600 rounded-md text-slate-900 dark:text-white" value={managerAnnDelayHours} onChange={(e) => setManagerAnnDelayHours(arabicToEnglishNumber(e.target.value))} placeholder="0" /></div>
+                  <div><label className="block text-sm text-slate-700 dark:text-gray-300">دقائق</label><input type="text" inputMode="numeric" className="w-20 bg-white dark:bg-gray-800 text-center p-2 border border-slate-200 dark:border-gray-600 rounded-md text-slate-900 dark:text-white" value={managerAnnDelayMinutes} onChange={(e) => setManagerAnnDelayMinutes(arabicToEnglishNumber(e.target.value))} placeholder="0" /></div>
+                  {managerAnnDelayError && <p className="text-red-700 dark:text-red-400 text-xs">{managerAnnDelayError}</p>}
+                  <p className="text-xs text-slate-500 dark:text-gray-400">(الحد الأقصى 24 ساعة)</p>
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button
+                  onClick={handleCreateManagerAnnouncement}
+                  disabled={managerModerating}
+                  className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 px-6 py-2 rounded-md text-white font-bold flex items-center gap-2"
+                >
+                  {managerModerating ? <><FaSpinner className="animate-spin" /> جاري الفحص...</> : 'فحص وإرسال'}
+                </button>
+                <button onClick={() => {
+                  setShowManagerAnnModal(false);
+                  setManagerAnnTitle(''); setManagerAnnBody(''); setManagerAnnCharCount(0);
+                  setManagerAnnPublishType('now'); setManagerAnnDelayHours(''); setManagerAnnDelayMinutes('');
+                  setManagerAnnDelayError(''); setManagerAnnAudience(ANNOUNCEMENT_AUDIENCE.ALL_STUDENTS);
+                  setManagerAnnTargetClasses([]);
+                }} className="bg-slate-200 dark:bg-gray-600 hover:bg-slate-300 dark:hover:bg-gray-700 px-6 py-2 rounded-md text-slate-900 dark:text-white">إلغاء</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Class picker for manager announcement */}
+      <ManagerClassPickerModal
+        isOpen={showManagerClassPicker}
+        onClose={() => setShowManagerClassPicker(false)}
+        selectedIds={managerAnnTargetClasses}
+        onConfirm={(ids) => setManagerAnnTargetClasses(ids)}
+      />
+
       {openRequestModal && (
         <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm z-[70] flex items-center justify-center p-4" onClick={() => !processingAction && setOpenRequestModal(null)}>
           <div className="bg-white dark:bg-gray-900 rounded-3xl w-full max-w-lg max-h-[90vh] flex flex-col border border-amber-300 dark:border-amber-500/30 shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -935,7 +1267,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
                     <button
                       onClick={() => { navigator.clipboard.writeText(openRequestModal.targetPhone); toast.success('تم نسخ الرقم'); }}
                       className="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 p-1.5 rounded bg-cyan-500/10 hover:bg-cyan-500/20"
-                      title="نسخ الرقم"
                     >
                       <FaCopy />
                     </button>
@@ -949,7 +1280,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
                   <button
                     onClick={() => { navigator.clipboard.writeText(buildMessageText(openRequestModal)); toast.success('تم نسخ الرسالة'); }}
                     className="text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 p-1.5 rounded bg-amber-500/10 hover:bg-amber-500/20"
-                    title="نسخ الرسالة"
                   >
                     <FaCopy />
                   </button>
@@ -960,29 +1290,18 @@ const SystemManagerPanel = ({ user, onLogout }) => {
               </div>
 
               <div className="bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 rounded-lg p-2 text-xs text-blue-700 dark:text-blue-200">
-                ℹ️ اضغط "إرسال" لفتح واتساب. بعد إتمام الإرسال فعلياً، اضغط "تم الإرسال" لتنفيذ الإجراء النهائي وحذف الطلب.
+                ℹ️ اضغط "إرسال" لفتح واتساب. بعد الإتمام، اضغط "تم الإرسال" لتنفيذ الإجراء وحذف الطلب.
               </div>
             </div>
 
             <div className="p-4 border-t border-gray-200 dark:border-gray-700 space-y-2">
-              <button
-                onClick={() => handleSendWhatsApp(openRequestModal)}
-                className="w-full bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-xl font-bold flex items-center justify-center gap-2"
-              >
+              <button onClick={() => handleSendWhatsApp(openRequestModal)} className="w-full bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-xl font-bold flex items-center justify-center gap-2">
                 <FaWhatsapp /> إرسال (فتح واتساب)
               </button>
-              <button
-                onClick={() => handleMarkSent(openRequestModal)}
-                disabled={processingAction}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-50"
-              >
+              <button onClick={() => handleMarkSent(openRequestModal)} disabled={processingAction} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-50">
                 <FaCheckCircle /> {processingAction ? 'جاري التنفيذ...' : 'تم الإرسال (تنفيذ وحذف الطلب)'}
               </button>
-              <button
-                onClick={() => handleRejectRequest(openRequestModal.id)}
-                disabled={processingAction}
-                className="w-full bg-red-600 hover:bg-red-700 text-white py-2 rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-50"
-              >
+              <button onClick={() => handleRejectRequest(openRequestModal.id)} disabled={processingAction} className="w-full bg-red-600 hover:bg-red-700 text-white py-2 rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-50">
                 <FaTimesCircle /> رفض
               </button>
             </div>

@@ -12,7 +12,8 @@ import { useConfirm } from '../common/ConfirmContext';
 import { fetchClassNames, arabicToEnglishNumber } from '../../utils/helpers';
 import {
   getClassGenderLabel, filterClassesForSupervisor, getTeacherDisplayName,
-  getEligibleClassesForStudent
+  getEligibleClassesForStudent, createStudentClassChangeRequest,
+  PENDING_CLASS_CHANGE_STATUS
 } from '../../services/classes';
 import { createMessageRequest } from '../../services/messageRequests';
 import { MESSAGE_REQUEST_TYPES } from '../../constants';
@@ -30,7 +31,6 @@ const StudentSerialManagerModal = ({ isOpen, onClose, user }) => {
   const [classNamesMap, setClassNamesMap] = useState({});
   const [loadingStudent, setLoadingStudent] = useState(false);
 
-  // ✅ تعديل شعب الطالب (حذف / إضافة) ثم حفظ كطلب للمدير
   const [draftClasses, setDraftClasses] = useState([]);
   const [showAddClassModal, setShowAddClassModal] = useState(false);
   const [eligibleClassesForAdd, setEligibleClassesForAdd] = useState([]);
@@ -107,7 +107,6 @@ const StudentSerialManagerModal = ({ isOpen, onClose, user }) => {
     return draftClasses.some(id => !studentClasses.includes(id));
   })();
 
-  // ✅ فتح نافذة إضافة شعبة (الشعب المتوافقة مع الطالب والمسموحة للمشرف)
   const openAddClassModal = async () => {
     setSelectedNewClassId('');
     try {
@@ -134,39 +133,26 @@ const StudentSerialManagerModal = ({ isOpen, onClose, user }) => {
     setSelectedNewClassId('');
   };
 
-  // ✅ حفظ التعديلات — طلب واحد للمدير (يُنفَّذ كاملاً عند الموافقة)
+  // ✅ حفظ التعديلات — طلب يروح للطالب للموافقة (بدل المدير)
   const saveClassChanges = async () => {
     if (draftClasses.length === 0) return toast.error('يجب أن يبقى للطالب شعبة واحدة على الأقل');
     if (!hasChanges) return;
-    const removed = studentClasses.filter(id => !draftClasses.includes(id));
-    const added = draftClasses.filter(id => !studentClasses.includes(id));
-    const names = (ids) => ids.map(id => classNamesMap[id] || 'شعبة').join('، ');
+
+    if (internalStudent.pendingClassChangeStatus === PENDING_CLASS_CHANGE_STATUS.PENDING) {
+      toast.error('يوجد طلب تعديل شعب معلّق بالفعل لهذا الطالب — انتظر ردّه');
+      return;
+    }
 
     setSavingClasses(true);
     try {
-      await createMessageRequest({
-        type: MESSAGE_REQUEST_TYPES.STUDENT_CLASS_TRANSFER,
-        targetType: 'student',
-        targetId: internalStudent.id,
-        targetName: internalStudent.name || '',
-        targetPhone: internalStudent.phone || '',
-        targetClass: names(studentClasses) || 'غير محدد',
+      await createStudentClassChangeRequest({
+        studentId: internalStudent.id,
+        fromClassIds: studentClasses,
+        toClassIds: draftClasses,
         requestedBy: user.id,
-        requestedByName: user.name || user.username || 'مشرف',
-        payload: {
-          studentId: internalStudent.id,
-          studentName: internalStudent.name,
-          serialNumber: internalStudent.serialNumber || '',
-          finalClassIds: draftClasses,
-          removedClassIds: removed,
-          addedClassIds: added,
-          fromClassId: removed[0] || null,
-          toClassId: added[0] || null,
-          fromClassName: names(removed) || '—',
-          toClassName: names(added) || '—'
-        }
+        requestedByName: user.name || user.username || 'مشرف'
       });
-      toast.success('✅ تم إرسال طلب تعديل الشعب للمدير للموافقة');
+      toast.success('✅ تم إرسال طلب تعديل الشعب للطالب للموافقة. سيظهر له إشعار فوراً.');
       setStudentClasses(draftClasses);
     } catch (e) {
       toast.error('فشل: ' + e.message);
@@ -175,7 +161,7 @@ const StudentSerialManagerModal = ({ isOpen, onClose, user }) => {
     }
   };
 
-  // ✅ إعادة تعيين — إنشاء طلب فقط (بدون تنفيذ فوري)
+  // ✅ إعادة تعيين الباسورد — تبقى للمدير (لم تتغير)
   const handleResetInfo = async () => {
     const ok = await confirm(
       'إعادة تعيين معلومات الطالب',
@@ -234,7 +220,7 @@ const StudentSerialManagerModal = ({ isOpen, onClose, user }) => {
             </div>
             <div>
               <h3 className="text-xl font-bold text-white">إدارة الطلاب بالرقم التسلسلي</h3>
-              <p className="text-xs text-gray-400">بحث بالرقم التسلسلي — جميع الإجراءات تحتاج موافقة المدير</p>
+              <p className="text-xs text-gray-400">بحث بالرقم التسلسلي — تعديلات الشعب تحتاج موافقة الطالب</p>
             </div>
           </div>
           <button onClick={handleClose} className="text-gray-400 hover:text-white text-2xl"><FaTimes /></button>
@@ -251,7 +237,7 @@ const StudentSerialManagerModal = ({ isOpen, onClose, user }) => {
                   value={serialInput}
                   onChange={e => setSerialInput(arabicToEnglishNumber(e.target.value))}
                   onKeyDown={e => { if (e.key === 'Enter' && !searching) searchStudents(); }}
-                  className="flex-1 min-w-[200px] bg-gray-800 text-center p-3 border border-gray-600 rounded-lg text-white font-mono text-lg tracking-wider"
+                  className="flex-1 min-w-[220px] bg-gray-800 text-center p-3 border border-gray-600 rounded-lg text-white font-mono text-2xl tracking-[0.35em] tabular-nums placeholder:text-base placeholder:tracking-normal placeholder:font-sans placeholder:text-gray-500"
                   dir="ltr"
                 />
                 <button
@@ -290,7 +276,7 @@ const StudentSerialManagerModal = ({ isOpen, onClose, user }) => {
                           <span>{r.age || '?'} سنة</span>
                         </div>
                       </div>
-                      <span className="font-mono text-lg text-cyan-200 tracking-widest" dir="ltr">
+                      <span className="font-mono text-xl text-cyan-200 tracking-widest tabular-nums" dir="ltr">
                         {r.serialNumber}
                       </span>
                     </button>
@@ -319,13 +305,12 @@ const StudentSerialManagerModal = ({ isOpen, onClose, user }) => {
                 </div>
               ) : (
                 <>
-                  {/* ✅ معلومات الطالب */}
                   <div className="bg-gray-800/60 p-4 rounded-xl border border-gray-700">
                     <p className="text-sm text-white font-bold mb-2">{internalStudent.name || 'بدون اسم'}</p>
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div>
                         <p className="text-gray-400">الرقم التسلسلي</p>
-                        <p className="text-cyan-200 font-mono" dir="ltr">{internalStudent.serialNumber || '—'}</p>
+                        <p className="text-cyan-200 font-mono text-base tracking-widest tabular-nums" dir="ltr">{internalStudent.serialNumber || '—'}</p>
                       </div>
                       <div>
                         <p className="text-gray-400">الجنس</p>
@@ -344,13 +329,19 @@ const StudentSerialManagerModal = ({ isOpen, onClose, user }) => {
                     </div>
                   </div>
 
-                  {/* ✅ الشعب: حذف / إضافة / حفظ */}
+                  {internalStudent.pendingClassChangeStatus === PENDING_CLASS_CHANGE_STATUS.PENDING && (
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-xs text-amber-200">
+                      ⏳ يوجد طلب تعديل شعب معلّق بانتظار رد الطالب. لا يمكن إرسال طلب جديد حتى يرد.
+                    </div>
+                  )}
+
                   <div className="bg-gray-800/60 p-4 rounded-xl border border-gray-700">
                     <div className="flex items-center justify-between mb-2">
                       <p className="text-xs text-gray-400">الشعب المسجل بها الطالب:</p>
                       <button
                         onClick={openAddClassModal}
-                        className="text-xs bg-cyan-600/30 hover:bg-cyan-600/50 text-cyan-200 px-2 py-1 rounded whitespace-nowrap flex items-center gap-1"
+                        disabled={internalStudent.pendingClassChangeStatus === PENDING_CLASS_CHANGE_STATUS.PENDING}
+                        className="text-xs bg-cyan-600/30 hover:bg-cyan-600/50 disabled:opacity-40 disabled:cursor-not-allowed text-cyan-200 px-2 py-1 rounded whitespace-nowrap flex items-center gap-1"
                       >
                         <FaPlus /> إضافة شعبة
                       </button>
@@ -377,11 +368,16 @@ const StudentSerialManagerModal = ({ isOpen, onClose, user }) => {
                     )}
                     <button
                       onClick={saveClassChanges}
-                      disabled={savingClasses || draftClasses.length === 0 || !hasChanges}
+                      disabled={
+                        savingClasses ||
+                        draftClasses.length === 0 ||
+                        !hasChanges ||
+                        internalStudent.pendingClassChangeStatus === PENDING_CLASS_CHANGE_STATUS.PENDING
+                      }
                       className="w-full mt-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2"
                     >
                       {savingClasses ? <FaSpinner className="animate-spin" /> : <FaSave />}
-                      {savingClasses ? 'جاري الإرسال...' : 'حفظ (طلب للمدير)'}
+                      {savingClasses ? 'جاري الإرسال...' : 'إرسال طلب للطالب للموافقة'}
                     </button>
                   </div>
 
@@ -401,7 +397,6 @@ const StudentSerialManagerModal = ({ isOpen, onClose, user }) => {
           </>
         )}
 
-        {/* ✅ نافذة إضافة شعبة للطالب */}
         {showAddClassModal && (
           <div className="fixed inset-0 bg-black/90 z-[80] flex items-center justify-center p-4" onClick={(e) => { e.stopPropagation(); setShowAddClassModal(false); }}>
             <div className="bg-gray-900 p-6 rounded-2xl max-w-md w-full border border-cyan-500/30 max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>

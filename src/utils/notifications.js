@@ -110,3 +110,67 @@ export const sendExamManualCorrectionAlertToManager = async (managerId, count, e
     console.error('Error sending manual correction alert to manager:', err);
   }
 };
+// =========================================================
+// ✅ إشعارات مستهدفة (إعلانات المدير/المشرف/المعلم)
+// =========================================================
+
+/** جلب معرّفات جميع مديري النظام */
+export const getSystemManagerIds = async () => {
+  try {
+    const q = query(collection(db, 'profiles'), where('role', '==', 'system_manager'));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => d.id);
+  } catch (e) {
+    console.warn('getSystemManagerIds failed:', e.message);
+    return [];
+  }
+};
+
+/** إرسال إشعار لجميع المعلمين */
+export const sendNotificationToAllTeachers = async (title, body, type, relatedId = null) => {
+  try {
+    const q = query(collection(db, 'profiles'), where('role', '==', 'teacher'));
+    const snapshot = await getDocs(q);
+    for (const docSnap of snapshot.docs) {
+      await setDoc(doc(collection(db, 'notifications', docSnap.id, 'userNotifications')), {
+        title, body, type, relatedId,
+        createdAt: serverTimestamp(), read: false, readAt: null
+      });
+    }
+  } catch (err) {
+    console.error('Error sending to all teachers:', err);
+  }
+};
+
+/** إرسال إشعار لجميع المشرفين */
+export const sendNotificationToAllSupervisors = async (title, body, type, relatedId = null) => {
+  try {
+    const q = query(collection(db, 'profiles'), where('role', '==', 'supervisor'));
+    const snapshot = await getDocs(q);
+    for (const docSnap of snapshot.docs) {
+      await setDoc(doc(collection(db, 'notifications', docSnap.id, 'userNotifications')), {
+        title, body, type, relatedId,
+        createdAt: serverTimestamp(), read: false, readAt: null
+      });
+    }
+  } catch (err) {
+    console.error('Error sending to all supervisors:', err);
+  }
+};
+
+/** إشعار جميع مديري النظام (يُستخدم في كل الحالات: تم الإرسال أو بانتظار المراجعة) */
+export const notifySystemManagers = async (title, body, type, relatedId = null) => {
+  try {
+    const managerIds = await getSystemManagerIds();
+    for (const id of managerIds) {
+      await setDoc(doc(collection(db, 'notifications', id, 'userNotifications')), {
+        title, body, type, relatedId,
+        createdAt: serverTimestamp(), read: false, readAt: null
+      });
+    }
+    return managerIds.length;
+  } catch (err) {
+    console.error('notifySystemManagers failed:', err);
+    return 0;
+  }
+};

@@ -5,7 +5,8 @@ import {
   FaSpinner, FaUpload, FaClock, FaUsers, FaGraduationCap, FaUserCog,
   FaChalkboardTeacher, FaLayerGroup, FaFolder, FaFolderOpen, FaChevronLeft,
   FaHome, FaTimes, FaCheckSquare, FaSquare, FaCheckCircle, FaTimesCircle,
-  FaClipboardCheck, FaArrowLeft
+  FaClipboardCheck, FaArrowLeft, FaUserCheck, FaUserGraduate,
+  FaUserTie, FaLayerGroup as FaLayers
 } from 'react-icons/fa';
 import { db, secondaryAuth, messaging } from '../../firebase';
 import {
@@ -15,7 +16,10 @@ import {
 } from 'firebase/firestore';
 import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
-import { createGeneralAnnouncement, updateAnnouncement, deleteAnnouncement } from '../../services/announcements';
+import {
+  createGeneralAnnouncement, updateAnnouncement, deleteAnnouncement,
+  createTargetedAnnouncement, moderateAnnouncementContent
+} from '../../services/announcements';
 import { createMessageRequest } from '../../services/messageRequests';
 import {
   validateStudentEligibility, filterClassesForSupervisor, getClassGenderLabel,
@@ -24,7 +28,10 @@ import {
 import {
   subscribeToPendingStudentChanges, approveStudentChanges, rejectStudentChanges
 } from '../../services/supervisor';
-import { ANNOUNCEMENTS_LIMIT, MESSAGE_REQUEST_TYPES, PENDING_FIELD_LABELS } from '../../constants';
+import {
+  ANNOUNCEMENTS_LIMIT, MESSAGE_REQUEST_TYPES, PENDING_FIELD_LABELS,
+  ANNOUNCEMENT_AUDIENCE, ANNOUNCEMENT_AUDIENCE_LABELS
+} from '../../constants';
 import {
   sanitizeInput, arabicToEnglishNumber, generateId, fetchClassNames,
   formatSerial, generateNextSerialNumber
@@ -39,7 +46,7 @@ import TeachersManagerModal from './TeachersManagerModal';
 import { useConfirm, usePrompt } from '../common/ConfirmContext';
 
 /**
- * ✅ شاشة اختيار الشعب (شجرة) — تُستخدم عند إضافة طالب
+ * ✅ شاشة اختيار الشعب (شجرة) — تُستخدم عند إضافة طالب أو تحديد جمهور إعلان
  */
 const ClassTreePickerModal = ({ isOpen, onClose, sections, classes, selectedIds, onConfirm, allowedGenders }) => {
   const [currentId, setCurrentId] = useState(null);
@@ -82,9 +89,7 @@ const ClassTreePickerModal = ({ isOpen, onClose, sections, classes, selectedIds,
     );
   };
 
-  const selectedInfo = tempSelected
-    .map(id => classes.find(c => c.id === id))
-    .filter(Boolean);
+  const selectedInfo = tempSelected.map(id => classes.find(c => c.id === id)).filter(Boolean);
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] p-4" onClick={onClose}>
@@ -96,7 +101,7 @@ const ClassTreePickerModal = ({ isOpen, onClose, sections, classes, selectedIds,
             </div>
             <div className="min-w-0">
               <h3 className="text-xl font-bold text-white">اختيار الشعب</h3>
-              <p className="text-xs text-gray-400">{tempSelected.length} شعبة مختارة — اضغط على الشعبة لتحديدها</p>
+              <p className="text-xs text-gray-400">{tempSelected.length} شعبة مختارة</p>
             </div>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl flex-shrink-0"><FaTimes /></button>
@@ -111,19 +116,15 @@ const ClassTreePickerModal = ({ isOpen, onClose, sections, classes, selectedIds,
               {breadcrumb.map((node, i) => (
                 <React.Fragment key={node.id}>
                   <FaChevronLeft className="text-gray-600 text-xs" />
-                  <button
-                    onClick={() => setCurrentId(node.id)}
-                    className={`px-2 py-1 rounded-lg ${i === breadcrumb.length - 1 ? 'text-blue-300 font-bold' : 'text-gray-300 hover:bg-gray-800'}`}
-                  >
+                  <button onClick={() => setCurrentId(node.id)}
+                    className={`px-2 py-1 rounded-lg ${i === breadcrumb.length - 1 ? 'text-blue-300 font-bold' : 'text-gray-300 hover:bg-gray-800'}`}>
                     {node.name}
                   </button>
                 </React.Fragment>
               ))}
             </>
           ) : (
-            <span className="inline-flex items-center gap-1 px-2 py-1 text-blue-300 font-bold">
-              <FaHome /> الرئيسية
-            </span>
+            <span className="inline-flex items-center gap-1 px-2 py-1 text-blue-300 font-bold"><FaHome /> الرئيسية</span>
           )}
         </div>
 
@@ -133,11 +134,8 @@ const ClassTreePickerModal = ({ isOpen, onClose, sections, classes, selectedIds,
               <p className="text-xs text-gray-500 mb-2">{current ? 'الأقسام الفرعية' : 'الأقسام الرئيسية'} ({subSections.length})</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {subSections.map(sec => (
-                  <button
-                    key={sec.id}
-                    onClick={() => setCurrentId(sec.id)}
-                    className="text-right p-3 bg-black/30 hover:bg-black/50 rounded-xl border border-gray-700 hover:border-blue-500/50 transition flex items-center gap-3"
-                  >
+                  <button key={sec.id} onClick={() => setCurrentId(sec.id)}
+                    className="text-right p-3 bg-black/30 hover:bg-black/50 rounded-xl border border-gray-700 hover:border-blue-500/50 transition flex items-center gap-3">
                     <FaFolder className="text-amber-400 text-2xl flex-shrink-0" />
                     <span className="flex-1 text-white text-sm truncate">{sec.name}</span>
                     <FaChevronLeft className="text-gray-500 flex-shrink-0" />
@@ -149,18 +147,15 @@ const ClassTreePickerModal = ({ isOpen, onClose, sections, classes, selectedIds,
 
           {current && currentClasses.length > 0 && (
             <div>
-              <p className="text-xs text-gray-500 mb-2">الشعب ({currentClasses.length}) — اضغط لتحديد/إلغاء</p>
+              <p className="text-xs text-gray-500 mb-2">الشعب ({currentClasses.length})</p>
               <div className="space-y-2">
                 {currentClasses.map(cls => {
                   const isSelected = tempSelected.includes(cls.id);
                   return (
-                    <button
-                      key={cls.id}
-                      onClick={() => toggleClass(cls.id)}
+                    <button key={cls.id} onClick={() => toggleClass(cls.id)}
                       className={`w-full p-3 rounded-xl border flex items-center gap-3 transition ${
                         isSelected ? 'bg-blue-500/20 border-blue-500' : 'bg-black/30 border-gray-700 hover:border-blue-500/40'
-                      }`}
-                    >
+                      }`}>
                       {isSelected
                         ? <FaCheckSquare className="text-blue-400 text-xl flex-shrink-0" />
                         : <FaSquare className="text-gray-500 text-xl flex-shrink-0" />}
@@ -189,20 +184,15 @@ const ClassTreePickerModal = ({ isOpen, onClose, sections, classes, selectedIds,
               <p className="text-xs text-gray-400 mb-1">الشعب المختارة ({selectedInfo.length}):</p>
               <div className="flex flex-wrap gap-1">
                 {selectedInfo.map(c => (
-                  <span key={c.id} className="text-xs bg-blue-500/20 text-blue-200 px-2 py-1 rounded border border-blue-500/30">
-                    {c.name}
-                  </span>
+                  <span key={c.id} className="text-xs bg-blue-500/20 text-blue-200 px-2 py-1 rounded border border-blue-500/30">{c.name}</span>
                 ))}
               </div>
             </div>
           )}
           <div className="flex gap-2">
             <button onClick={onClose} className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg text-sm">إلغاء</button>
-            <button
-              onClick={() => { onConfirm(tempSelected); onClose(); }}
-              disabled={tempSelected.length === 0}
-              className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-bold"
-            >
+            <button onClick={() => { onConfirm(tempSelected); onClose(); }} disabled={tempSelected.length === 0}
+              className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-bold">
               تأكيد ({tempSelected.length})
             </button>
           </div>
@@ -237,6 +227,12 @@ const SupervisorPanel = ({ user, onLogout }) => {
   const [delayError, setDelayError] = useState('');
   const [editingAnnouncementId, setEditingAnnouncementId] = useState(null);
 
+  // ✅ جديد: اختيار الجمهور + سند
+  const [announcementAudience, setAnnouncementAudience] = useState(ANNOUNCEMENT_AUDIENCE.ALL_STUDENTS);
+  const [announcementTargetClasses, setAnnouncementTargetClasses] = useState([]);
+  const [showAnnouncementClassPicker, setShowAnnouncementClassPicker] = useState(false);
+  const [moderating, setModerating] = useState(false);
+
   const [classes, setClasses] = useState([]);
   const [classVisibility, setClassVisibility] = useState('all');
   const [sections, setSections] = useState([]);
@@ -249,7 +245,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
   const [studentLoading, setStudentLoading] = useState(false);
   const [showClassPicker, setShowClassPicker] = useState(false);
 
-  // ✅ NEW: تعديلات بانتظار الموافقة
   const [pendingChanges, setPendingChanges] = useState([]);
   const [showPendingChangesModal, setShowPendingChangesModal] = useState(false);
   const [selectedPendingChange, setSelectedPendingChange] = useState(null);
@@ -262,7 +257,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
 
   const [permissions, setPermissions] = useState({ reports: true, resets: true, support: true });
   const [counts, setCounts] = useState({ reports: 0, resets: 0, support: 0 });
-  // ✅ تبويب البلاغات يبقى مخفياً إلا إذا وُجدت بلاغات متاحة لهذا المشرف (أو محجوزة له)
   const [hasReportsForMe, setHasReportsForMe] = useState(false);
 
   useEffect(() => {
@@ -295,7 +289,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
         const status = data.reportStatus || data.status || 'pending';
         return status === 'pending';
       });
-      // متاح لي: محجوز لي، أو غير محجوز، أو انتهى حجز مشرف آخر
       const mine = pending.filter(d => {
         const data = d.data();
         if (!data.claimedBy || data.claimedBy === user.id) return true;
@@ -315,7 +308,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
     return () => unsub();
   }, [permissions.resets]);
 
-  // ✅ NEW: اشتراك في تعديلات الطلاب المعلقة
   useEffect(() => {
     const unsub = subscribeToPendingStudentChanges(setPendingChanges);
     return () => unsub();
@@ -413,11 +405,17 @@ const SupervisorPanel = ({ user, onLogout }) => {
     return () => unsubscribeNotif();
   }, [user]);
 
+  // ✅ إنشاء إعلان — يستخدم createTargetedAnnouncement + فحص سند
   const handleCreateAnnouncement = async () => {
     const title = sanitizeInput(announcementTitle);
     const body = sanitizeInput(announcementBody);
     if (!title || !body) { toast.error('يرجى إدخال العنوان والمحتوى.'); return; }
     if (body.length > 10000) { toast.error('نص الإشعار طويل جداً (الحد الأقصى 10000 حرف).'); return; }
+
+    if (!editingAnnouncementId && announcementAudience === ANNOUNCEMENT_AUDIENCE.CLASSES && announcementTargetClasses.length === 0) {
+      toast.error('اختر شعبة واحدة على الأقل للجمهور "شعب محددة"');
+      return;
+    }
 
     let scheduledFor = null;
     if (publishType === 'schedule') {
@@ -430,23 +428,53 @@ const SupervisorPanel = ({ user, onLogout }) => {
       if (hoursNum === 0 && minutesNum === 0) { setDelayError('يرجى إدخال وقت أكبر من صفر'); return; }
       if (hoursNum > 24) { setDelayError('الحد الأقصى للتأخير هو 24 ساعة.'); return; }
       setDelayError('');
-      const now = new Date();
-      scheduledFor = new Date(now.getTime() + hoursNum * 3600000 + minutesNum * 60000);
+      scheduledFor = new Date(Date.now() + hoursNum * 3600000 + minutesNum * 60000);
     }
 
+    setModerating(true);
     try {
       if (editingAnnouncementId) {
-        const updates = { title, body, scheduledFor: scheduledFor || null, status: 'pending_approval', updatedAt: serverTimestamp() };
+        const updates = {
+          title, body, scheduledFor: scheduledFor || null,
+          status: 'pending_approval', updatedAt: serverTimestamp()
+        };
         await updateAnnouncement(editingAnnouncementId, updates);
         toast.success('تم تحديث الإعلان. سيراجعه المدير قبل النشر.');
       } else {
-        await createGeneralAnnouncement(title, body, scheduledFor, user.id, user.name || user.username || 'مشرف');
-        toast.success('✅ تم إرسال الإعلان للمدير للموافقة قبل النشر.');
+        toast.loading('جاري فحص المحتوى بواسطة سند...', { id: 'sanad' });
+        const moderationResult = await moderateAnnouncementContent(title, body);
+        toast.dismiss('sanad');
+
+        await createTargetedAnnouncement({
+          title, body, scheduledFor,
+          requestedBy: user.id,
+          requestedByName: user.name || user.username || 'مشرف',
+          requestedByRole: 'supervisor',
+          audience: announcementAudience,
+          targetClassIds: announcementAudience === ANNOUNCEMENT_AUDIENCE.CLASSES ? announcementTargetClasses : [],
+          moderationResult
+        });
+
+        if (moderationResult.safe && !moderationResult.error) {
+          toast.success(scheduledFor
+            ? '✅ المحتوى آمن — سيُنشر في الموعد المحدد'
+            : '✅ المحتوى آمن — تم النشر');
+        } else {
+          toast.success('✅ تم إرسال الإعلان للمدير للمراجعة');
+        }
       }
+      // reset
       setAnnouncementTitle(''); setAnnouncementBody(''); setCharCount(0);
       setPublishType('now'); setDelayHours(''); setDelayMinutes('');
       setDelayError(''); setEditingAnnouncementId(null); setShowAnnouncementModal(false);
-    } catch (err) { toast.error('فشل حفظ الإعلان: ' + err.message); }
+      setAnnouncementAudience(ANNOUNCEMENT_AUDIENCE.ALL_STUDENTS);
+      setAnnouncementTargetClasses([]);
+    } catch (err) {
+      toast.dismiss('sanad');
+      toast.error('فشل حفظ الإعلان: ' + err.message);
+    } finally {
+      setModerating(false);
+    }
   };
 
   const handleEditAnnouncement = (item) => {
@@ -454,6 +482,8 @@ const SupervisorPanel = ({ user, onLogout }) => {
     setAnnouncementTitle(item.title);
     setAnnouncementBody(item.body);
     setCharCount(item.body.length);
+    setAnnouncementAudience(item.audience || ANNOUNCEMENT_AUDIENCE.ALL_STUDENTS);
+    setAnnouncementTargetClasses(item.targetClassIds || []);
     if (item.status === 'scheduled' && item.scheduledFor) {
       setPublishType('schedule');
       const scheduled = new Date(item.scheduledFor.seconds * 1000);
@@ -502,7 +532,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
     setNotificationIdsAtOpen([]);
   };
 
-  // ✅ NEW: موافقة على تعديلات طالب
   const handleApproveChanges = async () => {
     if (!selectedPendingChange) return;
     const ok = await confirm('الموافقة على التعديلات', `سيتم تطبيق تعديلات الطالب "${selectedPendingChange.name}" على ملفه. متابعة؟`);
@@ -520,17 +549,11 @@ const SupervisorPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ✅ NEW: رفض تعديلات طالب
   const handleRejectChanges = async () => {
     if (!selectedPendingChange) return;
     setProcessingChange(true);
     try {
-      await rejectStudentChanges(
-        selectedPendingChange.id,
-        rejectionReason.trim(),
-        user.id,
-        user.name || user.username || 'مشرف'
-      );
+      await rejectStudentChanges(selectedPendingChange.id, rejectionReason.trim(), user.id, user.name || user.username || 'مشرف');
       toast.success('تم رفض التعديلات وإبلاغ الطالب');
       setSelectedPendingChange(null);
       setRejectionReason('');
@@ -587,16 +610,11 @@ const SupervisorPanel = ({ user, onLogout }) => {
 
     setStudentLoading(true);
     try {
-      const classDocs = await Promise.all(
-        newStudentClassIds.map(id => getDoc(doc(db, 'classes', id)))
-      );
+      const classDocs = await Promise.all(newStudentClassIds.map(id => getDoc(doc(db, 'classes', id))));
       for (const classDoc of classDocs) {
         if (!classDoc.exists()) continue;
         const classData = classDoc.data();
-        const result = validateStudentEligibility(
-          { gender: sanitizedGender, age: parseInt(sanitizedAge) },
-          classData
-        );
+        const result = validateStudentEligibility({ gender: sanitizedGender, age: parseInt(sanitizedAge) }, classData);
         if (!result.ok) {
           toast.error(`الشعبة "${classData.name}": ${result.reason}`, { duration: 8000 });
           setStudentLoading(false);
@@ -626,12 +644,9 @@ const SupervisorPanel = ({ user, onLogout }) => {
             newUsername = `knight${currentNum}`;
             email = `${newUsername}@readandrise.com`;
             attempts++;
-          } else {
-            throw error;
-          }
+          } else { throw error; }
         }
       }
-
       if (!userCredential) throw new Error('تعذر إيجاد اسم مستخدم فريد.');
 
       const firebaseUser = userCredential.user;
@@ -642,8 +657,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
       await setDoc(doc(db, 'profiles', newId), {
         email, username: newUsername, name: sanitizedName, gender: sanitizedGender,
         age: ageNum, phone: normalizedPhone, classIds: newStudentClassIds, role: 'student',
-        serialNumber,
-        country: '',
+        serialNumber, country: '',
         isFrozen: false, infoVerified: false, isProfileComplete: false,
         pendingChanges: null, pendingChangesStatus: null,
         reviewResult: null, reviewExpiry: null,
@@ -666,7 +680,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
         payload: { username: newUsername, password: tempPassword, age: ageNum, gender: sanitizedGender, serialNumber }
       });
 
-      toast.success(`✅ تم إنشاء حساب الطالب بنجاح باسم: ${newUsername} — التسلسلي: ${serialNumber}`);
+      toast.success(`✅ تم إنشاء حساب الطالب باسم: ${newUsername} — التسلسلي: ${serialNumber}`);
       setNewStudentName(''); setNewStudentGender(''); setNewStudentAge('');
       setNewStudentPhone(''); setNewStudentClassIds([]);
       setShowAddStudentModal(false);
@@ -690,6 +704,29 @@ const SupervisorPanel = ({ user, onLogout }) => {
     .map(id => classes.find(c => c.id === id)?.name)
     .filter(Boolean);
 
+  const getAudienceBadge = (item) => {
+    const aud = item.audience || 'all_students';
+    const label = item.audienceLabel || ANNOUNCEMENT_AUDIENCE_LABELS[aud] || 'الجميع';
+    const icons = {
+      all_students: '👥',
+      all_teachers: '🎓',
+      all_supervisors: '🛡️',
+      classes: '🏫'
+    };
+    const colors = {
+      all_students: 'text-cyan-700 dark:text-cyan-300 bg-cyan-50 dark:bg-cyan-950/40',
+      all_teachers: 'text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40',
+      all_supervisors: 'text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/40',
+      classes: 'text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40'
+    };
+    return (
+      <span className={`text-xs px-2 py-0.5 rounded-full ${colors[aud] || colors.all_students}`}>
+        {icons[aud] || '📢'} {label}
+        {aud === 'classes' && item.targetClassIds?.length > 0 && ` (${item.targetClassIds.length})`}
+      </span>
+    );
+  };
+
   const getAnnouncementStatusBadge = (item) => {
     if (item.status === 'pending_approval') {
       return <span className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full">⏳ بانتظار موافقة المدير</span>;
@@ -703,7 +740,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
     return null;
   };
 
-  // بيانات التعديل المحدد للعرض
   const renderPendingFields = (student) => {
     if (!student?.pendingChanges) return null;
     const entries = Object.entries(student.pendingChanges).filter(
@@ -744,7 +780,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* ✅ NEW: تعديلات بانتظار الموافقة */}
         {pendingChanges.length > 0 && (
           <div className="bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/10 p-6 rounded-2xl border-2 border-amber-400 dark:border-amber-500/40">
             <div className="flex justify-between items-center flex-wrap gap-3">
@@ -754,10 +789,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
                 </h3>
                 <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">طلاب عدّلوا بياناتهم وينتظرون قرارك</p>
               </div>
-              <button
-                onClick={() => setShowPendingChangesModal(true)}
-                className="bg-amber-600 hover:bg-amber-700 text-white py-2 px-5 rounded-lg font-bold flex items-center gap-2"
-              >
+              <button onClick={() => setShowPendingChangesModal(true)} className="bg-amber-600 hover:bg-amber-700 text-white py-2 px-5 rounded-lg font-bold flex items-center gap-2">
                 مراجعة التعديلات
               </button>
             </div>
@@ -769,12 +801,9 @@ const SupervisorPanel = ({ user, onLogout }) => {
             <h3 className="text-xl font-semibold text-blue-800 dark:text-blue-200 flex items-center gap-2">
               <FaUsers /> إدارة الطلاب
             </h3>
-            <p className="text-sm text-slate-500 dark:text-gray-400 mt-1">يمكنك إضافة حسابات الطلاب الجدد من هنا .</p>
+            <p className="text-sm text-slate-500 dark:text-gray-400 mt-1">يمكنك إضافة حسابات الطلاب الجدد من هنا.</p>
           </div>
-          <button
-            onClick={() => setShowAddStudentModal(true)}
-            className="btn-primary bg-blue-600 hover:bg-blue-700 py-2 px-6 rounded-md text-white font-bold"
-          >
+          <button onClick={() => setShowAddStudentModal(true)} className="btn-primary bg-blue-600 hover:bg-blue-700 py-2 px-6 rounded-md text-white font-bold">
             <FaPlus className="inline-block me-2" /> إضافة طالب جديد
           </button>
         </div>
@@ -784,33 +813,21 @@ const SupervisorPanel = ({ user, onLogout }) => {
             <FaGraduationCap /> الشعب والمعلمين
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <button
-              onClick={() => setShowClassesManager(true)}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2"
-            >
+            <button onClick={() => setShowClassesManager(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2">
               <FaLayerGroup /> إدارة الشعب والأقسام
             </button>
-            <button
-              onClick={() => setShowTeachersManager(true)}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2"
-            >
+            <button onClick={() => setShowTeachersManager(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2">
               <FaChalkboardTeacher /> إضافة معلم جديد
             </button>
-            <button
-              onClick={() => setShowSerialManager(true)}
-              className="bg-cyan-600 hover:bg-cyan-700 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2"
-            >
+            <button onClick={() => setShowSerialManager(true)} className="bg-cyan-600 hover:bg-cyan-700 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2">
               <FaUserCog /> إدارة الطلاب بالرقم التسلسلي
             </button>
           </div>
         </div>
 
         {permissions.reports && hasReportsForMe && <ReportsReviewSection user={user} />}
-
         <ReviewVotingSection user={user} />
-
         {permissions.resets && counts.resets > 0 && <ResetRequestsSection user={user} />}
-
         {permissions.support && <SupportTicketsSection user={user} />}
 
         {canPublish && (
@@ -823,7 +840,10 @@ const SupervisorPanel = ({ user, onLogout }) => {
                 onClick={() => {
                   setEditingAnnouncementId(null); setAnnouncementTitle(''); setAnnouncementBody('');
                   setCharCount(0); setPublishType('now'); setDelayHours(''); setDelayMinutes('');
-                  setDelayError(''); setShowAnnouncementModal(true);
+                  setDelayError('');
+                  setAnnouncementAudience(ANNOUNCEMENT_AUDIENCE.ALL_STUDENTS);
+                  setAnnouncementTargetClasses([]);
+                  setShowAnnouncementModal(true);
                 }}
                 className="btn-primary bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-md text-sm"
               >
@@ -831,7 +851,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
               </button>
             </div>
             <div className="bg-amber-500/10 border border-amber-300 dark:border-amber-500/20 rounded-lg p-2 text-xs text-amber-800 dark:text-amber-200 mb-3">
-              ℹ️ جميع الإعلانات الجديدة تُرسل للمدير للموافقة قبل النشر.
+              ℹ️ يتم فحص المحتوى تلقائياً بواسطة <strong>سند</strong>. إن كان آمناً يُنشر فوراً، وإلا يُرسل للمدير.
             </div>
             {announcements.length === 0 ? (
               <p className="text-slate-500 dark:text-gray-400 text-center py-4">لا توجد إشعارات حالياً.</p>
@@ -842,6 +862,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
                     <div className="flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-slate-900 dark:text-white font-medium">{item.title}</span>
+                        {getAudienceBadge(item)}
                         {getAnnouncementStatusBadge(item)}
                       </div>
                       <div className="text-xs text-slate-500 dark:text-gray-400 mt-1">
@@ -865,7 +886,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
         )}
       </div>
 
-      {/* ✅ NEW: Modal — قائمة التعديلات المعلقة */}
       {showPendingChangesModal && (
         <div className="fixed inset-0 bg-black/60 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => { setShowPendingChangesModal(false); setSelectedPendingChange(null); setRejectionReason(''); }}>
           <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl max-w-2xl w-full border border-amber-300 dark:border-amber-500/30 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -875,22 +895,15 @@ const SupervisorPanel = ({ user, onLogout }) => {
               </h3>
               <button onClick={() => { setShowPendingChangesModal(false); setSelectedPendingChange(null); setRejectionReason(''); }} className="text-slate-500 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white text-2xl"><FaTimes /></button>
             </div>
-
             {!selectedPendingChange ? (
               <div className="space-y-3">
                 {pendingChanges.length === 0 ? (
                   <p className="text-slate-500 dark:text-gray-400 text-center py-6">لا توجد تعديلات معلقة.</p>
                 ) : pendingChanges.map(s => (
-                  <button
-                    key={s.id}
-                    onClick={() => setSelectedPendingChange(s)}
-                    className="w-full p-4 bg-slate-50 dark:bg-black/30 rounded-xl border border-slate-200 dark:border-gray-700 hover:bg-slate-100 dark:hover:bg-gray-800/60 transition text-right flex justify-between items-center gap-3"
-                  >
+                  <button key={s.id} onClick={() => setSelectedPendingChange(s)} className="w-full p-4 bg-slate-50 dark:bg-black/30 rounded-xl border border-slate-200 dark:border-gray-700 hover:bg-slate-100 dark:hover:bg-gray-800/60 transition text-right flex justify-between items-center gap-3">
                     <div className="flex-1 min-w-0">
                       <p className="text-slate-900 dark:text-white font-bold text-sm">{s.name || 'بدون اسم'}</p>
-                      <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">
-                        الرقم التسلسلي: <span dir="ltr">{s.serialNumber || '—'}</span>
-                      </p>
+                      <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">الرقم التسلسلي: <span dir="ltr">{s.serialNumber || '—'}</span></p>
                       <p className="text-[11px] text-amber-700 dark:text-amber-300 mt-1">
                         {Object.keys(s.pendingChanges || {}).filter(k => !['submittedAt', 'submittedBy', 'submittedByName'].includes(k)).length} تعديل
                       </p>
@@ -901,53 +914,27 @@ const SupervisorPanel = ({ user, onLogout }) => {
               </div>
             ) : (
               <div className="space-y-4">
-                <button
-                  onClick={() => { setSelectedPendingChange(null); setRejectionReason(''); }}
-                  className="text-sm text-slate-500 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white inline-flex items-center gap-1"
-                >
+                <button onClick={() => { setSelectedPendingChange(null); setRejectionReason(''); }} className="text-sm text-slate-500 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white inline-flex items-center gap-1">
                   <FaArrowLeft className="rotate-180" /> رجوع للقائمة
                 </button>
-
                 <div className="bg-slate-50 dark:bg-gray-800/60 p-4 rounded-xl border border-slate-200 dark:border-gray-700">
                   <p className="text-slate-900 dark:text-white font-bold mb-1">{selectedPendingChange.name || 'بدون اسم'}</p>
-                  <p className="text-xs text-slate-500 dark:text-gray-400">
-                    الرقم التسلسلي: <span dir="ltr">{selectedPendingChange.serialNumber || '—'}</span>
-                  </p>
-                  <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">
-                    الجنس: {selectedPendingChange.gender || '—'} • العمر: {selectedPendingChange.age || '—'}
-                  </p>
+                  <p className="text-xs text-slate-500 dark:text-gray-400">الرقم التسلسلي: <span dir="ltr">{selectedPendingChange.serialNumber || '—'}</span></p>
+                  <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">الجنس: {selectedPendingChange.gender || '—'} • العمر: {selectedPendingChange.age || '—'}</p>
                 </div>
-
                 <div>
                   <h4 className="text-sm font-bold text-slate-700 dark:text-gray-300 mb-2">التعديلات المطلوبة:</h4>
-                  <div className="space-y-2">
-                    {renderPendingFields(selectedPendingChange)}
-                  </div>
+                  <div className="space-y-2">{renderPendingFields(selectedPendingChange)}</div>
                 </div>
-
                 <div>
-                  <label className="text-sm text-slate-700 dark:text-gray-300 block mb-1">سبب الرفض (اختياري — سيُرسل للطالب):</label>
-                  <textarea
-                    className="w-full bg-white dark:bg-gray-800 text-right p-2 border border-slate-200 dark:border-gray-600 rounded-md text-slate-900 dark:text-white resize-none h-20 text-sm"
-                    value={rejectionReason}
-                    onChange={(e) => setRejectionReason(e.target.value)}
-                    placeholder="اتركه فارغاً للموافقة، أو اكتب سبب الرفض..."
-                  />
+                  <label className="text-sm text-slate-700 dark:text-gray-300 block mb-1">سبب الرفض (اختياري):</label>
+                  <textarea className="w-full bg-white dark:bg-gray-800 text-right p-2 border border-slate-200 dark:border-gray-600 rounded-md text-slate-900 dark:text-white resize-none h-20 text-sm" value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value)} placeholder="اتركه فارغاً للموافقة..." />
                 </div>
-
                 <div className="flex gap-2 flex-wrap">
-                  <button
-                    onClick={handleApproveChanges}
-                    disabled={processingChange}
-                    className="flex-1 min-w-[150px] bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2"
-                  >
+                  <button onClick={handleApproveChanges} disabled={processingChange} className="flex-1 min-w-[150px] bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2">
                     <FaCheckCircle /> {processingChange ? '...' : 'الموافقة وتطبيق'}
                   </button>
-                  <button
-                    onClick={handleRejectChanges}
-                    disabled={processingChange}
-                    className="flex-1 min-w-[150px] bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2"
-                  >
+                  <button onClick={handleRejectChanges} disabled={processingChange} className="flex-1 min-w-[150px] bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2">
                     <FaTimesCircle /> {processingChange ? '...' : 'رفض التعديلات'}
                   </button>
                 </div>
@@ -957,7 +944,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* نموذج إضافة طالب */}
       {showAddStudentModal && (
         <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowAddStudentModal(false)}>
           <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-blue-300 dark:border-blue-500/30 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -974,13 +960,19 @@ const SupervisorPanel = ({ user, onLogout }) => {
 
               <div>
                 <label className="text-xs text-slate-500 dark:text-gray-400 mb-1 block">الشعب الدراسية *</label>
+
+                {/* ✅ زر اختيار الشعب — تصميم مختلف (outline + badge) */}
                 <button
                   type="button"
                   onClick={() => setShowClassPicker(true)}
-                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-md font-bold flex items-center justify-center gap-2"
+                  className="w-full py-2.5 rounded-md font-bold flex items-center justify-center gap-2 border-2 border-dashed border-indigo-400 dark:border-indigo-500/60 text-indigo-700 dark:text-indigo-300 bg-indigo-50/50 dark:bg-indigo-500/5 hover:bg-indigo-100/70 dark:hover:bg-indigo-500/15 transition"
                 >
-                  <FaLayerGroup /> اختيار الشعب ({newStudentClassIds.length})
+                  <FaFolderOpen /> اختيار الشعب
+                  {newStudentClassIds.length > 0 && (
+                    <span className="bg-indigo-600 text-white text-xs font-bold px-2 py-0.5 rounded-full min-w-[22px]">{newStudentClassIds.length}</span>
+                  )}
                 </button>
+
                 {selectedClassesNames.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1">
                     {selectedClassesNames.map((name, i) => (
@@ -1005,7 +997,10 @@ const SupervisorPanel = ({ user, onLogout }) => {
               <h3 className="text-xl font-bold text-purple-700 dark:text-purple-300">{selectedAnnouncement.title}</h3>
               <button onClick={() => setShowDetailsModal(false)} className="text-slate-500 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white text-2xl">✕</button>
             </div>
-            <div className="mb-3">{getAnnouncementStatusBadge(selectedAnnouncement)}</div>
+            <div className="mb-3 flex flex-wrap gap-2">
+              {getAudienceBadge(selectedAnnouncement)}
+              {getAnnouncementStatusBadge(selectedAnnouncement)}
+            </div>
             <div className="text-slate-700 dark:text-gray-300 whitespace-pre-wrap break-words max-h-96 overflow-y-auto">{selectedAnnouncement.body}</div>
           </div>
         </div>
@@ -1013,31 +1008,92 @@ const SupervisorPanel = ({ user, onLogout }) => {
 
       {showAnnouncementModal && (
         <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowAnnouncementModal(false)}>
-          <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl max-w-2xl w-full border border-yellow-300 dark:border-yellow-500/30" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-semibold text-yellow-700 dark:text-yellow-300 mb-4"><FaBullhorn className="inline-block me-2" /> {editingAnnouncementId ? 'تعديل الإشعار' : 'إشعار جديد'}</h3>
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl max-w-2xl w-full border border-yellow-300 dark:border-yellow-500/30 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-semibold text-yellow-700 dark:text-yellow-300 mb-4">
+              <FaBullhorn className="inline-block me-2" /> {editingAnnouncementId ? 'تعديل الإعلان' : 'إشعار جديد'}
+            </h3>
+
             <div className="bg-amber-500/10 border border-amber-300 dark:border-amber-500/20 rounded-lg p-2 text-xs text-amber-800 dark:text-amber-200 mb-3">
-              ℹ️ سيُرسل الإعلان إلى المدير للموافقة قبل النشر.
+              ℹ️ يتم فحص المحتوى تلقائياً بواسطة <strong>سند</strong> قبل الإرسال.
             </div>
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm text-slate-700 dark:text-gray-300 mb-1">العنوان <span className="text-red-700 dark:text-red-400">*</span></label>
                 <input type="text" className="w-full bg-white dark:bg-gray-800 text-right p-2 border border-slate-200 dark:border-gray-600 rounded-md text-slate-900 dark:text-white" value={announcementTitle} onChange={(e) => setAnnouncementTitle(e.target.value)} required />
               </div>
+
               <div>
                 <label className="block text-sm text-slate-700 dark:text-gray-300 mb-1">المحتوى <span className="text-red-700 dark:text-red-400">*</span></label>
-                <textarea className="w-full bg-white dark:bg-gray-800 text-right p-2 border border-slate-200 dark:border-gray-600 rounded-md text-slate-900 dark:text-white resize-none h-40" value={announcementBody} onChange={(e) => { if (e.target.value.length <= 10000) { setAnnouncementBody(e.target.value); setCharCount(e.target.value.length); } else { toast.error('الحد الأقصى 10000 حرف'); } }} required />
-                <div className="text-xs text-slate-500 dark:text-gray-400 mt-1 text-left">{charCount} / 10000 حرف</div>
+                <textarea className="w-full bg-white dark:bg-gray-800 text-right p-2 border border-slate-200 dark:border-gray-600 rounded-md text-slate-900 dark:text-white resize-none h-32" value={announcementBody} onChange={(e) => { if (e.target.value.length <= 10000) { setAnnouncementBody(e.target.value); setCharCount(e.target.value.length); } else { toast.error('الحد الأقصى 10000 حرف'); } }} required />
+                <div className="text-xs text-slate-500 dark:text-gray-400 mt-1 text-left">{charCount} / 10000</div>
               </div>
+
+              {/* ✅ اختيار الجمهور */}
+              <div>
+                <label className="block text-sm text-slate-700 dark:text-gray-300 mb-2">الجمهور المستهدف</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { value: ANNOUNCEMENT_AUDIENCE.ALL_STUDENTS, icon: FaUserGraduate, label: 'جميع الطلاب', color: 'cyan' },
+                    { value: ANNOUNCEMENT_AUDIENCE.ALL_TEACHERS, icon: FaChalkboardTeacher, label: 'جميع المعلمين', color: 'indigo' },
+                    { value: ANNOUNCEMENT_AUDIENCE.ALL_SUPERVISORS, icon: FaUserTie, label: 'جميع المشرفين', color: 'teal' },
+                    { value: ANNOUNCEMENT_AUDIENCE.CLASSES, icon: FaLayers, label: 'شعب محددة', color: 'purple' }
+                  ].map(opt => {
+                    const Icon = opt.icon;
+                    const selected = announcementAudience === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setAnnouncementAudience(opt.value)}
+                        className={`p-3 rounded-lg border-2 transition flex items-center gap-2 text-sm font-bold ${
+                          selected
+                            ? 'border-amber-500 bg-amber-500/15 text-amber-800 dark:text-amber-200'
+                            : 'border-slate-200 dark:border-gray-700 text-slate-600 dark:text-gray-300 hover:border-amber-400/50'
+                        }`}
+                      >
+                        <Icon /> {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* ✅ اختيار شعب محددة */}
+              {announcementAudience === ANNOUNCEMENT_AUDIENCE.CLASSES && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAnnouncementClassPicker(true)}
+                    className="w-full py-2.5 rounded-md font-bold flex items-center justify-center gap-2 border-2 border-dashed border-purple-400 dark:border-purple-500/60 text-purple-700 dark:text-purple-300 bg-purple-50/50 dark:bg-purple-500/5 hover:bg-purple-100/70 dark:hover:bg-purple-500/15 transition"
+                  >
+                    <FaFolderOpen /> اختيار الشعب
+                    {announcementTargetClasses.length > 0 && (
+                      <span className="bg-purple-600 text-white text-xs font-bold px-2 py-0.5 rounded-full min-w-[22px]">{announcementTargetClasses.length}</span>
+                    )}
+                  </button>
+                  {announcementTargetClasses.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {announcementTargetClasses.map(id => {
+                        const cls = classes.find(c => c.id === id);
+                        return cls ? <span key={id} className="text-xs bg-purple-500/15 text-purple-700 dark:text-purple-300 px-2 py-1 rounded border border-purple-500/30">{cls.name}</span> : null;
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="flex flex-wrap gap-4 items-center">
                 <label className="flex items-center gap-2 text-slate-700 dark:text-gray-300">
                   <input type="radio" value="now" checked={publishType === 'now'} onChange={() => setPublishType('now')} className="accent-yellow-500" />
-                  <FaUpload className="inline-block me-1" /> نشر فوراً بعد الموافقة
+                  <FaUpload className="inline-block me-1" /> نشر فوراً (بعد فحص سند)
                 </label>
                 <label className="flex items-center gap-2 text-slate-700 dark:text-gray-300">
                   <input type="radio" value="schedule" checked={publishType === 'schedule'} onChange={() => setPublishType('schedule')} className="accent-yellow-500" />
-                  <FaClock className="inline-block me-1" /> نشر مجدول بعد الموافقة
+                  <FaClock className="inline-block me-1" /> نشر مجدول
                 </label>
               </div>
+
               {publishType === 'schedule' && (
                 <div className="flex flex-wrap gap-4 items-center">
                   <div><label className="block text-sm text-slate-700 dark:text-gray-300">ساعات</label><input type="text" inputMode="numeric" className="w-20 bg-white dark:bg-gray-800 text-center p-2 border border-slate-200 dark:border-gray-600 rounded-md text-slate-900 dark:text-white" value={delayHours} onChange={(e) => setDelayHours(arabicToEnglishNumber(e.target.value))} placeholder="0" /></div>
@@ -1046,9 +1102,16 @@ const SupervisorPanel = ({ user, onLogout }) => {
                   <p className="text-xs text-slate-500 dark:text-gray-400">(الحد الأقصى 24 ساعة)</p>
                 </div>
               )}
+
               <div className="flex gap-3">
-                <button onClick={handleCreateAnnouncement} className="btn-primary bg-yellow-600 hover:bg-yellow-700 px-6 py-2 rounded-md text-white">{editingAnnouncementId ? 'إرسال للمراجعة' : 'إرسال للموافقة'}</button>
-                <button onClick={() => { setShowAnnouncementModal(false); setEditingAnnouncementId(null); setAnnouncementTitle(''); setAnnouncementBody(''); setCharCount(0); setPublishType('now'); setDelayHours(''); setDelayMinutes(''); setDelayError(''); }} className="btn-primary bg-slate-200 dark:bg-gray-600 hover:bg-slate-300 dark:hover:bg-gray-700 px-6 py-2 rounded-md text-slate-900 dark:text-white">إلغاء</button>
+                <button
+                  onClick={handleCreateAnnouncement}
+                  disabled={moderating}
+                  className="btn-primary bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 px-6 py-2 rounded-md text-white flex items-center gap-2"
+                >
+                  {moderating ? <><FaSpinner className="animate-spin" /> جاري الفحص...</> : (editingAnnouncementId ? 'إرسال للمراجعة' : 'فحص وإرسال')}
+                </button>
+                <button onClick={() => { setShowAnnouncementModal(false); setEditingAnnouncementId(null); setAnnouncementTitle(''); setAnnouncementBody(''); setCharCount(0); setPublishType('now'); setDelayHours(''); setDelayMinutes(''); setDelayError(''); setAnnouncementAudience(ANNOUNCEMENT_AUDIENCE.ALL_STUDENTS); setAnnouncementTargetClasses([]); }} className="btn-primary bg-slate-200 dark:bg-gray-600 hover:bg-slate-300 dark:hover:bg-gray-700 px-6 py-2 rounded-md text-slate-900 dark:text-white">إلغاء</button>
               </div>
             </div>
           </div>
@@ -1062,7 +1125,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
               <h3 className="text-xl font-semibold text-purple-700 dark:text-purple-300"><FaBell className="inline-block me-2" /> الإشعارات</h3>
               <button onClick={handleCloseNotifications} className="text-slate-500 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white text-2xl">✕</button>
             </div>
-            <p className="text-xs text-slate-500 dark:text-gray-500 mb-3">📌 ستُحذف هذه الإشعارات تلقائياً عند إغلاق النافذة.</p>
+            <p className="text-xs text-slate-500 dark:text-gray-500 mb-3">📌 ستُحذف تلقائياً عند الإغلاق.</p>
             {notifications.length === 0 ? (
               <p className="text-slate-500 dark:text-gray-400 text-center py-4">لا توجد إشعارات</p>
             ) : (
@@ -1092,22 +1155,19 @@ const SupervisorPanel = ({ user, onLogout }) => {
         allowedGenders={allowedGenders}
       />
 
-      <SectionsManagerModal
-        isOpen={showClassesManager}
-        onClose={() => setShowClassesManager(false)}
-        user={user}
-        mode="supervisor"
+      <ClassTreePickerModal
+        isOpen={showAnnouncementClassPicker}
+        onClose={() => setShowAnnouncementClassPicker(false)}
+        sections={sections}
+        classes={availableClasses}
+        selectedIds={announcementTargetClasses}
+        onConfirm={(ids) => setAnnouncementTargetClasses(ids)}
+        allowedGenders={allowedGenders}
       />
-      <StudentSerialManagerModal
-        isOpen={showSerialManager}
-        onClose={() => setShowSerialManager(false)}
-        user={user}
-      />
-      <TeachersManagerModal
-        isOpen={showTeachersManager}
-        onClose={() => setShowTeachersManager(false)}
-        user={user}
-      />
+
+      <SectionsManagerModal isOpen={showClassesManager} onClose={() => setShowClassesManager(false)} user={user} mode="supervisor" />
+      <StudentSerialManagerModal isOpen={showSerialManager} onClose={() => setShowSerialManager(false)} user={user} />
+      <TeachersManagerModal isOpen={showTeachersManager} onClose={() => setShowTeachersManager(false)} user={user} />
     </div>
   );
 };

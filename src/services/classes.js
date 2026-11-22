@@ -1,16 +1,14 @@
 import { db } from '../firebase';
 import {
   collection, addDoc, doc, updateDoc, deleteDoc, getDoc, getDocs,
-  query, where, serverTimestamp, limit, writeBatch
+  query, where, serverTimestamp, limit, writeBatch, setDoc
 } from 'firebase/firestore';
 import {
   CLASS_GENDER, CLASS_GENDER_LABELS, CLASS_VISIBILITY, SECTIONS_COLLECTION
 } from '../constants';
 
 // =========================================================
-// ✅ الأقسام — مثل المجلدات: قسم رئيسي، وبداخله أقسام فرعية وشعب
-// كل شعبة يجب أن تكون داخل قسم (ينشئه المدير)
-// القسم الرئيسي: parentId = null
+// ✅ الأقسام
 // =========================================================
 
 export const getSections = async () => {
@@ -20,7 +18,6 @@ export const getSections = async () => {
     .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
 };
 
-/** مسار القسم كاملاً: "الرئيسي / الفرعي / ..." */
 export const getSectionPath = (sections, sectionId) => {
   const parts = [];
   let current = sections.find(s => s.id === sectionId);
@@ -33,7 +30,6 @@ export const getSectionPath = (sections, sectionId) => {
   return parts.join(' / ');
 };
 
-/** كل الأقسام الموجودة تحت قسم معيّن (أبناء وأحفاد) */
 export const getDescendantSectionIds = (sections, sectionId) => {
   const result = [];
   const stack = [sectionId];
@@ -49,7 +45,6 @@ export const getDescendantSectionIds = (sections, sectionId) => {
   return result;
 };
 
-/** قائمة الأقسام مرتّبة كشجرة مع العمق (للاختيار من قائمة) */
 export const flattenSectionTree = (sections) => {
   const out = [];
   const walk = (parentId, depth) => {
@@ -99,10 +94,6 @@ export const renameSection = async (sectionId, name) => {
   });
 };
 
-/**
- * حذف قسم مع كل ما بداخله (أقسام فرعية + شعب) — ممنوع إذا كان فيه طلاب
- * (هذه الدالة القديمة، بقيت موجودة للاستخدامات القديمة فقط)
- */
 export const deleteSection = async (sectionId) => {
   const all = await getSections();
   const ids = [sectionId, ...getDescendantSectionIds(all, sectionId)];
@@ -128,11 +119,6 @@ export const deleteSection = async (sectionId) => {
   }
 };
 
-/**
- * ✅ حذف قسم مع نقل شعبه وأقسامه الفرعية تلقائياً إلى القسم الأب
- * - لو كان القسم رئيسي (بدون أب) → يرفض ويعطي التنبيه المطلوب
- * - لو كان فرعي → ينقل كل شيء للأب ثم يحذفه
- */
 export const deleteSectionMergingIntoParent = async (sectionId) => {
   const all = await getSections();
   const current = all.find(s => s.id === sectionId);
@@ -143,13 +129,11 @@ export const deleteSectionMergingIntoParent = async (sectionId) => {
   }
   const parentId = current.parentId;
 
-  // 1) نقل الشعب المباشرة إلى الأب
   const classesSnap = await getDocs(query(collection(db, 'classes'), where('sectionId', '==', sectionId)));
   for (const clsDoc of classesSnap.docs) {
     await updateDoc(clsDoc.ref, { sectionId: parentId, updatedAt: serverTimestamp() });
   }
 
-  // 2) نقل الأقسام الفرعية المباشرة إلى الأب (مع الحفاظ على محتواها)
   const directSubs = all.filter(s => s.parentId === sectionId);
   for (const sub of directSubs) {
     await updateDoc(doc(db, SECTIONS_COLLECTION, sub.id), {
@@ -158,14 +142,9 @@ export const deleteSectionMergingIntoParent = async (sectionId) => {
     });
   }
 
-  // 3) حذف القسم نفسه (أصبح فارغاً)
   await deleteDoc(doc(db, SECTIONS_COLLECTION, sectionId));
 };
 
-/**
- * ✅ نقل كل محتوى قسم (شعبه + أقسامه الفرعية) إلى قسم آخر
- * - منع النقل داخل نفس القسم أو أحد أبنائه
- */
 export const moveSectionContentToSection = async (fromSectionId, toSectionId) => {
   if (fromSectionId === toSectionId) throw new Error('لا يمكن النقل إلى نفس القسم');
   const all = await getSections();
@@ -179,13 +158,11 @@ export const moveSectionContentToSection = async (fromSectionId, toSectionId) =>
     throw new Error('لا يمكن نقل المحتوى إلى قسم يقع داخل نفس القسم');
   }
 
-  // 1) نقل الشعب المباشرة
   const classesSnap = await getDocs(query(collection(db, 'classes'), where('sectionId', '==', fromSectionId)));
   for (const clsDoc of classesSnap.docs) {
     await updateDoc(clsDoc.ref, { sectionId: toSectionId, updatedAt: serverTimestamp() });
   }
 
-  // 2) نقل الأقسام الفرعية المباشرة
   const directSubs = all.filter(s => s.parentId === fromSectionId);
   for (const sub of directSubs) {
     await updateDoc(doc(db, SECTIONS_COLLECTION, sub.id), {
@@ -195,7 +172,6 @@ export const moveSectionContentToSection = async (fromSectionId, toSectionId) =>
   }
 };
 
-/** نقل شعبة من قسم إلى قسم آخر */
 export const moveClassToSection = async (classId, sectionId) => {
   const sectionSnap = await getDoc(doc(db, SECTIONS_COLLECTION, sectionId));
   if (!sectionSnap.exists()) throw new Error('القسم غير موجود');
@@ -205,11 +181,6 @@ export const moveClassToSection = async (classId, sectionId) => {
   });
 };
 
-/**
- * ✅ حذف فوري من السيرفر لأي شعبة بدون قسم (أو قسمها محذوف)
- * ويُزال معرّفها من حسابات الطلاب المرتبطين بها
- * cleanSections: (للمدير فقط) يحذف أيضاً أي قسم فرعي قسمه الأب محذوف
- */
 export const purgeClassesWithoutSection = async ({ cleanSections = false } = {}) => {
   const [classesSnap, sectionsSnap] = await Promise.all([
     getDocs(collection(db, 'classes')),
@@ -219,7 +190,6 @@ export const purgeClassesWithoutSection = async ({ cleanSections = false } = {})
   let validSectionIds = new Set(sectionsSnap.docs.map(d => d.id));
 
   if (cleanSections) {
-    // أقسام فرعية بلا أب موجود = يتيمة → تُحذف
     let changed = true;
     let remaining = sectionsSnap.docs;
     while (changed) {
@@ -281,9 +251,6 @@ export const createClass = async ({ name, teacherId, gender, sectionId }) => {
   return ref.id;
 };
 
-/**
- *  تحديث جنس الشعبة — مباشر (يُستخدم من قبل المدير فقط بعد الموافقة)
- */
 export const updateClassGender = async (classId, gender) => {
   await updateDoc(doc(db, 'classes', classId), {
     gender,
@@ -339,13 +306,6 @@ export const getTeacherDisplayName = (teacher) => {
   return teacher.name || teacher.username || 'معلم';
 };
 
-/**
- * اسم المعلم كما يراه المشاهد (مشرف):
- *  - مشرفة (أنثى): يظهر الاسم المعتاد.
- *  - مشرف (ذكر) + معلمة: لا يظهر اسمها — يظهر اللقب (اسم الشهرة) أو ******** إن لم يوجد.
- *  - مشرف (ذكر) + معلم ذكر: الاسم المعتاد.
- *  - المدير: الاسم المعتاد دائماً (مرّر viewerGender = null).
- */
 export const getTeacherNameForViewer = (teacher, viewerGender) => {
   if (!teacher) return 'غير محدد';
   if (viewerGender === 'ذكر' && teacher.gender === 'أنثى') {
@@ -354,9 +314,6 @@ export const getTeacherNameForViewer = (teacher, viewerGender) => {
   return getTeacherDisplayName(teacher);
 };
 
-/**
- * تغيير معلم الشعبة (للمدير فقط)
- */
 export const changeClassTeacher = async (classId, teacherId) => {
   if (!teacherId) throw new Error('اختر المعلم');
   const teacherSnap = await getDoc(doc(db, 'profiles', teacherId));
@@ -369,9 +326,6 @@ export const changeClassTeacher = async (classId, teacherId) => {
   });
 };
 
-/**
- * إحصاءات الإنذارات لشعبة: عدد الطلاب، عدد الطلاب أصحاب الإنذارات، مجموع الإنذارات النشطة
- */
 export const getClassWarningStats = async (classId) => {
   const snap = await getDocs(query(
     collection(db, 'profiles'),
@@ -392,9 +346,6 @@ export const getClassWarningStats = async (classId) => {
   return { studentsCount, studentsWithWarnings, totalWarnings };
 };
 
-/**
- * تحديد شعب الطالب كاملةً (بعد موافقة المدير) — لازم تبقى شعبة واحدة على الأقل
- */
 export const setStudentClasses = async (studentId, classIds) => {
   const clean = [...new Set((classIds || []).filter(Boolean))];
   if (clean.length === 0) throw new Error('لا يمكن ترك الطالب بدون شعبة');
@@ -434,10 +385,6 @@ export const getAllowedClassGenders = (supervisorGender, visibilityMode) => {
   return [CLASS_GENDER.MALE, CLASS_GENDER.FEMALE, CLASS_GENDER.MIXED];
 };
 
-/**
- *  كشف الطلاب المتضررين من تغيير جنس الشعبة
- * يعيد قائمة الطلاب اللي ما يتوافقوا مع الجنس الجديد
- */
 export const findAffectedStudents = async (classId, newGender) => {
   const classDoc = await getDoc(doc(db, 'classes', classId));
   if (!classDoc.exists()) throw new Error('الشعبة غير موجودة');
@@ -461,9 +408,6 @@ export const findAffectedStudents = async (classId, newGender) => {
   return affected;
 };
 
-/**
- *  نقل طالب من شعبة إلى أخرى — مباشر (يستخدمه المدير بعد الموافقة)
- */
 export const moveStudentToClass = async (studentId, fromClassId, toClassId) => {
   const studentRef = doc(db, 'profiles', studentId);
   const snap = await getDoc(studentRef);
@@ -481,9 +425,6 @@ export const moveStudentToClass = async (studentId, fromClassId, toClassId) => {
   });
 };
 
-/**
- *  البحث عن الشعب المتوافقة مع طالب (لنقله)
- */
 export const getEligibleClassesForStudent = async (student, excludeClassId = null) => {
   const snap = await getDocs(collection(db, 'classes'));
   const eligible = [];
@@ -494,4 +435,114 @@ export const getEligibleClassesForStudent = async (student, excludeClassId = nul
     if (result.ok) eligible.push(classData);
   });
   return eligible;
+};
+
+// =========================================================
+// ✅ طلبات تعديل الشعب — موافقة الطالب (بدل موافقة المدير)
+// =========================================================
+
+export const PENDING_CLASS_CHANGE_STATUS = {
+  PENDING: 'pending_student_approval',
+  APPROVED: 'approved',
+  REJECTED: 'rejected'
+};
+
+/**
+ * ينشئ طلب تعديل شعب للطالب — يظهر له modal في لوحته للموافقة/الرفض
+ */
+export const createStudentClassChangeRequest = async ({
+  studentId,
+  fromClassIds,
+  toClassIds,
+  requestedBy,
+  requestedByName
+}) => {
+  const clean = [...new Set((toClassIds || []).filter(Boolean))];
+  if (clean.length === 0) {
+    throw new Error('يجب أن يبقى للطالب شعبة واحدة على الأقل');
+  }
+
+  const snap = await getDoc(doc(db, 'profiles', studentId));
+  if (!snap.exists()) throw new Error('الطالب غير موجود');
+  const data = snap.data();
+  if (data.pendingClassChangeStatus === PENDING_CLASS_CHANGE_STATUS.PENDING) {
+    throw new Error('يوجد طلب تعديل شعب معلّق بالفعل لهذا الطالب');
+  }
+
+  await updateDoc(doc(db, 'profiles', studentId), {
+    pendingClassChange: {
+      fromClassIds: fromClassIds || [],
+      toClassIds: clean,
+      requestedBy: requestedBy || '',
+      requestedByName: requestedByName || 'مشرف',
+      requestedAt: new Date().toISOString()
+    },
+    pendingClassChangeStatus: PENDING_CLASS_CHANGE_STATUS.PENDING,
+    updatedAt: serverTimestamp()
+  });
+};
+
+/**
+ * يوافق الطالب على تعديل الشعب → يطبّق الشعب الجديدة ويُشعر المشرف/المدير
+ */
+export const approveStudentClassChange = async (studentId) => {
+  const snap = await getDoc(doc(db, 'profiles', studentId));
+  if (!snap.exists()) throw new Error('الملف غير موجود');
+  const data = snap.data();
+  if (data.pendingClassChangeStatus !== PENDING_CLASS_CHANGE_STATUS.PENDING) {
+    throw new Error('لا يوجد طلب معلّق');
+  }
+  const pending = data.pendingClassChange || {};
+  const newClassIds = [...new Set((pending.toClassIds || []).filter(Boolean))];
+  if (newClassIds.length === 0) throw new Error('لا توجد شعب جديدة');
+
+  await updateDoc(doc(db, 'profiles', studentId), {
+    classIds: newClassIds,
+    pendingClassChange: null,
+    pendingClassChangeStatus: PENDING_CLASS_CHANGE_STATUS.APPROVED,
+    updatedAt: serverTimestamp()
+  });
+
+  if (pending.requestedBy) {
+    try {
+      await setDoc(doc(collection(db, 'notifications', pending.requestedBy, 'userNotifications')), {
+        title: '✅ وافق الطالب على تعديل شعبته',
+        body: `وافق الطالب ${data.name || ''} على تعديل شعبته. تم التطبيق.`,
+        type: 'class_change_approved',
+        createdAt: serverTimestamp(),
+        read: false
+      });
+    } catch (e) { console.warn('notify requester failed:', e); }
+  }
+};
+
+/**
+ * يرفض الطالب تعديل الشعب → لا يُطبَّق شيء ويُشعر المشرف/المدير
+ */
+export const rejectStudentClassChange = async (studentId) => {
+  const snap = await getDoc(doc(db, 'profiles', studentId));
+  if (!snap.exists()) throw new Error('الملف غير موجود');
+  const data = snap.data();
+  if (data.pendingClassChangeStatus !== PENDING_CLASS_CHANGE_STATUS.PENDING) {
+    throw new Error('لا يوجد طلب معلّق');
+  }
+  const pending = data.pendingClassChange || {};
+
+  await updateDoc(doc(db, 'profiles', studentId), {
+    pendingClassChange: null,
+    pendingClassChangeStatus: PENDING_CLASS_CHANGE_STATUS.REJECTED,
+    updatedAt: serverTimestamp()
+  });
+
+  if (pending.requestedBy) {
+    try {
+      await setDoc(doc(collection(db, 'notifications', pending.requestedBy, 'userNotifications')), {
+        title: '❌ رفض الطالب تعديل شعبته',
+        body: `رفض الطالب ${data.name || ''} تعديل شعبته. لم يتم تطبيق أي تغيير.`,
+        type: 'class_change_rejected',
+        createdAt: serverTimestamp(),
+        read: false
+      });
+    } catch (e) { console.warn('notify requester failed:', e); }
+  }
 };

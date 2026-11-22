@@ -219,3 +219,24 @@ export const PENDING_FIELD_LABELS = {
 // =========================================================
 export const JITSI_DOMAIN = 'meet.194.146.38.131.sslip.io';
 export const JITSI_ROOM_NAME = 'readandrise-classroom'; // اسم الغرفة — أحرف صغيرة فقط (Jitsi يحوّلها لصغيرة)
+// =========================================================
+// ✅ الإعلانات المستهدفة (تحديد المستلمين)
+// =========================================================
+export const ANNOUNCEMENT_AUDIENCE = {
+  ALL_STUDENTS: 'all_students',
+  ALL_TEACHERS: 'all_teachers',
+  ALL_SUPERVISORS: 'all_supervisors',
+  CLASSES: 'classes'
+};
+
+export const ANNOUNCEMENT_AUDIENCE_LABELS = {
+  all_students: 'جميع الطلاب',
+  all_teachers: 'جميع المعلمين',
+  all_supervisors: 'جميع المشرفين',
+  classes: 'شعب محددة'
+};
+
+export const ANNOUNCEMENT_REVIEW_STATUS = {
+  AUTO_APPROVED: 'auto_approved',
+  PENDING_MANAGER: 'pending_manager'
+};

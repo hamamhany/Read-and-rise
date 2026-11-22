@@ -35,11 +35,6 @@ async function isAiEnabled() {
   }
 }
 
-// ✅ يسجل مرة واحدة لكل رسالة مستخدم (وليس لكل محاولة نموذج)
-// - totalRequests = عدد الرسائل (اللي تشوفها في "طلبات اليوم")
-// - totalAttempts = عدد محاولات API (للتشخيص)
-// - minutes[X] = عدد الرسائل في الدقيقة X
-// - peakPerMinute = أعلى عدد رسائل في دقيقة واحدة اليوم
 async function logMessage(model, status, attempts = 1) {
   if (!db) return;
   try {
@@ -53,17 +48,14 @@ async function logMessage(model, status, attempts = 1) {
       const snap = await tx.get(ref);
       const data = snap.exists ? snap.data() : {};
 
-      // minutes كـ object كامل (يتجنب مشاكل dot-notation)
       const minutes = { ...(data.minutes || {}) };
       const currentMinuteCount = Number(minutes[minuteOfDay]) || 0;
       const newMinuteCount = currentMinuteCount + 1;
       minutes[minuteOfDay] = newMinuteCount;
 
-      // peak يُحدّث فوراً (لليوم فقط)
       const currentPeak = Number(data.peakPerMinute) || 0;
       const newPeak = Math.max(currentPeak, newMinuteCount);
 
-      // عداد النماذج
       const models = { ...(data.models || {}) };
       const modelData = { ...(models[safeModel] || {}) };
       modelData.count = (Number(modelData.count) || 0) + attempts;
@@ -266,6 +258,88 @@ const isQuotaError = (err) => {
   return status === 429 || /429|quota|RESOURCE_EXHAUSTED|rate/i.test(msg);
 };
 
+// =========================================================
+// ✅ وضع المراجعة الآلية للإعلانات (moderation)
+// =========================================================
+const MODERATION_SYSTEM = `
+أنت مراجع محتوى صارم لمنصة تعليمية إسلامية للعلوم الشرعية واللغوية. مهمتك فحص الإعلانات/الرسائل التي يريد الكادر إرسالها للطلاب أو المعلمين أو المشرفين، والتأكد أنها لا تحتوي على أي محتوى غير لائق.
+
+المحتوى غير الآمن (safe=false) يشمل أي من التالي:
+1. السب أو الشتائم أو الألفاظ البذيئة أو الإيحاءات الجنسية.
+2. التهديد أو الترويع أو التحريض على العنف أو الكراهية.
+3. الإساءة للأديان أو الأنبياء أو المقدسات أو الأشخاص أو الأعراق.
+4. الترويج لمنتجات تجارية أو روابط خارجية مشبوهة أو أرقام هواتف خارجية تهدف للتحايل.
+5. محاولات انتحال شخصية إدارية أو طلب معلومات حساسة (كلمات مرور، أرقام بطاقات).
+6. أي محتوى سياسي أو حزبي أو طائفي.
+7. الدعوة لخرق قوانين المنصة أو الأكاديمية.
+
+المحتوى الآمن (safe=true) يشمل: التنبيهات التربوية، الإعلانات الأكاديمية، التذكيرات، التحفيز، المعلومات الإدارية العامة.
+
+## صيغة الرد المطلوبة (JSON فقط بدون أي نص إضافي):
+{
+  "safe": true أو false,
+  "reason": "سبب مختصر جداً بالعربية إن كان غير آمن، أو فارغ إن كان آمناً",
+  "confidence": رقم بين 0.0 و 1.0 يمثل ثقتك بقرارك
+}
+
+إن كنت متردداً في محتوى قد يكون مخالفاً، اجعل safe=false مع سبب واضح — القرار النهائي للمدير.
+`;
+
+async function handleModeration(req, res, body) {
+  const title = String(body?.title || '').trim().slice(0, 500);
+  const content = String(body?.body || '').trim().slice(0, 10000);
+
+  if (!title && !content) {
+    return res.status(400).json({ error: 'النص المطلوب مراجعته فارغ' });
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({ error: 'GEMINI_API_KEY is not configured' });
+  }
+
+  const ai = new GoogleGenAI({ apiKey, httpOptions: { timeout: 15000 } });
+  const promptText = `العنوان: ${title}\n\nالمحتوى:\n${content}`;
+  const startedAt = Date.now();
+  let attempts = 0;
+
+  for (const model of MODELS) {
+    if (Date.now() - startedAt > TIME_BUDGET_MS) break;
+    attempts++;
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents: [{ role: 'user', parts: [{ text: promptText }] }],
+        config: {
+          systemInstruction: MODERATION_SYSTEM,
+          temperature: 0,
+          responseMimeType: 'application/json',
+        },
+      });
+
+      if (response.text) {
+        const cleaned = String(response.text).replace(/```json|```/g, '').trim();
+        try {
+          const parsed = JSON.parse(cleaned);
+          logMessage(model, 'success', attempts).catch(() => {});
+          return res.status(200).json({
+            safe: parsed.safe === true,
+            reason: String(parsed.reason || '').slice(0, 500),
+            confidence: Number(parsed.confidence) || 0,
+          });
+        } catch (parseErr) {
+          console.warn('Moderation JSON parse failed:', parseErr.message, cleaned.slice(0, 200));
+        }
+      }
+    } catch (err) {
+      console.warn(`Moderation model ${model} failed:`, err.message);
+    }
+  }
+
+  logMessage(MODELS[0], 'error', attempts).catch(() => {});
+  return res.status(500).json({ error: 'فشل الاتصال بالمراجعة الآلية' });
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -281,6 +355,13 @@ export default async function handler(req, res) {
     }
 
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+
+    // ✅ وضع المراجعة الآلية للإعلانات
+    if (body?.mode === 'moderation') {
+      return await handleModeration(req, res, body);
+    }
+
+    // ✅ الوضع العادي (المحادثة)
     const message = typeof body?.message === 'string' ? body.message.trim() : '';
     const history = body?.history;
     const userRole = typeof body?.userRole === 'string' ? body.userRole : 'student';
@@ -306,7 +387,6 @@ export default async function handler(req, res) {
     const systemInstruction = buildSystemInstruction(userRole, suppressEndTag, userName, userGender);
     const startedAt = Date.now();
 
-    // ✅ نعدّ المحاولات هنا، ونسجل مرة واحدة فقط في النهاية
     let attempts = 0;
     let lastError;
     let isQuotaFailure = false;
@@ -326,7 +406,6 @@ export default async function handler(req, res) {
           const impersonationDetected = rawText.includes(TAG_IMPERSONATION);
           const cleanText = stripTags(rawText);
 
-          // ✅ نجاح: سجل مرة واحدة فقط
           logMessage(model, 'success', attempts).catch(() => {});
 
           return res.status(200).json({
@@ -342,7 +421,6 @@ export default async function handler(req, res) {
       }
     }
 
-    // ✅ فشل تام: سجل مرة واحدة فقط
     logMessage(MODELS[0], isQuotaFailure ? 'quota' : 'error', attempts).catch(() => {});
     throw lastError || new Error('All models failed');
   } catch (error) {

@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import {
   FaUser, FaBell, FaSignOutAlt, FaPen, FaUsers, FaVideo, FaEdit,
   FaUpload, FaClock, FaCheckCircle, FaTimesCircle, FaEnvelope,
-  FaComment, FaIdCard, FaFileAlt, FaEye
+  FaComment, FaIdCard, FaFileAlt, FaEye, FaExchangeAlt, FaArrowLeft
 } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 import { db, messaging } from '../../firebase';
@@ -20,6 +20,7 @@ import { recordAttendance, processStudentAbsences } from '../../services/attenda
 import { subscribeToLiveSessions, isSessionJoinable } from '../../services/liveSessions';
 import { sendUrgentReminderMessage, sendContactTeacherMessage } from '../../utils/whatsapp';
 import { PENDING_CHANGES_STATUS } from '../../constants';
+import { approveStudentClassChange, rejectStudentClassChange, PENDING_CLASS_CHANGE_STATUS } from '../../services/classes';
 import { getActiveExamsForStudent, getStudentAttemptsCount, getStudentExamResult } from '../../services/exams';
 import JitsiRoom, { enterFullscreen } from '../common/JitsiRoom';
 
@@ -62,7 +63,12 @@ const StudentPanel = ({ user, onLogout }) => {
   const [, setLiveTick] = useState(0);
   const absenceProcessedRef = useRef(false);
 
-  // Exam states (تم إزالة selectedExam, showExamModal, reviewingExam, showReviewAnswers)
+  // ✅ طلب تعديل الشعب من المشرف — بانتظار موافقة الطالب
+  const [pendingClassChange, setPendingClassChange] = useState(null);
+  const [showClassChangeModal, setShowClassChangeModal] = useState(false);
+  const [processingClassChange, setProcessingClassChange] = useState(false);
+  const [classChangeNamesMap, setClassChangeNamesMap] = useState({});
+
   const [activeExams, setActiveExams] = useState([]);
   const [studentResults, setStudentResults] = useState({});
 
@@ -221,8 +227,34 @@ const StudentPanel = ({ user, onLogout }) => {
           setReviewResult(data.reviewResult);
           setReviewExpiry(data.reviewExpiry);
         }
+        // ✅ طلب تعديل شعب
+        await detectPendingClassChange(data);
       }
     } catch (err) { console.error(err); }
+  };
+
+  // ✅ دالة مساعدة لاكتشاف طلب تعديل الشعب وتحميل الأسماء
+  const detectPendingClassChange = async (data) => {
+    if (data?.pendingClassChangeStatus === PENDING_CLASS_CHANGE_STATUS.PENDING && data?.pendingClassChange) {
+      setPendingClassChange(data.pendingClassChange);
+      const allIds = [
+        ...(data.pendingClassChange.fromClassIds || []),
+        ...(data.pendingClassChange.toClassIds || [])
+      ];
+      if (allIds.length > 0) {
+        try {
+          const names = await fetchClassNames(allIds);
+          setClassChangeNamesMap(names);
+        } catch (e) { console.warn('fetch class names failed:', e); }
+      }
+      // إظهار المودال تلقائياً مرة واحدة عند الاكتشاف
+      setShowClassChangeModal(prev => {
+        if (!prev) return true;
+        return prev;
+      });
+    } else {
+      setPendingClassChange(null);
+    }
   };
 
   useEffect(() => {
@@ -269,6 +301,8 @@ const StudentPanel = ({ user, onLogout }) => {
           setReviewResult(data.reviewResult);
           setReviewExpiry(data.reviewExpiry);
         }
+        // ✅ اكتشاف طلب تعديل الشعب
+        await detectPendingClassChange(data);
       }
     });
 
@@ -283,7 +317,41 @@ const StudentPanel = ({ user, onLogout }) => {
     return () => { unsubscribeTeacher(); unsubscribeProfile(); unsubscribeNotif(); };
   }, [user.id]);
 
-  // ✅ متابعة الحصص المباشرة لشعب الطالب (يظهر زر الانضمام فقط حين يفتح المعلم حصة)
+  // ✅ موافقة الطالب على تعديل الشعب
+  const handleApproveClassChange = async () => {
+    setProcessingClassChange(true);
+    try {
+      await approveStudentClassChange(user.id);
+      toast.success('✅ تمت الموافقة على تعديل شعبك وتم تطبيقها');
+      setShowClassChangeModal(false);
+      setPendingClassChange(null);
+    } catch (e) {
+      toast.error('فشل: ' + e.message);
+    } finally {
+      setProcessingClassChange(false);
+    }
+  };
+
+  // ✅ رفض الطالب تعديل الشعب
+  const handleRejectClassChange = async () => {
+    const ok = await confirm(
+      'رفض تعديل الشعب',
+      'هل أنت متأكد من رفض تعديل الشعب الذي اقترحه المشرف؟ لن يتم تطبيق أي تغيير.'
+    );
+    if (!ok) return;
+    setProcessingClassChange(true);
+    try {
+      await rejectStudentClassChange(user.id);
+      toast.success('تم رفض تعديل الشعب. سيتم إبلاغ المشرف.');
+      setShowClassChangeModal(false);
+      setPendingClassChange(null);
+    } catch (e) {
+      toast.error('فشل: ' + e.message);
+    } finally {
+      setProcessingClassChange(false);
+    }
+  };
+
   const classIdsKey = (profile?.classIds || []).join(',');
   useEffect(() => {
     const ids = classIdsKey ? classIdsKey.split(',') : [];
@@ -291,13 +359,11 @@ const StudentPanel = ({ user, onLogout }) => {
     return () => unsub();
   }, [classIdsKey]);
 
-  // إعادة تقييم "هل الحصة ما زالت ظاهرة" كل 15 ثانية
   useEffect(() => {
     const t = setInterval(() => setLiveTick((n) => n + 1), 15000);
     return () => clearInterval(t);
   }, []);
 
-  // ✅ تحميل الاختبارات المتاحة + نتائج الطالب (بدون showExamModal)
   useEffect(() => {
     if (!profile?.classIds || profile.classIds.length === 0) return;
 
@@ -432,8 +498,6 @@ const StudentPanel = ({ user, onLogout }) => {
 
   const nextLesson = getNextLessonTime();
 
-  // ✅ الضغط على زر الانضمام: ملء الشاشة فوراً ثم فتح غرفة الشعبة
-  // (تسجيل الحضور يتم بعد نجاح الدخول فعلياً، داخل handleLessonJoined)
   const handleJoinLesson = (classId) => {
     enterFullscreen();
     setLessonRoomClassId(classId);
@@ -487,7 +551,6 @@ const StudentPanel = ({ user, onLogout }) => {
     }
 
     const changes = {};
-    // ✅ الصيغة التي يتوقعها المشرف: { الحقل: { from, to } }
     if (name !== profile.name) changes.name = { from: profile.name || '', to: name };
     if (editData.gender !== profile.gender) changes.gender = { from: profile.gender || '', to: editData.gender };
     if (editData.age !== profile.age) changes.age = { from: profile.age ?? '', to: parseInt(editData.age) || null };
@@ -502,7 +565,7 @@ const StudentPanel = ({ user, onLogout }) => {
           submittedByName: profile.name || '',
           ...changes
         },
-        pendingChangesStatus: PENDING_CHANGES_STATUS.PENDING, // ← يذهب لقائمة المشرفين
+        pendingChangesStatus: PENDING_CHANGES_STATUS.PENDING,
         pendingChangesAccelerated: false,
         updatedAt: serverTimestamp()
       });
@@ -525,7 +588,6 @@ const StudentPanel = ({ user, onLogout }) => {
     toast.success('تم إرسال رسالة الاستعجال للمشرف.');
   };
 
-  // ✅ بدء اختبار — يستخدم navigate الآن
   const handleStartExam = async (exam) => {
     const used = exam.attemptsUsed || 0;
     if (used >= 1) {
@@ -541,6 +603,17 @@ const StudentPanel = ({ user, onLogout }) => {
   };
 
   if (loading) return <div className="text-center text-slate-500 dark:text-gray-400 p-8">جاري التحميل...</div>;
+
+  const fromClassNames = (pendingClassChange?.fromClassIds || [])
+    .map(id => classChangeNamesMap[id]).filter(Boolean);
+  const toClassNames = (pendingClassChange?.toClassIds || [])
+    .map(id => classChangeNamesMap[id]).filter(Boolean);
+  const addedNames = (pendingClassChange?.toClassIds || [])
+    .filter(id => !(pendingClassChange?.fromClassIds || []).includes(id))
+    .map(id => classChangeNamesMap[id]).filter(Boolean);
+  const removedNames = (pendingClassChange?.fromClassIds || [])
+    .filter(id => !(pendingClassChange?.toClassIds || []).includes(id))
+    .map(id => classChangeNamesMap[id]).filter(Boolean);
 
   return (
     <div className="container-center min-h-screen p-4 relative" dir="rtl">
@@ -573,6 +646,29 @@ const StudentPanel = ({ user, onLogout }) => {
             </button>
           </div>
         </div>
+
+        {/* ✅ شارة طلب تعديل الشعب المعلّق */}
+        {pendingClassChange && (
+          <div className="bg-gradient-to-br from-amber-500/20 to-yellow-500/10 border-2 border-amber-400 dark:border-amber-500/50 rounded-2xl p-4 flex flex-wrap justify-between items-center gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-yellow-600 flex items-center justify-center">
+                <FaExchangeAlt className="text-white" />
+              </div>
+              <div>
+                <p className="text-amber-800 dark:text-amber-200 font-bold text-sm">📋 لديك طلب تعديل شعب بانتظار قرارك</p>
+                <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
+                  {pendingClassChange.requestedByName || 'المشرف'} يقترح تعديلاً على شعبك — اضغط للمراجعة
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowClassChangeModal(true)}
+              className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg text-sm font-bold"
+            >
+              مراجعة الطلب
+            </button>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="bg-gradient-to-br from-cyan-100 dark:from-cyan-900/40 to-blue-50 dark:to-blue-900/20 p-4 rounded-2xl border border-cyan-300 dark:border-cyan-500/30 text-center">
@@ -632,7 +728,7 @@ const StudentPanel = ({ user, onLogout }) => {
                   className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl text-lg font-bold shadow-lg transition-all duration-300 transform hover:scale-105 w-full text-center block"
                 >
                   <FaVideo className="inline-block me-2" />
-                  🎯 انضم إلى غرفة الصف الآن{joinableSessions.length > 1 && sess.className ? ` — ${sess.className}` : ''} 
+                  🎯 انضم إلى غرفة الصف الآن{joinableSessions.length > 1 && sess.className ? ` — ${sess.className}` : ''}
                 </button>
               ))
             ) : (
@@ -682,7 +778,6 @@ const StudentPanel = ({ user, onLogout }) => {
           )}
         </div>
 
-        {/* ✅ قسم الاختبارات المتاحة — navigate */}
         <div className="bg-slate-50 dark:bg-gray-800/60 p-6 rounded-2xl border border-orange-300 dark:border-orange-500/20">
           <h3 className="text-xl font-semibold text-orange-700 dark:text-orange-300 mb-4">
             <FaFileAlt className="inline-block me-2" /> الاختبارات المتاحة
@@ -728,7 +823,6 @@ const StudentPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* ✅ اختباراتك المقدمة — مراجعة الإجابات عبر navigate */}
         {Object.keys(studentResults).length > 0 && (
           <div className="bg-slate-50 dark:bg-gray-800/60 p-6 rounded-2xl border border-green-300 dark:border-green-500/20">
             <h3 className="text-xl font-semibold text-green-700 dark:text-green-300 mb-4">
@@ -773,8 +867,102 @@ const StudentPanel = ({ user, onLogout }) => {
             </div>
           </div>
         )}
-
       </div>
+
+      {/* ✅ Modal — تعديل الشعب من المشرف */}
+      {showClassChangeModal && pendingClassChange && (
+        <div
+          className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => !processingClassChange && setShowClassChangeModal(false)}
+        >
+          <div
+            className="bg-white dark:bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-amber-300 dark:border-amber-500/30 max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold text-amber-700 dark:text-amber-300 flex items-center gap-2">
+                <FaExchangeAlt /> تعديل على شعبك
+              </h3>
+              <button
+                onClick={() => !processingClassChange && setShowClassChangeModal(false)}
+                className="text-slate-500 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white text-2xl"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="bg-amber-500/10 border border-amber-300 dark:border-amber-500/30 rounded-xl p-3 text-xs text-amber-800 dark:text-amber-200 mb-4">
+              📩 اقترح <strong>{pendingClassChange.requestedByName || 'المشرف'}</strong> تعديلاً على شعبك.
+              راجع التفاصيل أدناه ثم وافق أو ارفض.
+            </div>
+
+            {removedNames.length > 0 && (
+              <div className="bg-red-500/10 border border-red-300 dark:border-red-500/30 rounded-xl p-3 mb-3">
+                <p className="text-xs text-red-800 dark:text-red-200 font-bold mb-1">➖ شعب ستُحذف من حسابك:</p>
+                <ul className="space-y-1">
+                  {removedNames.map((name, i) => (
+                    <li key={i} className="text-sm text-red-700 dark:text-red-300 flex items-center gap-1">
+                      • {name}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {addedNames.length > 0 && (
+              <div className="bg-green-500/10 border border-green-300 dark:border-green-500/30 rounded-xl p-3 mb-3">
+                <p className="text-xs text-green-800 dark:text-green-200 font-bold mb-1">➕ شعب ستُضاف إليك:</p>
+                <ul className="space-y-1">
+                  {addedNames.map((name, i) => (
+                    <li key={i} className="text-sm text-green-700 dark:text-green-300 flex items-center gap-1">
+                      • {name}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="bg-slate-50 dark:bg-gray-800/60 border border-slate-200 dark:border-gray-700 rounded-xl p-3 mb-4">
+              <p className="text-xs text-slate-500 dark:text-gray-400 mb-2">الشعب النهائية:</p>
+              <div className="flex flex-wrap gap-1.5">
+                {toClassNames.length === 0 ? (
+                  <p className="text-xs text-slate-400 dark:text-gray-500">—</p>
+                ) : (
+                  toClassNames.map((name, i) => (
+                    <span key={i} className="text-xs bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30 px-2 py-1 rounded">
+                      {name}
+                    </span>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={handleApproveClassChange}
+                disabled={processingClassChange}
+                className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                <FaCheckCircle /> {processingClassChange ? 'جاري التطبيق...' : 'أوافق على التعديل'}
+              </button>
+              <button
+                onClick={handleRejectClassChange}
+                disabled={processingClassChange}
+                className="w-full py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                <FaTimesCircle /> {processingClassChange ? '...' : 'أرفض التعديل'}
+              </button>
+              <button
+                onClick={() => !processingClassChange && setShowClassChangeModal(false)}
+                disabled={processingClassChange}
+                className="w-full py-2 bg-slate-200 dark:bg-gray-700 hover:bg-slate-300 dark:hover:bg-gray-600 text-slate-700 dark:text-gray-300 rounded-xl text-sm disabled:opacity-50"
+              >
+                لاحقاً
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showProfileModal && (
         <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowProfileModal(false)}>
