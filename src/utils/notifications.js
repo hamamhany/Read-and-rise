@@ -57,7 +57,6 @@ export const sendNotificationToTeacher = async (teacherId, title, body, type, re
   }
 };
 
-//  إشعار تصحيح/تعديل الاختبار للطالب
 export const sendExamCorrectionNotification = async (studentId, examTitle, newScore, totalPoints, oldScore, wasPending) => {
   if (!studentId) return;
   try {
@@ -88,13 +87,12 @@ export const sendExamCorrectionNotification = async (studentId, examTitle, newSc
   }
 };
 
-//  إشعار المدير بوجود إجابات بانتظار المراجعة (التصحيح الشخصي)
 export const sendExamManualCorrectionAlertToManager = async (managerId, count, examTitle, submissionDate) => {
   if (!managerId) return;
   try {
     const dateStr = submissionDate.toLocaleDateString('ar-EG');
     const timeStr = submissionDate.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
-    
+
     const body = `تحية طيبة وبعد،\n\nنحيطكم علماً بأنه قد أتمّ ${count} طلاب تقديم اختبارهم الإلكتروني (${examTitle}) بنجاح، وتنتظر إجاباتهم مراجعتكم واعتماد درجاتهم النهائية عبر النظام.\n\nنرجو منكم التكرم بالدخول إلى لوحة التحكم الخاصة بكم في أقرب وقت، والانتقال إلى قسم الاختبارات لمراجعة تفاصيل إجابات الطلاب المذكورين واستكمال عملية التصحيح والاعتماد، ليتسنى للطلاب الاطلاع على نتائجهم النهائية.\n\nشاكرين لكم حسن تعاونكم وجهودكم المستمرة في متابعة سير العملية التعليمية.\n\nمع خالص التحيات،\nإدارة المنصة\nالتاريخ: ${dateStr}\nالساعة: ${timeStr}\n\n*ملاحظة: إرسال هذه الرسالة في هذا الوقت لا يعني بالضرورة أن الطلاب قد أتموا الاختبار للتو؛ فقد يكون تقديم الاختبار قد تم منذ فترة، ولكن أُرسل هذا التنبيه الآن بسبب تأخير في إرسال الإشعارات.`;
 
     const notification = {
@@ -110,6 +108,7 @@ export const sendExamManualCorrectionAlertToManager = async (managerId, count, e
     console.error('Error sending manual correction alert to manager:', err);
   }
 };
+
 // =========================================================
 // ✅ إشعارات مستهدفة (إعلانات المدير/المشرف/المعلم)
 // =========================================================
@@ -158,22 +157,6 @@ export const sendNotificationToAllSupervisors = async (title, body, type, relate
   }
 };
 
-/** إشعار جميع مديري النظام (يُستخدم في كل الحالات: تم الإرسال أو بانتظار المراجعة) */
-export const notifySystemManagers = async (title, body, type, relatedId = null) => {
-  try {
-    const managerIds = await getSystemManagerIds();
-    for (const id of managerIds) {
-      await setDoc(doc(collection(db, 'notifications', id, 'userNotifications')), {
-        title, body, type, relatedId,
-        createdAt: serverTimestamp(), read: false, readAt: null
-      });
-    }
-    return managerIds.length;
-  } catch (err) {
-    console.error('notifySystemManagers failed:', err);
-    return 0;
-  }
-};
 /** ✅ إرسال إشعار لكل مستخدمي النظام (طلاب + معلمين + مشرفين + مديرين) */
 export const sendNotificationToAllUsers = async (title, body, type, relatedId = null) => {
   try {
@@ -188,5 +171,22 @@ export const sendNotificationToAllUsers = async (title, body, type, relatedId = 
     }
   } catch (err) {
     console.error('Error sending to all users:', err);
+  }
+};
+
+/** إشعار جميع مديري النظام (يُستخدم في كل الحالات: تم الإرسال أو بانتظار المراجعة) */
+export const notifySystemManagers = async (title, body, type, relatedId = null) => {
+  try {
+    const managerIds = await getSystemManagerIds();
+    for (const id of managerIds) {
+      await setDoc(doc(collection(db, 'notifications', id, 'userNotifications')), {
+        title, body, type, relatedId,
+        createdAt: serverTimestamp(), read: false, readAt: null
+      });
+    }
+    return managerIds.length;
+  } catch (err) {
+    console.error('notifySystemManagers failed:', err);
+    return 0;
   }
 };

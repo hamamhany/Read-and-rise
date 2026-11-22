@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import {
-  FaSignOutAlt, FaUserShield, FaExclamationTriangle, FaWhatsapp,
+  FaGlobe, FaSignOutAlt, FaUserShield, FaExclamationTriangle, FaWhatsapp,
   FaTimesCircle, FaUsers, FaTrashAlt, FaBell, FaPaperPlane,
   FaChalkboardTeacher, FaBroadcastTower, FaHourglassHalf,
   FaBan, FaChevronLeft, FaCopy, FaCheckCircle, FaRedoAlt, FaEye, FaLayerGroup,
@@ -120,9 +120,6 @@ const computeActiveLectures = (allTimes) => {
 
 const ACTION_TYPES = ['class_gender_change', 'class_delete', 'student_class_transfer'];
 
-/**
- * ✅ Modal اختيار الشعب للمدير — قائمة مسطحة مع بحث
- */
 const ManagerClassPickerModal = ({ isOpen, onClose, selectedIds, onConfirm }) => {
   const [classes, setClasses] = useState([]);
   const [sections, setSections] = useState([]);
@@ -202,12 +199,7 @@ const ManagerClassPickerModal = ({ isOpen, onClose, selectedIds, onConfirm }) =>
                     : 'bg-slate-50 dark:bg-gray-800/60 border-slate-200 dark:border-gray-700 hover:border-purple-400/50'
                 }`}
               >
-                <input
-                  type="checkbox"
-                  checked={isSelected}
-                  readOnly
-                  className="accent-purple-500 pointer-events-none"
-                />
+                <input type="checkbox" checked={isSelected} readOnly className="accent-purple-500 pointer-events-none" />
                 <div className="flex-1 min-w-0">
                   <p className="text-slate-900 dark:text-white font-bold text-sm truncate">{cls.name}</p>
                   {sectionName && <p className="text-xs text-slate-500 dark:text-gray-400 mt-0.5">{sectionName}</p>}
@@ -219,11 +211,7 @@ const ManagerClassPickerModal = ({ isOpen, onClose, selectedIds, onConfirm }) =>
 
         <div className="p-4 border-t border-slate-200 dark:border-gray-700 flex gap-2">
           <button onClick={onClose} className="flex-1 bg-slate-200 dark:bg-gray-700 hover:bg-slate-300 dark:hover:bg-gray-600 text-slate-900 dark:text-white py-2 rounded-lg text-sm">إلغاء</button>
-          <button
-            onClick={() => { onConfirm(tempSelected); onClose(); }}
-            disabled={tempSelected.length === 0}
-            className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-bold"
-          >
+          <button onClick={() => { onConfirm(tempSelected); onClose(); }} disabled={tempSelected.length === 0} className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-bold">
             تأكيد ({tempSelected.length})
           </button>
         </div>
@@ -279,7 +267,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
   const [openRequestModal, setOpenRequestModal] = useState(null);
   const [processingAction, setProcessingAction] = useState(false);
 
-  // ✅ إشعار جديد من المدير
   const [showManagerAnnModal, setShowManagerAnnModal] = useState(false);
   const [managerAnnTitle, setManagerAnnTitle] = useState('');
   const [managerAnnBody, setManagerAnnBody] = useState('');
@@ -293,7 +280,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
   const [managerModerating, setManagerModerating] = useState(false);
   const [showManagerClassPicker, setShowManagerClassPicker] = useState(false);
 
-  // ✅ 1) purge orphan classes + sections count
   useEffect(() => {
     (async () => {
       try {
@@ -304,7 +290,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     })();
   }, []);
 
-  // ✅ 2) notifications
   useEffect(() => {
     if (!user) return;
     const notifRef = collection(db, 'notifications', user.id, 'userNotifications');
@@ -317,7 +302,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     return () => unsubscribeNotif();
   }, [user.id]);
 
-  // ✅ 3) onMessage listener
   useEffect(() => {
     const unsub = setupOnMessageListener((payload) => {
       toast.custom(() => (
@@ -330,12 +314,10 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     return () => unsub();
   }, []);
 
-  // ✅ 4) cleanup old requests
   useEffect(() => {
     cleanupOldApprovedRequests().catch(err => console.warn('cleanup initial failed:', err));
   }, []);
 
-  // ✅ 5) counters
   useEffect(() => {
     (async () => {
       try {
@@ -357,7 +339,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     })();
   }, []);
 
-  // ✅ 6) Lazy requests
   useEffect(() => {
     if (!requestsOpen) return;
     setRequestsLoading(true);
@@ -373,7 +354,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     return () => unsub();
   }, [requestsOpen]);
 
-  // ✅ 7) Lazy announcements (both pending + all for manager to see own)
   useEffect(() => {
     if (!announcementsOpen) return;
     const q = query(collection(db, 'announcements'), orderBy('createdAt', 'desc'));
@@ -387,7 +367,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     return () => unsub();
   }, [announcementsOpen]);
 
-  // ✅ 8) Load lessonTimes
   const loadLessonTimes = async () => {
     if (lessonTimesLoaded || loadingLessonTimes) return;
     setLoadingLessonTimes(true);
@@ -412,7 +391,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ 9) Next lesson
   useEffect(() => {
     if (allLessonTimes.length === 0) { setNextGlobalLesson(null); setActiveLecturesCount(0); return; }
     const tick = () => {
@@ -562,9 +540,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
             await setDoc(doc(collection(db, 'notifications', t.studentId, 'userNotifications')), {
               title: 'تغيير الشعبة',
               body: `تم نقلك من شعبة "${request.payload.className}" إلى "${t.toClassName || ''}" بسبب تغيير جنس الشعبة.`,
-              type: 'class_transfer',
-              createdAt: serverTimestamp(),
-              read: false
+              type: 'class_transfer', createdAt: serverTimestamp(), read: false
             });
           }
         }
@@ -584,22 +560,8 @@ const SystemManagerPanel = ({ user, onLogout }) => {
           body: Array.isArray(request.payload.finalClassIds)
             ? `تم تعديل شعبك.${request.payload.addedClassIds?.length ? ` أُضيفت: ${request.payload.toClassName}.` : ''}${request.payload.removedClassIds?.length ? ` أُزيلت: ${request.payload.fromClassName}.` : ''}`
             : `تم نقلك من شعبة "${request.payload.fromClassName}" إلى "${request.payload.toClassName}".`,
-          type: 'class_transfer',
-          createdAt: serverTimestamp(),
-          read: false
+          type: 'class_transfer', createdAt: serverTimestamp(), read: false
         });
-        break;
-      case 'unactivated_account_reminder':
-      case 'warning':
-      case 'notice':
-      case 'general':
-      case 'report':
-      case 'absence_warning':
-      case 'auto_freeze':
-      case 'data_update_approval':
-      case 'data_update_rejection':
-      case 'password_reset_rejection':
-      case 'reset_password':
         break;
       default:
         break;
@@ -689,13 +651,11 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     } catch (err) { toast.error('فشل الحذف: ' + err.message); }
   };
 
-  // ✅ الموافقة على إعلان بانتظار المراجعة — تُنشر لجمهورها حسب audience
   const handleApproveAnnouncement = async (ann) => {
     const audLabel = ann.audienceLabel || ANNOUNCEMENT_AUDIENCE_LABELS[ann.audience] || 'الجميع';
     const ok = await confirm('نشر الإعلان', `نشر "${ann.title}" إلى: ${audLabel}؟`);
     if (!ok) return;
     try {
-      // approveAnnouncement يتولى publishAnnouncementToAudience بناءً على audience
       await approveAnnouncement(ann.id, user.id, user.name || 'مدير');
       toast.success(`✅ تم نشر الإعلان إلى: ${audLabel}`);
     } catch (e) {
@@ -712,7 +672,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     } catch (e) { toast.error('فشل: ' + e.message); }
   };
 
-  // ✅ إنشاء إعلان من المدير (يمر بفحص سند)
   const handleCreateManagerAnnouncement = async () => {
     const title = sanitizeInput(managerAnnTitle);
     const body = sanitizeInput(managerAnnBody);
@@ -754,14 +713,11 @@ const SystemManagerPanel = ({ user, onLogout }) => {
       });
 
       if (moderationResult.safe && !moderationResult.error) {
-        toast.success(scheduledFor
-          ? '✅ المحتوى آمن — سيُنشر في الموعد'
-          : '✅ المحتوى آمن — تم النشر');
+        toast.success(scheduledFor ? '✅ المحتوى آمن — سيُنشر في الموعد' : '✅ المحتوى آمن — تم النشر');
       } else {
         toast.success('✅ تم حفظ الإعلان بانتظار مراجعة');
       }
 
-      // reset
       setManagerAnnTitle(''); setManagerAnnBody(''); setManagerAnnCharCount(0);
       setManagerAnnPublishType('now'); setManagerAnnDelayHours(''); setManagerAnnDelayMinutes('');
       setManagerAnnDelayError(''); setManagerAnnAudience(ANNOUNCEMENT_AUDIENCE.ALL_STUDENTS);
@@ -785,8 +741,9 @@ const SystemManagerPanel = ({ user, onLogout }) => {
   const getAudienceBadge = (ann) => {
     const aud = ann.audience || 'all_students';
     const label = ann.audienceLabel || ANNOUNCEMENT_AUDIENCE_LABELS[aud] || 'الجميع';
-    const icons = { all_students: '👥', all_teachers: '🎓', all_supervisors: '🛡️', classes: '🏫' };
+    const icons = { all_system: '🌐', all_students: '👥', all_teachers: '🎓', all_supervisors: '🛡️', classes: '🏫' };
     const colors = {
+      all_system: 'text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40',
       all_students: 'text-cyan-700 dark:text-cyan-300 bg-cyan-50 dark:bg-cyan-950/40',
       all_teachers: 'text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40',
       all_supervisors: 'text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/40',
@@ -822,7 +779,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* ✅ بطاقة "إشعار جديد من المدير" */}
         <div className="bg-gradient-to-br from-purple-50 to-fuchsia-50 dark:from-purple-900/30 dark:to-fuchsia-900/20 p-5 rounded-2xl border-2 border-purple-300 dark:border-purple-500/40">
           <div className="flex justify-between items-center flex-wrap gap-3">
             <div>
@@ -831,16 +787,12 @@ const SystemManagerPanel = ({ user, onLogout }) => {
               </h3>
               <p className="text-sm text-purple-700 dark:text-purple-300 mt-1">أرسل إعلاناً مستهدفاً (يمر بفحص سند)</p>
             </div>
-            <button
-              onClick={() => setShowManagerAnnModal(true)}
-              className="bg-purple-600 hover:bg-purple-700 text-white py-2 px-5 rounded-lg font-bold flex items-center gap-2"
-            >
+            <button onClick={() => setShowManagerAnnModal(true)} className="bg-purple-600 hover:bg-purple-700 text-white py-2 px-5 rounded-lg font-bold flex items-center gap-2">
               <FaPlus /> إشعار جديد
             </button>
           </div>
         </div>
 
-        {/* ✅ عدادات */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-gradient-to-br from-red-100 to-red-50 dark:from-red-900/50 dark:to-red-900/20 p-6 rounded-2xl border border-red-200 dark:border-red-500/30 shadow-xl">
             <div className="flex items-center gap-3 mb-3">
@@ -906,15 +858,12 @@ const SystemManagerPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* ✅ إعلانات بانتظار الموافقة */}
         <div className="bg-blue-50 dark:bg-gray-800/60 rounded-2xl border border-blue-200 dark:border-blue-500/30 overflow-hidden">
           <button onClick={() => setAnnouncementsOpen(v => !v)} className="w-full p-6 flex justify-between items-center gap-3 hover:bg-blue-100/50 dark:hover:bg-gray-700/30 transition text-right">
             <h3 className="text-xl font-semibold text-blue-700 dark:text-blue-300 flex items-center gap-2">
               <FaBroadcastTower /> إعلانات بانتظار موافقتك {announcementsLoaded && `(${pendingAnnouncements.length})`}
             </h3>
-            {announcementsOpen
-              ? <FaChevronUp className="text-blue-600 dark:text-blue-300" />
-              : <FaChevronDown className="text-blue-600 dark:text-blue-300" />}
+            {announcementsOpen ? <FaChevronUp className="text-blue-600 dark:text-blue-300" /> : <FaChevronDown className="text-blue-600 dark:text-blue-300" />}
           </button>
 
           {announcementsOpen && (
@@ -1009,7 +958,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
           </button>
         </div>
 
-        {/* ✅ طلبات الرسائل — Lazy */}
         <div className="bg-amber-50 dark:bg-gray-800/60 rounded-2xl border border-amber-200 dark:border-amber-500/30 overflow-hidden">
           <button onClick={() => setRequestsOpen(v => !v)} className="w-full p-6 flex justify-between items-center gap-3 hover:bg-amber-100/50 dark:hover:bg-gray-700/30 transition text-right">
             <div className="text-right">
@@ -1020,9 +968,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
                 {pendingCount > 0 ? `⏳ ${pendingCount} طلب بانتظار المراجعة` : 'لا توجد طلبات معلقة حالياً'}
               </p>
             </div>
-            {requestsOpen
-              ? <FaChevronUp className="text-amber-600 dark:text-amber-300" />
-              : <FaChevronDown className="text-amber-600 dark:text-amber-300" />}
+            {requestsOpen ? <FaChevronUp className="text-amber-600 dark:text-amber-300" /> : <FaChevronDown className="text-amber-600 dark:text-amber-300" />}
           </button>
 
           {requestsOpen && (
@@ -1127,7 +1073,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
         </div>
       </div>
 
-      {/* ✅ Modal إنشاء إشعار من المدير */}
       {showManagerAnnModal && (
         <div className="fixed inset-0 bg-black/60 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowManagerAnnModal(false)}>
           <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl max-w-2xl w-full border border-purple-300 dark:border-purple-500/30 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
@@ -1158,6 +1103,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
                 <label className="block text-sm text-slate-700 dark:text-gray-300 mb-2">الجمهور المستهدف</label>
                 <div className="grid grid-cols-2 gap-2">
                   {[
+                    { value: ANNOUNCEMENT_AUDIENCE.ALL_SYSTEM, icon: FaGlobe, label: 'جميع النظام' },
                     { value: ANNOUNCEMENT_AUDIENCE.ALL_STUDENTS, icon: FaUserGraduate, label: 'جميع الطلاب' },
                     { value: ANNOUNCEMENT_AUDIENCE.ALL_TEACHERS, icon: FaChalkboardTeacher, label: 'جميع المعلمين' },
                     { value: ANNOUNCEMENT_AUDIENCE.ALL_SUPERVISORS, icon: FaUserTie, label: 'جميع المشرفين' },
@@ -1166,16 +1112,10 @@ const SystemManagerPanel = ({ user, onLogout }) => {
                     const Icon = opt.icon;
                     const selected = managerAnnAudience === opt.value;
                     return (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => setManagerAnnAudience(opt.value)}
+                      <button key={opt.value} type="button" onClick={() => setManagerAnnAudience(opt.value)}
                         className={`p-3 rounded-lg border-2 transition flex items-center gap-2 text-sm font-bold ${
-                          selected
-                            ? 'border-purple-500 bg-purple-500/15 text-purple-800 dark:text-purple-200'
-                            : 'border-slate-200 dark:border-gray-700 text-slate-600 dark:text-gray-300 hover:border-purple-400/50'
-                        }`}
-                      >
+                          selected ? 'border-purple-500 bg-purple-500/15 text-purple-800 dark:text-purple-200' : 'border-slate-200 dark:border-gray-700 text-slate-600 dark:text-gray-300 hover:border-purple-400/50'
+                        }`}>
                         <Icon /> {opt.label}
                       </button>
                     );
@@ -1185,11 +1125,8 @@ const SystemManagerPanel = ({ user, onLogout }) => {
 
               {managerAnnAudience === ANNOUNCEMENT_AUDIENCE.CLASSES && (
                 <div>
-                  <button
-                    type="button"
-                    onClick={() => setShowManagerClassPicker(true)}
-                    className="w-full py-2.5 rounded-md font-bold flex items-center justify-center gap-2 border-2 border-dashed border-purple-400 dark:border-purple-500/60 text-purple-700 dark:text-purple-300 bg-purple-50/50 dark:bg-purple-500/5 hover:bg-purple-100/70 dark:hover:bg-purple-500/15 transition"
-                  >
+                  <button type="button" onClick={() => setShowManagerClassPicker(true)}
+                    className="w-full py-2.5 rounded-md font-bold flex items-center justify-center gap-2 border-2 border-dashed border-purple-400 dark:border-purple-500/60 text-purple-700 dark:text-purple-300 bg-purple-50/50 dark:bg-purple-500/5 hover:bg-purple-100/70 dark:hover:bg-purple-500/15 transition">
                     <FaFolderOpen /> اختيار الشعب
                     {managerAnnTargetClasses.length > 0 && (
                       <span className="bg-purple-600 text-white text-xs font-bold px-2 py-0.5 rounded-full min-w-[22px]">{managerAnnTargetClasses.length}</span>
@@ -1219,11 +1156,8 @@ const SystemManagerPanel = ({ user, onLogout }) => {
               )}
 
               <div className="flex gap-3">
-                <button
-                  onClick={handleCreateManagerAnnouncement}
-                  disabled={managerModerating}
-                  className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 px-6 py-2 rounded-md text-white font-bold flex items-center gap-2"
-                >
+                <button onClick={handleCreateManagerAnnouncement} disabled={managerModerating}
+                  className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 px-6 py-2 rounded-md text-white font-bold flex items-center gap-2">
                   {managerModerating ? <><FaSpinner className="animate-spin" /> جاري الفحص...</> : 'فحص وإرسال'}
                 </button>
                 <button onClick={() => {
@@ -1239,7 +1173,6 @@ const SystemManagerPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      {/* ✅ Class picker for manager announcement */}
       <ManagerClassPickerModal
         isOpen={showManagerClassPicker}
         onClose={() => setShowManagerClassPicker(false)}
@@ -1264,10 +1197,8 @@ const SystemManagerPanel = ({ user, onLogout }) => {
                 <div className="flex items-center gap-2 mt-2">
                   <p className="text-sm text-cyan-600 dark:text-cyan-300 font-mono flex-1" dir="ltr">{openRequestModal.targetPhone || '—'}</p>
                   {openRequestModal.targetPhone && (
-                    <button
-                      onClick={() => { navigator.clipboard.writeText(openRequestModal.targetPhone); toast.success('تم نسخ الرقم'); }}
-                      className="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 p-1.5 rounded bg-cyan-500/10 hover:bg-cyan-500/20"
-                    >
+                    <button onClick={() => { navigator.clipboard.writeText(openRequestModal.targetPhone); toast.success('تم نسخ الرقم'); }}
+                      className="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 p-1.5 rounded bg-cyan-500/10 hover:bg-cyan-500/20">
                       <FaCopy />
                     </button>
                   )}
@@ -1277,10 +1208,8 @@ const SystemManagerPanel = ({ user, onLogout }) => {
               <div className="bg-slate-50 dark:bg-gray-800/60 p-3 rounded-xl border border-gray-200 dark:border-transparent">
                 <div className="flex items-center justify-between mb-1">
                   <p className="text-xs text-slate-500 dark:text-gray-400">نص الرسالة:</p>
-                  <button
-                    onClick={() => { navigator.clipboard.writeText(buildMessageText(openRequestModal)); toast.success('تم نسخ الرسالة'); }}
-                    className="text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 p-1.5 rounded bg-amber-500/10 hover:bg-amber-500/20"
-                  >
+                  <button onClick={() => { navigator.clipboard.writeText(buildMessageText(openRequestModal)); toast.success('تم نسخ الرسالة'); }}
+                    className="text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 p-1.5 rounded bg-amber-500/10 hover:bg-amber-500/20">
                     <FaCopy />
                   </button>
                 </div>

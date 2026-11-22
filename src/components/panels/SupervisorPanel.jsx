@@ -5,8 +5,8 @@ import {
   FaSpinner, FaUpload, FaClock, FaUsers, FaGraduationCap, FaUserCog,
   FaChalkboardTeacher, FaLayerGroup, FaFolder, FaFolderOpen, FaChevronLeft,
   FaHome, FaTimes, FaCheckSquare, FaSquare, FaCheckCircle, FaTimesCircle,
-  FaClipboardCheck, FaArrowLeft, FaUserCheck, FaUserGraduate,
-  FaUserTie, FaLayerGroup as FaLayers
+  FaClipboardCheck, FaArrowLeft, FaUserGraduate, FaUserTie,
+  FaLayerGroup as FaLayers
 } from 'react-icons/fa';
 import { db, secondaryAuth, messaging } from '../../firebase';
 import {
@@ -45,9 +45,6 @@ import StudentSerialManagerModal from './StudentSerialManagerModal';
 import TeachersManagerModal from './TeachersManagerModal';
 import { useConfirm, usePrompt } from '../common/ConfirmContext';
 
-/**
- * ✅ شاشة اختيار الشعب (شجرة) — تُستخدم عند إضافة طالب أو تحديد جمهور إعلان
- */
 const ClassTreePickerModal = ({ isOpen, onClose, sections, classes, selectedIds, onConfirm, allowedGenders }) => {
   const [currentId, setCurrentId] = useState(null);
   const [tempSelected, setTempSelected] = useState(selectedIds);
@@ -227,7 +224,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
   const [delayError, setDelayError] = useState('');
   const [editingAnnouncementId, setEditingAnnouncementId] = useState(null);
 
-  // ✅ جديد: اختيار الجمهور + سند
   const [announcementAudience, setAnnouncementAudience] = useState(ANNOUNCEMENT_AUDIENCE.ALL_STUDENTS);
   const [announcementTargetClasses, setAnnouncementTargetClasses] = useState([]);
   const [showAnnouncementClassPicker, setShowAnnouncementClassPicker] = useState(false);
@@ -405,7 +401,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
     return () => unsubscribeNotif();
   }, [user]);
 
-  // ✅ إنشاء إعلان — يستخدم createTargetedAnnouncement + فحص سند
   const handleCreateAnnouncement = async () => {
     const title = sanitizeInput(announcementTitle);
     const body = sanitizeInput(announcementBody);
@@ -463,7 +458,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
           toast.success('✅ تم إرسال الإعلان للمدير للمراجعة');
         }
       }
-      // reset
       setAnnouncementTitle(''); setAnnouncementBody(''); setCharCount(0);
       setPublishType('now'); setDelayHours(''); setDelayMinutes('');
       setDelayError(''); setEditingAnnouncementId(null); setShowAnnouncementModal(false);
@@ -708,12 +702,14 @@ const SupervisorPanel = ({ user, onLogout }) => {
     const aud = item.audience || 'all_students';
     const label = item.audienceLabel || ANNOUNCEMENT_AUDIENCE_LABELS[aud] || 'الجميع';
     const icons = {
+      all_system: '🌐',
       all_students: '👥',
       all_teachers: '🎓',
       all_supervisors: '🛡️',
       classes: '🏫'
     };
     const colors = {
+      all_system: 'text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40',
       all_students: 'text-cyan-700 dark:text-cyan-300 bg-cyan-50 dark:bg-cyan-950/40',
       all_teachers: 'text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40',
       all_supervisors: 'text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/40',
@@ -960,8 +956,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
 
               <div>
                 <label className="text-xs text-slate-500 dark:text-gray-400 mb-1 block">الشعب الدراسية *</label>
-
-                {/* ✅ زر اختيار الشعب — تصميم مختلف (outline + badge) */}
                 <button
                   type="button"
                   onClick={() => setShowClassPicker(true)}
@@ -972,7 +966,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
                     <span className="bg-indigo-600 text-white text-xs font-bold px-2 py-0.5 rounded-full min-w-[22px]">{newStudentClassIds.length}</span>
                   )}
                 </button>
-
                 {selectedClassesNames.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1">
                     {selectedClassesNames.map((name, i) => (
@@ -1029,15 +1022,14 @@ const SupervisorPanel = ({ user, onLogout }) => {
                 <div className="text-xs text-slate-500 dark:text-gray-400 mt-1 text-left">{charCount} / 10000</div>
               </div>
 
-              {/* ✅ اختيار الجمهور */}
               <div>
                 <label className="block text-sm text-slate-700 dark:text-gray-300 mb-2">الجمهور المستهدف</label>
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    { value: ANNOUNCEMENT_AUDIENCE.ALL_STUDENTS, icon: FaUserGraduate, label: 'جميع الطلاب', color: 'cyan' },
-                    { value: ANNOUNCEMENT_AUDIENCE.ALL_TEACHERS, icon: FaChalkboardTeacher, label: 'جميع المعلمين', color: 'indigo' },
-                    { value: ANNOUNCEMENT_AUDIENCE.ALL_SUPERVISORS, icon: FaUserTie, label: 'جميع المشرفين', color: 'teal' },
-                    { value: ANNOUNCEMENT_AUDIENCE.CLASSES, icon: FaLayers, label: 'شعب محددة', color: 'purple' }
+                    { value: ANNOUNCEMENT_AUDIENCE.ALL_STUDENTS, icon: FaUserGraduate, label: 'جميع الطلاب' },
+                    { value: ANNOUNCEMENT_AUDIENCE.ALL_TEACHERS, icon: FaChalkboardTeacher, label: 'جميع المعلمين' },
+                    { value: ANNOUNCEMENT_AUDIENCE.ALL_SUPERVISORS, icon: FaUserTie, label: 'جميع المشرفين' },
+                    { value: ANNOUNCEMENT_AUDIENCE.CLASSES, icon: FaLayers, label: 'شعب محددة' }
                   ].map(opt => {
                     const Icon = opt.icon;
                     const selected = announcementAudience === opt.value;
@@ -1059,7 +1051,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
                 </div>
               </div>
 
-              {/* ✅ اختيار شعب محددة */}
               {announcementAudience === ANNOUNCEMENT_AUDIENCE.CLASSES && (
                 <div>
                   <button

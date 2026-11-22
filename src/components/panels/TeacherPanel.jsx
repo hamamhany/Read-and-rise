@@ -3,7 +3,9 @@ import toast from 'react-hot-toast';
 import {
   FaPen, FaClock, FaClipboardList, FaUser, FaBell, FaSignOutAlt,
   FaExclamationTriangle, FaCheckCircle, FaTimesCircle, FaEye,
-  FaPlus, FaVideo, FaUsers, FaTrashAlt, FaPrint, FaPaperPlane, FaFileAlt
+  FaPlus, FaVideo, FaUsers, FaTrashAlt, FaPrint, FaPaperPlane, FaFileAlt,
+  FaBullhorn, FaSpinner, FaUpload, FaTimes, FaFolderOpen, FaLayerGroup,
+  FaUserGraduate
 } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 import { db, messaging } from '../../firebase';
@@ -21,13 +23,21 @@ import { AddLessonModal } from '../common/AddLessonModal';
 import PrintStudentsModal from '../common/PrintStudentsModal';
 import ReportModal from '../common/ReportModal';
 import {
-  generateId, sanitizeInput, fetchClassNames, getActiveWarnings
+  generateId, sanitizeInput, fetchClassNames, getActiveWarnings,
+  arabicToEnglishNumber
 } from '../../utils/helpers';
 import { createMessageRequest } from '../../services/messageRequests';
 import { purgeClassesWithoutSection } from '../../services/classes';
 import { getExamsByTeacher } from '../../services/exams';
 import { sendNotificationToStudents } from '../../utils/notifications';
-import { MESSAGE_REQUEST_TYPES } from '../../constants';
+import {
+  MESSAGE_REQUEST_TYPES,
+  ANNOUNCEMENT_AUDIENCE, ANNOUNCEMENT_AUDIENCE_LABELS
+} from '../../constants';
+import {
+  createTargetedAnnouncement, moderateAnnouncementContent,
+  updateAnnouncement, deleteAnnouncement
+} from '../../services/announcements';
 import JitsiRoom, { enterFullscreen, exitFullscreen } from '../common/JitsiRoom';
 import {
   startLiveSession, endLiveSession, subscribeToLiveSessions
@@ -71,14 +81,23 @@ const TeacherPanel = ({ user, onLogout }) => {
   const [showReportModal, setShowReportModal] = useState(false);
   const [selectedStudentForReport, setSelectedStudentForReport] = useState(null);
 
-  // Apology states
   const [showApologyModal, setShowApologyModal] = useState(false);
 
-  // Exam states (تم إزالة showExamManager, editingExam, showExamResults, selectedExam)
   const [exams, setExams] = useState([]);
   const [lessonRoomClassId, setLessonRoomClassId] = useState(null);
   const [startingRoom, setStartingRoom] = useState(false);
   const [liveSessions, setLiveSessions] = useState([]);
+
+  // ✅ الإعلانات العامة للمعلم
+  const [announcements, setAnnouncements] = useState([]);
+  const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
+  const [announcementTitle, setAnnouncementTitle] = useState('');
+  const [announcementBody, setAnnouncementBody] = useState('');
+  const [charCount, setCharCount] = useState(0);
+  const [announcementAudience, setAnnouncementAudience] = useState(ANNOUNCEMENT_AUDIENCE.ALL_STUDENTS);
+  const [announcementTargetClasses, setAnnouncementTargetClasses] = useState([]);
+  const [moderating, setModerating] = useState(false);
+  const [editingAnnouncementId, setEditingAnnouncementId] = useState(null);
 
   const requestNotificationPermission = async () => {
     try {
@@ -106,9 +125,8 @@ const TeacherPanel = ({ user, onLogout }) => {
         ]);
       } catch (e) { return true; }
       if (token) {
-        try {
-          await updateDoc(doc(db, 'profiles', user.id), { fcmTokens: arrayUnion(token) });
-        } catch (e) { console.warn('Save token failed:', e.message); }
+        try { await updateDoc(doc(db, 'profiles', user.id), { fcmTokens: arrayUnion(token) }); }
+        catch (e) { console.warn('Save token failed:', e.message); }
       }
       return true;
     } catch (err) { console.error('Notification error:', err); return false; }
@@ -133,9 +151,7 @@ const TeacherPanel = ({ user, onLogout }) => {
     setNotificationIdsAtOpen(notifications.map(n => n.id));
     setShowNotificationsModal(true);
     if (typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
-      requestNotificationPermission()
-        .then(ok => setNotificationsActive(ok))
-        .catch(err => console.warn('Notification request failed:', err));
+      requestNotificationPermission().then(ok => setNotificationsActive(ok)).catch(err => console.warn('Notification request failed:', err));
     }
   };
 
@@ -254,9 +270,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         targetClass: student.classes?.map(c => c.name).join(', ') || 'غير محدد',
         requestedBy: user.id,
         requestedByName: user.name || user.username || 'معلم',
-        payload: {
-          reason: 'عدم مطابقة الوثائق الرسمية / الحاجة لتقديم إثبات رسمي آخر'
-        }
+        payload: { reason: 'عدم مطابقة الوثائق الرسمية / الحاجة لتقديم إثبات رسمي آخر' }
       });
 
       toast.success('✅ تم رفض التغييرات.');
@@ -314,10 +328,7 @@ const TeacherPanel = ({ user, onLogout }) => {
 
   const handleSaveGeneralMessage = async () => {
     if (!selectedStudentForMessage) return;
-    if (!generalMessageText.trim()) {
-      toast.error('يرجى كتابة نص الرسالة.');
-      return;
-    }
+    if (!generalMessageText.trim()) { toast.error('يرجى كتابة نص الرسالة.'); return; }
     try {
       await createMessageRequest({
         type: MESSAGE_REQUEST_TYPES.GENERAL,
@@ -361,7 +372,6 @@ const TeacherPanel = ({ user, onLogout }) => {
         }));
         setStudents(studentsList);
 
-        // ✅ حذف فوري لأي شعبة قديمة بدون قسم (وبدون إنشاء شعب افتراضية)
         try { await purgeClassesWithoutSection(); } catch (e) { console.warn('purge classes failed:', e); }
         const classesSnapshot = await getDocs(query(collection(db, 'classes'), where('teacherId', '==', user.id)));
         const classesList = classesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(c => c.sectionId);
@@ -420,7 +430,30 @@ const TeacherPanel = ({ user, onLogout }) => {
     return () => { unsubTeacher(); unsubStudents(); unsubClasses(); unsubPending(); unsubNotif(); };
   }, [user.id]);
 
-  // ✅ متابعة الحصص المفتوحة لشعب هذا المعلم
+  // ✅ جلب الإعلانات العامة (المنشورة + المعلقة من هذا المعلم)
+  useEffect(() => {
+    const q = query(collection(db, 'announcements'), orderBy('createdAt', 'desc'));
+    const unsub = onSnapshot(q, (snap) => {
+      const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const now = new Date();
+      const filtered = all.filter(item => {
+        if (item.status === 'rejected') return false;
+        if (item.status === 'scheduled') {
+          if (!item.scheduledFor) return false;
+          const scheduled = new Date(item.scheduledFor.seconds * 1000);
+          return scheduled > now;
+        }
+        // المعلم يرى: كل الإعلانات المنشورة + إعلاناته المعلقة فقط
+        if (item.status === 'pending_approval') {
+          return item.requestedBy === user.id;
+        }
+        return true;
+      });
+      setAnnouncements(filtered);
+    });
+    return () => unsub();
+  }, [user.id]);
+
   const myClassIdsKey = classes.map(c => c.id).join(',');
   useEffect(() => {
     const ids = myClassIdsKey ? myClassIdsKey.split(',') : [];
@@ -428,7 +461,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     return () => unsub();
   }, [myClassIdsKey]);
 
-  // Fetch Exams (بدون showExamManager في dependencies)
   useEffect(() => {
     if (user.id) {
       getExamsByTeacher(user.id)
@@ -463,13 +495,13 @@ const TeacherPanel = ({ user, onLogout }) => {
         let next = new Date(now);
         next.setDate(now.getDate() + diff);
         next.setHours(lt.time.hours, lt.time.minutes, 0, 0);
-        
+
         let dateStr = next.toISOString().split('T')[0];
         while (lt.cancelledDates?.includes(dateStr)) {
           next.setDate(next.getDate() + 7);
           dateStr = next.toISOString().split('T')[0];
         }
-        
+
         if (!nearest || next < new Date(nearest.date)) nearest = { ...lt, date: next.toISOString() };
       } else if (lt.type === 'monthly') {
         const md = parseInt(lt.monthDay);
@@ -480,13 +512,13 @@ const TeacherPanel = ({ user, onLogout }) => {
           next = new Date(now.getFullYear(), now.getMonth() + 1, md);
           next.setHours(lt.time.hours, lt.time.minutes, 0, 0);
         }
-        
+
         let dateStr = next.toISOString().split('T')[0];
         while (lt.cancelledDates?.includes(dateStr)) {
           next.setMonth(next.getMonth() + 1);
           dateStr = next.toISOString().split('T')[0];
         }
-        
+
         if (!nearest || next < new Date(nearest.date)) nearest = { ...lt, date: next.toISOString() };
       }
     }
@@ -498,10 +530,10 @@ const TeacherPanel = ({ user, onLogout }) => {
   const handlePostponeLesson = async () => {
     if (!nextLesson) return toast.error('لا توجد حصة قادمة');
     setShowApologyModal(false);
-    
+
     const nextDate = new Date(nextLesson.date);
     const followingDate = new Date(nextDate);
-    
+
     if (nextLesson.type === 'recurring') {
       followingDate.setDate(followingDate.getDate() + 7);
     } else if (nextLesson.type === 'monthly') {
@@ -529,22 +561,20 @@ const TeacherPanel = ({ user, onLogout }) => {
 
       const dayNames = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
       const body = `تم إلغاء الحصة القادمة التي كانت بتاريخ ${nextDate.toLocaleDateString('ar-EG')} الموافق يوم ${dayNames[nextDate.getDay()]} وتحويلها إلى تاريخ ${followingDate.toLocaleDateString('ar-EG')}. يتمنا كادر الأكاديمية لكم التوفيق والنجاح`;
-      
+
       await sendNotificationToStudents([selectedClassForLesson], 'إلغاء الحصة القادمة', body, 'class_cancellation');
-      
+
       toast.success('✅ تم تأجيل الحصة وإرسال الإشعار للطلاب');
     } catch (e) {
       toast.error('فشل: ' + e.message);
     }
   };
 
-  // الحصة المفتوحة حالياً للشعبة المختارة
   const selectedSession = liveSessions.find(sess => sess.classId === selectedClassForLesson && sess.active);
 
-  // ✅ إنشاء غرفة للشعبة المختارة (أو العودة لحصة مفتوحة)
   const handleCreateRoom = async () => {
     if (!selectedClassForLesson) return toast.error('اختر الشعبة أولاً.');
-    enterFullscreen(); // ملء الشاشة فوراً مع الضغطة
+    enterFullscreen();
     setStartingRoom(true);
     try {
       await startLiveSession(selectedClassForLesson);
@@ -557,7 +587,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     }
   };
 
-  // ✅ إنهاء الحصة بإجراء واضح (تُغلق للجميع، والحصة التالية تبدأ بدردشة فارغة)
   const handleEndSession = async () => {
     const ok = await confirm('إنهاء الحصة', 'سيخرج جميع الطلاب من الغرفة وتُحذف الدردشة. هل أنت متأكد؟');
     if (!ok) return;
@@ -567,6 +596,103 @@ const TeacherPanel = ({ user, onLogout }) => {
     } catch (err) {
       toast.error('تعذر إنهاء الحصة: ' + (err.message || ''));
     }
+  };
+
+  // ✅ فحص وإرسال الإعلان من المعلم
+  const handleCreateAnnouncement = async () => {
+    const title = sanitizeInput(announcementTitle);
+    const body = sanitizeInput(announcementBody);
+    if (!title || !body) { toast.error('يرجى إدخال العنوان والمحتوى.'); return; }
+    if (body.length > 10000) { toast.error('نص الإشعار طويل جداً (الحد الأقصى 10000 حرف).'); return; }
+    if (announcementAudience === ANNOUNCEMENT_AUDIENCE.CLASSES && announcementTargetClasses.length === 0) {
+      toast.error('اختر شعبة واحدة على الأقل');
+      return;
+    }
+
+    setModerating(true);
+    try {
+      if (editingAnnouncementId) {
+        await updateAnnouncement(editingAnnouncementId, {
+          title, body, status: 'pending_approval'
+        });
+        toast.success('تم تحديث الإعلان. سيراجعه المدير قبل النشر.');
+      } else {
+        toast.loading('جاري فحص المحتوى بواسطة سند...', { id: 'sanad-teacher' });
+        const moderationResult = await moderateAnnouncementContent(title, body);
+        toast.dismiss('sanad-teacher');
+
+        await createTargetedAnnouncement({
+          title, body, scheduledFor: null,
+          requestedBy: user.id,
+          requestedByName: user.name || user.username || 'معلم',
+          requestedByRole: 'teacher',
+          audience: announcementAudience,
+          targetClassIds: announcementAudience === ANNOUNCEMENT_AUDIENCE.CLASSES ? announcementTargetClasses : [],
+          moderationResult
+        });
+
+        if (moderationResult.safe && !moderationResult.error) {
+          toast.success('✅ المحتوى آمن — تم النشر');
+        } else {
+          toast.success('✅ تم إرسال الإعلان للمدير للمراجعة');
+        }
+      }
+      setAnnouncementTitle(''); setAnnouncementBody(''); setCharCount(0);
+      setEditingAnnouncementId(null); setShowAnnouncementModal(false);
+      setAnnouncementAudience(ANNOUNCEMENT_AUDIENCE.ALL_STUDENTS);
+      setAnnouncementTargetClasses([]);
+    } catch (err) {
+      toast.dismiss('sanad-teacher');
+      toast.error('فشل حفظ الإعلان: ' + err.message);
+    } finally {
+      setModerating(false);
+    }
+  };
+
+  const handleEditAnnouncement = (item) => {
+    setEditingAnnouncementId(item.id);
+    setAnnouncementTitle(item.title);
+    setAnnouncementBody(item.body);
+    setCharCount(item.body.length);
+    setAnnouncementAudience(item.audience || ANNOUNCEMENT_AUDIENCE.ALL_STUDENTS);
+    setAnnouncementTargetClasses(item.targetClassIds || []);
+    setShowAnnouncementModal(true);
+  };
+
+  const handleDeleteAnnouncement = async (id) => {
+    const ok = await confirm('حذف الإعلان', 'هل أنت متأكد من حذف هذا الإعلان نهائياً؟');
+    if (!ok) return;
+    try { await deleteAnnouncement(id); toast.success('تم حذف الإعلان.'); }
+    catch (err) { toast.error('فشل حذف الإعلان: ' + err.message); }
+  };
+
+  const getAudienceBadge = (item) => {
+    const aud = item.audience || 'all_students';
+    const label = item.audienceLabel || ANNOUNCEMENT_AUDIENCE_LABELS[aud] || 'الجميع';
+    const icons = { all_system: '🌐', all_students: '👥', all_teachers: '🎓', all_supervisors: '🛡️', classes: '🏫' };
+    const colors = {
+      all_system: 'text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40',
+      all_students: 'text-cyan-700 dark:text-cyan-300 bg-cyan-50 dark:bg-cyan-950/40',
+      all_teachers: 'text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40',
+      all_supervisors: 'text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/40',
+      classes: 'text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40'
+    };
+    return (
+      <span className={`text-xs px-2 py-0.5 rounded-full ${colors[aud] || colors.all_students}`}>
+        {icons[aud] || '📢'} {label}
+        {aud === 'classes' && item.targetClassIds?.length > 0 && ` (${item.targetClassIds.length})`}
+      </span>
+    );
+  };
+
+  const getAnnouncementStatusBadge = (item) => {
+    if (item.status === 'pending_approval') {
+      return <span className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full">⏳ بانتظار المدير</span>;
+    }
+    if (item.status === 'active') {
+      return <span className="text-xs text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-950/40 px-2 py-0.5 rounded-full">✅ منشور</span>;
+    }
+    return null;
   };
 
   if (loading) return <div className="text-center text-slate-500 dark:text-gray-400 p-8">جاري التحميل...</div>;
@@ -709,7 +835,56 @@ const TeacherPanel = ({ user, onLogout }) => {
           ) : <p className="text-slate-500 dark:text-gray-400 text-center py-4">لا توجد واجبات.</p>}
         </div>
 
-        {/* ✅ قسم الاختبارات الإلكترونية — يستخدم now navigation */}
+        {/* ✅ قسم الإعلانات العامة للمعلم */}
+        <div className="bg-slate-50 dark:bg-gray-800/60 p-6 rounded-2xl border border-amber-300 dark:border-amber-500/20">
+          <div className="flex justify-between items-center flex-wrap gap-3 mb-4">
+            <h3 className="text-xl font-semibold text-amber-700 dark:text-amber-300">
+              <FaBullhorn className="inline-block me-2" /> الإشعارات العامة
+            </h3>
+            <button
+              onClick={() => {
+                setEditingAnnouncementId(null); setAnnouncementTitle(''); setAnnouncementBody('');
+                setCharCount(0); setAnnouncementAudience(ANNOUNCEMENT_AUDIENCE.ALL_STUDENTS);
+                setAnnouncementTargetClasses([]); setShowAnnouncementModal(true);
+              }}
+              className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-md text-sm font-bold"
+            >
+              <FaPlus className="inline-block me-2" /> إشعار جديد
+            </button>
+          </div>
+          <div className="bg-amber-500/10 border border-amber-300 dark:border-amber-500/20 rounded-lg p-2 text-xs text-amber-800 dark:text-amber-200 mb-3">
+            ℹ️ يتم فحص المحتوى تلقائياً بواسطة <strong>سند</strong>. إن كان آمناً يُنشر فوراً، وإلا يُرسل للمدير.
+          </div>
+          {announcements.length === 0 ? (
+            <p className="text-slate-500 dark:text-gray-400 text-center py-4">لا توجد إشعارات.</p>
+          ) : (
+            <div className="space-y-3 max-h-[400px] overflow-y-auto">
+              {announcements.map(item => (
+                <div key={item.id} className="p-4 bg-white dark:bg-black/30 rounded-xl border border-slate-200 dark:border-gray-700 flex justify-between items-start gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-slate-900 dark:text-white font-medium">{item.title}</span>
+                      {getAudienceBadge(item)}
+                      {getAnnouncementStatusBadge(item)}
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">
+                      من: {item.requestedByName || '—'}
+                      {item.createdAt?.toDate?.() && ` • ${new Date(item.createdAt.toDate()).toLocaleString('ar-EG', { timeZone: 'Asia/Amman' })}`}
+                    </p>
+                    <p className="text-sm text-slate-700 dark:text-gray-300 mt-1 whitespace-pre-wrap break-words">{item.body}</p>
+                  </div>
+                  {item.requestedBy === user.id && (
+                    <div className="flex gap-1 mr-2">
+                      <button onClick={() => handleEditAnnouncement(item)} className="text-blue-700 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300 text-sm px-2 py-1"><FaPen /></button>
+                      <button onClick={() => handleDeleteAnnouncement(item.id)} className="text-red-700 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300 text-sm px-2 py-1"><FaTrashAlt /></button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className="bg-slate-50 dark:bg-gray-800/60 p-6 rounded-2xl border border-orange-300 dark:border-orange-500/20">
           <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
             <h3 className="text-xl font-semibold text-orange-700 dark:text-orange-300">
@@ -766,6 +941,94 @@ const TeacherPanel = ({ user, onLogout }) => {
           </button>
         </div>
       </div>
+
+      {/* ✅ Modal إعلان المعلم */}
+      {showAnnouncementModal && (
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowAnnouncementModal(false)}>
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl max-w-2xl w-full border border-amber-300 dark:border-amber-500/30 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold text-amber-700 dark:text-amber-300">
+                <FaBullhorn className="inline-block me-2" /> {editingAnnouncementId ? 'تعديل الإعلان' : 'إشعار جديد'}
+              </h3>
+              <button onClick={() => setShowAnnouncementModal(false)} className="text-slate-500 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white text-2xl"><FaTimes /></button>
+            </div>
+
+            <div className="bg-amber-500/10 border border-amber-300 dark:border-amber-500/20 rounded-lg p-2 text-xs text-amber-800 dark:text-amber-200 mb-3">
+              ℹ️ يتم فحص المحتوى تلقائياً بواسطة <strong>سند</strong> قبل الإرسال.
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-slate-700 dark:text-gray-300 mb-1">العنوان <span className="text-red-700 dark:text-red-400">*</span></label>
+                <input type="text" className="w-full bg-white dark:bg-gray-800 text-right p-2 border border-slate-200 dark:border-gray-600 rounded-md text-slate-900 dark:text-white" value={announcementTitle} onChange={(e) => setAnnouncementTitle(e.target.value)} />
+              </div>
+
+              <div>
+                <label className="block text-sm text-slate-700 dark:text-gray-300 mb-1">المحتوى <span className="text-red-700 dark:text-red-400">*</span></label>
+                <textarea className="w-full bg-white dark:bg-gray-800 text-right p-2 border border-slate-200 dark:border-gray-600 rounded-md text-slate-900 dark:text-white resize-none h-32" value={announcementBody} onChange={(e) => { if (e.target.value.length <= 10000) { setAnnouncementBody(e.target.value); setCharCount(e.target.value.length); } else { toast.error('الحد الأقصى 10000 حرف'); } }} />
+                <div className="text-xs text-slate-500 dark:text-gray-400 mt-1 text-left">{charCount} / 10000</div>
+              </div>
+
+              <div>
+                <label className="block text-sm text-slate-700 dark:text-gray-300 mb-2">الجمهور المستهدف</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { value: ANNOUNCEMENT_AUDIENCE.ALL_STUDENTS, icon: FaUserGraduate, label: 'جميع الطلاب' },
+                    { value: ANNOUNCEMENT_AUDIENCE.CLASSES, icon: FaLayerGroup, label: 'شعب محددة' }
+                  ].map(opt => {
+                    const Icon = opt.icon;
+                    const selected = announcementAudience === opt.value;
+                    return (
+                      <button key={opt.value} type="button" onClick={() => setAnnouncementAudience(opt.value)}
+                        className={`p-3 rounded-lg border-2 transition flex items-center gap-2 text-sm font-bold ${
+                          selected ? 'border-amber-500 bg-amber-500/15 text-amber-800 dark:text-amber-200' : 'border-slate-200 dark:border-gray-700 text-slate-600 dark:text-gray-300 hover:border-amber-400/50'
+                        }`}>
+                        <Icon /> {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {announcementAudience === ANNOUNCEMENT_AUDIENCE.CLASSES && (
+                <div>
+                  <label className="block text-sm text-slate-700 dark:text-gray-300 mb-2">اختر من شعبك</label>
+                  <div className="space-y-1 max-h-40 overflow-y-auto">
+                    {classes.length === 0 ? (
+                      <p className="text-slate-500 dark:text-gray-400 text-sm text-center py-2">لا توجد شعب لديك</p>
+                    ) : classes.map(cls => {
+                      const selected = announcementTargetClasses.includes(cls.id);
+                      return (
+                        <button key={cls.id} type="button"
+                          onClick={() => setAnnouncementTargetClasses(prev => prev.includes(cls.id) ? prev.filter(x => x !== cls.id) : [...prev, cls.id])}
+                          className={`w-full p-2 rounded-lg border text-right flex items-center gap-2 ${
+                            selected ? 'bg-purple-500/15 border-purple-500' : 'bg-slate-50 dark:bg-gray-800/60 border-slate-200 dark:border-gray-700'
+                          }`}>
+                          <input type="checkbox" checked={selected} readOnly className="accent-purple-500 pointer-events-none" />
+                          <span className="text-slate-900 dark:text-white text-sm">{cls.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button onClick={handleCreateAnnouncement} disabled={moderating}
+                  className="btn-primary bg-amber-600 hover:bg-amber-700 disabled:opacity-50 px-6 py-2 rounded-md text-white flex items-center gap-2">
+                  {moderating ? <><FaSpinner className="animate-spin" /> جاري الفحص...</> : (editingAnnouncementId ? 'إرسال للمراجعة' : 'فحص وإرسال')}
+                </button>
+                <button onClick={() => {
+                  setShowAnnouncementModal(false); setEditingAnnouncementId(null);
+                  setAnnouncementTitle(''); setAnnouncementBody(''); setCharCount(0);
+                  setAnnouncementAudience(ANNOUNCEMENT_AUDIENCE.ALL_STUDENTS);
+                  setAnnouncementTargetClasses([]);
+                }} className="btn-primary bg-slate-200 dark:bg-gray-600 hover:bg-slate-300 dark:hover:bg-gray-700 px-6 py-2 rounded-md text-slate-900 dark:text-white">إلغاء</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <PrintStudentsModal isOpen={showPrintModal} onClose={() => setShowPrintModal(false)} students={students} />
       {selectedStudentForReport && (
@@ -892,7 +1155,7 @@ const TeacherPanel = ({ user, onLogout }) => {
               <h3 className="text-xl font-semibold text-purple-700 dark:text-purple-300"><FaBell className="inline-block me-2" /> الإشعارات</h3>
               <button onClick={handleCloseNotifications} className="text-slate-500 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white text-2xl">✕</button>
             </div>
-            <p className="text-xs text-slate-500 dark:text-gray-500 mb-3">📌 ستُحذف هذه الإشعارات تلقائياً عند إغلاق النافذة.</p>
+            <p className="text-xs text-slate-500 dark:text-gray-500 mb-3">📌 ستُحذف تلقائياً عند الإغلاق.</p>
             {!notificationsActive && (
               <div className="mb-4 p-3 bg-yellow-500/10 rounded-xl border border-yellow-300 dark:border-yellow-500/20 text-yellow-800 dark:text-yellow-200 text-sm">
                 ⚠️ الإشعارات غير مفعلة. اضغط على زر الجرس لتفعيلها.
@@ -906,9 +1169,7 @@ const TeacherPanel = ({ user, onLogout }) => {
                   <div key={n.id} className="p-3 rounded-xl border bg-slate-50 dark:bg-gray-800/60 border-blue-300 dark:border-blue-500/40">
                     <div className="flex justify-between items-start">
                       <h4 className="text-slate-900 dark:text-white font-medium">{n.title}</h4>
-                      <span className="text-xs text-slate-500 dark:text-gray-400">
-                        {n.createdAt?.toDate?.() ? new Date(n.createdAt.toDate()).toLocaleString('ar-EG') : ''}
-                      </span>
+                      <span className="text-xs text-slate-500 dark:text-gray-400">{n.createdAt?.toDate?.() ? new Date(n.createdAt.toDate()).toLocaleString('ar-EG') : ''}</span>
                     </div>
                     <p className="text-sm text-slate-700 dark:text-gray-300 mt-1">{n.body}</p>
                   </div>
