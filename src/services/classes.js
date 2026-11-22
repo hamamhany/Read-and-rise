@@ -339,6 +339,71 @@ export const getTeacherDisplayName = (teacher) => {
   return teacher.name || teacher.username || 'معلم';
 };
 
+/**
+ * اسم المعلم كما يراه المشاهد (مشرف):
+ *  - مشرفة (أنثى): يظهر الاسم المعتاد.
+ *  - مشرف (ذكر) + معلمة: لا يظهر اسمها — يظهر اللقب (اسم الشهرة) أو ******** إن لم يوجد.
+ *  - مشرف (ذكر) + معلم ذكر: الاسم المعتاد.
+ *  - المدير: الاسم المعتاد دائماً (مرّر viewerGender = null).
+ */
+export const getTeacherNameForViewer = (teacher, viewerGender) => {
+  if (!teacher) return 'غير محدد';
+  if (viewerGender === 'ذكر' && teacher.gender === 'أنثى') {
+    return (teacher.nickname && teacher.nickname.trim()) || '********';
+  }
+  return getTeacherDisplayName(teacher);
+};
+
+/**
+ * تغيير معلم الشعبة (للمدير فقط)
+ */
+export const changeClassTeacher = async (classId, teacherId) => {
+  if (!teacherId) throw new Error('اختر المعلم');
+  const teacherSnap = await getDoc(doc(db, 'profiles', teacherId));
+  if (!teacherSnap.exists() || teacherSnap.data().role !== 'teacher') {
+    throw new Error('المعلم غير موجود');
+  }
+  await updateDoc(doc(db, 'classes', classId), {
+    teacherId,
+    updatedAt: serverTimestamp()
+  });
+};
+
+/**
+ * إحصاءات الإنذارات لشعبة: عدد الطلاب، عدد الطلاب أصحاب الإنذارات، مجموع الإنذارات النشطة
+ */
+export const getClassWarningStats = async (classId) => {
+  const snap = await getDocs(query(
+    collection(db, 'profiles'),
+    where('classIds', 'array-contains', classId)
+  ));
+  const now = Date.now();
+  let studentsCount = 0, studentsWithWarnings = 0, totalWarnings = 0;
+  snap.docs.forEach(d => {
+    if (d.data().role !== 'student') return;
+    studentsCount++;
+    const active = (d.data().warnings || []).filter(w => {
+      const exp = w.expiresAt ? new Date(w.expiresAt).getTime() : Infinity;
+      return exp > now;
+    });
+    if (active.length > 0) studentsWithWarnings++;
+    totalWarnings += active.length;
+  });
+  return { studentsCount, studentsWithWarnings, totalWarnings };
+};
+
+/**
+ * تحديد شعب الطالب كاملةً (بعد موافقة المدير) — لازم تبقى شعبة واحدة على الأقل
+ */
+export const setStudentClasses = async (studentId, classIds) => {
+  const clean = [...new Set((classIds || []).filter(Boolean))];
+  if (clean.length === 0) throw new Error('لا يمكن ترك الطالب بدون شعبة');
+  await updateDoc(doc(db, 'profiles', studentId), {
+    classIds: clean,
+    updatedAt: serverTimestamp()
+  });
+};
+
 export const filterClassesForSupervisor = (classes, supervisorGender, visibilityMode) => {
   if (visibilityMode === CLASS_VISIBILITY.ALL || !visibilityMode) return classes;
   if (!supervisorGender) return classes;
@@ -407,7 +472,7 @@ export const moveStudentToClass = async (studentId, fromClassId, toClassId) => {
   const currentClassIds = data.classIds || [];
   const newClassIds = currentClassIds
     .filter(id => id !== fromClassId);
-  if (!newClassIds.includes(toClassId)) {
+  if (toClassId && !newClassIds.includes(toClassId)) {
     newClassIds.push(toClassId);
   }
   await updateDoc(studentRef, {

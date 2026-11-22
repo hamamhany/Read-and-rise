@@ -3,7 +3,7 @@ import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import {
   doc, setDoc, collection, query, where, getDocs, limit, serverTimestamp
 } from 'firebase/firestore';
-import { generateId } from '../utils/helpers';
+import { generateId, generateNextTeacherSerialNumber } from '../utils/helpers';
 
 const generateUniqueUsername = async () => {
   for (let i = 0; i < 10; i++) {
@@ -48,6 +48,7 @@ export const createTeacherAccount = async ({
   await signOut(secondaryAuth);
 
   const newId = generateId();
+  const serialNumber = await generateNextTeacherSerialNumber();
 
   await setDoc(doc(db, 'profiles', newId), {
     uid: firebaseUser.uid,
@@ -58,6 +59,7 @@ export const createTeacherAccount = async ({
     gender,
     age: parseInt(age),
     phone,
+    serialNumber, // يبدأ بـ 2026 ومن 8 أرقام
     country: '', //  يختاره المعلم عند إكمال الحساب
     role: 'teacher',
     isProfileComplete: false,
@@ -69,5 +71,5 @@ export const createTeacherAccount = async ({
     updatedAt: serverTimestamp()
   });
 
-  return { id: newId, username, tempPassword, email };
+  return { id: newId, username, tempPassword, email, serialNumber };
 };

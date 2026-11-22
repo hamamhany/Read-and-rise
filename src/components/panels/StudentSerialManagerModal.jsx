@@ -2,14 +2,14 @@ import React, { useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   FaSearch, FaTimes, FaSpinner, FaUserCog, FaKey, FaGraduationCap,
-  FaCheckSquare, FaSquare, FaChevronLeft, FaExchangeAlt, FaVenusMars
+  FaChevronLeft, FaTrashAlt, FaPlus, FaSave, FaVenusMars
 } from 'react-icons/fa';
 import { db } from '../../firebase';
 import {
   collection, query, where, getDocs, doc, getDoc, limit
 } from 'firebase/firestore';
 import { useConfirm } from '../common/ConfirmContext';
-import { fetchClassNames } from '../../utils/helpers';
+import { fetchClassNames, arabicToEnglishNumber } from '../../utils/helpers';
 import {
   getClassGenderLabel, filterClassesForSupervisor, getTeacherDisplayName,
   getEligibleClassesForStudent
@@ -30,17 +30,17 @@ const StudentSerialManagerModal = ({ isOpen, onClose, user }) => {
   const [classNamesMap, setClassNamesMap] = useState({});
   const [loadingStudent, setLoadingStudent] = useState(false);
 
-  // ✅ نقل طالب من شعبة
-  const [showTransferModal, setShowTransferModal] = useState(false);
-  const [transferFromClassId, setTransferFromClassId] = useState(null);
-  const [eligibleClassesForTransfer, setEligibleClassesForTransfer] = useState([]);
+  // ✅ تعديل شعب الطالب (حذف / إضافة) ثم حفظ كطلب للمدير
+  const [draftClasses, setDraftClasses] = useState([]);
+  const [showAddClassModal, setShowAddClassModal] = useState(false);
+  const [eligibleClassesForAdd, setEligibleClassesForAdd] = useState([]);
   const [selectedNewClassId, setSelectedNewClassId] = useState('');
-  const [submittingTransfer, setSubmittingTransfer] = useState(false);
+  const [savingClasses, setSavingClasses] = useState(false);
 
   const [resetting, setResetting] = useState(false);
 
   const searchStudents = async () => {
-    const term = serialInput.trim();
+    const term = arabicToEnglishNumber(serialInput).trim();
     if (!term) return toast.error('أدخل الرقم التسلسلي');
 
     setSearching(true);
@@ -75,6 +75,7 @@ const StudentSerialManagerModal = ({ isOpen, onClose, user }) => {
       setInternalStudent({ id: studentId, ...data });
       const classes = data.classIds || [];
       setStudentClasses(classes);
+      setDraftClasses(classes);
       if (classes.length > 0) {
         const names = await fetchClassNames(classes);
         setClassNamesMap(names);
@@ -93,37 +94,55 @@ const StudentSerialManagerModal = ({ isOpen, onClose, user }) => {
     setSelectedStudentId(null);
     setInternalStudent(null);
     setStudentClasses([]);
+    setDraftClasses([]);
     setClassNamesMap({});
   };
 
-  // ✅ فتح مودال النقل
-  const openTransferModal = async (fromClassId) => {
-    setTransferFromClassId(fromClassId);
+  const removeDraftClass = (cid) => {
+    setDraftClasses(prev => prev.filter(x => x !== cid));
+  };
+
+  const hasChanges = (() => {
+    if (draftClasses.length !== studentClasses.length) return true;
+    return draftClasses.some(id => !studentClasses.includes(id));
+  })();
+
+  // ✅ فتح نافذة إضافة شعبة (الشعب المتوافقة مع الطالب والمسموحة للمشرف)
+  const openAddClassModal = async () => {
     setSelectedNewClassId('');
     try {
-      const eligible = await getEligibleClassesForStudent(internalStudent, fromClassId);
-      // تطبيق فلترة رؤية المشرف
+      const eligible = await getEligibleClassesForStudent(internalStudent, null);
       const userSnap = await getDoc(doc(db, 'profiles', user.id));
       const visibility = userSnap.exists() ? (userSnap.data().classVisibility || 'all') : 'all';
-      const filtered = filterClassesForSupervisor(eligible, user.gender, visibility);
-      setEligibleClassesForTransfer(filtered);
-      setShowTransferModal(true);
-      if (filtered.length === 0) {
-        toast('لا توجد شعب متوافقة متاحة للنقل', { icon: '⚠️' });
-      }
+      const filtered = filterClassesForSupervisor(eligible, user.gender, visibility)
+        .filter(c => c.sectionId && !draftClasses.includes(c.id));
+      setEligibleClassesForAdd(filtered);
+      setShowAddClassModal(true);
+      if (filtered.length === 0) toast('لا توجد شعب متوافقة متاحة للإضافة', { icon: '⚠️' });
     } catch (e) {
       toast.error('فشل التحميل: ' + e.message);
     }
   };
 
-  // ✅ إرسال طلب النقل للمدير
-  const submitTransfer = async () => {
-    if (!selectedNewClassId) return toast.error('اختر الشعبة الجديدة');
-    const fromClassName = classNamesMap[transferFromClassId] || 'غير محدد';
-    const toClass = eligibleClassesForTransfer.find(c => c.id === selectedNewClassId);
-    if (!toClass) return toast.error('الشعبة غير موجودة');
+  const confirmAddClass = () => {
+    if (!selectedNewClassId) return toast.error('اختر الشعبة');
+    const cls = eligibleClassesForAdd.find(c => c.id === selectedNewClassId);
+    if (!cls) return toast.error('الشعبة غير موجودة');
+    setClassNamesMap(prev => ({ ...prev, [cls.id]: cls.name }));
+    setDraftClasses(prev => prev.includes(cls.id) ? prev : [...prev, cls.id]);
+    setShowAddClassModal(false);
+    setSelectedNewClassId('');
+  };
 
-    setSubmittingTransfer(true);
+  // ✅ حفظ التعديلات — طلب واحد للمدير (يُنفَّذ كاملاً عند الموافقة)
+  const saveClassChanges = async () => {
+    if (draftClasses.length === 0) return toast.error('يجب أن يبقى للطالب شعبة واحدة على الأقل');
+    if (!hasChanges) return;
+    const removed = studentClasses.filter(id => !draftClasses.includes(id));
+    const added = draftClasses.filter(id => !studentClasses.includes(id));
+    const names = (ids) => ids.map(id => classNamesMap[id] || 'شعبة').join('، ');
+
+    setSavingClasses(true);
     try {
       await createMessageRequest({
         type: MESSAGE_REQUEST_TYPES.STUDENT_CLASS_TRANSFER,
@@ -131,28 +150,28 @@ const StudentSerialManagerModal = ({ isOpen, onClose, user }) => {
         targetId: internalStudent.id,
         targetName: internalStudent.name || '',
         targetPhone: internalStudent.phone || '',
-        targetClass: fromClassName,
+        targetClass: names(studentClasses) || 'غير محدد',
         requestedBy: user.id,
         requestedByName: user.name || user.username || 'مشرف',
         payload: {
           studentId: internalStudent.id,
           studentName: internalStudent.name,
           serialNumber: internalStudent.serialNumber || '',
-          fromClassId: transferFromClassId,
-          fromClassName,
-          toClassId: selectedNewClassId,
-          toClassName: toClass.name
+          finalClassIds: draftClasses,
+          removedClassIds: removed,
+          addedClassIds: added,
+          fromClassId: removed[0] || null,
+          toClassId: added[0] || null,
+          fromClassName: names(removed) || '—',
+          toClassName: names(added) || '—'
         }
       });
-      toast.success('✅ تم إرسال طلب النقل للمدير للموافقة');
-      setShowTransferModal(false);
-      setTransferFromClassId(null);
-      setSelectedNewClassId('');
-      setEligibleClassesForTransfer([]);
+      toast.success('✅ تم إرسال طلب تعديل الشعب للمدير للموافقة');
+      setStudentClasses(draftClasses);
     } catch (e) {
       toast.error('فشل: ' + e.message);
     } finally {
-      setSubmittingTransfer(false);
+      setSavingClasses(false);
     }
   };
 
@@ -199,7 +218,7 @@ const StudentSerialManagerModal = ({ isOpen, onClose, user }) => {
     setResults([]);
     setSerialInput('');
     setHasSearched(false);
-    setShowTransferModal(false);
+    setShowAddClassModal(false);
     onClose();
   };
 
@@ -230,7 +249,7 @@ const StudentSerialManagerModal = ({ isOpen, onClose, user }) => {
                   inputMode="numeric"
                   placeholder="أدخل الرقم التسلسلي..."
                   value={serialInput}
-                  onChange={e => setSerialInput(e.target.value)}
+                  onChange={e => setSerialInput(arabicToEnglishNumber(e.target.value))}
                   onKeyDown={e => { if (e.key === 'Enter' && !searching) searchStudents(); }}
                   className="flex-1 min-w-[200px] bg-gray-800 text-center p-3 border border-gray-600 rounded-lg text-white font-mono text-lg tracking-wider"
                   dir="ltr"
@@ -325,28 +344,45 @@ const StudentSerialManagerModal = ({ isOpen, onClose, user }) => {
                     </div>
                   </div>
 
-                  {/* ✅ الشعب + زر نقل لكل شعبة */}
+                  {/* ✅ الشعب: حذف / إضافة / حفظ */}
                   <div className="bg-gray-800/60 p-4 rounded-xl border border-gray-700">
-                    <p className="text-xs text-gray-400 mb-2">الشعب المسجل بها الطالب:</p>
-                    {studentClasses.length === 0 ? (
-                      <p className="text-gray-500 text-sm text-center py-2">لا توجد شعب</p>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs text-gray-400">الشعب المسجل بها الطالب:</p>
+                      <button
+                        onClick={openAddClassModal}
+                        className="text-xs bg-cyan-600/30 hover:bg-cyan-600/50 text-cyan-200 px-2 py-1 rounded whitespace-nowrap flex items-center gap-1"
+                      >
+                        <FaPlus /> إضافة شعبة
+                      </button>
+                    </div>
+                    {draftClasses.length === 0 ? (
+                      <p className="text-amber-300 text-sm text-center py-2">لا توجد شعب — أضف شعبة واحدة على الأقل ليمكن الحفظ</p>
                     ) : (
                       <div className="space-y-2">
-                        {studentClasses.map(cid => (
+                        {draftClasses.map(cid => (
                           <div key={cid} className="flex items-center justify-between gap-2 bg-cyan-500/10 border border-cyan-500/20 rounded-lg p-2">
                             <span className="text-xs text-cyan-200 flex-1 truncate">
                               {classNamesMap[cid] || 'شعبة محذوفة'}
+                              {!studentClasses.includes(cid) && <span className="text-emerald-300 me-2"> (جديدة)</span>}
                             </span>
                             <button
-                              onClick={() => openTransferModal(cid)}
-                              className="text-xs bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 px-2 py-1 rounded whitespace-nowrap flex items-center gap-1"
+                              onClick={() => removeDraftClass(cid)}
+                              className="text-xs bg-red-500/20 hover:bg-red-500/30 text-red-300 px-2 py-1 rounded whitespace-nowrap flex items-center gap-1"
                             >
-                              <FaExchangeAlt /> نقل
+                              <FaTrashAlt /> حذف
                             </button>
                           </div>
                         ))}
                       </div>
                     )}
+                    <button
+                      onClick={saveClassChanges}
+                      disabled={savingClasses || draftClasses.length === 0 || !hasChanges}
+                      className="w-full mt-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2"
+                    >
+                      {savingClasses ? <FaSpinner className="animate-spin" /> : <FaSave />}
+                      {savingClasses ? 'جاري الإرسال...' : 'حفظ (طلب للمدير)'}
+                    </button>
                   </div>
 
                   <div className="space-y-2">
@@ -365,43 +401,36 @@ const StudentSerialManagerModal = ({ isOpen, onClose, user }) => {
           </>
         )}
 
-        {/* ✅ مودال نقل الطالب */}
-        {showTransferModal && transferFromClassId && (
-          <div className="fixed inset-0 bg-black/90 z-[80] flex items-center justify-center p-4">
-            <div className="bg-gray-900 p-6 rounded-2xl max-w-md w-full border border-amber-500/30 max-h-[90vh] flex flex-col">
+        {/* ✅ نافذة إضافة شعبة للطالب */}
+        {showAddClassModal && (
+          <div className="fixed inset-0 bg-black/90 z-[80] flex items-center justify-center p-4" onClick={(e) => { e.stopPropagation(); setShowAddClassModal(false); }}>
+            <div className="bg-gray-900 p-6 rounded-2xl max-w-md w-full border border-cyan-500/30 max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-bold text-amber-300">نقل الطالب من شعبة</h3>
-                <button onClick={() => setShowTransferModal(false)} className="text-gray-400 hover:text-white"><FaTimes /></button>
+                <h3 className="text-lg font-bold text-cyan-300">إضافة شعبة للطالب</h3>
+                <button onClick={() => setShowAddClassModal(false)} className="text-gray-400 hover:text-white"><FaTimes /></button>
               </div>
-
-              <p className="text-sm text-gray-300 mb-2">
-                <strong>من:</strong> {classNamesMap[transferFromClassId] || '—'}
-              </p>
               <p className="text-sm text-gray-300 mb-3">
                 <strong>الطالب:</strong> {internalStudent.name} <span className="text-xs text-gray-500" dir="ltr">({internalStudent.serialNumber})</span>
               </p>
-
-              <label className="block text-sm text-gray-300 mb-1">اختر الشعبة الجديدة المتوافقة</label>
+              <label className="block text-sm text-gray-300 mb-1">اختر الشعبة المتوافقة</label>
               <div className="flex-1 overflow-y-auto space-y-1 mb-3 max-h-60">
-                {eligibleClassesForTransfer.length === 0 ? (
+                {eligibleClassesForAdd.length === 0 ? (
                   <p className="text-gray-500 text-sm text-center py-4">لا توجد شعب متوافقة</p>
                 ) : (
-                  eligibleClassesForTransfer.map(c => (
+                  eligibleClassesForAdd.map(c => (
                     <label
                       key={c.id}
                       className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer border transition ${
-                        selectedNewClassId === c.id
-                          ? 'bg-amber-900/30 border-amber-500'
-                          : 'bg-black/30 border-gray-700 hover:border-amber-500/40'
+                        selectedNewClassId === c.id ? 'bg-cyan-900/30 border-cyan-500' : 'bg-black/30 border-gray-700 hover:border-cyan-500/40'
                       }`}
                     >
                       <input
                         type="radio"
-                        name="transferClass"
+                        name="addClass"
                         value={c.id}
                         checked={selectedNewClassId === c.id}
                         onChange={() => setSelectedNewClassId(c.id)}
-                        className="accent-amber-500"
+                        className="accent-cyan-500"
                       />
                       <div className="flex-1">
                         <p className="text-white text-sm">{c.name}</p>
@@ -411,24 +440,14 @@ const StudentSerialManagerModal = ({ isOpen, onClose, user }) => {
                   ))
                 )}
               </div>
-
-              <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-2 text-xs text-blue-200 mb-3">
-                ℹ️ سيُرسل الطلب للمدير. عند الموافقة، يُنقل الطالب ويصل إشعار في مركز إشعاراته.
-              </div>
-
               <div className="flex gap-2">
+                <button onClick={() => setShowAddClassModal(false)} className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg text-sm">إلغاء</button>
                 <button
-                  onClick={() => setShowTransferModal(false)}
-                  className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg text-sm"
+                  onClick={confirmAddClass}
+                  disabled={!selectedNewClassId}
+                  className="flex-1 bg-cyan-600 hover:bg-cyan-700 text-white py-2 rounded-lg text-sm font-bold disabled:opacity-50"
                 >
-                  إلغاء
-                </button>
-                <button
-                  onClick={submitTransfer}
-                  disabled={submittingTransfer || !selectedNewClassId}
-                  className="flex-1 bg-amber-600 hover:bg-amber-700 text-white py-2 rounded-lg text-sm font-bold disabled:opacity-50"
-                >
-                  {submittingTransfer ? 'جاري الإرسال...' : 'إرسال الطلب'}
+                  إضافة
                 </button>
               </div>
             </div>

@@ -7,17 +7,17 @@ import {
   FaSearch, FaArrowLeft, FaTimesCircle
 } from 'react-icons/fa';
 import { db } from '../../firebase';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
 import {
   getSections, createSection, renameSection,
   getDescendantSectionIds, getSectionPath,
   moveClassToSection, createClass, deleteClassById,
   getClassStudentCounts, purgeClassesWithoutSection,
-  getClassGenderLabel, getTeacherDisplayName,
+  getClassGenderLabel, getTeacherNameForViewer, changeClassTeacher, getClassWarningStats,
   deleteSectionMergingIntoParent, moveSectionContentToSection
 } from '../../services/classes';
 import { CLASS_GENDER } from '../../constants';
-import { sanitizeInput } from '../../utils/helpers';
+import { sanitizeInput, arabicToEnglishNumber, getNextLessonFromTimes } from '../../utils/helpers';
 import { useConfirm, usePrompt } from '../common/ConfirmContext';
 
 /**
@@ -56,6 +56,17 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
 
   // وضع النقل (مدير فقط)
   const [moveMode, setMoveMode] = useState(null);
+
+  // نافذة تفاصيل الشعبة
+  const [detailsClass, setDetailsClass] = useState(null);
+  const [details, setDetails] = useState(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [newTeacherForClass, setNewTeacherForClass] = useState('');
+  const [changingTeacher, setChangingTeacher] = useState(false);
+
+  // المدير يرى الأسماء كاملة؛ المشرف يُطبَّق عليه حجب اسم المعلمة عن المشرف الذكر
+  const viewerGender = isManager ? null : user?.gender;
+  const teacherLabel = (t) => getTeacherNameForViewer(t, viewerGender);
 
   useEffect(() => {
     if (isOpen) {
@@ -314,12 +325,57 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
     }
   };
 
+  // ---------- نافذة تفاصيل الشعبة ----------
+  const openDetails = async (cls) => {
+    setDetailsClass(cls);
+    setDetails(null);
+    setNewTeacherForClass(cls.teacherId || '');
+    setDetailsLoading(true);
+    try {
+      const [stats, teacherLessonsSnap] = await Promise.all([
+        getClassWarningStats(cls.id),
+        cls.teacherId ? getDoc(doc(db, 'teachers', cls.teacherId)).catch(() => null) : Promise.resolve(null)
+      ]);
+      const lessonTimes = teacherLessonsSnap?.exists?.() ? (teacherLessonsSnap.data().lessonTimes || []) : [];
+      setDetails({ ...stats, nextLesson: getNextLessonFromTimes(lessonTimes) });
+    } catch (e) {
+      toast.error('فشل تحميل تفاصيل الشعبة: ' + e.message);
+      setDetails({ studentsCount: studentCounts[cls.id] || 0, studentsWithWarnings: 0, totalWarnings: 0, nextLesson: null });
+    } finally {
+      setDetailsLoading(false);
+    }
+  };
+
+  const closeDetails = () => { setDetailsClass(null); setDetails(null); };
+
+  const handleChangeTeacher = async () => {
+    if (!isManager || !detailsClass) return;
+    if (!newTeacherForClass || newTeacherForClass === detailsClass.teacherId) {
+      return toast.error('اختر معلماً مختلفاً');
+    }
+    const t = getTeacherById(newTeacherForClass);
+    const ok = await confirm('تغيير المعلم', `سيصبح معلم الشعبة \"${detailsClass.name}\": ${teacherLabel(t)}. متابعة؟`);
+    if (!ok) return;
+    setChangingTeacher(true);
+    try {
+      await changeClassTeacher(detailsClass.id, newTeacherForClass);
+      toast.success('✅ تم تغيير المعلم');
+      const updated = { ...detailsClass, teacherId: newTeacherForClass };
+      await loadData();
+      await openDetails(updated);
+    } catch (err) {
+      toast.error('فشل: ' + err.message);
+    } finally {
+      setChangingTeacher(false);
+    }
+  };
+
   const handleTransferHere = () => handleTransferTo(currentId);
   const goUp = () => setCurrentId(current?.parentId || null);
 
   // فلترة المعلمين حسب البحث
   const filteredTeachers = teachers.filter(t => {
-    const q = teacherSearch.trim();
+    const q = arabicToEnglishNumber(teacherSearch).trim();
     if (!q) return true;
     return (
       (t.serialNumber || '').includes(q) ||
@@ -506,7 +562,7 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
                     <input
                       type="text"
                       value={teacherSearch}
-                      onChange={e => setTeacherSearch(e.target.value)}
+                      onChange={e => setTeacherSearch(arabicToEnglishNumber(e.target.value))}
                       placeholder="ابحث بالرقم التسلسلي أو الاسم"
                       className="w-full bg-gray-700 text-right p-2 pr-7 rounded-lg text-white text-xs border border-gray-600"
                     />
@@ -520,7 +576,7 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
                     <option value="">اختر المعلم</option>
                     {filteredTeachers.map(t => (
                       <option key={t.id} value={t.id}>
-                        {getTeacherDisplayName(t)}
+                        {teacherLabel(t)}
                         {t.serialNumber ? ` — #${t.serialNumber}` : (t.username ? ` — ${t.username}` : '')}
                       </option>
                     ))}
@@ -615,14 +671,18 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
                   <p className="text-xs text-gray-500 mb-2">الشعب ({currentClasses.length})</p>
                   <div className="space-y-2">
                     {currentClasses.map(cls => {
-                      const teacherName = getTeacherDisplayName(getTeacherById(cls.teacherId));
+                      const teacherName = teacherLabel(getTeacherById(cls.teacherId));
                       const genderColor = cls.gender === CLASS_GENDER.MALE
                         ? 'text-blue-300 bg-blue-500/10 border-blue-500/30'
                         : cls.gender === CLASS_GENDER.FEMALE
                           ? 'text-pink-300 bg-pink-500/10 border-pink-500/30'
                           : 'text-purple-300 bg-purple-500/10 border-purple-500/30';
                       return (
-                        <div key={cls.id} className="p-4 bg-black/30 rounded-xl border border-gray-700 flex flex-wrap justify-between items-center gap-3">
+                        <div
+                          key={cls.id}
+                          onClick={() => !moveMode && openDetails(cls)}
+                          className={`p-4 bg-black/30 rounded-xl border border-gray-700 flex flex-wrap justify-between items-center gap-3 ${moveMode ? '' : 'cursor-pointer hover:border-indigo-500/50 transition'}`}
+                        >
                           <div className="flex-1 min-w-0">
                             <p className="text-white font-bold text-sm flex items-center gap-2">
                               <FaGraduationCap className="text-indigo-300" /> {cls.name}
@@ -637,7 +697,7 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
                           </div>
                           {/* ✅ أزرار النقل والحذف — تظهر فقط للمدير */}
                           {!moveMode && (canMoveClass || canDeleteClass) && (
-                            <div className="flex gap-2 flex-wrap">
+                            <div className="flex gap-2 flex-wrap" onClick={e => e.stopPropagation()}>
                               {canMoveClass && (
                                 <button
                                   onClick={() => handleStartMoveClass(cls)}
@@ -676,6 +736,91 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
           )}
         </div>
       </div>
+
+      {/* نافذة تفاصيل الشعبة */}
+      {detailsClass && (
+        <div
+          className="fixed inset-0 bg-black/70 z-[80] flex items-center justify-center p-4"
+          onClick={(e) => { e.stopPropagation(); closeDetails(); }}
+          dir="rtl"
+        >
+          <div className="bg-gray-900 rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto border border-indigo-500/40 p-5" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-start mb-4 gap-2">
+              <div className="min-w-0">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <FaGraduationCap className="text-indigo-300" /> {detailsClass.name}
+                </h3>
+                {detailsClass.sectionId && (
+                  <p className="text-xs text-gray-400 mt-1">{getSectionPath(sections, detailsClass.sectionId)}</p>
+                )}
+              </div>
+              <button onClick={closeDetails} className="text-gray-400 hover:text-white text-xl"><FaTimes /></button>
+            </div>
+
+            {detailsLoading || !details ? (
+              <div className="text-center py-8 text-gray-400">
+                <FaSpinner className="animate-spin text-2xl mx-auto mb-2" /> جاري التحميل...
+              </div>
+            ) : (
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between bg-black/30 p-3 rounded-lg border border-gray-700">
+                  <span className="text-gray-400 flex items-center gap-2"><FaUsers /> عدد الطلاب</span>
+                  <span className="text-cyan-300 font-bold">{details.studentsCount}</span>
+                </div>
+                <div className="flex justify-between bg-black/30 p-3 rounded-lg border border-gray-700">
+                  <span className="text-gray-400">الحصة القادمة</span>
+                  <span className="text-white font-bold" dir="ltr">
+                    {details.nextLesson
+                      ? details.nextLesson.toLocaleString('ar-EG', { weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit' })
+                      : 'غير محددة'}
+                  </span>
+                </div>
+                <div className="flex justify-between bg-black/30 p-3 rounded-lg border border-gray-700">
+                  <span className="text-gray-400 flex items-center gap-2"><FaChalkboardTeacher /> المعلم</span>
+                  <span className="text-white font-bold">{teacherLabel(getTeacherById(detailsClass.teacherId))}</span>
+                </div>
+                <div className="flex justify-between bg-black/30 p-3 rounded-lg border border-gray-700">
+                  <span className="text-gray-400 flex items-center gap-2"><FaVenusMars /> جنس الشعبة</span>
+                  <span className="text-white font-bold">{getClassGenderLabel(detailsClass.gender)}</span>
+                </div>
+                <div className="flex justify-between bg-black/30 p-3 rounded-lg border border-gray-700">
+                  <span className="text-gray-400">الطلاب أصحاب الإنذارات</span>
+                  <span className="text-amber-300 font-bold">{details.studentsWithWarnings}</span>
+                </div>
+                <div className="flex justify-between bg-black/30 p-3 rounded-lg border border-gray-700">
+                  <span className="text-gray-400">مجموع الإنذارات داخل الشعبة</span>
+                  <span className="text-red-300 font-bold">{details.totalWarnings}</span>
+                </div>
+
+                {isManager && (
+                  <div className="bg-black/30 p-3 rounded-lg border border-indigo-500/30 space-y-2 mt-3">
+                    <label className="block text-xs text-gray-400">تغيير معلم الشعبة</label>
+                    <select
+                      value={newTeacherForClass}
+                      onChange={e => setNewTeacherForClass(e.target.value)}
+                      className="w-full bg-gray-700 text-right p-2 rounded-lg text-white text-sm border border-gray-600"
+                    >
+                      <option value="">اختر المعلم</option>
+                      {teachers.map(t => (
+                        <option key={t.id} value={t.id}>
+                          {teacherLabel(t)}{t.serialNumber ? ` — #${t.serialNumber}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={handleChangeTeacher}
+                      disabled={changingTeacher || !newTeacherForClass || newTeacherForClass === detailsClass.teacherId}
+                      className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-bold"
+                    >
+                      {changingTeacher ? 'جاري التغيير...' : 'حفظ المعلم الجديد'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

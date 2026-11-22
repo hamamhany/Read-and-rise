@@ -131,6 +131,64 @@ export const generateNextSerialNumber = async () => {
 };
 
 // =========================================================
+// الرقم التسلسلي للمعلم: يبدأ بـ 2026 ومكوّن من 8 أرقام (2026 + 4 أرقام تسلسلية)
+// مثال: 20260001, 20260002 ...
+// =========================================================
+export const TEACHER_SERIAL_PREFIX = '2026';
+
+export const formatTeacherSerial = (num) =>
+  `${TEACHER_SERIAL_PREFIX}${String(num).padStart(4, '0')}`;
+
+export const generateNextTeacherSerialNumber = async () => {
+  const counterRef = doc(db, 'settings', 'teacherSerialCounter');
+  let next = 1;
+  await runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(counterRef);
+    next = snap.exists() ? (snap.data().lastSerial || 0) + 1 : 1;
+    if (next > 9999) throw new Error('تم استنفاد الأرقام التسلسلية المتاحة للمعلمين (الحد 9999)');
+    if (snap.exists()) transaction.update(counterRef, { lastSerial: next });
+    else transaction.set(counterRef, { lastSerial: next });
+  });
+  return formatTeacherSerial(next);
+};
+
+// =========================================================
+//  حساب موعد الحصة القادمة من lessonTimes (once / recurring / monthly)
+// =========================================================
+export const getNextLessonFromTimes = (lessonTimes = []) => {
+  const now = new Date();
+  let nearest = null;
+  const consider = (date, lt) => {
+    if (!nearest || date < nearest.date) nearest = { date, lt };
+  };
+  const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  for (const lt of lessonTimes || []) {
+    if (!lt?.time || typeof lt.time.hours !== 'number' || typeof lt.time.minutes !== 'number') continue;
+    if (lt.type === 'once') {
+      const d = new Date(lt.date);
+      if (!isNaN(d.getTime()) && d > now) consider(d, lt);
+    } else if (lt.type === 'recurring') {
+      const idx = days.indexOf(lt.day);
+      if (idx === -1) continue;
+      let diff = idx - now.getDay();
+      if (diff < 0) diff += 7;
+      const d = new Date(now);
+      d.setDate(now.getDate() + diff);
+      d.setHours(lt.time.hours, lt.time.minutes, 0, 0);
+      if (d <= now) d.setDate(d.getDate() + 7);
+      consider(d, lt);
+    } else if (lt.type === 'monthly') {
+      const md = parseInt(lt.monthDay);
+      if (!md) continue;
+      let d = new Date(now.getFullYear(), now.getMonth(), md, lt.time.hours, lt.time.minutes, 0, 0);
+      if (d <= now) d = new Date(now.getFullYear(), now.getMonth() + 1, md, lt.time.hours, lt.time.minutes, 0, 0);
+      consider(d, lt);
+    }
+  }
+  return nearest ? nearest.date : null;
+};
+
+// =========================================================
 //  تنسيق الوقت النسبي بالعربية ("منذ كذا")
 // يستخدم في الدردشة بدل عرض الساعة التقليدية.
 // يتعامل مع التصريف العربي الصحيح: دقيقة/دقيقتين/دقائق/دقيقة...

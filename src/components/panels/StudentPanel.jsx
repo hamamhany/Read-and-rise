@@ -19,6 +19,7 @@ import { sanitizeInput, arabicToEnglishNumber, fetchClassNames } from '../../uti
 import { recordAttendance, processStudentAbsences } from '../../services/attendance';
 import { subscribeToLiveSessions, isSessionJoinable } from '../../services/liveSessions';
 import { sendUrgentReminderMessage, sendContactTeacherMessage } from '../../utils/whatsapp';
+import { PENDING_CHANGES_STATUS } from '../../constants';
 import { getActiveExamsForStudent, getStudentAttemptsCount, getStudentExamResult } from '../../services/exams';
 import JitsiRoom, { enterFullscreen } from '../common/JitsiRoom';
 
@@ -215,7 +216,7 @@ const StudentPanel = ({ user, onLogout }) => {
         setEditData(data || {});
         setPendingChanges(data.pendingChanges || null);
         setHasPendingRequest(!!data.pendingChanges);
-        setSentAccelerate(!!(data.pendingChanges && data.pendingChanges.sentAccelerate));
+        setSentAccelerate(!!data.pendingChangesAccelerated);
         if (data.reviewResult && data.reviewExpiry) {
           setReviewResult(data.reviewResult);
           setReviewExpiry(data.reviewExpiry);
@@ -263,7 +264,7 @@ const StudentPanel = ({ user, onLogout }) => {
         setEditData(data || {});
         setPendingChanges(data.pendingChanges || null);
         setHasPendingRequest(!!data.pendingChanges);
-        setSentAccelerate(!!(data.pendingChanges && data.pendingChanges.sentAccelerate));
+        setSentAccelerate(!!data.pendingChangesAccelerated);
         if (data.reviewResult && data.reviewExpiry) {
           setReviewResult(data.reviewResult);
           setReviewExpiry(data.reviewExpiry);
@@ -486,15 +487,23 @@ const StudentPanel = ({ user, onLogout }) => {
     }
 
     const changes = {};
-    if (name !== profile.name) changes.name = name;
-    if (editData.gender !== profile.gender) changes.gender = editData.gender;
-    if (editData.age !== profile.age) changes.age = parseInt(editData.age) || null;
-    if (phone !== profile.phone) changes.phone = phone;
+    // ✅ الصيغة التي يتوقعها المشرف: { الحقل: { from, to } }
+    if (name !== profile.name) changes.name = { from: profile.name || '', to: name };
+    if (editData.gender !== profile.gender) changes.gender = { from: profile.gender || '', to: editData.gender };
+    if (editData.age !== profile.age) changes.age = { from: profile.age ?? '', to: parseInt(editData.age) || null };
+    if (phone !== profile.phone) changes.phone = { from: profile.phone || '', to: phone };
     if (Object.keys(changes).length === 0) return toast.error('لم تقم بأي تغيير.');
 
     try {
       await updateDoc(doc(db, 'profiles', user.id), {
-        pendingChanges: { updated_at: new Date().toISOString(), ...changes },
+        pendingChanges: {
+          submittedAt: new Date().toISOString(),
+          submittedBy: user.id,
+          submittedByName: profile.name || '',
+          ...changes
+        },
+        pendingChangesStatus: PENDING_CHANGES_STATUS.PENDING, // ← يذهب لقائمة المشرفين
+        pendingChangesAccelerated: false,
         updatedAt: serverTimestamp()
       });
       toast.success('تم إرسال طلب تعديل المعلومات بنجاح.');
@@ -508,12 +517,12 @@ const StudentPanel = ({ user, onLogout }) => {
   const handleContactTeacher = () => {
     sendUrgentReminderMessage(profile);
     if (profile && profile.pendingChanges) {
-      updateDoc(doc(db, 'profiles', user.id), { 'pendingChanges.sentAccelerate': true }).catch(() => {});
+      updateDoc(doc(db, 'profiles', user.id), { pendingChangesAccelerated: true }).catch(() => {});
     }
     setSentAccelerate(true);
     setShowConfirmModal(false);
     setShowPendingRequestModal(false);
-    toast.success('تم إرسال رسالة الاستعجال للمعلم.');
+    toast.success('تم إرسال رسالة الاستعجال للمشرف.');
   };
 
   // ✅ بدء اختبار — يستخدم navigate الآن
@@ -891,7 +900,7 @@ const StudentPanel = ({ user, onLogout }) => {
             <h3 className="text-xl font-semibold text-green-700 dark:text-green-300 mb-4"><FaCheckCircle className="inline-block me-2" /> تم إرسال الطلب</h3>
             <p className="text-slate-700 dark:text-gray-300 text-center mb-4">سيتم مراجعة البيانات خلال 48 ساعة.</p>
             <div className="flex flex-col gap-3">
-              <button onClick={() => sendContactTeacherMessage(profile, 'update')} className="btn-primary bg-blue-600 hover:bg-blue-700 w-full py-3 rounded-md text-white"><FaComment className="inline-block me-2" /> تواصل مع المعلم</button>
+              <button onClick={() => sendContactTeacherMessage(profile, 'update')} className="btn-primary bg-blue-600 hover:bg-blue-700 w-full py-3 rounded-md text-white"><FaComment className="inline-block me-2" /> تواصل مع المشرف</button>
               <button onClick={() => setShowConfirmModal(false)} className="btn-primary bg-red-600 hover:bg-red-700 w-full py-3 rounded-md text-white"><FaClock className="inline-block me-2" /> انتظار</button>
             </div>
           </div>

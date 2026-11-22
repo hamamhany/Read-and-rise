@@ -19,7 +19,7 @@ import { createGeneralAnnouncement, updateAnnouncement, deleteAnnouncement } fro
 import { createMessageRequest } from '../../services/messageRequests';
 import {
   validateStudentEligibility, filterClassesForSupervisor, getClassGenderLabel,
-  purgeClassesWithoutSection
+  purgeClassesWithoutSection, getAllowedClassGenders
 } from '../../services/classes';
 import {
   subscribeToPendingStudentChanges, approveStudentChanges, rejectStudentChanges
@@ -60,7 +60,7 @@ const ClassTreePickerModal = ({ isOpen, onClose, sections, classes, selectedIds,
   const currentClasses = currentId
     ? classes.filter(c =>
         c.sectionId === currentId &&
-        (!allowedGenders || allowedGenders.includes(c.gender))
+        (!allowedGenders || !c.gender || allowedGenders.includes(c.gender))
       )
     : [];
 
@@ -262,6 +262,8 @@ const SupervisorPanel = ({ user, onLogout }) => {
 
   const [permissions, setPermissions] = useState({ reports: true, resets: true, support: true });
   const [counts, setCounts] = useState({ reports: 0, resets: 0, support: 0 });
+  // ✅ تبويب البلاغات يبقى مخفياً إلا إذا وُجدت بلاغات متاحة لهذا المشرف (أو محجوزة له)
+  const [hasReportsForMe, setHasReportsForMe] = useState(false);
 
   useEffect(() => {
     const fetchPerms = async () => {
@@ -286,15 +288,25 @@ const SupervisorPanel = ({ user, onLogout }) => {
     if (!permissions.reports) return;
     const q = query(collection(db, 'messageRequests'), where('type', '==', 'report'));
     const unsub = onSnapshot(q, (snap) => {
+      const CLAIM_MS = 10 * 60 * 1000;
+      const now = Date.now();
       const pending = snap.docs.filter(d => {
         const data = d.data();
         const status = data.reportStatus || data.status || 'pending';
         return status === 'pending';
       });
+      // متاح لي: محجوز لي، أو غير محجوز، أو انتهى حجز مشرف آخر
+      const mine = pending.filter(d => {
+        const data = d.data();
+        if (!data.claimedBy || data.claimedBy === user.id) return true;
+        const claimedMs = data.claimedAt?.toMillis?.() || 0;
+        return !claimedMs || now - claimedMs >= CLAIM_MS;
+      });
       setCounts(prev => ({ ...prev, reports: pending.length }));
+      setHasReportsForMe(mine.length > 0);
     });
     return () => unsub();
-  }, [permissions.reports]);
+  }, [permissions.reports, user.id]);
 
   useEffect(() => {
     if (!permissions.resets) return;
@@ -672,11 +684,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
   const canPublish = user.canPublishAnnouncements !== false;
 
   const availableClasses = filterClassesForSupervisor(classes, user.gender, classVisibility);
-  const allowedGenders = classVisibility === 'all'
-    ? ['ذكر', 'أنثى', 'مختلط']
-    : user.gender === 'أنثى'
-      ? ['أنثى', 'مختلط']
-      : ['ذكر', 'مختلط'];
+  const allowedGenders = getAllowedClassGenders(user.gender, classVisibility);
 
   const selectedClassesNames = newStudentClassIds
     .map(id => classes.find(c => c.id === id)?.name)
@@ -797,7 +805,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {permissions.reports && <ReportsReviewSection user={user} />}
+        {permissions.reports && hasReportsForMe && <ReportsReviewSection user={user} />}
 
         <ReviewVotingSection user={user} />
 

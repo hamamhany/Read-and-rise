@@ -1,7 +1,7 @@
 // src/components/auth/Login.jsx
 import React, { useState } from 'react';
 import toast from 'react-hot-toast';
-import { FaUnlockAlt } from 'react-icons/fa';
+import { FaUnlockAlt, FaEye, FaEyeSlash } from 'react-icons/fa';
 import { auth } from '../../services/firebaseAuth';
 import { db } from '../../firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
@@ -237,8 +237,8 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
       <div className="absolute inset-0 bg-white/20 dark:bg-black/20 backdrop-blur-[2px]" />
       <div className="relative z-10 w-full max-w-md px-4">
         <div data-fx-tilt className="fx-glow-border bg-white/95 dark:bg-gray-900/95 p-6 rounded-3xl shadow-2xl border border-gray-300 dark:border-gray-700 flex flex-col items-center relative overflow-hidden min-h-[440px] justify-center">
-          <div className="absolute inset-0 flex items-start justify-center pt-6 pointer-events-none z-0 overflow-hidden">
-            <img src="/images/logo.png" alt="" className="w-96 h-96 md:w-[420px] md:h-[420px] object-contain opacity-10 dark:opacity-15 animate-logo-bg select-none" onError={(e) => e.target.style.display = 'none'} />
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0 overflow-hidden">
+            <img src="/images/logo.png" alt="" className="w-48 h-48 md:w-[210px] md:h-[210px] object-contain opacity-10 dark:opacity-15 animate-logo-bg select-none" onError={(e) => e.target.style.display = 'none'} />
           </div>
           <div className="w-full z-10 flex flex-col items-center space-y-4">
             <div className="text-center space-y-1 w-full">
@@ -259,7 +259,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
                 </span>
                 <input
                   type="text"
-                  className="w-full bg-slate-50 dark:bg-gray-800/80 text-right pr-24 pl-4 py-3 text-base border-2 border-gray-300 dark:border-gray-600 rounded-xl text-slate-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition-all duration-200 outline-none"
+                  className="w-full bg-slate-50 dark:bg-gray-800/80 text-right pr-36 pl-4 py-3 text-base border-2 border-gray-300 dark:border-gray-600 rounded-xl text-slate-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition-all duration-200 outline-none"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
@@ -272,7 +272,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
                 </span>
                 <input
                   type={showPassword ? "text" : "password"}
-                  className="w-full bg-slate-50 dark:bg-gray-800/80 text-right pr-24 pl-12 py-3 text-base border-2 border-gray-300 dark:border-gray-600 rounded-xl text-slate-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition-all duration-200 outline-none"
+                  className="w-full bg-slate-50 dark:bg-gray-800/80 text-right pr-36 pl-12 py-3 text-base border-2 border-gray-300 dark:border-gray-600 rounded-xl text-slate-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition-all duration-200 outline-none"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
@@ -280,9 +280,10 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-medium text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 transition-colors bg-white dark:bg-white/5 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 hover:border-purple-400/50 shadow-sm"
+                  aria-label={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 transition-colors p-2 rounded-lg"
                 >
-                  {showPassword ? "إخفاء" : "إظهار"}
+                  {showPassword ? <FaEyeSlash size={18} /> : <FaEye size={18} />}
                 </button>
               </div>
 

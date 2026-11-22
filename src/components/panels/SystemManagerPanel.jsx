@@ -34,7 +34,7 @@ import {
   sendUnactivatedAccountDeletedMessage
 } from '../../utils/whatsapp';
 import { deleteUserCompletely } from '../../services/accountDeletion';
-import { updateClassGender, deleteClassById, moveStudentToClass, purgeClassesWithoutSection } from '../../services/classes';
+import { updateClassGender, deleteClassById, moveStudentToClass, purgeClassesWithoutSection, setStudentClasses } from '../../services/classes';
 import { approveAnnouncement, rejectAnnouncement } from '../../services/announcements';
 import SystemManagerReviewsSection from './SystemManagerReviewsSection';
 import ManagerSupportReviewsSection from './ManagerSupportReviewsSection';
@@ -444,10 +444,17 @@ const SystemManagerPanel = ({ user, onLogout }) => {
         await deleteClassById(request.payload.classId);
         break;
       case 'student_class_transfer':
-        await moveStudentToClass(request.payload.studentId, request.payload.fromClassId, request.payload.toClassId);
+        if (Array.isArray(request.payload.finalClassIds)) {
+          // تعديل شعب (حذف/إضافة) — يُطبَّق كاملاً وبشرط بقاء شعبة واحدة على الأقل
+          await setStudentClasses(request.payload.studentId, request.payload.finalClassIds);
+        } else {
+          await moveStudentToClass(request.payload.studentId, request.payload.fromClassId, request.payload.toClassId);
+        }
         await setDoc(doc(collection(db, 'notifications', request.payload.studentId, 'userNotifications')), {
           title: 'تغيير الشعبة',
-          body: `تم نقلك من شعبة "${request.payload.fromClassName}" إلى "${request.payload.toClassName}".`,
+          body: Array.isArray(request.payload.finalClassIds)
+            ? `تم تعديل شعبك.${request.payload.addedClassIds?.length ? ` أُضيفت: ${request.payload.toClassName}.` : ''}${request.payload.removedClassIds?.length ? ` أُزيلت: ${request.payload.fromClassName}.` : ''}`
+            : `تم نقلك من شعبة "${request.payload.fromClassName}" إلى "${request.payload.toClassName}".`,
           type: 'class_transfer',
           createdAt: serverTimestamp(),
           read: false

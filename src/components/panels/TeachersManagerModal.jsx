@@ -75,7 +75,8 @@ const TeachersManagerModal = ({ isOpen, onClose, user }) => {
             username: result.username,
             password: result.tempPassword,
             gender: newGender,
-            age: ageNum
+            age: ageNum,
+            serialNumber: result.serialNumber
           }
         });
       } catch (err) { console.warn('createMessageRequest failed:', err); }
@@ -83,6 +84,7 @@ const TeachersManagerModal = ({ isOpen, onClose, user }) => {
       setCreatedCredentials({
         username: result.username,
         password: result.tempPassword,
+        serialNumber: result.serialNumber,
         displayName: newGender === 'ذكر' ? sanitizeInput(newName) : sanitizeInput(newNickname)
       });
 
@@ -256,6 +258,20 @@ const TeachersManagerModal = ({ isOpen, onClose, user }) => {
               <div>
                 <label className="text-xs text-gray-400">المعلم</label>
                 <p className="text-white font-bold">{createdCredentials.displayName}</p>
+              </div>
+              <div>
+                <label className="text-xs text-gray-400">الرقم التسلسلي</label>
+                <div className="flex items-center gap-2 mt-1">
+                  <code className="flex-1 bg-black/40 px-3 py-2 rounded text-amber-300 font-mono text-sm tracking-widest" dir="ltr">
+                    {createdCredentials.serialNumber}
+                  </code>
+                  <button
+                    onClick={() => copyToClipboard(createdCredentials.serialNumber)}
+                    className="bg-cyan-600 hover:bg-cyan-700 text-white p-2 rounded"
+                  >
+                    <FaCopy />
+                  </button>
+                </div>
               </div>
               <div>
                 <label className="text-xs text-gray-400">اسم المستخدم</label>
