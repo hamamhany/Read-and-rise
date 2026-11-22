@@ -1,6 +1,6 @@
 // src/utils/askAssistant.js
 import { useSyncExternalStore } from 'react';
-import { sendTicketMessage, requestTicketEnd, logSecurityIncident } from '../services/support';
+import { sendTicketMessage, requestTicketEnd, logSecurityIncident, markAiHandedOff } from '../services/support';
 
 export const AI_SENDER = {
   id: 'ai-assistant',
@@ -74,7 +74,16 @@ export async function askAssistant({
 
     await sendTicketMessage(ticketId, AI_SENDER, data.text);
 
-    if (data.endRequested) {
+    // ✅ سند حوّل المحادثة لقسم الإشراف: نسجّل ذلك فلا يرد سند بعدها إطلاقاً
+    if (data.handoff) {
+      try {
+        await markAiHandedOff(ticketId);
+      } catch (e) {
+        console.warn('AI handoff mark failed:', e);
+      }
+    }
+
+    if (data.endRequested && !data.handoff) {
       try {
         await requestTicketEnd(ticketId, AI_SENDER.name, { aiEnd: true });
       } catch (e) {

@@ -75,6 +75,8 @@ export default async function handler(req, res) {
 
     for (const doc of snap.docs) {
       const ticket = doc.data();
+      // ✅ سند حوّل المحادثة للإشراف: لا ردود آلية بعد ذلك (توفيراً للباقة)
+      if (ticket.aiHandedOff === true) continue;
       const messages = ticket.messages || [];
       if (messages.length === 0) continue;
 
@@ -98,6 +100,7 @@ export default async function handler(req, res) {
       let aiText = null;
       let endRequested = false;
       let impersonationDetected = false;
+      let handoff = false;
       try {
         const geminiRes = await fetch(geminiUrl, {
           method: 'POST',
@@ -118,6 +121,7 @@ export default async function handler(req, res) {
         aiText = data?.text;
         endRequested = !!data?.endRequested;
         impersonationDetected = !!data?.impersonationDetected;
+        handoff = !!data?.handoff;
       } catch (err) {
         console.error('Gemini fetch error:', err);
         continue;
@@ -142,7 +146,18 @@ export default async function handler(req, res) {
         unreadForSupervisor: true,
       });
 
-      if (endRequested) {
+      if (handoff) {
+        try {
+          await db.collection('supportTickets').doc(doc.id).update({
+            aiHandedOff: true,
+            aiHandedOffAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+        } catch (e) {
+          console.warn('cron handoff mark failed:', e);
+        }
+      }
+
+      if (endRequested && !handoff) {
         try {
           await db.collection('supportTickets').doc(doc.id).update({
             status: 'supervisor_ended',

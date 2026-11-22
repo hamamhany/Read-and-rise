@@ -58,6 +58,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportReason, setReportReason] = useState('');
   const [reportDetails, setReportDetails] = useState('');
+  const [reportedMessage, setReportedMessage] = useState(null);
 
   const [aiEnabled, setAiEnabled] = useState(true);
   const hasShownAiDisabledToast = useRef(false);
@@ -182,7 +183,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
     if (viewerMode !== 'student') return;
     if (!aiEnabled) return;
     const t0 = ticketRef.current;
-    if (!t0 || t0.status !== SUPPORT_TICKET_STATUS.IN_PROGRESS || !t0.assignedSupervisorId) return;
+    if (!t0 || t0.status !== SUPPORT_TICKET_STATUS.IN_PROGRESS || !t0.assignedSupervisorId || t0.aiHandedOff === true) return;
     const msgs0 = t0.messages || [];
     const last = msgs0[msgs0.length - 1];
     if (!last || last.senderId !== user.id) return;
@@ -198,7 +199,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
       const l = msgs[msgs.length - 1];
       if (!t || t.status !== SUPPORT_TICKET_STATUS.IN_PROGRESS || !t.assignedSupervisorId || !l || l.id !== last.id) return;
       if (supTypingRef.current) { timer = setTimeout(attempt, 5000); return; }
-      if (t.aiRequestedEnd === true) return;
+      if (t.aiRequestedEnd === true || t.aiHandedOff === true) return;
       const lastAiEnd = t.lastAiEndRequestAt?.toMillis?.() || 0;
       if (lastAiEnd && Date.now() - lastAiEnd < AI_END_CLIENT_COOLDOWN_MS) return;
       const ok = await claimAiReply(ticketId, last.id);
@@ -291,7 +292,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
       return;
     }
 
-    if (ticket.assignedSupervisorId) return;
+    if (ticket.assignedSupervisorId || ticketRef.current?.aiHandedOff === true) return;
 
     const now = Date.now();
     const dedupeKey = `${ticketId}|${t}`;
@@ -437,7 +438,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
       await studentConfirmNotSolved(ticketId);
       toast.success('تم إبلاغ المشرف — يمكنك متابعة المحادثة');
 
-      if (wasAiEnd && aiEnabled) {
+      if (wasAiEnd && aiEnabled && ticketRef.current?.aiHandedOff !== true) {
         if ((ticket.aiEndRequestCount || 0) >= 2) return;
         const history = buildAiHistory(ticket.messages, user.id);
         askAssistant({
@@ -479,14 +480,16 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
       await reportTicket(
         ticketId,
         user.id,
-        user.name || user.username || 'مشرف',
+        user.name || user.username || (isCreator ? 'الطالب' : 'مشرف'),
         reportReason,
-        reportDetails.trim()
+        reportDetails.trim(),
+        reportedMessage
       );
       toast.success(' تم إرسال البلاغ للإدارة — المحادثة محوّلة للمراجعة');
       setShowReportModal(false);
       setReportReason('');
       setReportDetails('');
+      setReportedMessage(null);
     } catch (e) { toast.error('فشل: ' + e.message); }
     finally { setProcessing(false); }
   };
@@ -706,7 +709,27 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
                         <p dir="auto" className={`whitespace-pre-wrap break-words ${fullPage ? 'leading-7' : ''}`}>
                           <RichText text={m.text} />
                         </p>
-                        <p className="text-[10px] opacity-60 mt-1">{m.createdAt ? formatRelativeTime(m.createdAt) : ''}</p>
+                        <div className="flex items-center justify-between gap-2 mt-1">
+                          <p className="text-[10px] opacity-60">{m.createdAt ? formatRelativeTime(m.createdAt) : ''}</p>
+                          {!isMe && !isAI && !isSystem
+                            && ticket.status === SUPPORT_TICKET_STATUS.IN_PROGRESS
+                            && ticket.assignedSupervisorId
+                            && ((isCreator && m.senderId === ticket.assignedSupervisorId)
+                              || (isSupervisor && isAssignedSupervisor && isCreatorMsg)) && (
+                            <button
+                              type="button"
+                              title="الإبلاغ عن هذه الرسالة"
+                              onClick={() => {
+                                setReportedMessage({ id: m.id, text: m.text, senderName: m.senderName });
+                                setReportDetails('الرسالة المُبلَّغ عنها: "' + String(m.text || '').slice(0, 300) + '"\n');
+                                setShowReportModal(true);
+                              }}
+                              className="text-[10px] text-red-300 hover:text-red-200 flex items-center gap-1"
+                            >
+                              <FaExclamationTriangle size={9} /> إبلاغ
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -793,9 +816,9 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
             <div className="bg-gray-900 p-6 rounded-2xl max-w-md w-full border border-red-500/30 max-h-[90vh] overflow-y-auto">
               <div className="flex justify-between items-center mb-3">
                 <h3 className="font-bold text-red-300 flex items-center gap-2">
-                  <FaExclamationTriangle /> تقديم بلاغ ضد صاحب التذكرة
+                  <FaExclamationTriangle /> {isCreator ? 'الإبلاغ عن رسالة مسيئة' : 'تقديم بلاغ ضد صاحب التذكرة'}
                 </h3>
-                <button onClick={() => setShowReportModal(false)} className="text-gray-400 hover:text-white text-xl">✕</button>
+                <button onClick={() => { setShowReportModal(false); setReportedMessage(null); }} className="text-gray-400 hover:text-white text-xl">✕</button>
               </div>
               <p className="text-xs text-gray-400 mb-3">
                 سيتم تحويل المحادثة إلى الإدارة للمراجعة. لن تتمكن من إرسال رسائل حتى تنتهي المراجعة.
@@ -820,7 +843,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
                 maxLength={1000}
               />
               <div className="flex gap-2 justify-end">
-                <button onClick={() => setShowReportModal(false)} className="px-4 py-2 text-sm bg-gray-700 rounded text-white">إلغاء</button>
+                <button onClick={() => { setShowReportModal(false); setReportedMessage(null); }} className="px-4 py-2 text-sm bg-gray-700 rounded text-white">إلغاء</button>
                 <button onClick={handleSubmitReport} disabled={processing}
                   className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 rounded text-white font-bold disabled:opacity-50">
                   {processing ? <FaSpinner className="animate-spin inline me-1" /> : null}

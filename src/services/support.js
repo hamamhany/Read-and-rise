@@ -740,14 +740,16 @@ export const deleteTicketPermanently = async (ticketId) => {
 
 export const finalizeAndDeleteTicket = deleteTicketPermanently;
 
-export const reportTicket = async (ticketId, reporterId, reporterName, reasonValue, reasonDetails) => {
+export const reportTicket = async (ticketId, reporterId, reporterName, reasonValue, reasonDetails, messageInfo = null) => {
   const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
   const snap = await getDoc(ticketRef);
   if (!snap.exists()) throw new Error('التذكرة غير موجودة');
   const data = snap.data();
 
-  if (data.assignedSupervisorId !== reporterId) {
-    throw new Error('لا يمكنك الإبلاغ عن تذكرة لا تملكها');
+  const isSupervisorReporter = data.assignedSupervisorId === reporterId;
+  const isStudentReporter = data.studentId === reporterId;
+  if (!isSupervisorReporter && !isStudentReporter) {
+    throw new Error('لا يمكنك الإبلاغ عن محادثة لست طرفاً فيها');
   }
   if (data.status !== SUPPORT_TICKET_STATUS.IN_PROGRESS) {
     throw new Error('لا يمكن الإبلاغ عن تذكرة في هذه الحالة');
@@ -774,9 +776,51 @@ export const reportTicket = async (ticketId, reporterId, reporterName, reasonVal
       details: reasonDetails.trim(),
       reportedBy: reporterId,
       reportedByName: reporterName,
+      reportedByRole: isStudentReporter ? 'student' : 'supervisor',
+      messageId: messageInfo?.id || null,
+      messageText: messageInfo?.text ? String(messageInfo.text).slice(0, 1000) : null,
+      messageSenderName: messageInfo?.senderName || null,
       reportedAt: serverTimestamp()
     },
     messages: arrayUnion(systemMessage),
+    updatedAt: serverTimestamp()
+  });
+};
+
+/** ✅ المدير: لا يوجد ما يستدعي الإيقاف — تُستأنف الدردشة كما كانت مع نفس المشرف */
+export const dismissReportAndContinue = async (ticketId, managerId) => {
+  const ticketRef = doc(db, SUPPORT_TICKETS_COLLECTION, ticketId);
+  const snap = await getDoc(ticketRef);
+  if (!snap.exists()) throw new Error('التذكرة غير موجودة');
+  const data = snap.data();
+
+  const systemMessage = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+    senderId: 'system',
+    senderName: 'النظام',
+    senderRole: 'system',
+    text: '✅ راجعت الإدارة البلاغ ولا يوجد ما يستدعي إيقاف المحادثة. يمكنكما متابعة الدردشة.',
+    createdAt: new Date().toISOString()
+  };
+
+  await updateDoc(ticketRef, {
+    status: data.assignedSupervisorId ? SUPPORT_TICKET_STATUS.IN_PROGRESS : SUPPORT_TICKET_STATUS.OPEN,
+    report: null,
+    reportResolvedAt: serverTimestamp(),
+    reportResolvedBy: managerId,
+    reportAction: 'continued',
+    messages: arrayUnion(systemMessage),
+    unreadForStudent: true,
+    unreadForSupervisor: true,
+    updatedAt: serverTimestamp()
+  });
+};
+
+/** ✅ سند حوّل المحادثة لقسم الإشراف — لن يرد سند بعد الآن */
+export const markAiHandedOff = async (ticketId) => {
+  await updateDoc(doc(db, SUPPORT_TICKETS_COLLECTION, ticketId), {
+    aiHandedOff: true,
+    aiHandedOffAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   });
 };

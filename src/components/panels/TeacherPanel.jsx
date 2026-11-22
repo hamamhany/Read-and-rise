@@ -47,6 +47,7 @@ const TeacherPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
   const navigate = useNavigate();
   const [lessonTimes, setLessonTimes] = useState([]);
+  const [lessonTick, setLessonTick] = useState(0);
   const [homeworks, setHomeworks] = useState([]);
   const [students, setStudents] = useState([]);
   const [classes, setClasses] = useState([]);
@@ -303,7 +304,7 @@ const TeacherPanel = ({ user, onLogout }) => {
 
   const saveLessonTimesFromModal = async (times) => {
     try {
-      const timesWithId = times.map(t => ({ ...t, id: generateId() }));
+      const timesWithId = times.map(t => ({ ...t, id: t.id || generateId() }));
       await updateDoc(doc(db, 'teachers', user.id), {
         lessonTimes: timesWithId, updatedAt: serverTimestamp()
       });
@@ -474,7 +475,10 @@ const TeacherPanel = ({ user, onLogout }) => {
     const now = new Date();
     let nearest = null;
     for (const lt of lessonTimes) {
-      if (classId && lt.classId && lt.classId !== classId) continue;
+      if (classId) {
+        if (lt.classId) { if (lt.classId !== classId) continue; }
+        else if (classes.length > 1) continue; // موعد قديم بلا شعبة: لا يُعرض إن كان للمعلم أكثر من شعبة
+      }
       if (!lt.time) continue;
 
       if (lt.type === 'once') {
@@ -526,6 +530,20 @@ const TeacherPanel = ({ user, onLogout }) => {
   };
 
   const nextLesson = getNextLessonTime(selectedClassForLesson);
+
+  // يُعيد حساب الحصة القادمة تلقائياً لحظة انتهاء الموعد الحالي (حتى لا يتجمد المؤقت)
+  useEffect(() => {
+    if (!nextLesson) return;
+    const ms = new Date(nextLesson.date).getTime() - Date.now();
+    const id = setTimeout(() => setLessonTick(t => t + 1), Math.min(Math.max(ms, 0) + 1000, 2147483000));
+    return () => clearTimeout(id);
+  }, [nextLesson?.date, nextLesson?.id, lessonTick]);
+
+  // طلاب هذا المعلم فقط (من شعبه)
+  const myClassIdSet = new Set(classes.map(c => c.id));
+  const belongsToMe = (s) => (s.classIds || []).some(id => myClassIdSet.has(id));
+  const myStudents = students.filter(belongsToMe);
+  const myPendingReviews = pendingReviews.filter(belongsToMe);
 
   const handlePostponeLesson = async () => {
     if (!nextLesson) return toast.error('لا توجد حصة قادمة');
@@ -604,10 +622,6 @@ const TeacherPanel = ({ user, onLogout }) => {
     const body = sanitizeInput(announcementBody);
     if (!title || !body) { toast.error('يرجى إدخال العنوان والمحتوى.'); return; }
     if (body.length > 10000) { toast.error('نص الإشعار طويل جداً (الحد الأقصى 10000 حرف).'); return; }
-    if (announcementAudience === ANNOUNCEMENT_AUDIENCE.CLASSES && announcementTargetClasses.length === 0) {
-      toast.error('اختر شعبة واحدة على الأقل');
-      return;
-    }
 
     setModerating(true);
     try {
@@ -626,8 +640,6 @@ const TeacherPanel = ({ user, onLogout }) => {
           requestedBy: user.id,
           requestedByName: user.name || user.username || 'معلم',
           requestedByRole: 'teacher',
-          audience: announcementAudience,
-          targetClassIds: announcementAudience === ANNOUNCEMENT_AUDIENCE.CLASSES ? announcementTargetClasses : [],
           moderationResult
         });
 
@@ -717,13 +729,13 @@ const TeacherPanel = ({ user, onLogout }) => {
 
         {errorMsg && <p className="text-red-700 dark:text-red-400 text-sm bg-red-500/10 p-3 rounded-xl border border-red-300 dark:border-red-500/20">{errorMsg}</p>}
 
-        {pendingReviews.length > 0 && (
+        {myPendingReviews.length > 0 && (
           <div className="bg-yellow-50 dark:bg-yellow-900/30 p-6 rounded-2xl border border-yellow-300 dark:border-yellow-500/40 shadow-lg">
             <h3 className="text-xl font-semibold text-yellow-700 dark:text-yellow-300 mb-3 flex items-center gap-2">
-              <FaClipboardList /> طلبات تعديل البيانات ({pendingReviews.length})
+              <FaClipboardList /> طلبات تعديل البيانات ({myPendingReviews.length})
             </h3>
             <div className="space-y-3 max-h-80 overflow-y-auto">
-              {pendingReviews.map(student => (
+              {myPendingReviews.map(student => (
                 <div key={student.id} className="bg-white dark:bg-black/30 p-4 rounded-xl border border-yellow-300 dark:border-yellow-500/20 flex justify-between items-center gap-3">
                   <div>
                     <span className="text-slate-900 dark:text-white font-medium">{student.name || student.username}</span>
@@ -969,49 +981,9 @@ const TeacherPanel = ({ user, onLogout }) => {
                 <div className="text-xs text-slate-500 dark:text-gray-400 mt-1 text-left">{charCount} / 10000</div>
               </div>
 
-              <div>
-                <label className="block text-sm text-slate-700 dark:text-gray-300 mb-2">الجمهور المستهدف</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { value: ANNOUNCEMENT_AUDIENCE.ALL_STUDENTS, icon: FaUserGraduate, label: 'جميع الطلاب' },
-                    { value: ANNOUNCEMENT_AUDIENCE.CLASSES, icon: FaLayerGroup, label: 'شعب محددة' }
-                  ].map(opt => {
-                    const Icon = opt.icon;
-                    const selected = announcementAudience === opt.value;
-                    return (
-                      <button key={opt.value} type="button" onClick={() => setAnnouncementAudience(opt.value)}
-                        className={`p-3 rounded-lg border-2 transition flex items-center gap-2 text-sm font-bold ${
-                          selected ? 'border-amber-500 bg-amber-500/15 text-amber-800 dark:text-amber-200' : 'border-slate-200 dark:border-gray-700 text-slate-600 dark:text-gray-300 hover:border-amber-400/50'
-                        }`}>
-                        <Icon /> {opt.label}
-                      </button>
-                    );
-                  })}
-                </div>
+              <div className="bg-purple-500/10 border border-purple-300 dark:border-purple-500/20 rounded-lg p-2 text-xs text-purple-800 dark:text-purple-200">
+                🏫 سيصل هذا الإشعار لطلاب شعبك فقط.
               </div>
-
-              {announcementAudience === ANNOUNCEMENT_AUDIENCE.CLASSES && (
-                <div>
-                  <label className="block text-sm text-slate-700 dark:text-gray-300 mb-2">اختر من شعبك</label>
-                  <div className="space-y-1 max-h-40 overflow-y-auto">
-                    {classes.length === 0 ? (
-                      <p className="text-slate-500 dark:text-gray-400 text-sm text-center py-2">لا توجد شعب لديك</p>
-                    ) : classes.map(cls => {
-                      const selected = announcementTargetClasses.includes(cls.id);
-                      return (
-                        <button key={cls.id} type="button"
-                          onClick={() => setAnnouncementTargetClasses(prev => prev.includes(cls.id) ? prev.filter(x => x !== cls.id) : [...prev, cls.id])}
-                          className={`w-full p-2 rounded-lg border text-right flex items-center gap-2 ${
-                            selected ? 'bg-purple-500/15 border-purple-500' : 'bg-slate-50 dark:bg-gray-800/60 border-slate-200 dark:border-gray-700'
-                          }`}>
-                          <input type="checkbox" checked={selected} readOnly className="accent-purple-500 pointer-events-none" />
-                          <span className="text-slate-900 dark:text-white text-sm">{cls.name}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
 
               <div className="flex gap-3">
                 <button onClick={handleCreateAnnouncement} disabled={moderating}
@@ -1030,7 +1002,7 @@ const TeacherPanel = ({ user, onLogout }) => {
         </div>
       )}
 
-      <PrintStudentsModal isOpen={showPrintModal} onClose={() => setShowPrintModal(false)} students={students} />
+      <PrintStudentsModal isOpen={showPrintModal} onClose={() => setShowPrintModal(false)} students={myStudents} />
       {selectedStudentForReport && (
         <ReportModal
           isOpen={showReportModal}
@@ -1045,11 +1017,11 @@ const TeacherPanel = ({ user, onLogout }) => {
         <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center z-40 p-4" onClick={() => setShowStudentsModal(false)}>
           <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl max-w-4xl w-full max-h-[80vh] overflow-y-auto border border-slate-200 dark:border-gray-700" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-semibold text-blue-700 dark:text-blue-300">قائمة الطلاب ({students.length})</h3>
+              <h3 className="text-xl font-semibold text-blue-700 dark:text-blue-300">قائمة الطلاب ({myStudents.length})</h3>
               <button onClick={() => setShowStudentsModal(false)} className="text-slate-500 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white text-2xl">✕</button>
             </div>
             <div className="space-y-3">
-              {students.map(s => {
+              {myStudents.map(s => {
                 const classNames = s.classes?.map(c => c.name).filter(Boolean).join(', ') || 'لا توجد شعبة';
                 const warningCount = getActiveWarnings(s.warnings || []).length;
                 return (

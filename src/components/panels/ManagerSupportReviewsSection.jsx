@@ -10,7 +10,7 @@ import {
   subscribeToManagerReviewTickets, subscribeToManagerOpenTickets,
   subscribeToLegacyTransfers, subscribeToReportedTickets,
   managerDecide, claimTicket,
-  cancelReportAndDelete, cancelReportAndReopen,
+  cancelReportAndDelete, cancelReportAndReopen, dismissReportAndContinue,
   finalizeReportWithWarning,
   closeReportedTicketAfterAccountDeletion
 } from '../../services/support';
@@ -27,7 +27,8 @@ import {
   onSnapshot, serverTimestamp
 } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { SUPPORT_RATING_CATEGORIES } from '../../constants';
+import { SUPPORT_RATING_CATEGORIES, MESSAGE_REQUEST_TYPES } from '../../constants';
+import { createMessageRequest } from '../../services/messageRequests';
 import SupportChat from '../common/SupportChat';
 import { RichText } from '../common/ChatParts';
 import { useConfirm } from '../common/ConfirmContext';
@@ -299,6 +300,53 @@ const ManagerSupportReviewsSection = ({ user }) => {
       await managerDecide(selected.id, 'reject', '');
       toast.success('✅ تم رفض الشكوى وحذف التذكرة');
       closeModal();
+    } catch (e) { toast.error('فشل: ' + e.message); }
+    finally { setProcessing(false); }
+  };
+
+  const handleContinueChat = async () => {
+    if (!selectedReport) return;
+    const ok = await confirm('متابعة الدردشة', 'لا يوجد ما يستدعي الإيقاف، ستُستأنف المحادثة كما كانت. متابعة؟');
+    if (!ok) return;
+    setProcessing(true);
+    try {
+      await dismissReportAndContinue(selectedReport.id, user.id);
+      toast.success('✅ تمت متابعة الدردشة');
+      closeReportModal();
+    } catch (e) { toast.error('فشل: ' + e.message); }
+    finally { setProcessing(false); }
+  };
+
+  // اتخاذ إجراءات الإبلاغ: يتحول لمسار البلاغات المعتاد، والحكم فيه للمشرفين
+  const handleTakeReportAction = async () => {
+    if (!selectedReport) return;
+    const ok = await confirm('اتخاذ إجراءات الإبلاغ', 'سيُحوَّل البلاغ إلى المشرفين للحكم فيه كالمعتاد، وتُستأنف الدردشة. متابعة؟');
+    if (!ok) return;
+    setProcessing(true);
+    try {
+      const rep = selectedReport.report || {};
+      const reasonText = `${rep.reasonLabel || 'سلوك غير لائق'} — ${rep.details || ''}`.trim();
+      await createMessageRequest(
+        {
+          type: MESSAGE_REQUEST_TYPES.REPORT,
+          targetType: 'student',
+          targetId: selectedReport.studentId,
+          targetName: selectedReport.studentName || '',
+          targetPhone: selectedReport.studentPhone || '',
+          targetClass: 'الدعم الفني',
+          requestedBy: rep.reportedBy || user.id,
+          requestedByName: rep.reportedByName || 'مشرف',
+          payload: {
+            reasonCategory: rep.reasonLabel || 'سلوك غير لائق',
+            reasonDetails: rep.details || '',
+            reason: reasonText
+          }
+        },
+        rep.reportedByName || 'مشرف'
+      );
+      await dismissReportAndContinue(selectedReport.id, user.id);
+      toast.success('✅ تم تحويل البلاغ للمشرفين');
+      closeReportModal();
     } catch (e) { toast.error('فشل: ' + e.message); }
     finally { setProcessing(false); }
   };
@@ -610,13 +658,13 @@ const ManagerSupportReviewsSection = ({ user }) => {
 
             <div className="bg-slate-50 dark:bg-gray-800/60 p-3 rounded-xl mb-3 text-sm">
               <p className="text-cyan-800 dark:text-cyan-200 font-bold mb-1">👤 المُبلَّغ عنه:</p>
-              <p className="text-slate-700 dark:text-gray-300">الاسم: {selectedReport.studentName}</p>
+              <p className="text-slate-700 dark:text-gray-300">الاسم: {selectedReport.report?.reportedByRole === 'student' ? (selectedReport.assignedSupervisorName || 'المشرف') : selectedReport.studentName}</p>
               {reportedStudent?.serialNumber && <p className="text-slate-700 dark:text-gray-300">الرقم التسلسلي: {reportedStudent.serialNumber}</p>}
               {selectedReport.studentPhone && <p className="text-slate-700 dark:text-gray-300">الهاتف: <span dir="ltr">{selectedReport.studentPhone}</span></p>}
             </div>
 
             <div className="bg-slate-50 dark:bg-gray-800/60 p-3 rounded-xl mb-3 text-sm">
-              <p className="text-cyan-800 dark:text-cyan-200 font-bold mb-1">🛡️ المشرف المُبلِّغ:</p>
+              <p className="text-cyan-800 dark:text-cyan-200 font-bold mb-1">{selectedReport.report?.reportedByRole === 'student' ? '🎓 الطالب المُبلِّغ:' : '🛡️ المشرف المُبلِّغ:'}</p>
               <p className="text-slate-700 dark:text-gray-300">الاسم: {selectedReport.report?.reportedByName}</p>
             </div>
 
@@ -624,6 +672,10 @@ const ManagerSupportReviewsSection = ({ user }) => {
               <p className="text-rose-800 dark:text-rose-200 font-bold mb-1">📝 تفاصيل البلاغ:</p>
               <p className="text-slate-700 dark:text-gray-200">السبب: {selectedReport.report?.reasonLabel}</p>
               <p className="text-slate-700 dark:text-gray-200">التفاصيل: "{selectedReport.report?.details}"</p>
+              <p className="text-slate-600 dark:text-gray-300 text-xs mt-1">المُبلِّغ: {selectedReport.report?.reportedByRole === 'student' ? 'الطالب' : 'المشرف'}</p>
+              {selectedReport.report?.messageText && (
+                <p className="text-slate-700 dark:text-gray-200 mt-1">الرسالة المُبلَّغ عنها ({selectedReport.report?.messageSenderName}): "{selectedReport.report?.messageText}"</p>
+              )}
             </div>
 
             <div className="bg-slate-100 dark:bg-gray-800/40 p-3 rounded-xl mb-3 max-h-60 overflow-y-auto border border-slate-200 dark:border-gray-700">
@@ -641,6 +693,16 @@ const ManagerSupportReviewsSection = ({ user }) => {
             </p>
 
             <div className="space-y-2">
+              <button onClick={handleContinueChat} disabled={processing}
+                className="w-full p-3 bg-green-100 dark:bg-green-600/20 hover:bg-green-200 dark:hover:bg-green-600/30 border border-green-300 dark:border-green-500/40 rounded-xl text-green-800 dark:text-green-200 text-sm flex items-center justify-center gap-2 disabled:opacity-50">
+                ✅ متابعة الدردشة — لا يوجد ما يستدعي الإيقاف
+              </button>
+              {selectedReport.report?.reportedByRole !== 'student' && (
+                <button onClick={handleTakeReportAction} disabled={processing}
+                  className="w-full p-3 bg-purple-100 dark:bg-purple-600/20 hover:bg-purple-200 dark:hover:bg-purple-600/30 border border-purple-300 dark:border-purple-500/40 rounded-xl text-purple-800 dark:text-purple-200 text-sm flex items-center justify-center gap-2 disabled:opacity-50">
+                  <FaExclamationTriangle /> اتخاذ إجراءات الإبلاغ (تحويل للمشرفين)
+                </button>
+              )}
               <button onClick={handleCancelReportAndDelete} disabled={processing}
                 className="w-full p-3 bg-slate-100 dark:bg-gray-600/30 hover:bg-slate-300 dark:hover:bg-gray-600/50 border border-slate-300 dark:border-gray-500/40 rounded-xl text-slate-700 dark:text-gray-200 text-sm flex items-center justify-center gap-2 disabled:opacity-50">
                 <FaTrashAlt /> رفض البلاغ وحذف المحادثة
@@ -649,6 +711,7 @@ const ManagerSupportReviewsSection = ({ user }) => {
                 className="w-full p-3 bg-blue-100 dark:bg-blue-600/20 hover:bg-blue-200 dark:hover:bg-blue-600/30 border border-blue-300 dark:border-blue-500/40 rounded-xl text-blue-800 dark:text-blue-200 text-sm flex items-center justify-center gap-2 disabled:opacity-50">
                 <FaBell /> رفض البلاغ وإعادة المحادثة لمشرف آخر
               </button>
+              {selectedReport.report?.reportedByRole !== 'student' && (<>
               <button onClick={handleWarnReported} disabled={processing}
                 className="w-full p-3 bg-amber-100 dark:bg-amber-600/20 hover:bg-amber-200 dark:hover:bg-amber-600/30 border border-amber-300 dark:border-amber-500/40 rounded-xl text-amber-800 dark:text-amber-200 text-sm flex items-center justify-center gap-2 disabled:opacity-50">
                 <FaBell /> إرسال تنبيه إداري
@@ -657,6 +720,7 @@ const ManagerSupportReviewsSection = ({ user }) => {
                 className="w-full p-3 bg-red-100 dark:bg-red-600/30 hover:bg-red-600/50 border border-red-300 dark:border-red-500/50 rounded-xl text-red-800 dark:text-red-200 text-sm flex items-center justify-center gap-2 disabled:opacity-50">
                 <FaBan /> إغلاق حساب المُبلَّغ عنه
               </button>
+              </>)}
               <button onClick={closeReportModal} className="w-full p-2 bg-slate-200 dark:bg-gray-700 hover:bg-slate-300 dark:hover:bg-gray-600 rounded-xl text-slate-700 dark:text-gray-300 text-xs">
                 إلغاء
               </button>

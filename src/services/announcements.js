@@ -1,7 +1,7 @@
 import { db } from '../firebase';
 import {
   collection, addDoc, doc, updateDoc, deleteDoc,
-  serverTimestamp, getDoc
+  serverTimestamp, getDoc, getDocs, query, where
 } from 'firebase/firestore';
 import { sanitizeInput } from '../utils/helpers';
 import {
@@ -49,43 +49,25 @@ export const createGeneralAnnouncement = async (title, body, scheduledFor = null
  * - إذا فشل الاتصال → error:true (يتحول للمراجعة اليدوية تلقائياً)
  */
 export const moderateAnnouncementContent = async (title, body) => {
-  const modPrompt = `قيّم المحتوى التالي من حيث الأمان واللائقية. أعد JSON فقط بهذا الشكل:\n{"safe": true/false, "reason": "سبب مختصر إن كان غير آمن", "confidence": 0.0-1.0}\n\nالعنوان: ${title}\n\nالمحتوى: ${body}`;
-
   try {
     const response = await fetch('/api/gemini', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: modPrompt,
-        history: [],
-        userRole: 'moderation',
-        suppressEndTag: true,
-        userName: '',
-        userGender: ''
-      })
+      body: JSON.stringify({ mode: 'moderation', title: title || '', body: body || '' })
     });
+    const data = await response.json().catch(() => ({}));
 
-    if (!response.ok) {
-      return { safe: false, reason: 'تعذر الفحص التلقائي', confidence: 0, error: true };
+    if (!response.ok || typeof data.safe !== 'boolean') {
+      return { safe: false, reason: data?.error || 'تعذر الفحص التلقائي', confidence: 0, error: true };
     }
-
-    const data = await response.json();
-    const text = data?.text || '';
-    const match = text.match(/\{[\s\S]*?\}/);
-    if (match) {
-      try {
-        const parsed = JSON.parse(match[0]);
-        return {
-          safe: parsed.safe === true,
-          reason: parsed.reason || '',
-          confidence: Number(parsed.confidence) || 0.8
-        };
-      } catch { /* fall through */ }
-    }
-    return { safe: true, reason: '', confidence: 0 };
+    return {
+      safe: data.safe,
+      reason: data.reason || '',
+      confidence: Number(data.confidence) || 0
+    };
   } catch (err) {
     console.warn('Sanad moderation failed:', err);
-    return { safe: false, reason: 'تعذر الاتصال بسانـد — سيُراجع يدوياً', confidence: 0, error: true };
+    return { safe: false, reason: 'تعذر الاتصال بسند، سيُراجع يدوياً', confidence: 0, error: true };
   }
 };
 
@@ -99,14 +81,25 @@ export const createTargetedAnnouncement = async ({
   requestedBy = '',
   requestedByName = '',
   requestedByRole = 'supervisor',
-  audience = ANNOUNCEMENT_AUDIENCE.ALL_STUDENTS,
-  targetClassIds = [],
-  moderationResult = { safe: true, reason: '', confidence: 0 }
+  audience: audienceInput = ANNOUNCEMENT_AUDIENCE.ALL_STUDENTS,
+  targetClassIds: targetClassIdsInput = [],
+  moderationResult = { safe: false, reason: 'لم يتم الفحص', confidence: 0, error: true }
 }) => {
   const cleanTitle = sanitizeInput(title);
   const cleanBody = sanitizeInput(body);
-
   if (!cleanTitle || !cleanBody) throw new Error('العنوان والمحتوى مطلوبان');
+
+  let audience = audienceInput;
+  let targetClassIds = targetClassIdsInput;
+
+  // المعلم: دائماً لطلاب شعبه فقط، وتُحدَّد الشعب من قاعدة البيانات وليس من الواجهة
+  if (requestedByRole === 'teacher') {
+    const snap = await getDocs(query(collection(db, 'classes'), where('teacherId', '==', requestedBy)));
+    targetClassIds = snap.docs.map(d => d.id);
+    if (targetClassIds.length === 0) throw new Error('لا توجد شعب مرتبطة بحسابك');
+    audience = ANNOUNCEMENT_AUDIENCE.CLASSES;
+  }
+
   if (audience === ANNOUNCEMENT_AUDIENCE.CLASSES && (!targetClassIds || targetClassIds.length === 0)) {
     throw new Error('اختر شعبة واحدة على الأقل');
   }

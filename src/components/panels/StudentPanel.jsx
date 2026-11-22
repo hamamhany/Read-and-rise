@@ -28,6 +28,24 @@ const StudentPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
   const navigate = useNavigate();
   const [teacherData, setTeacherData] = useState(null);
+  const [lessonTick, setLessonTick] = useState(0);
+  const teacherDocsRef = useRef([]);
+  const classIdsRef = useRef([]);
+
+  // يبني بيانات المعلم الخاصة بشعب هذا الطالب فقط (مواعيد كل شعبة منفصلة عن غيرها)
+  const applyTeacherDoc = () => {
+    const docs = teacherDocsRef.current;
+    if (!docs.length) return;
+    const myIds = classIdsRef.current || [];
+    const hasMine = (d) => (d.data().lessonTimes || []).some(lt => lt.classId && myIds.includes(lt.classId));
+    const picked = docs.find(hasMine) || docs[0];
+    const data = picked.data();
+    const merged = docs.flatMap(d => (d.data().lessonTimes || []).filter(lt => lt.classId && myIds.includes(lt.classId)));
+    const legacy = (data.lessonTimes || []).filter(lt => !lt.classId);
+    setTeacherData({ id: picked.id, ...data, lessonTimes: [...merged, ...legacy] });
+    const now = Date.now();
+    setAvailableHomeworks((data.homeworks || []).filter(hw => !hw.is_draft && new Date(hw.reveal_time).getTime() <= now));
+  };
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [availableHomeworks, setAvailableHomeworks] = useState([]);
@@ -183,12 +201,8 @@ const StudentPanel = ({ user, onLogout }) => {
       const q = query(collection(db, 'teachers'));
       const querySnapshot = await getDocs(q);
       if (!querySnapshot.empty) {
-        const docSnap = querySnapshot.docs[0];
-        const data = docSnap.data();
-        setTeacherData({ id: docSnap.id, ...data });
-        const now = new Date().getTime();
-        const available = (data.homeworks || []).filter(hw => !hw.is_draft && new Date(hw.reveal_time).getTime() <= now);
-        setAvailableHomeworks(available);
+        teacherDocsRef.current = querySnapshot.docs;
+        applyTeacherDoc();
       }
     } catch (err) {
       setErrorMsg('فشل تحميل بيانات الصف: ' + err.message);
@@ -219,6 +233,8 @@ const StudentPanel = ({ user, onLogout }) => {
           }
         }
         setProfile(data);
+        classIdsRef.current = data.classIds || [];
+        applyTeacherDoc();
         setEditData(data || {});
         setPendingChanges(data.pendingChanges || null);
         setHasPendingRequest(!!data.pendingChanges);
@@ -264,12 +280,8 @@ const StudentPanel = ({ user, onLogout }) => {
     const q = query(collection(db, 'teachers'));
     const unsubscribeTeacher = onSnapshot(q, (snapshot) => {
       if (!snapshot.empty) {
-        const docSnap = snapshot.docs[0];
-        const data = docSnap.data();
-        setTeacherData({ id: docSnap.id, ...data });
-        const now = new Date().getTime();
-        const available = (data.homeworks || []).filter(hw => !hw.is_draft && new Date(hw.reveal_time).getTime() <= now);
-        setAvailableHomeworks(available);
+        teacherDocsRef.current = snapshot.docs;
+        applyTeacherDoc();
       }
     });
 
@@ -293,6 +305,8 @@ const StudentPanel = ({ user, onLogout }) => {
           }
         }
         setProfile(data);
+        classIdsRef.current = data.classIds || [];
+        applyTeacherDoc();
         setEditData(data || {});
         setPendingChanges(data.pendingChanges || null);
         setHasPendingRequest(!!data.pendingChanges);
@@ -497,6 +511,14 @@ const StudentPanel = ({ user, onLogout }) => {
   };
 
   const nextLesson = getNextLessonTime();
+
+  // يُعيد حساب الحصة القادمة تلقائياً لحظة انتهاء الموعد الحالي (حتى لا يتجمد المؤقت)
+  useEffect(() => {
+    if (!nextLesson) return;
+    const ms = new Date(nextLesson.date).getTime() - Date.now();
+    const id = setTimeout(() => setLessonTick(t => t + 1), Math.min(Math.max(ms, 0) + 1000, 2147483000));
+    return () => clearTimeout(id);
+  }, [nextLesson?.date, nextLesson?.id, lessonTick]);
 
   const handleJoinLesson = (classId) => {
     enterFullscreen();
