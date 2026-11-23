@@ -9,13 +9,9 @@ import {
   releaseDeviceOnUnload, subscribeToLiveSession, DEVICE_CONFLICT_MESSAGE
 } from '../../services/liveSessions';
 
-const HEARTBEAT_MS = 30 * 1000; // نبضة الطالب/المعلم كل 30 ثانية
+const HEARTBEAT_MS = 30 * 1000;
+const GUEST_POLL_MS = 4000;
 
-// الأزرار الظاهرة في شريط Jitsi.
-// المحذوف عمداً: fullscreen (نتحكم به من المنصة) و stats (حالة المتحدث)
-// و embedmeeting (ضمّن الملتقى) و profile (الاسم مقفل) و security (نافذة الأمان:
-// نستبدلها بزر «غرفة الانتظار» الخاص بنا فقط).
-// ملاحظة: زر noisesuppression (قمع الضوضاء) باقٍ ظاهراً.
 const TOOLBAR_BUTTONS = [
   'camera', 'chat', 'closedcaptions', 'desktop', 'download', 'etherpad', 'feedback',
   'filmstrip', 'hangup', 'help', 'highlight', 'invite', 'linktosalesforce',
@@ -25,10 +21,8 @@ const TOOLBAR_BUTTONS = [
   'shortcuts', 'tileview', 'toggle-camera', 'videoquality', 'whiteboard'
 ];
 
-// أزرار لا تظهر إلا لرئيس الجلسة (المعلم)
 const MODERATOR_ONLY_BUTTONS = ['invite', 'sharedvideo'];
 
-// تحميل سكربت Jitsi مرة واحدة فقط من سيرفرك
 function loadJitsiScript() {
   return new Promise((resolve, reject) => {
     if (window.JitsiMeetExternalAPI) return resolve();
@@ -55,7 +49,6 @@ const fullscreenSupported = () =>
 const isFullscreenNow = () =>
   !!(document.fullscreenElement || document.webkitFullscreenElement);
 
-// يطلب ملء الشاشة — لازم يُستدعى مباشرة عند ضغطة الزر
 export function enterFullscreen() {
   try {
     const el = document.documentElement;
@@ -64,7 +57,7 @@ export function enterFullscreen() {
       const r = req.call(el);
       if (r && r.catch) r.catch(() => {});
     }
-  } catch (e) { /* بعض الأجهزة (مثل iPhone) لا تدعمها، والغرفة تبقى تملأ الصفحة */ }
+  } catch (e) { /* ignore */ }
 }
 
 export function exitFullscreen() {
@@ -75,13 +68,6 @@ export function exitFullscreen() {
       if (r && r.catch) r.catch(() => {});
     }
   } catch (e) { /* ignore */ }
-}
-
-// رقم عشوائي من 30 خانة (أرقام فقط) — بلا وظيفة فعلية حالياً
-function generateInviteNumber() {
-  const arr = new Uint32Array(30);
-  window.crypto.getRandomValues(arr);
-  return Array.from(arr, (v) => String(v % 10)).join('');
 }
 
 const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
@@ -95,22 +81,22 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
   onJoinedRef.current = onJoined;
 
   const [theme, setThemeState] = useState(getStoredTheme());
-  const [error, setError] = useState(null);       // { message }
+  const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isModerator, setIsModerator] = useState(false);
-  const [askEnd, setAskEnd] = useState(false);    // نافذة المعلم عند الضغط على زر الخروج
+  const [askEnd, setAskEnd] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
   const [inviteNumber, setInviteNumber] = useState('');
   const [fsLost, setFsLost] = useState(false);
+  const [guestRequests, setGuestRequests] = useState([]);
+  const [showGuestList, setShowGuestList] = useState(false);
 
-  // تتبّع تغيير الثيم (فاتح/غامق) من المنصة
   useEffect(() => {
     const handler = (e) => setThemeState(e.detail || getStoredTheme());
     window.addEventListener('theme-change', handler);
     return () => window.removeEventListener('theme-change', handler);
   }, []);
 
-  // إعلام بقية المنصة أننا داخل الغرفة (لإخفاء زر الدعم الفني العائم)
   useEffect(() => {
     document.body.dataset.inLessonRoom = '1';
     window.dispatchEvent(new CustomEvent('lesson-room-change', { detail: true }));
@@ -120,7 +106,6 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
     };
   }, []);
 
-  // قفل تمرير الصفحة الخلفية أثناء وجود الغرفة (يشمل الآيفون والأيباد)
   useEffect(() => {
     const scrollY = window.scrollY || 0;
     const body = document.body;
@@ -147,13 +132,12 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
     };
   }, []);
 
-  // مراقبة ملء الشاشة: إذا خرج المستخدم منه تظهر رسالة وزر للعودة
   useEffect(() => {
     if (!fullscreenSupported()) return undefined;
     const startedAt = Date.now();
     const check = () => {
       if (isFullscreenNow()) setFsLost(false);
-      else if (Date.now() - startedAt > 2500) setFsLost(true); // مهلة قصيرة عند الدخول
+      else if (Date.now() - startedAt > 2500) setFsLost(true);
     };
     document.addEventListener('fullscreenchange', check);
     document.addEventListener('webkitfullscreenchange', check);
@@ -167,12 +151,12 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
     };
   }, []);
 
-  // الدخول إلى الغرفة
   useEffect(() => {
     let disposed = false;
     let heartbeatTimer = null;
     let loadingTimer = null;
     let unsubSession = null;
+    let guestPollTimer = null;
     let cachedToken = '';
     let deviceTracked = false;
     const deviceId = getDeviceId();
@@ -213,12 +197,30 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
         setIsModerator(moderator);
         try { cachedToken = await getFreshIdToken(); } catch (e) { /* ignore */ }
 
+        // ✅ جلب رقم الدعوة من الخادم للمعلم
+        if (moderator) {
+          try {
+            const codeRes = await callLiveApi('get-invite-code', { classId });
+            if (codeRes && codeRes.inviteCode) setInviteNumber(codeRes.inviteCode);
+          } catch (e) { /* ignore */ }
+
+          // ✅ استقبال طلبات الضيوف كل 4 ثوانٍ
+          guestPollTimer = setInterval(async () => {
+            try {
+              const listRes = await callLiveApi('guest-list', { classId });
+              if (listRes && Array.isArray(listRes.requests)) {
+                setGuestRequests(listRes.requests);
+              }
+            } catch (e) { /* ignore */ }
+          }, GUEST_POLL_MS);
+        }
+
         const lockedName = tokenData.name || displayName || 'مشارك';
         const avatarUrl = tokenData.avatar || '';
         const sessionNumber = tokenData.sessionNumber;
 
         const options = {
-          roomName: tokenData.roomName,          // الاسم يحدده الخادم (أحرف صغيرة)
+          roomName: tokenData.roomName,
           parentNode: containerRef.current,
           width: '100%',
           height: '100%',
@@ -226,36 +228,32 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
           jwt: tokenData.jwt,
           userInfo: { displayName: lockedName },
           configOverwrite: {
-            prejoinConfig: { enabled: false, hideDisplayName: true }, // بدون شاشة "أدخل اسمك" وبدون حقل الاسم
-            // غرفة الانتظار ملغاة نهائياً: إخفاء زرها وخيار كلمة المرور
+            prejoinConfig: { enabled: false, hideDisplayName: true },
             securityUi: { hideLobbyButton: true, disableLobbyPassword: true },
             prejoinPageEnabled: false,
             requireDisplayName: false,
-            readOnlyName: true,                  // منع تعديل الاسم
-            disableProfile: true,                // إخفاء إعدادات الملف الشخصي
+            readOnlyName: true,
+            disableProfile: true,
             disableDeepLinking: true,
             defaultLanguage: 'ar',
             startWithAudioMuted: true,
-            subject: tokenData.className ? `حصة ${tokenData.className}` : 'الحصة المباشرة', // عنوان الاجتماع بدل اسم الغرفة التقني
-            // أزرار للمعلم فقط (الطالب لا يراها): الدعوة ومشاركة فيديو يوتيوب
+            subject: tokenData.className ? `حصة ${tokenData.className}` : 'الحصة المباشرة',
             toolbarButtons: moderator
               ? TOOLBAR_BUTTONS
               : TOOLBAR_BUTTONS.filter((b) => !MODERATOR_ONLY_BUTTONS.includes(b)),
             disableInviteFunctions: !moderator,
-            // زر "ادعُ أحداً": نلتقط الضغطة ونعرض رقماً من 30 خانة بدل الرابط
             buttonsWithNotifyClick: [
               { key: 'invite', preventExecution: true },
-              // زر الخروج: نمنع قائمة Jitsi («إنهاء الاجتماع للجميع / اترك الاجتماع») ونخرج مباشرة
               { key: 'hangup', preventExecution: true },
               { key: 'hangup-menu', preventExecution: true },
               { key: 'end-meeting', preventExecution: true }
             ]
           },
           interfaceConfigOverwrite: {
-            SETTINGS_SECTIONS: ['devices', 'language', 'moderator', 'sounds'], // بدون "profile"
+            SETTINGS_SECTIONS: ['devices', 'language', 'moderator', 'sounds'],
             JITSI_WATERMARK_LINK: '',
             BRAND_WATERMARK_LINK: '',
-            SUPPORT_URL: ''                      // إخفاء زر "اتصل بالدعم"
+            SUPPORT_URL: ''
           }
         };
 
@@ -276,30 +274,35 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
           }
         });
 
-        // حماية إضافية: لو تغيّر الاسم بأي طريقة نرجّعه فوراً
         api.addListener('displayNameChange', (e) => {
           if (e && e.displayname && e.displayname !== lockedName) {
             api.executeCommand('displayName', lockedName);
           }
         });
 
-        // زر "ادعُ أحداً"
         api.addListener('toolbarButtonClicked', (e) => {
           if (e && e.key === 'invite') {
-            setInviteNumber((prev) => prev || generateInviteNumber());
-            setShowInvite(true);
+            if (inviteNumber) {
+              setShowInvite(true);
+            } else {
+              callLiveApi('get-invite-code', { classId })
+                .then((r) => {
+                  if (r && r.inviteCode) {
+                    setInviteNumber(r.inviteCode);
+                    setShowInvite(true);
+                  }
+                })
+                .catch((err) => toast.error(err.message || 'تعذر جلب رقم الدعوة'));
+            }
           }
           if (e && (e.key === 'hangup' || e.key === 'hangup-menu')) {
-            // المعلم: نافذتنا (إنهاء للجميع / خروج فقط) بدل قائمة Jitsi. الطالب: خروج مباشر
             if (moderator) setAskEnd(true);
             else closeRoom();
           }
         });
 
-        // احتياط: إن أُغلقت المكالمة من داخل Jitsi بطريقة أخرى نخرج مباشرة
         api.addListener('readyToClose', () => closeRoom());
 
-        // متابعة الحصة: إذا أنهاها المعلم (أو بدأت حصة جديدة) يخرج الجميع
         unsubSession = subscribeToLiveSession(classId, (s) => {
           if (disposed || !s || closingRef.current) return;
           if (!s.active || (sessionNumber != null && s.sessionNumber !== sessionNumber)) {
@@ -307,7 +310,6 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
           }
         });
 
-        // نبضات: الطالب (جهاز واحد) / المعلم (إبقاء الحصة ظاهرة)
         const beat = async () => {
           try {
             cachedToken = await getFreshIdToken();
@@ -319,7 +321,6 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
               setLoading(false);
               setError({ message: e.message || DEVICE_CONFLICT_MESSAGE });
             }
-            // أي خطأ آخر (انقطاع شبكة مؤقت) نتجاهله وننتظر النبضة التالية
           }
         };
         heartbeatTimer = setInterval(beat, HEARTBEAT_MS);
@@ -343,6 +344,7 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
       disposed = true;
       if (heartbeatTimer) clearInterval(heartbeatTimer);
       if (loadingTimer) clearTimeout(loadingTimer);
+      if (guestPollTimer) clearInterval(guestPollTimer);
       if (unsubSession) unsubSession();
       window.removeEventListener('pagehide', onPageHide);
       exitFullscreen();
@@ -379,8 +381,17 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
     }
   };
 
+  const respondGuest = async (requestId, approve) => {
+    try {
+      await callLiveApi('guest-respond', { requestId, approve });
+      setGuestRequests((prev) => prev.filter((r) => r.id !== requestId));
+      toast.success(approve ? '✅ تم قبول الضيف — سيدخل خلال ثوانٍ' : 'تم رفض الطلب');
+    } catch (e) {
+      toast.error(e.message || 'فشل');
+    }
+  };
+
   const isLight = theme === 'light';
-  const inviteFormatted = inviteNumber.replace(/(.{5})/g, '$1 ').trim();
 
   return createPortal(
     <div
@@ -410,6 +421,17 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
       )}
 
       <div ref={containerRef} className="absolute inset-0" />
+
+      {/* ✅ شارة طلبات الضيوف المعلقة (للمعلم فقط) */}
+      {isModerator && guestRequests.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowGuestList(true)}
+          className="absolute top-3 right-3 z-20 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-full font-bold text-sm shadow-lg flex items-center gap-2 animate-pulse"
+        >
+          👤 {guestRequests.length} طلب ضيف
+        </button>
+      )}
 
       {/* نافذة المعلم عند الضغط على زر الخروج */}
       {askEnd && (
@@ -444,7 +466,7 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
         </div>
       )}
 
-      {/* نافذة رقم الدعوة (30 خانة) */}
+      {/* نافذة رقم الدعوة */}
       {showInvite && (
         <div
           className="absolute inset-0 z-30 flex items-center justify-center p-4 bg-black/70"
@@ -454,14 +476,19 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
             className="bg-white dark:bg-gray-900 text-slate-900 dark:text-white rounded-3xl p-6 max-w-md w-full space-y-4 border border-slate-200 dark:border-gray-700"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-xl font-bold text-center">ادعُ أحداً</h3>
-            <p className="text-sm text-slate-600 dark:text-gray-300 text-center">رقم الدعوة:</p>
+            <h3 className="text-xl font-bold text-center">🎥 دعوة ضيف</h3>
+            <p className="text-sm text-slate-600 dark:text-gray-300 text-center leading-7">
+              أعطِ هذا الرقم للضيف. سيُدخله في شاشة تسجيل الدخول عبر زر <b>«الدخول كضيف»</b>، ثم يكتب اسمه، وتوافق أنت على طلبه.
+            </p>
             <p
               dir="ltr"
-              className="text-center font-mono text-xl tracking-widest bg-slate-100 dark:bg-gray-800 rounded-xl py-3 px-2 break-all select-all"
+              className="text-center font-mono text-4xl tracking-[0.4em] bg-emerald-50 dark:bg-emerald-900/20 rounded-xl py-4 px-2 select-all text-emerald-700 dark:text-emerald-300 font-black"
             >
-              {inviteFormatted}
+              {inviteNumber || '------'}
             </p>
+            <div className="bg-amber-50 dark:bg-amber-500/10 p-2.5 rounded-lg text-[11px] text-amber-800 dark:text-amber-200 leading-relaxed">
+              ⚠️ الضيف يدخل بصورة <b>Intruder</b> بدون كاميرا/مايك/دردشة. لأقصى حماية اضغط زر <b>«mute-everyone»</b> من شريط الأدوات بعد دخوله.
+            </div>
             <div className="flex gap-3">
               <button
                 type="button"
@@ -478,6 +505,44 @@ const JitsiRoom = ({ classId, displayName, onClose, onJoined }) => {
                 إغلاق
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ قائمة طلبات الضيوف */}
+      {showGuestList && (
+        <div
+          className="absolute inset-0 z-30 flex items-center justify-center p-4 bg-black/70"
+          onClick={() => setShowGuestList(false)}
+        >
+          <div
+            className="bg-white dark:bg-gray-900 text-slate-900 dark:text-white rounded-3xl p-6 max-w-md w-full space-y-3 border border-slate-200 dark:border-gray-700 max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center">
+              <h3 className="text-xl font-bold">طلبات الضيوف ({guestRequests.length})</h3>
+              <button onClick={() => setShowGuestList(false)} className="text-2xl">✕</button>
+            </div>
+            {guestRequests.length === 0 ? (
+              <p className="text-center text-slate-500 dark:text-gray-400 py-6">لا توجد طلبات حالياً.</p>
+            ) : (
+              <div className="space-y-2">
+                {guestRequests.map((r) => (
+                  <div key={r.id} className="p-3 bg-slate-50 dark:bg-gray-800 rounded-xl border border-slate-200 dark:border-gray-700 flex justify-between items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-sm truncate">{r.guestName}</p>
+                      <p className="text-xs text-slate-500 dark:text-gray-400 mt-0.5">
+                        {new Date(r.createdAtMs).toLocaleTimeString('ar-EG')}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => respondGuest(r.id, true)} className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-sm font-bold">قبول</button>
+                      <button onClick={() => respondGuest(r.id, false)} className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-sm font-bold">رفض</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

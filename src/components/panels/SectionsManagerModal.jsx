@@ -103,7 +103,6 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
         serialNumber: d.data().serialNumber || d.data().serial || ''
       }));
       setTeachers(teachersList);
-      setClassTeacherId(prev => prev || teachersList[0]?.id || '');
       setStudentCounts(counts);
       if (onCountChange) onCountChange(secs.length);
 
@@ -213,12 +212,16 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
     e.preventDefault();
     if (!currentId) return;
     if (!className.trim()) return toast.error('اسم الشعبة مطلوب');
-    if (!classTeacherId) return toast.error('اختر معلم الشعبة');
+    const typedSerial = arabicToEnglishNumber(teacherSearch).trim();
+    const matchedTeacher = typedSerial
+      ? teachers.find(t => String(t.serialNumber || '').trim() === typedSerial)
+      : null;
+    if (!matchedTeacher) return toast.error('أدخل الرقم التسلسلي الصحيح للمعلم');
     setSubmitting(true);
     try {
       await createClass({
         name: sanitizeInput(className),
-        teacherId: classTeacherId,
+        teacherId: matchedTeacher.id,
         gender: classGender,
         sectionId: currentId
       });
@@ -556,34 +559,24 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-xs text-gray-400 mb-1">معلم الشعبة <span className="text-red-400">*</span></label>
-                  <div className="relative mb-1">
-                    <FaSearch className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 text-xs" />
-                    <input
-                      type="text"
-                      value={teacherSearch}
-                      onChange={e => setTeacherSearch(arabicToEnglishNumber(e.target.value))}
-                      placeholder="ابحث بالرقم التسلسلي أو الاسم"
-                      className="w-full bg-gray-700 text-right p-2 pr-7 rounded-lg text-white text-xs border border-gray-600"
-                    />
-                  </div>
-                  <select
-                    value={classTeacherId}
-                    onChange={e => setClassTeacherId(e.target.value)}
-                    className="w-full bg-gray-700 text-right p-2 rounded-lg text-white text-sm border border-gray-600"
-                    required
-                  >
-                    <option value="">اختر المعلم</option>
-                    {filteredTeachers.map(t => (
-                      <option key={t.id} value={t.id}>
-                        {teacherLabel(t)}
-                        {t.serialNumber ? ` — #${t.serialNumber}` : (t.username ? ` — ${t.username}` : '')}
-                      </option>
-                    ))}
-                  </select>
-                  {filteredTeachers.length === 0 && teacherSearch && (
-                    <p className="text-[11px] text-red-400 mt-1">لا يوجد معلم مطابق للبحث</p>
-                  )}
+                  <label className="block text-xs text-gray-400 mb-1">الرقم التسلسلي للمعلم <span className="text-red-400">*</span></label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    dir="ltr"
+                    value={teacherSearch}
+                    onChange={e => setTeacherSearch(arabicToEnglishNumber(e.target.value))}
+                    placeholder="اكتب الرقم التسلسلي للمعلم"
+                    className="w-full bg-gray-700 text-center p-2 rounded-lg text-white text-sm border border-gray-600 font-mono tracking-widest"
+                  />
+                  {(() => {
+                    const q = arabicToEnglishNumber(teacherSearch).trim();
+                    if (!q) return <p className="text-[11px] text-gray-500 mt-1">سيظهر اسم المعلم هنا للتأكد قبل الإنشاء</p>;
+                    const found = teachers.find(t => String(t.serialNumber || '').trim() === q);
+                    return found
+                      ? <p className="text-[12px] text-green-400 mt-1">✅ المعلم: {teacherLabel(found)} — #{found.serialNumber}</p>
+                      : <p className="text-[11px] text-red-400 mt-1">لا يوجد معلم بهذا الرقم التسلسلي</p>;
+                  })()}
                 </div>
                 <div>
                   <label className="block text-xs text-gray-400 mb-1">جنس الشعبة <span className="text-red-400">*</span></label>

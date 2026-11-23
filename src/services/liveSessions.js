@@ -5,12 +5,11 @@ import { auth } from './firebaseAuth';
 import { collection, doc, query, where, onSnapshot } from 'firebase/firestore';
 
 export const LIVE_SESSIONS_COLLECTION = 'liveSessions';
-export const LIVE_VISIBLE_STALE_MS = 5 * 60 * 1000; // يجب أن يطابق VISIBLE_STALE_MS في api/jitsi-token.js
+export const LIVE_VISIBLE_STALE_MS = 5 * 60 * 1000;
 
 export const DEVICE_CONFLICT_MESSAGE =
   'لقد قمت بالانضمام من جهاز آخر. لا يُسمح بالانضمام من أكثر من جهاز لنفس الحساب، يجب الخروج أولاً من الحساب الآخر.';
 
-// معرّف هذا الجهاز/التبويب (يبقى عند تحديث الصفحة، ويختلف في جهاز أو تبويب آخر)
 export function getDeviceId() {
   const KEY = 'rr-device-id';
   try {
@@ -33,7 +32,7 @@ export async function getFreshIdToken() {
   return user.getIdToken();
 }
 
-// نداء موحّد لخادم المنصة (api/jitsi-token)
+// نداء موحّد لخادم المنصة (يتطلب تسجيل دخول)
 export async function callLiveApi(action, payload = {}) {
   const idToken = await getFreshIdToken();
   let res;
@@ -59,7 +58,31 @@ export async function callLiveApi(action, payload = {}) {
   return data || {};
 }
 
-// تحرير الجهاز أثناء إغلاق الصفحة (يعمل حتى لو أُغلق المتصفح)
+// ✅ نداء للضيف (بدون تسجيل دخول)
+export async function callGuestApi(action, payload = {}) {
+  let res;
+  try {
+    res = await fetch('/api/jitsi-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, ...payload })
+    });
+  } catch (e) {
+    const err = new Error('تعذر الاتصال بخادم المنصة.');
+    err.code = 'network';
+    throw err;
+  }
+  let data = null;
+  try { data = await res.json(); } catch (e) { /* ignore */ }
+  if (!res.ok) {
+    const err = new Error((data && data.error) || `رمز الخطأ ${res.status}`);
+    err.code = data && data.code;
+    err.status = res.status;
+    throw err;
+  }
+  return data || {};
+}
+
 export function releaseDeviceOnUnload({ idToken, classId, deviceId }) {
   if (!idToken || !deviceId) return;
   try {
@@ -75,11 +98,9 @@ export function releaseDeviceOnUnload({ idToken, classId, deviceId }) {
 export const startLiveSession = (classId) => callLiveApi('start', { classId });
 export const endLiveSession = (classId) => callLiveApi('end', { classId });
 
-// الحصة تُعتبر "ظاهرة للانضمام" إذا كانت مفتوحة والمعلم ما زال ينبض
 export const isSessionJoinable = (session, now = Date.now()) =>
   !!(session && session.active && now - (session.lastPingMs || 0) < LIVE_VISIBLE_STALE_MS);
 
-// متابعة حصص مجموعة شعب (للطالب أو للمعلم)
 export function subscribeToLiveSessions(classIds, callback) {
   const ids = Array.from(new Set((classIds || []).filter(Boolean))).slice(0, 30);
   if (ids.length === 0) {
@@ -94,7 +115,6 @@ export function subscribeToLiveSessions(classIds, callback) {
   );
 }
 
-// متابعة حصة شعبة واحدة (داخل الغرفة لمعرفة انتهاء الحصة)
 export function subscribeToLiveSession(classId, callback) {
   return onSnapshot(
     doc(db, LIVE_SESSIONS_COLLECTION, classId),

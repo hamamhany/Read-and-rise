@@ -305,8 +305,12 @@ const SupervisorPanel = ({ user, onLogout }) => {
   }, [permissions.resets]);
 
   useEffect(() => {
-    const unsub = subscribeToPendingStudentChanges(setPendingChanges);
-    return () => unsub();
+    const unsub = subscribeToPendingStudentChanges((list) => {
+      setPendingChanges(list);
+      setLoading(false);
+    });
+    const timer = setTimeout(() => setLoading(false), 3000);
+    return () => { unsub(); clearTimeout(timer); };
   }, []);
 
   const requestNotificationPermission = async () => {

@@ -1,5 +1,5 @@
 // src/components/auth/Login.jsx
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { FaUnlockAlt, FaEye, FaEyeSlash } from 'react-icons/fa';
 import { auth } from '../../services/firebaseAuth';
@@ -8,7 +8,9 @@ import { signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, updateDoc, query, collection, where, getDocs } from 'firebase/firestore';
 import { sanitizeInput, arabicToEnglishNumber } from '../../utils/helpers';
 import { createPasswordResetRequest } from '../../services/passwordReset';
+import { callGuestApi } from '../../services/liveSessions';
 import LoginSupportButton from '../common/LoginSupportButton';
+import GuestRoom from '../common/GuestRoom';
 
 const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [username, setUsername] = useState('');
@@ -25,6 +27,72 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
   const [resetSerial, setResetSerial] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
   const [resetError, setResetError] = useState('');
+
+  // ✅ حالة الضيف
+  const [showGuestModal, setShowGuestModal] = useState(false);
+  const [guestCode, setGuestCode] = useState('');
+  const [guestName, setGuestName] = useState('');
+  const [guestLoading, setGuestLoading] = useState(false);
+  const [guestError, setGuestError] = useState('');
+  const [guestPhase, setGuestPhase] = useState('form'); // form | waiting | approved | rejected | error
+  const [guestData, setGuestData] = useState(null);
+  const pollRef = useRef(null);
+
+  const resetGuestState = () => {
+    setGuestCode('');
+    setGuestName('');
+    setGuestError('');
+    setGuestPhase('form');
+    setGuestData(null);
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  };
+
+  const closeGuestModal = () => {
+    setShowGuestModal(false);
+    resetGuestState();
+  };
+
+  const submitGuestRequest = async () => {
+    setGuestError('');
+    const code = guestCode.trim();
+    const name = guestName.trim();
+    if (code.length < 4) { setGuestError('أدخل رقم الحصة بشكل صحيح'); return; }
+    if (name.length < 2) { setGuestError('أدخل اسمك'); return; }
+
+    setGuestLoading(true);
+    try {
+      const res = await callGuestApi('guest-request', { inviteCode: code, name });
+      setGuestPhase('waiting');
+      pollRef.current = setInterval(async () => {
+        try {
+          const st = await callGuestApi('guest-status', {
+            requestId: res.requestId,
+            pollToken: res.pollToken
+          });
+          if (st.status === 'approved') {
+            if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+            const join = await callGuestApi('guest-join', {
+              requestId: res.requestId,
+              pollToken: res.pollToken
+            });
+            setGuestData({ ...join, requestId: res.requestId, pollToken: res.pollToken });
+            setGuestPhase('approved');
+          } else if (st.status === 'rejected') {
+            if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+            setGuestPhase('rejected');
+          } else if (st.active === false) {
+            if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+            setGuestPhase('error');
+            setGuestError('انتهت الحصة قبل الموافقة');
+          }
+        } catch (e) { /* تجاهل الأخطاء المؤقتة */ }
+      }, 2500);
+    } catch (e) {
+      setGuestError(e.message || 'تعذر إرسال الطلب');
+    } finally {
+      setGuestLoading(false);
+    }
+  };
 
   const handleAuth = async (e) => {
     e.preventDefault();
@@ -215,7 +283,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
       });
 
       toast.success(
-        ' تم إرسال طلبك. سيتم إرسال تفاصيل إعادة تعيين بيانات الدخول عبر واتساب إلى الرقم المسجل بالرقم التسلسلي في حال الموافقة على الطلب.',
+        'تم إرسال طلبك. سيتم إرسال تفاصيل إعادة تعيين بيانات الدخول عبر واتساب إلى الرقم المسجل بالرقم التسلسلي في حال الموافقة على الطلب.',
         { duration: 9000 }
       );
       setShowResetModal(false);
@@ -315,6 +383,13 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
               نسيت كلمة المرور أو اسم المستخدم؟
             </button>
 
+            <button
+              onClick={() => { resetGuestState(); setShowGuestModal(true); }}
+              className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors mt-1 underline decoration-dotted underline-offset-2"
+            >
+              🎥 الدخول إلى حصة كضيف
+            </button>
+
             <div className="pt-2 border-t border-gray-300 dark:border-gray-700 text-center text-xs text-slate-500 dark:text-gray-400 w-full">
               <p>جميع الحقوق محفوظة © 2026 لصالح المبرمج همام هاني محمد علي</p>
             </div>
@@ -364,7 +439,7 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
               </div>
 
               <div className="bg-blue-50 dark:bg-blue-500/10 p-3 rounded-xl border border-blue-200 dark:border-blue-500/20 text-xs text-blue-800 dark:text-blue-200 leading-relaxed">
-                ℹ️ بعد الضغط على "تدقيق"، سيتم إرسال طلبك إلى المشرفين لمراجعته. في حال الموافقة، ستصلك بيانات الدخول الجديدة عبر واتساب على الرقم المسجل في النظام (وليس بالضرورة الرقم المكتوب هنا).
+                ℹ️ بعد الضغط على "تدقيق"، سيتم إرسال طلبك إلى المشرفين لمراجعته. في حال الموافقة، ستصلك بيانات الدخول الجديدة عبر واتساب على الرقم المسجل في النظام.
               </div>
 
               {resetError && (
@@ -380,6 +455,87 @@ const Login = ({ onLogin, onFrozen, onCompleteProfile }) => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ✅ Modal الضيف */}
+      {showGuestModal && guestPhase !== 'approved' && (
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => { if (guestPhase !== 'waiting') closeGuestModal(); }}>
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-emerald-200 dark:border-emerald-500/30 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-2xl font-bold text-center text-emerald-600 dark:text-emerald-400 mb-4">
+              🎥 الدخول كضيف
+            </h3>
+
+            {guestPhase === 'form' && (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm mb-1 text-slate-700 dark:text-gray-300">رقم الحصة</label>
+                  <input type="text" inputMode="numeric" dir="ltr"
+                    value={guestCode} onChange={(e) => setGuestCode(e.target.value)}
+                    placeholder="مثال: 123456"
+                    className="w-full bg-slate-50 dark:bg-gray-800 p-3 border border-gray-300 dark:border-gray-600 rounded-xl text-center text-lg tracking-widest text-slate-900 dark:text-white outline-none focus:border-emerald-500" />
+                </div>
+                <div>
+                  <label className="block text-sm mb-1 text-slate-700 dark:text-gray-300">اسمك</label>
+                  <input type="text" value={guestName} onChange={(e) => setGuestName(e.target.value)}
+                    placeholder="اكتب اسمك"
+                    className="w-full bg-slate-50 dark:bg-gray-800 p-3 border border-gray-300 dark:border-gray-600 rounded-xl text-right text-slate-900 dark:text-white outline-none focus:border-emerald-500" />
+                </div>
+                <div className="bg-amber-50 dark:bg-amber-500/10 p-3 rounded-xl border border-amber-200 dark:border-amber-500/20 text-xs text-amber-800 dark:text-amber-200 leading-relaxed">
+                  ⚠️ الضيف لا يستطيع التحدث أو فتح الكاميرا أو استخدام الدردشة. يمكنك الاستماع فقط والخروج.
+                </div>
+                {guestError && <p className="text-red-500 text-sm text-center">{guestError}</p>}
+                <div className="flex gap-3 pt-1">
+                  <button onClick={closeGuestModal}
+                    className="flex-1 py-2 bg-gray-200 dark:bg-gray-700 rounded-xl text-slate-800 dark:text-white">إلغاء</button>
+                  <button onClick={submitGuestRequest} disabled={guestLoading}
+                    className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl disabled:opacity-60">
+                    {guestLoading ? 'جاري الإرسال...' : 'إرسال الطلب'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {guestPhase === 'waiting' && (
+              <div className="text-center space-y-3 py-4">
+                <div className="text-5xl animate-pulse">⏳</div>
+                <p className="text-slate-700 dark:text-gray-200">تم إرسال طلبك للمعلم. بانتظار الموافقة...</p>
+                <button onClick={closeGuestModal}
+                  className="text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 underline">إلغاء الطلب</button>
+              </div>
+            )}
+
+            {guestPhase === 'rejected' && (
+              <div className="text-center space-y-3 py-4">
+                <div className="text-5xl">❌</div>
+                <p className="text-red-500">تم رفض طلب الدخول.</p>
+                <button onClick={closeGuestModal}
+                  className="bg-gray-200 dark:bg-gray-700 px-6 py-2 rounded-xl">إغلاق</button>
+              </div>
+            )}
+
+            {guestPhase === 'error' && (
+              <div className="text-center space-y-3 py-4">
+                <div className="text-5xl">⚠️</div>
+                <p className="text-red-500">{guestError}</p>
+                <button onClick={closeGuestModal}
+                  className="bg-gray-200 dark:bg-gray-700 px-6 py-2 rounded-xl">إغلاق</button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ✅ الغرفة للضيف بعد الموافقة */}
+      {guestPhase === 'approved' && guestData && (
+        <GuestRoom
+          data={guestData}
+          onClose={() => {
+            setGuestPhase('form');
+            setGuestData(null);
+            setShowGuestModal(false);
+            resetGuestState();
+          }}
+        />
       )}
     </div>
   );

@@ -1,11 +1,17 @@
 // api/jitsi-token.js
 // نقطة واحدة تتولى كل ما يخص الحصص المباشرة (حتى لا نزيد عدد دوال Vercel):
-//   action = "join"      → يعطي الطالب/المعلم تذكرة دخول (JWT) لغرفة الشعبة (الافتراضي)
+//   action = "join"      → يعطي الطالب/المعلم تذكرة دخول (JWT) لغرفة الشعبة
 //   action = "start"     → المعلم يفتح حصة لشعبته
-//   action = "end"       → المعلم ينهي الحصة (تُغلق ويبدأ الجديد بغرفة ودردشة فارغتين)
-//   action = "ping"      → نبضة المعلم (تبقي الحصة ظاهرة للطلاب)
-//   action = "heartbeat" → نبضة الطالب (تثبت أنه ما زال على نفس الجهاز)
-//   action = "release"   → تحرير جهاز الطالب عند الخروج
+//   action = "end"       → المعلم ينهي الحصة
+//   action = "ping"      → نبضة المعلم
+//   action = "heartbeat" → نبضة الطالب
+//   action = "release"   → تحرير جهاز الطالب
+//   action = "get-invite-code" → المعلم يجلب رقم الدعوة (6 أرقام)
+//   action = "guest-request"   → ضيف يطلب الدخول برقم الحصة + اسمه (بدون توكن)
+//   action = "guest-status"    → الضيف يتابع حالة طلبه (بدون توكن)
+//   action = "guest-join"      → الضيف المقبول يستلم JWT مقيد (بدون توكن)
+//   action = "guest-list"      → المعلم يستعلم عن طلبات الضيوف المعلقة
+//   action = "guest-respond"   → المعلم يوافق أو يرفض طلب ضيف
 import admin from 'firebase-admin';
 import crypto from 'crypto';
 
@@ -20,27 +26,28 @@ if (!admin.apps.length) {
   }
 }
 
-// ============ إعدادات يمكن تعديلها ============
-const MODERATOR_ROLES = ['teacher'];              // رئيس الجلسة: المعلم فقط
-const VIEWER_ROLES = ['system_manager'];          // مدير النظام يدخل أي حصة مفتوحة كعضو عادي
+// ============ إعدادات ============
+const MODERATOR_ROLES = ['teacher'];
+const VIEWER_ROLES = ['system_manager'];
 const LIVE_COLLECTION = 'liveSessions';
 const DEVICE_COLLECTION = 'deviceSessions';
+const GUEST_COLLECTION = 'guestRequests';
 
-const VISIBLE_STALE_MS = 5 * 60 * 1000;           // بلا نبضة من المعلم 5 دقائق → لا تظهر للطلاب كحصة جديدة
-const ABANDONED_MS = 15 * 60 * 1000;              // بلا نبضة 15 دقيقة → تُعتبر متروكة، وتبدأ حصة جديدة
-const DEVICE_TTL_MS = 75 * 1000;                  // بلا نبضة من جهاز الطالب 75 ثانية → يتحرر الحساب
-const JWT_LIFETIME_SEC = 60 * 60 * 6;             // صلاحية التذكرة 6 ساعات
+const VISIBLE_STALE_MS = 5 * 60 * 1000;
+const ABANDONED_MS = 15 * 60 * 1000;
+const DEVICE_TTL_MS = 75 * 1000;
+const JWT_LIFETIME_SEC = 60 * 60 * 6;
 
-// صور الحسابات الافتراضية (داخل public/images/) — حسب نوع الحساب
 const AVATAR_FILES = {
   student: 'Image student.png',
   teacher: 'Image teacher.png',
   system_manager: 'Image boss.png'
 };
+const GUEST_AVATAR_FILE = 'Intruder.png';
 
 const DEVICE_CONFLICT_MESSAGE =
   'لقد قمت بالانضمام من جهاز آخر. لا يُسمح بالانضمام من أكثر من جهاز لنفس الحساب، يجب الخروج أولاً من الحساب الآخر.';
-// =============================================
+// ==================================
 
 const fail = (status, code, message) => {
   const e = new Error(message);
@@ -96,7 +103,6 @@ async function getCaller(db, req, { needProfile = true } = {}) {
   return { decoded, profileDoc, profile: profileDoc.data() };
 }
 
-// حذف أجهزة الطلاب العالقة لشعبة معيّنة (عند إنهاء الحصة أو بدء حصة جديدة)
 async function cleanupDevices(db, classId) {
   try {
     const snap = await db.collection(DEVICE_COLLECTION).where('classId', '==', classId).get();
@@ -109,6 +115,21 @@ async function cleanupDevices(db, classId) {
     }
   } catch (e) {
     console.warn('cleanupDevices failed:', e.message);
+  }
+}
+
+async function cleanupGuestRequests(db, classId) {
+  try {
+    const snap = await db.collection(GUEST_COLLECTION).where('classId', '==', classId).get();
+    if (snap.empty) return;
+    const docs = snap.docs;
+    for (let i = 0; i < docs.length; i += 400) {
+      const batch = db.batch();
+      docs.slice(i, i + 400).forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    }
+  } catch (e) {
+    console.warn('cleanupGuestRequests failed:', e.message);
   }
 }
 
@@ -132,7 +153,6 @@ async function actionStart(db, req, body) {
     const now = Date.now();
     const old = snap.exists ? snap.data() : null;
 
-    // حصة مفتوحة لهذا المعلم ولم تُترك طويلاً → نكمل عليها (نفس الغرفة والدردشة)
     if (old && old.active && old.teacherId === profileDoc.id && now - (old.lastPingMs || 0) < ABANDONED_MS) {
       tx.update(sessionRef, { lastPingMs: now });
       return { ...old, lastPingMs: now };
@@ -140,7 +160,7 @@ async function actionStart(db, req, body) {
 
     startedNew = true;
     const sessionNumber = ((old && old.sessionNumber) || 0) + 1;
-    const roomName = `rr-${classId.toLowerCase()}-s${sessionNumber}`; // أحرف صغيرة فقط
+    const roomName = `rr-${classId.toLowerCase()}-s${sessionNumber}`;
     const data = {
       classId,
       className: cls.name || '',
@@ -152,13 +172,17 @@ async function actionStart(db, req, body) {
       startedAtMs: now,
       lastPingMs: now,
       endedAtMs: null,
+      inviteCode: null,
       startedAt: admin.firestore.FieldValue.serverTimestamp()
     };
     tx.set(sessionRef, data);
     return data;
   });
 
-  if (startedNew) await cleanupDevices(db, classId);
+  if (startedNew) {
+    await cleanupDevices(db, classId);
+    await cleanupGuestRequests(db, classId);
+  }
   return { ok: true, sessionNumber: result.sessionNumber, roomName: result.roomName };
 }
 
@@ -179,6 +203,7 @@ async function actionEnd(db, req, body) {
     endedAt: admin.firestore.FieldValue.serverTimestamp()
   });
   await cleanupDevices(db, classId);
+  await cleanupGuestRequests(db, classId);
   return { ok: true, ended: true };
 }
 
@@ -247,7 +272,6 @@ async function actionJoin(db, req, body) {
   const { classId, deviceId } = body;
   if (!validClassId(classId)) throw fail(400, 'bad-request', 'classId مطلوب');
 
-  // الحصة يجب أن تكون مفتوحة — واسم الغرفة يحدده الخادم وليس المتصفح
   const sessionSnap = await db.collection(LIVE_COLLECTION).doc(classId).get();
   const session = sessionSnap.exists ? sessionSnap.data() : null;
   if (!session || !session.active) {
@@ -262,7 +286,6 @@ async function actionJoin(db, req, body) {
     if (session.teacherId !== profileDoc.id) throw fail(403, 'forbidden', 'هذه الحصة ليست حصتك.');
   } else if (isStudent) {
     if (profile.isFrozen) throw fail(403, 'frozen', 'حسابك مجمّد، لا يمكنك دخول الحصة.');
-    // التحقق من انتماء الطالب للشعبة (من الخادم)
     if (!Array.isArray(profile.classIds) || !profile.classIds.includes(classId)) {
       throw fail(403, 'not-in-class', 'أنت غير مسجّل في هذه الشعبة.');
     }
@@ -273,7 +296,6 @@ async function actionJoin(db, req, body) {
     throw fail(403, 'forbidden', 'غير مسموح لهذا الحساب بدخول الحصة.');
   }
 
-  // جهاز واحد لكل حساب (طالب أو معلم أو مدير)
   let deviceTracked = false;
   {
     if (!validDeviceId(deviceId)) throw fail(400, 'bad-request', 'deviceId مطلوب');
@@ -333,6 +355,179 @@ async function actionJoin(db, req, body) {
   };
 }
 
+// ======================= الضيوف =======================
+
+function generateInviteCode() {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+async function generateUniqueInviteCode(db) {
+  for (let i = 0; i < 10; i++) {
+    const code = generateInviteCode();
+    const existing = await db.collection(LIVE_COLLECTION)
+      .where('inviteCode', '==', code).limit(5).get();
+    const hasActive = existing.docs.some((d) => d.data().active === true);
+    if (!hasActive) return code;
+  }
+  throw fail(500, 'server-error', 'تعذر توليد رقم الدعوة، حاول مرة أخرى.');
+}
+
+async function actionGetInviteCode(db, req, body) {
+  const { profileDoc, profile } = await getCaller(db, req);
+  if (profile.role !== 'teacher') throw fail(403, 'forbidden', 'غير مسموح');
+  const { classId } = body;
+  if (!validClassId(classId)) throw fail(400, 'bad-request', 'classId مطلوب');
+
+  const ref = db.collection(LIVE_COLLECTION).doc(classId);
+  const snap = await ref.get();
+  if (!snap.exists || !snap.data().active) throw fail(409, 'no-session', 'لا توجد حصة مفتوحة');
+  if (snap.data().teacherId !== profileDoc.id) throw fail(403, 'forbidden', 'هذه الحصة ليست حصتك');
+
+  if (snap.data().inviteCode) return { ok: true, inviteCode: snap.data().inviteCode };
+  const code = await generateUniqueInviteCode(db);
+  await ref.update({ inviteCode: code });
+  return { ok: true, inviteCode: code };
+}
+
+async function actionGuestRequest(db, req, body) {
+  const inviteCode = String(body.inviteCode || '').trim();
+  const rawName = String(body.name || '').trim();
+  if (!inviteCode || inviteCode.length < 4 || inviteCode.length > 20) {
+    throw fail(400, 'bad-request', 'رقم الحصة مطلوب');
+  }
+  if (!rawName || rawName.length < 2 || rawName.length > 50) {
+    throw fail(400, 'bad-request', 'الاسم مطلوب (حرفان على الأقل)');
+  }
+
+  const sessionSnap = await db.collection(LIVE_COLLECTION)
+    .where('inviteCode', '==', inviteCode).limit(5).get();
+  const activeDocs = sessionSnap.docs.filter((d) => d.data().active === true);
+  if (activeDocs.length === 0) throw fail(404, 'no-session', 'رقم الحصة غير صحيح أو انتهت الحصة');
+  const sessionDoc = activeDocs[0];
+  const session = sessionDoc.data();
+  if (Date.now() - (session.lastPingMs || 0) > VISIBLE_STALE_MS) {
+    throw fail(409, 'no-session', 'الحصة غير متاحة حالياً');
+  }
+
+  const pollToken = crypto.randomBytes(24).toString('hex');
+  const ref = db.collection(GUEST_COLLECTION).doc();
+  await ref.set({
+    classId: session.classId,
+    className: session.className || '',
+    sessionNumber: session.sessionNumber,
+    roomName: session.roomName,
+    inviteCode,
+    guestName: rawName.slice(0, 50),
+    status: 'pending',
+    pollToken,
+    teacherId: session.teacherId,
+    createdAtMs: Date.now(),
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    respondedAtMs: null
+  });
+  return { ok: true, requestId: ref.id, pollToken, className: session.className || '' };
+}
+
+async function actionGuestStatus(db, req, body) {
+  const { requestId, pollToken } = body;
+  if (!requestId || !pollToken) throw fail(400, 'bad-request', 'مطلوب');
+  const snap = await db.collection(GUEST_COLLECTION).doc(requestId).get();
+  if (!snap.exists) throw fail(404, 'not-found', 'الطلب غير موجود');
+  const d = snap.data();
+  if (d.pollToken !== pollToken) throw fail(403, 'forbidden', 'غير مصرح');
+  const sessionSnap = await db.collection(LIVE_COLLECTION).doc(d.classId).get();
+  const active = !!(sessionSnap.exists && sessionSnap.data().active
+    && sessionSnap.data().sessionNumber === d.sessionNumber);
+  return { ok: true, status: d.status, active };
+}
+
+async function actionGuestJoin(db, req, body) {
+  const appId = process.env.JITSI_APP_ID;
+  const appSecret = process.env.JITSI_APP_SECRET;
+  const domain = process.env.JITSI_DOMAIN || 'meet.194.146.38.131.sslip.io';
+  if (!appId || !appSecret) throw fail(500, 'config', 'إعدادات Jitsi غير مكتملة');
+
+  const { requestId, pollToken } = body;
+  const snap = await db.collection(GUEST_COLLECTION).doc(requestId).get();
+  if (!snap.exists) throw fail(404, 'not-found', 'الطلب غير موجود');
+  const g = snap.data();
+  if (g.pollToken !== pollToken) throw fail(403, 'forbidden', 'غير مصرح');
+  if (g.status !== 'approved') throw fail(409, 'not-approved', 'لم تتم الموافقة بعد');
+
+  const sessionSnap = await db.collection(LIVE_COLLECTION).doc(g.classId).get();
+  if (!sessionSnap.exists) throw fail(409, 'no-session', 'انتهت الحصة');
+  const s = sessionSnap.data();
+  if (!s.active || s.sessionNumber !== g.sessionNumber) throw fail(409, 'no-session', 'انتهت الحصة');
+  if (Date.now() - (s.lastPingMs || 0) > VISIBLE_STALE_MS) throw fail(409, 'no-session', 'الحصة غير متاحة');
+
+  const origin = getOrigin(req);
+  const avatar = origin ? `${origin}/images/${encodeURIComponent(GUEST_AVATAR_FILE)}` : '';
+  const nowSec = Math.floor(Date.now() / 1000);
+
+  const user = {
+    id: `guest-${requestId.slice(0, 12)}`,
+    name: g.guestName,
+    moderator: false,
+    affiliation: 'member'
+  };
+  if (avatar) user.avatar = avatar;
+
+  const payload = {
+    aud: appId, iss: appId, sub: domain,
+    room: String(s.roomName || '').toLowerCase(),
+    nbf: nowSec - 10, exp: nowSec + JWT_LIFETIME_SEC,
+    context: { user }
+  };
+
+  return {
+    ok: true,
+    jwt: signJwt(payload, appSecret),
+    name: g.guestName,
+    roomName: s.roomName,
+    avatar,
+    className: s.className || '',
+    sessionNumber: s.sessionNumber,
+    isGuest: true
+  };
+}
+
+async function actionGuestList(db, req, body) {
+  const { profileDoc, profile } = await getCaller(db, req);
+  if (profile.role !== 'teacher') throw fail(403, 'forbidden', 'غير مسموح');
+  const { classId } = body;
+  if (!validClassId(classId)) throw fail(400, 'bad-request', 'classId مطلوب');
+
+  const snap = await db.collection(GUEST_COLLECTION).where('classId', '==', classId).get();
+  const requests = snap.docs
+    .filter((d) => d.data().status === 'pending' && d.data().teacherId === profileDoc.id)
+    .map((d) => ({ id: d.id, guestName: d.data().guestName, createdAtMs: d.data().createdAtMs }))
+    .filter((r) => r.createdAtMs && Date.now() - r.createdAtMs < 10 * 60 * 1000)
+    .sort((a, b) => a.createdAtMs - b.createdAtMs);
+  return { ok: true, requests };
+}
+
+async function actionGuestRespond(db, req, body) {
+  const { profileDoc, profile } = await getCaller(db, req);
+  if (profile.role !== 'teacher') throw fail(403, 'forbidden', 'غير مسموح');
+  const { requestId, approve } = body;
+  if (!requestId) throw fail(400, 'bad-request', 'requestId مطلوب');
+  const ref = db.collection(GUEST_COLLECTION).doc(requestId);
+  const snap = await ref.get();
+  if (!snap.exists) throw fail(404, 'not-found', 'الطلب غير موجود');
+  const d = snap.data();
+  if (d.teacherId !== profileDoc.id) throw fail(403, 'forbidden', 'هذا الطلب ليس لشعبتك');
+  if (d.status !== 'pending') return { ok: true, status: d.status };
+  const status = approve ? 'approved' : 'rejected';
+  await ref.update({
+    status,
+    respondedAtMs: Date.now(),
+    respondedAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+  return { ok: true, status };
+}
+
+// ======================= Handler =======================
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -356,6 +551,12 @@ export default async function handler(req, res) {
       case 'ping': result = await actionPing(db, req, body); break;
       case 'heartbeat': result = await actionHeartbeat(db, req, body); break;
       case 'release': result = await actionRelease(db, req, body); break;
+      case 'get-invite-code': result = await actionGetInviteCode(db, req, body); break;
+      case 'guest-request': result = await actionGuestRequest(db, req, body); break;
+      case 'guest-status': result = await actionGuestStatus(db, req, body); break;
+      case 'guest-join': result = await actionGuestJoin(db, req, body); break;
+      case 'guest-list': result = await actionGuestList(db, req, body); break;
+      case 'guest-respond': result = await actionGuestRespond(db, req, body); break;
       default: throw fail(400, 'bad-action', 'إجراء غير معروف');
     }
     return res.status(200).json(result);
