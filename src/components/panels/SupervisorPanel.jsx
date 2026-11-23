@@ -1164,3 +1164,6 @@ const SupervisorPanel = ({ user, onLogout }) => {
     </div>
   );
 };
+
+
+export default SupervisorPanel;
