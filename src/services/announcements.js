@@ -1,6 +1,6 @@
 import { db } from '../firebase';
 import {
-  collection, addDoc, doc, updateDoc, deleteDoc,
+  collection, collectionGroup, addDoc, doc, updateDoc, deleteDoc, writeBatch,
   serverTimestamp, getDoc, getDocs, query, where
 } from 'firebase/firestore';
 import { sanitizeInput } from '../utils/helpers';
@@ -14,6 +14,7 @@ import {
   sendNotificationToAllSupervisors,
   sendNotificationToStudents,
   sendNotificationToAllUsers,
+  sendNotificationToTeacher,
   notifySystemManagers
 } from '../utils/notifications';
 
@@ -243,14 +244,23 @@ export const approveAnnouncement = async (id, approvedBy, approvedByName) => {
 };
 
 /**
- * ✅ رفض الإعلان
+ * ✅ رفض الإعلان — يُبلَّغ صاحب الإعلان بالسبب ثم يُحذف الإعلان نهائياً من السيرفر (توفيراً للمساحة)
  */
 export const rejectAnnouncement = async (id, reason = '') => {
-  await updateDoc(doc(db, 'announcements', id), {
-    status: 'rejected',
-    rejectionReason: reason,
-    updatedAt: serverTimestamp()
-  });
+  const ref = doc(db, 'announcements', id);
+  const snap = await getDoc(ref);
+  const data = snap.exists() ? snap.data() : null;
+
+  if (data?.requestedBy) {
+    await sendNotificationToTeacher(
+      data.requestedBy,
+      '❌ تم رفض إعلانك',
+      `تم رفض الإعلان "${data.title || ''}".${reason ? `\nسبب الرفض: ${reason}` : ''}`,
+      'announcement_rejected',
+      null
+    );
+  }
+  await deleteDoc(ref);
 };
 
 export const updateAnnouncement = async (id, data) => {
@@ -265,6 +275,25 @@ export const updateAnnouncement = async (id, data) => {
   }
 };
 
+// حذف نسخ الإشعار الشخصية (عند كل المستخدمين) المرتبطة بهذا الإعلان — محاولة إضافية لا توقف الحذف إن فشلت
+const deleteAnnouncementNotificationCopies = async (announcementId) => {
+  try {
+    const snap = await getDocs(
+      query(collectionGroup(db, 'userNotifications'), where('relatedId', '==', announcementId))
+    );
+    for (let i = 0; i < snap.docs.length; i += 400) {
+      const batch = writeBatch(db);
+      snap.docs.slice(i, i + 400).forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    }
+  } catch (err) {
+    console.warn('تعذر حذف نسخ الإشعار الشخصية (قد يلزم فهرس أو صلاحية):', err.message);
+  }
+};
+
+/**
+ * ✅ حذف الإعلان نهائياً من السيرفر — يختفي عند الجميع
+ */
 export const deleteAnnouncement = async (id) => {
   try {
     await deleteDoc(doc(db, 'announcements', id));
@@ -272,4 +301,5 @@ export const deleteAnnouncement = async (id) => {
     console.error('Error deleting announcement:', err);
     throw err;
   }
+  await deleteAnnouncementNotificationCopies(id);
 };

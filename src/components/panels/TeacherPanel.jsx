@@ -92,6 +92,8 @@ const TeacherPanel = ({ user, onLogout }) => {
   // ✅ الإعلانات العامة للمعلم
   const [announcements, setAnnouncements] = useState([]);
   const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
+  const [showInfoModal, setShowInfoModal] = useState(false);
+  const [myProfile, setMyProfile] = useState(null);
   const [announcementTitle, setAnnouncementTitle] = useState('');
   const [announcementBody, setAnnouncementBody] = useState('');
   const [charCount, setCharCount] = useState(0);
@@ -374,6 +376,12 @@ const TeacherPanel = ({ user, onLogout }) => {
       toast.error('فشل حفظ الرسالة: ' + err.message);
     }
   };
+
+  useEffect(() => {
+    getDoc(doc(db, 'profiles', user.id))
+      .then((snap) => { if (snap.exists()) setMyProfile(snap.data()); })
+      .catch((e) => console.warn('تعذر جلب ملف المعلم:', e.message));
+  }, [user.id]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -736,8 +744,14 @@ const TeacherPanel = ({ user, onLogout }) => {
           <div>
             <h2 className="text-3xl font-bold text-purple-700 dark:text-purple-300">لوحة تحكم المعلم</h2>
             <p className="text-slate-500 dark:text-gray-400 text-sm mt-1">مرحباً: {user.name || user.username}</p>
+            {(myProfile?.serialNumber || user.serialNumber) && (
+              <p className="text-xs mt-1 text-cyan-700 dark:text-cyan-300">
+                الرقم التسلسلي: <span dir="ltr" className="font-mono font-bold tracking-widest">{myProfile?.serialNumber || user.serialNumber}</span>
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-2">
+            <button onClick={() => setShowInfoModal(true)} title="معلوماتي" className="bg-slate-200 dark:bg-gray-700 hover:bg-slate-300 dark:hover:bg-gray-600 text-slate-900 dark:text-white p-2 rounded-full text-2xl transition"><FaUser /></button>
             <button onClick={handleOpenNotifications} className="relative bg-slate-200 dark:bg-gray-700 hover:bg-slate-300 dark:hover:bg-gray-600 text-slate-900 dark:text-white p-2 rounded-full text-2xl transition shadow-lg">
               <FaBell />
               {unreadCount > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">{unreadCount}</span>}
@@ -839,6 +853,9 @@ const TeacherPanel = ({ user, onLogout }) => {
                 <div key={hw.id} className="p-3 rounded-xl border border-slate-200 dark:border-gray-700 bg-white dark:bg-black/30 flex justify-between items-start gap-3">
                   <div className="flex-1">
                     <p className="text-slate-800 dark:text-gray-100 text-sm">{hw.text}</p>
+                    {hw.section && classes.find(c => c.id === hw.section) && (
+                      <span className="text-xs bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded-full">{classes.find(c => c.id === hw.section).name}</span>
+                    )}
                     {hw.is_draft && <span className="text-xs bg-yellow-500/20 text-yellow-700 dark:text-yellow-300 px-2 py-0.5 rounded-full mr-2">💾 مسودة</span>}
                   </div>
                   <button onClick={() => deleteHomework(hw.id)} className="p-1.5 bg-red-100 dark:bg-red-600/30 text-red-700 dark:text-red-300 rounded-lg border border-red-300 dark:border-red-500/30 hover:bg-red-600/50 text-xs"><FaTrashAlt /></button>
@@ -1165,6 +1182,42 @@ const TeacherPanel = ({ user, onLogout }) => {
           { value: 'delay', label: 'نشر بعد وقت' }
         ]}
       />
+
+      {showInfoModal && (() => {
+        const p = { ...user, ...(myProfile || {}) };
+        const rows = [
+          ['الاسم', p.name],
+          ['اسم المستخدم', p.username],
+          ['الجنس', p.gender],
+          ['العمر', p.age],
+          ['رقم الهاتف', p.phone],
+          ['البلد', p.country]
+        ].filter(([, v]) => v !== undefined && v !== null && v !== '');
+        return (
+          <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowInfoModal(false)}>
+            <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl max-w-md w-full border border-blue-300 dark:border-blue-500/30" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-xl font-semibold text-blue-700 dark:text-blue-300 mb-4"><FaUser className="inline-block me-2" /> معلوماتي</h3>
+              <div className="bg-cyan-500/10 border border-cyan-300 dark:border-cyan-500/30 rounded-xl p-3 mb-4 text-center">
+                <p className="text-xs text-cyan-700 dark:text-cyan-300 mb-1">الرقم التسلسلي</p>
+                <p className="text-lg font-bold text-cyan-800 dark:text-cyan-100 font-mono tracking-widest" dir="ltr">{p.serialNumber || '—'}</p>
+              </div>
+              <div className="space-y-2">
+                {rows.map(([label, value]) => (
+                  <div key={label} className="flex justify-between gap-3 p-2 rounded-lg bg-slate-50 dark:bg-gray-800/60 border border-slate-200 dark:border-gray-700">
+                    <span className="text-sm text-slate-500 dark:text-gray-400">{label}</span>
+                    <span className="text-sm font-semibold text-slate-900 dark:text-white" dir="auto">{String(value)}</span>
+                  </div>
+                ))}
+                <div className="flex justify-between gap-3 p-2 rounded-lg bg-slate-50 dark:bg-gray-800/60 border border-slate-200 dark:border-gray-700">
+                  <span className="text-sm text-slate-500 dark:text-gray-400">عدد شعبك</span>
+                  <span className="text-sm font-semibold text-slate-900 dark:text-white">{classes.length}</span>
+                </div>
+              </div>
+              <button onClick={() => setShowInfoModal(false)} className="mt-4 w-full py-3 rounded-md bg-slate-200 dark:bg-gray-600 hover:bg-slate-300 dark:hover:bg-gray-700 text-slate-900 dark:text-white">إغلاق</button>
+            </div>
+          </div>
+        );
+      })()}
 
       <AddAssignmentModal
         isOpen={showAssignmentModal}

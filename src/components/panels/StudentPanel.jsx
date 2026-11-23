@@ -10,7 +10,7 @@ import { db, messaging } from '../../firebase';
 import { auth } from '../../services/firebaseAuth';
 import {
   doc, getDoc, updateDoc, collection, query, where, getDocs,
-  onSnapshot, orderBy, serverTimestamp, writeBatch, arrayUnion
+  onSnapshot, orderBy, serverTimestamp, writeBatch, arrayUnion, documentId
 } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import { useConfirm } from '../common/ConfirmContext';
@@ -32,20 +32,48 @@ const StudentPanel = ({ user, onLogout }) => {
   const [lessonTick, setLessonTick] = useState(0);
   const teacherDocsRef = useRef([]);
   const classIdsRef = useRef([]);
+  const classTeacherIdsRef = useRef([]);
 
-  // يبني بيانات المعلم الخاصة بشعب هذا الطالب فقط (مواعيد كل شعبة منفصلة عن غيرها)
+  // 🔒 كل شعبة منفصلة: يرى الطالب فقط مواعيد وواجبات شعبه هو (وليس شعب غيره ولا معلمين آخرين)
   const applyTeacherDoc = () => {
     const docs = teacherDocsRef.current;
     if (!docs.length) return;
     const myIds = classIdsRef.current || [];
-    const hasMine = (d) => (d.data().lessonTimes || []).some(lt => lt.classId && myIds.includes(lt.classId));
-    const picked = docs.find(hasMine) || docs[0];
-    const data = picked.data();
-    const merged = docs.flatMap(d => (d.data().lessonTimes || []).filter(lt => lt.classId && myIds.includes(lt.classId)));
-    const legacy = (data.lessonTimes || []).filter(lt => !lt.classId);
-    setTeacherData({ id: picked.id, ...data, lessonTimes: [...merged, ...legacy] });
+    const myTeacherIds = classTeacherIdsRef.current || [];
+
+    const lessons = [];
+    const homeworks = [];
+    docs.forEach((d) => {
+      const data = d.data();
+      const teachesMe = myTeacherIds.includes(d.id);
+      // الموعد/الواجب مرتبط بشعبة → يظهر لطلاب هذه الشعبة فقط.
+      // القديم بلا شعبة → يظهر فقط لطلاب شعب هذا المعلم.
+      (data.lessonTimes || []).forEach((lt) => {
+        if (lt.classId ? myIds.includes(lt.classId) : teachesMe) lessons.push(lt);
+      });
+      (data.homeworks || []).forEach((hw) => {
+        if (hw.section ? myIds.includes(hw.section) : teachesMe) homeworks.push(hw);
+      });
+    });
+
+    const mainDoc = docs.find((d) => myTeacherIds.includes(d.id)) || docs[0];
+    setTeacherData({ id: mainDoc.id, ...mainDoc.data(), lessonTimes: lessons, homeworks });
     const now = Date.now();
-    setAvailableHomeworks((data.homeworks || []).filter(hw => !hw.is_draft && new Date(hw.reveal_time).getTime() <= now));
+    setAvailableHomeworks(homeworks.filter(hw => !hw.is_draft && new Date(hw.reveal_time).getTime() <= now));
+  };
+
+  // يجلب معلمي شعب الطالب (لتحديد صاحب المواعيد/الواجبات القديمة التي بلا شعبة)
+  const refreshClassTeachers = async (ids) => {
+    try {
+      const list = (ids || []).filter(Boolean);
+      const teacherIds = new Set();
+      for (let i = 0; i < list.length; i += 30) {
+        const snap = await getDocs(query(collection(db, 'classes'), where(documentId(), 'in', list.slice(i, i + 30))));
+        snap.docs.forEach((d) => { if (d.data().teacherId) teacherIds.add(d.data().teacherId); });
+      }
+      classTeacherIdsRef.current = Array.from(teacherIds);
+      applyTeacherDoc();
+    } catch (e) { console.warn('refreshClassTeachers:', e.message); }
   };
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
@@ -237,6 +265,7 @@ const StudentPanel = ({ user, onLogout }) => {
         setProfile(data);
         classIdsRef.current = data.classIds || [];
         applyTeacherDoc();
+        refreshClassTeachers(data.classIds || []);
         setEditData(data || {});
         setPendingChanges(data.pendingChanges || null);
         setHasPendingRequest(!!data.pendingChanges);
@@ -309,6 +338,7 @@ const StudentPanel = ({ user, onLogout }) => {
         setProfile(data);
         classIdsRef.current = data.classIds || [];
         applyTeacherDoc();
+        refreshClassTeachers(data.classIds || []);
         setEditData(data || {});
         setPendingChanges(data.pendingChanges || null);
         setHasPendingRequest(!!data.pendingChanges);
@@ -708,20 +738,13 @@ const StudentPanel = ({ user, onLogout }) => {
           </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3">
           <div className="bg-gradient-to-br from-cyan-100 dark:from-cyan-900/40 to-blue-50 dark:to-blue-900/20 p-4 rounded-2xl border border-cyan-300 dark:border-cyan-500/30 text-center">
             <p className="text-xs text-cyan-700 dark:text-cyan-300 uppercase tracking-widest font-semibold mb-1">الرقم التسلسلي</p>
             <p className="text-2xl font-bold text-cyan-800 dark:text-cyan-100 font-mono tracking-widest" dir="ltr">
               {profile?.serialNumber || '—'}
             </p>
-          </div>
-          <div className="bg-gradient-to-br from-emerald-100 dark:from-emerald-900/40 to-green-50 dark:to-green-900/20 p-4 rounded-2xl border border-emerald-300 dark:border-emerald-500/30 text-center">
-            <p className="text-xs text-emerald-700 dark:text-emerald-300 uppercase tracking-widest font-semibold mb-1">العمر</p>
-            <p className="text-2xl font-bold text-emerald-800 dark:text-emerald-100">{profile?.age || '—'} <span className="text-xs">سنة</span></p>
-          </div>
-          <div className="bg-gradient-to-br from-amber-100 dark:from-amber-900/40 to-orange-50 dark:to-orange-900/20 p-4 rounded-2xl border border-amber-300 dark:border-amber-500/30 text-center">
-            <p className="text-xs text-amber-700 dark:text-amber-300 uppercase tracking-widest font-semibold mb-1">البلد</p>
-            <p className="text-2xl font-bold text-amber-800 dark:text-amber-100">{profile?.country || '—'}</p>
+            <p className="text-[11px] text-cyan-700/80 dark:text-cyan-300/80 mt-1">باقي معلوماتك (العمر، البلد، الهاتف...) داخل زر «معلوماتي»</p>
           </div>
         </div>
 

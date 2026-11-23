@@ -49,6 +49,18 @@ export const AddLessonModal = ({ isOpen, onClose, onSubmit, initialTimes = [], c
 
   const handleSubmit = (e) => {
     e.preventDefault();
+
+    // تنبيه: الموعد (مرة واحدة) الذي مضى وقته لن يظهر له عدّاد عند المعلم ولا الطلاب
+    const nowMs = Date.now();
+    schedules.forEach((s, i) => {
+      if (s.type !== 'once') return;
+      const d = new Date(s.date);
+      if (isNaN(d.getTime()) || !s.time) return;
+      d.setHours(s.time.hours, s.time.minutes, 0, 0);
+      if (d.getTime() <= nowMs) {
+        toast(`⚠️ الموعد #${i + 1} في الماضي ولن يظهر له عدّاد. اختر تاريخاً ووقتاً قادمين.`, { icon: '⚠️', duration: 6000 });
+      }
+    });
     const times = schedules.map(s => ({
       type: s.type,
       date: s.type === 'once' ? new Date(s.date).toISOString() : null,

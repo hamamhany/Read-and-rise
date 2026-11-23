@@ -47,7 +47,7 @@ const ReportModal = ({ isOpen, onClose, student, requesterId, requesterName }) =
         },
         requesterName || 'معلم'
       );
-      toast.success(' تم حفظ البلاغ. سيتم إرساله بعد تدقيق مدير النظام.');
+      toast.success(' تم حفظ البلاغ وإرساله إلى المشرفين لمراجعته.');
       setReason('');
       setDetails('');
       onClose();

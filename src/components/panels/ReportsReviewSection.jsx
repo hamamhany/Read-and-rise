@@ -38,7 +38,7 @@ const ReportsReviewSection = ({ user }) => {
     const unsub = onSnapshot(q, (snap) => {
       const claimed = snap.docs
         .map(d => ({ id: d.id, ...d.data() }))
-        .filter(d => d.reportStatus === 'pending' && d.claimedBy === user.id);
+        .filter(d => (d.reportStatus || d.status || 'pending') === 'pending' && d.claimedBy === user.id);
       setReports(claimed);
     }, (err) => {
       console.warn('reports snapshot error:', err.message);
@@ -57,7 +57,7 @@ const ReportsReviewSection = ({ user }) => {
       const candidates = [];
       for (const d of snap.docs) {
         const data = d.data();
-        if (data.reportStatus !== 'pending') continue;  // فلترة على العميل
+        if ((data.reportStatus || data.status || 'pending') !== 'pending') continue;  // فلترة على العميل (يدعم البلاغات القديمة)
         if (data.claimedBy === user.id) continue;       // المحجوز عليه من قبلنا
         const claimAge = data.claimedAt?.toMillis?.() ? now - data.claimedAt.toMillis() : Infinity;
         const isLocked = data.claimedBy && claimAge < CLAIM_DURATION_MS;
@@ -79,12 +79,13 @@ const ReportsReviewSection = ({ user }) => {
             const ref = doc(db, 'messageRequests', d.id);
             const tSnap = await trans.get(ref);
             const tData = tSnap.data();
-            if (!tData || tData.reportStatus !== 'pending') throw new Error('resolved');
+            if (!tData || (tData.reportStatus || tData.status || 'pending') !== 'pending') throw new Error('resolved');
             const tNow = Date.now();
             const tClaimAge = tData.claimedAt?.toMillis?.() ? tNow - tData.claimedAt.toMillis() : Infinity;
             const tLocked = tData.claimedBy && tData.claimedBy !== user.id && tClaimAge < CLAIM_DURATION_MS;
             if (tLocked) throw new Error('locked');
             trans.update(ref, {
+              reportStatus: 'pending',
               claimedBy: user.id,
               claimedByName: user.name || user.username || 'مشرف',
               claimedAt: serverTimestamp()
@@ -232,9 +233,8 @@ const ReportsReviewSection = ({ user }) => {
     ? getActiveWarnings(selected.targetActiveWarnings || [])
     : [];
 
-  if (hasEverLoaded && reports.length === 0) return null;
-
-  if (!hasEverLoaded && reports.length === 0) {
+  // يبقى القسم ظاهراً مع زر التحميل ما دام لا توجد بلاغات محجوزة (حتى تصل بلاغات جديدة لاحقاً)
+  if (reports.length === 0) {
     return (
       <div className="bg-gray-800/60 p-6 rounded-2xl border border-red-500/20 text-center">
         <h3 className="text-xl font-semibold text-red-300 flex items-center gap-2 mb-3 justify-center">
