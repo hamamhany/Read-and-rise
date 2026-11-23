@@ -739,7 +739,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
   const renderPendingFields = (student) => {
     if (!student?.pendingChanges) return null;
     const entries = Object.entries(student.pendingChanges).filter(
-      ([k]) => !['submittedAt', 'submittedBy', 'submittedByName'].includes(k)
+      ([k]) => !['submittedAt', 'submittedBy', 'submittedByName', 'requestCode'].includes(k)
     );
     return entries.map(([field, val]) => (
       <div key={field} className="bg-slate-50 dark:bg-gray-800/60 p-3 rounded-lg border border-slate-200 dark:border-gray-700">
@@ -900,8 +900,9 @@ const SupervisorPanel = ({ user, onLogout }) => {
                     <div className="flex-1 min-w-0">
                       <p className="text-slate-900 dark:text-white font-bold text-sm">{s.name || 'بدون اسم'}</p>
                       <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">الرقم التسلسلي: <span dir="ltr">{s.serialNumber || '—'}</span></p>
+                      {s.pendingChanges?.requestCode && <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">رقم الطلب: <span dir="ltr" className="font-mono font-bold">{s.pendingChanges.requestCode}</span>{s.pendingChangesAccelerated ? ' • ⚡ مستعجل' : ''}</p>}
                       <p className="text-[11px] text-amber-700 dark:text-amber-300 mt-1">
-                        {Object.keys(s.pendingChanges || {}).filter(k => !['submittedAt', 'submittedBy', 'submittedByName'].includes(k)).length} تعديل
+                        {Object.keys(s.pendingChanges || {}).filter(k => !['submittedAt', 'submittedBy', 'submittedByName', 'requestCode'].includes(k)).length} تعديل
                       </p>
                     </div>
                     <FaChevronLeft className="text-slate-400 dark:text-gray-500" />
@@ -916,6 +917,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
                 <div className="bg-slate-50 dark:bg-gray-800/60 p-4 rounded-xl border border-slate-200 dark:border-gray-700">
                   <p className="text-slate-900 dark:text-white font-bold mb-1">{selectedPendingChange.name || 'بدون اسم'}</p>
                   <p className="text-xs text-slate-500 dark:text-gray-400">الرقم التسلسلي: <span dir="ltr">{selectedPendingChange.serialNumber || '—'}</span></p>
+                  {selectedPendingChange.pendingChanges?.requestCode && <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">رقم الطلب: <span dir="ltr" className="font-mono font-bold">{selectedPendingChange.pendingChanges.requestCode}</span></p>}
                   <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">الجنس: {selectedPendingChange.gender || '—'} • العمر: {selectedPendingChange.age || '—'}</p>
                 </div>
                 <div>
@@ -1162,5 +1164,3 @@ const SupervisorPanel = ({ user, onLogout }) => {
     </div>
   );
 };
-
-export default SupervisorPanel;

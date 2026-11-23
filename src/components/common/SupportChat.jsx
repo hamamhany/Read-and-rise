@@ -359,7 +359,7 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
     const ok = await confirm('إغلاق التذكرة', 'هل أنت متأكد من إغلاق التذكرة؟ سيظهر لصاحب التذكرة خياران لتأكيد حل المشكلة.');
     if (!ok) return;
     try {
-      await requestTicketEnd(ticketId, user.name || user.username || 'المشرف');
+      await requestTicketEnd(ticketId, user.name || user.username || (isManager ? 'المدير' : 'المشرف'));
       toast.success('تم طلب الإغلاق — بانتظار تأكيد صاحب التذكرة');
     } catch (e) { toast.error(e.message); }
   };
@@ -600,6 +600,10 @@ const SupportChat = ({ user, ticketId, onClose, viewerMode = 'student', fullPage
                 <FaHeadset className="text-blue-400 text-lg flex-shrink-0" />
                 <p className="text-white font-bold text-sm truncate">الدعم الفني</p>
               </>
+            )}
+
+            {isManager && isAssignedSupervisor && ticket.status === SUPPORT_TICKET_STATUS.IN_PROGRESS && (
+              <button onClick={handleEndTicket} className="text-xs bg-red-500 hover:bg-red-600 px-2 py-0.5 rounded text-white">إنهاء</button>
             )}
 
             {isSupervisor && isAssignedSupervisor && ticket.status === SUPPORT_TICKET_STATUS.IN_PROGRESS && (

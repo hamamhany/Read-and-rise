@@ -540,7 +540,7 @@ export const sendReportMessage = (student, reason, studentClass) => {
 // =========================================================
 // تذكير عاجل للمعلم
 // =========================================================
-export const sendUrgentReminderMessage = (student) => {
+export const sendUrgentReminderMessage = (student, requestCode = '') => {
   if (!student) {
     toast.error('لا توجد بيانات الطالب.');
     return false;
@@ -553,6 +553,7 @@ export const sendUrgentReminderMessage = (student) => {
     `إلى إدارة الأكاديمية الموقرة،\n` +
     `تحية طيبة وبعد،،\n` +
     `أرجو من حضراتكم التكرم بالموافقة على معالجة طلبي المتعلق بتصحيح وتأكيد بياناتي الأكاديمية في أقرب وقت ممكن.\n` +
+    (requestCode ? `رقم الطلب: ${requestCode}\n` : '') +
     `الرقم التسلسلي: ${student.serialNumber || 'غير مسجل'}\n` +
     `اسم الطالب: ${studentName}\n` +
     `الرقم المسجل : ${studentPhone}\n` +
@@ -568,7 +569,7 @@ export const sendUrgentReminderMessage = (student) => {
 // =========================================================
 // رسالة تواصل مع المعلم
 // =========================================================
-export const sendContactTeacherMessage = (student, requestType = 'تحديث') => {
+export const sendContactTeacherMessage = (student, requestType = 'تحديث', requestCode = '') => {
   if (!student) {
     toast.error('لا توجد بيانات الطالب.');
     return false;
@@ -581,6 +582,7 @@ export const sendContactTeacherMessage = (student, requestType = 'تحديث') =
     `الموضوع: طلب تأكيد بيانات الطالب - ${studentName}\n\n` +
     `إلى إدارة الأكاديمية،\n` +
     `أتقدم إليكم بهذا الطلب لتأكيد وتحديث بياناتي في نظام الأكاديمية، وذلك لضمان استمرارية الخدمات التعليمية المقدمة لي بشكل صحيح.\n` +
+    (requestCode ? `رقم الطلب: ${requestCode}\n` : '') +
     `الرقم التسلسلي: ${student.serialNumber || 'غير مسجل'}\n` +
     `بيانات الطالب المطلوبة:\n` +
     `الاسم الكامل: ${studentName}\n` +

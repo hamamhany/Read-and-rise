@@ -44,6 +44,7 @@ import {
 } from '../../services/announcements';
 import SystemManagerReviewsSection from './SystemManagerReviewsSection';
 import ManagerSupportReviewsSection from './ManagerSupportReviewsSection';
+import RequestTrackerSection from './RequestTrackerSection';
 import SupervisorsManagerModal from './SupervisorsManagerModal';
 import StudentsManagerModal from './StudentsManagerModal';
 import BlacklistModal from './BlacklistModal';
@@ -915,6 +916,7 @@ const SystemManagerPanel = ({ user, onLogout }) => {
 
         <SystemManagerReviewsSection user={user} />
         <ManagerSupportReviewsSection user={user} />
+        <RequestTrackerSection user={user} />
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <button onClick={() => setShowSectionsModal(true)} className="bg-teal-50 dark:bg-gradient-to-br dark:from-teal-900/40 dark:to-cyan-900/20 p-5 rounded-2xl border border-teal-200 dark:border-teal-500/30 hover:border-teal-400 dark:hover:border-teal-400/60 text-right shadow-lg transition-colors">

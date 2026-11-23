@@ -302,14 +302,34 @@ const TeacherPanel = ({ user, onLogout }) => {
     } catch (err) { toast.error('فشل الحفظ: ' + err.message); }
   };
 
+  // بصمة للموعد (لمعرفة أي المواعيد أُضيف حديثاً)
+  const lessonSignature = (t) => [
+    t.classId || '', t.type || '', t.date || '', t.day || '', t.monthDay || '',
+    t.time ? `${t.time.hours}:${t.time.minutes}` : ''
+  ].join('|');
+
   const saveLessonTimesFromModal = async (times) => {
     try {
       const timesWithId = times.map(t => ({ ...t, id: t.id || generateId() }));
+
+      // ✅ تحديث فوري لشاشة المعلم قبل انتظار السيرفر
+      const oldSigs = new Set((lessonTimes || []).map(lessonSignature));
+      const addedTimes = timesWithId.filter(t => !oldSigs.has(lessonSignature(t)));
+      const lastAdded = addedTimes.length > 0 ? addedTimes[addedTimes.length - 1] : null;
+
+      setLessonTimes(timesWithId);
+      // نعرض شعبة الموعد الجديد تلقائياً حتى يرى المعلم العداد يتحدث مباشرة
+      if (lastAdded?.classId && classes.some(c => c.id === lastAdded.classId)) {
+        setSelectedClassForLesson(lastAdded.classId);
+      }
+      setLessonTick(t => t + 1);
+
+      setShowLessonModal(false);
+      toast.success('✅ تم تحديث المواعيد بنجاح!');
+
       await updateDoc(doc(db, 'teachers', user.id), {
         lessonTimes: timesWithId, updatedAt: serverTimestamp()
       });
-      toast.success('✅ تم تحديث المواعيد بنجاح!');
-      setShowLessonModal(false);
     } catch (err) { toast.error('فشل التحديث: ' + err.message); }
   };
 
@@ -729,25 +749,6 @@ const TeacherPanel = ({ user, onLogout }) => {
 
         {errorMsg && <p className="text-red-700 dark:text-red-400 text-sm bg-red-500/10 p-3 rounded-xl border border-red-300 dark:border-red-500/20">{errorMsg}</p>}
 
-        {myPendingReviews.length > 0 && (
-          <div className="bg-yellow-50 dark:bg-yellow-900/30 p-6 rounded-2xl border border-yellow-300 dark:border-yellow-500/40 shadow-lg">
-            <h3 className="text-xl font-semibold text-yellow-700 dark:text-yellow-300 mb-3 flex items-center gap-2">
-              <FaClipboardList /> طلبات تعديل البيانات ({myPendingReviews.length})
-            </h3>
-            <div className="space-y-3 max-h-80 overflow-y-auto">
-              {myPendingReviews.map(student => (
-                <div key={student.id} className="bg-white dark:bg-black/30 p-4 rounded-xl border border-yellow-300 dark:border-yellow-500/20 flex justify-between items-center gap-3">
-                  <div>
-                    <span className="text-slate-900 dark:text-white font-medium">{student.name || student.username}</span>
-                    <span className="text-xs text-slate-500 dark:text-gray-400 mr-2">({student.username})</span>
-                  </div>
-                  <button onClick={() => openReviewModal(student)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm"><FaEye className="inline-block me-1" /> مراجعة</button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="flex flex-col gap-4">
             <div className="flex-1 relative overflow-hidden bg-gradient-to-br from-indigo-100 dark:from-indigo-900/60 via-purple-50 dark:via-purple-900/40 to-purple-50 dark:to-purple-900/20 p-4 rounded-2xl border border-purple-300 dark:border-purple-500/30 shadow-xl group">
@@ -788,7 +789,7 @@ const TeacherPanel = ({ user, onLogout }) => {
                 </select>
               )}
             </div>
-            <CountdownTimer targetDate={nextLesson ? nextLesson.date : null} />
+            <CountdownTimer key={nextLesson ? `${nextLesson.id}-${nextLesson.date}` : 'no-lesson'} targetDate={nextLesson ? nextLesson.date : null} />
             {classes.length > 0 && (
               <div className="flex gap-2 mt-2 flex-wrap">
                 {selectedSession ? (

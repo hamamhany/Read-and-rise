@@ -20,6 +20,7 @@ import { recordAttendance, processStudentAbsences } from '../../services/attenda
 import { subscribeToLiveSessions, isSessionJoinable } from '../../services/liveSessions';
 import { sendUrgentReminderMessage, sendContactTeacherMessage } from '../../utils/whatsapp';
 import { PENDING_CHANGES_STATUS } from '../../constants';
+import { generateRequestCode, upsertHistory } from '../../services/requestCodes';
 import { approveStudentClassChange, rejectStudentClassChange, PENDING_CLASS_CHANGE_STATUS } from '../../services/classes';
 import { getActiveExamsForStudent, getStudentAttemptsCount, getStudentExamResult } from '../../services/exams';
 import JitsiRoom, { enterFullscreen } from '../common/JitsiRoom';
@@ -65,6 +66,7 @@ const StudentPanel = ({ user, onLogout }) => {
   const [pendingChanges, setPendingChanges] = useState(null);
   const [hasPendingRequest, setHasPendingRequest] = useState(false);
   const [sentAccelerate, setSentAccelerate] = useState(false);
+  const [lastRequestCode, setLastRequestCode] = useState('');
 
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showPendingRequestModal, setShowPendingRequestModal] = useState(false);
@@ -580,9 +582,13 @@ const StudentPanel = ({ user, onLogout }) => {
     if (Object.keys(changes).length === 0) return toast.error('لم تقم بأي تغيير.');
 
     try {
+      // 🔢 رمز تسلسلي لهذا الطلب (REQ-1001 ...)
+      const requestCode = await generateRequestCode();
+      const submittedAt = new Date().toISOString();
       await updateDoc(doc(db, 'profiles', user.id), {
         pendingChanges: {
-          submittedAt: new Date().toISOString(),
+          requestCode,
+          submittedAt,
           submittedBy: user.id,
           submittedByName: profile.name || '',
           ...changes
@@ -591,7 +597,17 @@ const StudentPanel = ({ user, onLogout }) => {
         pendingChangesAccelerated: false,
         updatedAt: serverTimestamp()
       });
-      toast.success('تم إرسال طلب تعديل المعلومات بنجاح.');
+      // سجل الطلب (للبحث عنه بالرمز لاحقاً حتى بعد القرار) — لا يوقف الطلب إن فشل
+      try {
+        await updateDoc(doc(db, 'profiles', user.id), {
+          changeRequestCodes: arrayUnion(requestCode),
+          changeRequests: upsertHistory(profile.changeRequests, {
+            code: requestCode, status: 'pending', submittedAt, changes
+          })
+        });
+      } catch (histErr) { console.warn('تعذر حفظ سجل الطلب:', histErr.message); }
+      setLastRequestCode(requestCode);
+      toast.success(`تم إرسال طلب تعديل المعلومات بنجاح. رقم طلبك: ${requestCode}`, { duration: 6000 });
       setShowProfileModal(false);
       setShowConfirmModal(true);
     } catch (err) {
@@ -600,7 +616,7 @@ const StudentPanel = ({ user, onLogout }) => {
   };
 
   const handleContactTeacher = () => {
-    sendUrgentReminderMessage(profile);
+    sendUrgentReminderMessage(profile, profile?.pendingChanges?.requestCode || lastRequestCode);
     if (profile && profile.pendingChanges) {
       updateDoc(doc(db, 'profiles', user.id), { pendingChangesAccelerated: true }).catch(() => {});
     }
@@ -1094,6 +1110,11 @@ const StudentPanel = ({ user, onLogout }) => {
           <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-yellow-300 dark:border-yellow-500/30" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-xl font-semibold text-yellow-700 dark:text-yellow-300 mb-4"><FaClock className="inline-block me-2" /> طلب قيد المراجعة</h3>
             <p className="text-slate-700 dark:text-gray-300 text-center mb-4">لديك طلب تعديل بيانات قيد المراجعة حالياً.</p>
+            {(profile?.pendingChanges?.requestCode || lastRequestCode) && (
+              <p className="text-center text-sm mb-4 text-slate-600 dark:text-gray-300">
+                رقم طلبك: <span dir="ltr" className="font-mono font-bold text-yellow-700 dark:text-yellow-300">{profile?.pendingChanges?.requestCode || lastRequestCode}</span>
+              </p>
+            )}
             <div className="flex flex-col gap-3">
               <button onClick={handleContactTeacher} disabled={sentAccelerate} className={`btn-primary w-full py-3 rounded-md text-white ${sentAccelerate ? 'bg-slate-200 dark:bg-gray-600 cursor-not-allowed opacity-60' : 'bg-blue-600 hover:bg-blue-700'}`}>
                 {sentAccelerate ? '✅ تم إرسال الطلب' : <><FaEnvelope className="inline-block me-2" /> تسريع الطلب</>}
@@ -1109,8 +1130,13 @@ const StudentPanel = ({ user, onLogout }) => {
           <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl max-w-lg w-full border border-green-300 dark:border-green-500/30" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-xl font-semibold text-green-700 dark:text-green-300 mb-4"><FaCheckCircle className="inline-block me-2" /> تم إرسال الطلب</h3>
             <p className="text-slate-700 dark:text-gray-300 text-center mb-4">سيتم مراجعة البيانات خلال 48 ساعة.</p>
+            {(lastRequestCode || profile?.pendingChanges?.requestCode) && (
+              <p className="text-center text-sm mb-4 text-slate-600 dark:text-gray-300">
+                رقم طلبك: <span dir="ltr" className="font-mono font-bold text-green-700 dark:text-green-300">{lastRequestCode || profile?.pendingChanges?.requestCode}</span>
+              </p>
+            )}
             <div className="flex flex-col gap-3">
-              <button onClick={() => sendContactTeacherMessage(profile, 'update')} className="btn-primary bg-blue-600 hover:bg-blue-700 w-full py-3 rounded-md text-white"><FaComment className="inline-block me-2" /> تواصل مع المشرف</button>
+              <button onClick={() => sendContactTeacherMessage(profile, 'update', lastRequestCode || profile?.pendingChanges?.requestCode || '')} className="btn-primary bg-blue-600 hover:bg-blue-700 w-full py-3 rounded-md text-white"><FaComment className="inline-block me-2" /> تواصل مع المشرف</button>
               <button onClick={() => setShowConfirmModal(false)} className="btn-primary bg-red-600 hover:bg-red-700 w-full py-3 rounded-md text-white"><FaClock className="inline-block me-2" /> انتظار</button>
             </div>
           </div>

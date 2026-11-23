@@ -28,7 +28,8 @@ export const AddLessonModal = ({ isOpen, onClose, onSubmit, initialTimes = [], c
         setSchedules([{ type: 'once', date: new Date(), time: { hours: 12, minutes: 0 }, classId: defaultClassId, id: generateId() }]);
       }
     }
-  }, [isOpen, initialTimes, classesList]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]); // يُعاد ضبط النموذج عند الفتح فقط، حتى لا تضيع تعديلات المعلم أثناء الكتابة
 
   if (!isOpen) return null;
 

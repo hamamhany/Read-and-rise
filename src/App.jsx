@@ -23,6 +23,7 @@ import {
 // ☀️ الثيم
 import { initTheme } from './utils/theme';
 import ThemeToggle from './components/common/ThemeToggle';
+import PerfModeSwitch from './components/common/PerfModeSwitch';
 // ✨ المؤثرات البصرية
 import EffectsLayer from './components/common/EffectsLayer';
 import { installToastConfetti } from './utils/confetti';
@@ -309,6 +310,7 @@ const App = () => {
     <>
       <EffectsLayer />
       <ThemeToggle />
+      <PerfModeSwitch />
       <div key={screenKey} className="fx-page">
         {renderContent()}
       </div>

@@ -20,7 +20,7 @@ function setLite(on, remember = false) {
 // يقيس سلاسة الرسم؛ إذا كانت أقل من ~38 إطار/ثانية يتحول للوضع الخفيف
 function probe(delay) {
   setTimeout(() => {
-    if (isLite() || document.hidden) return;
+    if (isLite() || document.hidden || getPerfMode() !== 'auto') return;
     let n = 0;
     let last = performance.now();
     let total = 0;
@@ -33,7 +33,7 @@ function probe(delay) {
       n++;
       if (n <= 70) {
         requestAnimationFrame(loop);
-      } else if (counted > 30 && total / counted > 26) {
+      } else if (counted > 30 && total / counted > 26 && getPerfMode() === 'auto') {
         setLite(true, true);
       }
     };
@@ -41,20 +41,17 @@ function probe(delay) {
   }, delay);
 }
 
-export function initPerfMode() {
-  if (typeof window === 'undefined') return;
-  const mq = (q) => !!(window.matchMedia && window.matchMedia(q).matches);
-
+// الاختيار المحفوظ للمستخدم: 'auto' (تلقائي) | 'full' (قوي) | 'lite' (خفيف)
+export function getPerfMode() {
   try {
-    const p = new URLSearchParams(window.location.search).get('fx');
-    if (p === 'full' || p === 'lite') localStorage.setItem(KEY, p);
-  } catch (e) { /* لا شيء */ }
+    const v = localStorage.getItem(KEY);
+    return v === 'full' || v === 'lite' ? v : 'auto';
+  } catch (e) { return 'auto'; }
+}
 
-  let forced = null;
-  try { forced = localStorage.getItem(KEY); } catch (e) { /* لا شيء */ }
-  if (forced === 'lite') { setLite(true); return; }
-  if (forced === 'full') { setLite(false); return; }
-
+// الكشف التلقائي حسب قوة الجهاز
+function detectAuto() {
+  const mq = (q) => !!(window.matchMedia && window.matchMedia(q).matches);
   const cores = navigator.hardwareConcurrency || 8;
   const mem = navigator.deviceMemory || 8;
   const conn = navigator.connection || {};
@@ -75,4 +72,35 @@ export function initPerfMode() {
   setLite(false);
   probe(2600);
   probe(9000);
+}
+
+// يغيّر الوضع فوراً (بدون إعادة تحميل) ويحفظ اختيار المستخدم
+export function setPerfMode(mode) {
+  try {
+    if (mode === 'full' || mode === 'lite') localStorage.setItem(KEY, mode);
+    else localStorage.removeItem(KEY);
+    // عند اختيار وضع جديد نمسح نتيجة القياس القديمة ليبدأ القياس من جديد
+    sessionStorage.removeItem('fx_auto_lite');
+  } catch (e) { /* لا شيء */ }
+
+  if (mode === 'lite') setLite(true);
+  else if (mode === 'full') setLite(false);
+  else detectAuto();
+
+  window.dispatchEvent(new CustomEvent('fx-mode-change', { detail: isLite() ? 'lite' : 'full' }));
+  window.dispatchEvent(new CustomEvent('fx-pref-change', { detail: getPerfMode() }));
+}
+
+export function initPerfMode() {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const p = new URLSearchParams(window.location.search).get('fx');
+    if (p === 'full' || p === 'lite') localStorage.setItem(KEY, p);
+  } catch (e) { /* لا شيء */ }
+
+  const mode = getPerfMode();
+  if (mode === 'lite') { setLite(true); return; }
+  if (mode === 'full') { setLite(false); return; }
+  detectAuto();
 }
