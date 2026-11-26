@@ -173,6 +173,8 @@ async function actionStart(db, req, body) {
       lastPingMs: now,
       endedAtMs: null,
       inviteCode: null,
+      joinCounter: 0,
+      joinOrder: {},
       startedAt: admin.firestore.FieldValue.serverTimestamp()
     };
     tx.set(sessionRef, data);
@@ -320,7 +322,25 @@ async function actionJoin(db, req, body) {
     deviceTracked = true;
   }
 
-  const name = profile.name || profile.username || 'مشارك';
+  // ترتيب الدخول داخل هذه الحصة: الأول يأخذ 1، ومن يعيد الدخول يحتفظ برقمه
+  const sessionRef = db.collection(LIVE_COLLECTION).doc(classId);
+  const joinNumber = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(sessionRef);
+    const d = snap.exists ? snap.data() : {};
+    const existing = d.joinOrder && d.joinOrder[profileDoc.id];
+    if (existing) return existing;
+    const n = (d.joinCounter || 0) + 1;
+    tx.update(
+      sessionRef,
+      'joinCounter', n,
+      new admin.firestore.FieldPath('joinOrder', profileDoc.id), n
+    );
+    return n;
+  });
+
+  const baseName = profile.name || profile.username || 'مشارك';
+  // الرقم في بداية الاسم (بخانتين) ليظهر بجانب الاسم ويرتّب القوائم حسب الدخول
+  const name = `${String(joinNumber).padStart(2, '0')} - ${baseName}`;
   const roomName = String(session.roomName || '').toLowerCase();
   const avatar = getAvatarUrl(req, role);
   const nowSec = Math.floor(Date.now() / 1000);
@@ -351,6 +371,7 @@ async function actionJoin(db, req, body) {
     avatar,
     className: session.className || '',
     sessionNumber: session.sessionNumber,
+    joinNumber,
     deviceTracked
   };
 }
