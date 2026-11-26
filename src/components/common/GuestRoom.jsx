@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import { JITSI_DOMAIN } from '../../constants';
 import { callGuestApi } from '../../services/liveSessions';
 
-const GUEST_STATUS_POLL_MS = 15000;
+const GUEST_STATUS_POLL_MS = 5000;
 
 function loadJitsiScript() {
   return new Promise((resolve, reject) => {
@@ -123,6 +123,11 @@ const GuestRoom = ({ data, onClose }) => {
         });
 
         api.addListener('readyToClose', () => closeRoom());
+        // إذا أُغلق الاجتماع أو أُخرج الضيف من Jitsi نفسه
+        api.addListener('videoConferenceLeft', () => closeRoom('انتهت الحصة.'));
+        api.addListener('participantKickedOut', (e) => {
+          if (e && e.kicked && e.kicked.local) closeRoom('تم إخراجك من الحصة.');
+        });
 
         loadingTimer = setTimeout(() => setLoading(false), 8000);
 
@@ -136,7 +141,13 @@ const GuestRoom = ({ data, onClose }) => {
             if (!st.active || st.status !== 'approved') {
               closeRoom('انتهت الحصة.');
             }
-          } catch (e) { /* تجاهل الأخطاء المؤقتة */ }
+          } catch (e) {
+            // الطلب محذوف (الحصة انتهت وتم تنظيف الطلبات) → نخرج
+            if (e && (e.status === 404 || e.code === 'not-found')) {
+              closeRoom('انتهت الحصة.');
+            }
+            // غير ذلك: خطأ مؤقت في الشبكة، نتجاهله
+          }
         }, GUEST_STATUS_POLL_MS);
       } catch (e) {
         if (!disposed) {

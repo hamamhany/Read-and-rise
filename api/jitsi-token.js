@@ -323,8 +323,10 @@ async function actionJoin(db, req, body) {
   }
 
   // ترتيب الدخول داخل هذه الحصة: الأول يأخذ 1، ومن يعيد الدخول يحتفظ برقمه
+  // المدير (VIEWER_ROLES) لا يُرقَّم ولا يستهلك رقماً
+  const numbered = !VIEWER_ROLES.includes(role);
   const sessionRef = db.collection(LIVE_COLLECTION).doc(classId);
-  const joinNumber = await db.runTransaction(async (tx) => {
+  const joinNumber = !numbered ? null : await db.runTransaction(async (tx) => {
     const snap = await tx.get(sessionRef);
     const d = snap.exists ? snap.data() : {};
     const existing = d.joinOrder && d.joinOrder[profileDoc.id];
@@ -340,7 +342,7 @@ async function actionJoin(db, req, body) {
 
   const baseName = profile.name || profile.username || 'مشارك';
   // الرقم في بداية الاسم (بخانتين) ليظهر بجانب الاسم ويرتّب القوائم حسب الدخول
-  const name = `${String(joinNumber).padStart(2, '0')} - ${baseName}`;
+  const name = numbered ? `${String(joinNumber).padStart(2, '0')} - ${baseName}` : baseName;
   const roomName = String(session.roomName || '').toLowerCase();
   const avatar = getAvatarUrl(req, role);
   const nowSec = Math.floor(Date.now() / 1000);
