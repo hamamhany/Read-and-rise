@@ -359,17 +359,26 @@ export default async function handler(req, res) {
     if (!sup) return fail(res, 403, 'غير مصرح');
 
     if (action === 'list') {
-      const [mineSnap, availSnap] = await Promise.all([
-        db.collection(REQ).where('claimedBy', '==', sup.id).get(),
-        db.collection(REQ).where('status', '==', 'pending').where('supervisorGender', '==', sup.gender || '').limit(100).get()
-      ]);
-      const mine = mineSnap.docs.map(d => publicReq(d.id, d.data(), true));
-      const open = mine.filter(r => r.status === 'claimed').sort((a, b) => a.claimedAt - b.claimedAt);
-      const suspended = mine.filter(r => r.status === 'suspended').sort((a, b) => a.suspendedAt - b.suspendedAt);
-      const available = availSnap.docs
-        .map(d => publicReq(d.id, d.data(), false))
-        .sort((a, b) => a.createdAt - b.createdAt);
-      return res.status(200).json({ ok: true, open, suspended, available, max: MAX_OPEN, suspendedDays: 15, noReplyHours: 48 });
+      // scope: 'mine' (طلباتي + المعلّقة) | 'available' (المتاحة فقط) | غير ذلك = الكل
+      const scope = String(body.scope || 'all');
+      const out = { ok: true, max: MAX_OPEN, suspendedDays: 15, noReplyHours: 48 };
+
+      if (scope === 'mine' || scope === 'all') {
+        const mineSnap = await db.collection(REQ).where('claimedBy', '==', sup.id).get();
+        const mine = mineSnap.docs.map(d => publicReq(d.id, d.data(), true));
+        out.open = mine.filter(r => r.status === 'claimed').sort((a, b) => a.claimedAt - b.claimedAt);
+        out.suspended = mine.filter(r => r.status === 'suspended').sort((a, b) => a.suspendedAt - b.suspendedAt);
+      }
+      if (scope === 'available' || scope === 'all') {
+        const availSnap = await db.collection(REQ)
+          .where('status', '==', 'pending')
+          .where('supervisorGender', '==', sup.gender || '')
+          .limit(100).get();
+        out.available = availSnap.docs
+          .map(d => publicReq(d.id, d.data(), false))
+          .sort((a, b) => a.createdAt - b.createdAt);
+      }
+      return res.status(200).json(out);
     }
 
     const id = String(body.id || '');

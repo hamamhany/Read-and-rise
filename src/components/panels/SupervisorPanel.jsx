@@ -833,7 +833,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
           </div>
         </div>
 
-        <RegistrationRequestsSection />
+        <RegistrationRequestsSection gender={user.gender} />
 
         {permissions.reports && hasReportsForMe && <ReportsReviewSection user={user} />}
         <ReviewVotingSection user={user} />

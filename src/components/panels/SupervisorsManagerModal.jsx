@@ -350,6 +350,9 @@ const SupervisorsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
                       {s.phone && <span dir="ltr"><FaPhone className="inline me-1" />{s.phone}</span>}
                     </div>
                     <div className="flex gap-2 mt-1 flex-wrap">
+                      <span className={`text-xs px-2 py-0.5 rounded ${s.gender === 'أنثى' ? 'text-pink-300 bg-pink-500/10' : s.gender === 'ذكر' ? 'text-blue-300 bg-blue-500/10' : 'text-gray-400 bg-gray-500/10'}`}>
+                        {s.gender === 'أنثى' ? '👩 مشرفة (أنثى)' : s.gender === 'ذكر' ? '👨 مشرف (ذكر)' : 'الجنس غير محدد'}
+                      </span>
                       {s.isFrozen && <span className="text-xs text-orange-400 bg-orange-500/10 px-2 py-0.5 rounded">مجمد</span>}
                       {s.classVisibility === CLASS_VISIBILITY.OWN_GENDER
                         ? <span className="text-xs text-cyan-300 bg-cyan-500/10 px-2 py-0.5 rounded">شعبه فقط</span>

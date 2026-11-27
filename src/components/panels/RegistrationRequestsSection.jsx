@@ -31,12 +31,16 @@ const KIND_LABEL = {
 
 const HOUR = 3600 * 1000;
 
-const RegistrationRequestsSection = () => {
+const RegistrationRequestsSection = ({ gender = '' }) => {
   const confirm = useConfirm();
+  const isFemale = gender === 'أنثى';
+  const isMale = gender === 'ذكر';
 
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [data, setData] = useState(null);
+  const [data, setData] = useState(null);          // طلباتي + المعلّقة
+  const [avail, setAvail] = useState(null);          // المتاحة — null = لم تُحمَّل بعد
+  const [availLoading, setAvailLoading] = useState(false);
   const [tab, setTab] = useState('open'); // open | available | suspended
   const [search, setSearch] = useState('');
   const [busyId, setBusyId] = useState(null);
@@ -45,10 +49,11 @@ const RegistrationRequestsSection = () => {
   const [rejectCustom, setRejectCustom] = useState('');
   const [, forceTick] = useState(0);
 
-  const load = useCallback(async () => {
+  // طلباتي + المعلّقة (تُحمَّل عند فتح القسم)
+  const loadMine = useCallback(async () => {
     setLoading(true);
     try {
-      setData(await callRegistrationApi('list', {}, { authed: true }));
+      setData(await callRegistrationApi('list', { scope: 'mine' }, { authed: true }));
     } catch (e) {
       toast.error('فشل التحميل: ' + e.message);
     } finally {
@@ -56,8 +61,32 @@ const RegistrationRequestsSection = () => {
     }
   }, []);
 
+  // المتاحة — لا تُحمَّل إلا عند الضغط على زر "طلبات متاحة"
+  const loadAvail = useCallback(async () => {
+    setAvailLoading(true);
+    try {
+      const res = await callRegistrationApi('list', { scope: 'available' }, { authed: true });
+      setAvail(res.available || []);
+    } catch (e) {
+      toast.error('فشل تحميل الطلبات المتاحة: ' + e.message);
+    } finally {
+      setAvailLoading(false);
+    }
+  }, []);
+
+  // تحديث ما تم تحميله فقط
+  const refresh = useCallback(async () => {
+    await loadMine();
+    if (avail !== null || tab === 'available') await loadAvail();
+  }, [loadMine, loadAvail, avail, tab]);
+
+  const openTab = (id) => {
+    setTab(id);
+    if (id === 'available' && avail === null && !availLoading) loadAvail();
+  };
+
   useEffect(() => {
-    if (open && !data) load();
+    if (open && !data) loadMine();
     // eslint-disable-next-line
   }, [open]);
 
@@ -73,7 +102,7 @@ const RegistrationRequestsSection = () => {
     try {
       const res = await callRegistrationApi(action, { id, ...extra }, { authed: true });
       if (okMsg) toast.success(okMsg);
-      await load();
+      await refresh();
       return res;
     } catch (e) {
       toast.error(e.message);
@@ -123,7 +152,7 @@ const RegistrationRequestsSection = () => {
   const match = (r) => !q || String(r.requestNumber).includes(q);
 
   const openList = (data?.open || []).filter(match);
-  const availList = (data?.available || []).filter(match);
+  const availList = (avail || []).filter(match);
   const suspList = (data?.suspended || []).filter(match);
 
   const openCount = data?.open?.length || 0;
@@ -143,7 +172,7 @@ const RegistrationRequestsSection = () => {
 
   const tabBtn = (id, label, n) => (
     <button
-      onClick={() => setTab(id)}
+      onClick={() => openTab(id)}
       className={`px-3 py-1.5 rounded-lg text-sm font-bold ${tab === id ? 'bg-teal-600 text-white' : 'bg-slate-200 dark:bg-gray-700 text-slate-700 dark:text-gray-200'}`}
     >
       {label} {n != null ? `(${n})` : ''}
@@ -166,10 +195,10 @@ const RegistrationRequestsSection = () => {
         <div className="px-6 pb-6 space-y-4">
           <div className="flex flex-wrap items-center gap-2">
             {tabBtn('open', 'طلباتي', data ? openCount : null)}
-            {tabBtn('available', 'طلبات متاحة', data ? data.available.length : null)}
+            {tabBtn('available', 'طلبات متاحة', avail !== null ? avail.length : null)}
             {tabBtn('suspended', 'المعلّقة', data ? data.suspended.length : null)}
-            <button onClick={load} disabled={loading} className="mr-auto text-slate-500 hover:text-slate-800 dark:text-gray-400 dark:hover:text-white" title="تحديث">
-              <FaSyncAlt className={loading ? 'animate-spin' : ''} />
+            <button onClick={refresh} disabled={loading || availLoading} className="mr-auto text-slate-500 hover:text-slate-800 dark:text-gray-400 dark:hover:text-white" title="تحديث">
+              <FaSyncAlt className={(loading || availLoading) ? 'animate-spin' : ''} />
             </button>
           </div>
 
@@ -182,14 +211,14 @@ const RegistrationRequestsSection = () => {
             />
           </div>
 
-          {loading && !data ? (
+          {(tab === 'available' ? (availLoading && avail === null) : (loading && !data)) ? (
             <div className="text-center py-6 text-slate-400"><FaSpinner className="animate-spin text-2xl mx-auto mb-2" />جاري التحميل...</div>
           ) : (
             <>
               {/* ============ طلباتي ============ */}
               {tab === 'open' && (
                 openList.length === 0 ? (
-                  <p className="text-center text-slate-500 dark:text-gray-400 py-6"><FaInbox className="inline me-2" />{q ? 'لا يوجد طلب بهذا الرقم ضمن طلباتك.' : 'لا توجد طلبات مفتوحة. استلمي طلباً من "طلبات متاحة".'}</p>
+                  <p className="text-center text-slate-500 dark:text-gray-400 py-6"><FaInbox className="inline me-2" />{q ? 'لا يوجد طلب بهذا الرقم ضمن طلباتك.' : `لا توجد طلبات مفتوحة. ${isFemale ? 'استلمي' : 'استلم'} طلباً من "طلبات متاحة".`}</p>
                 ) : (
                   <div className="space-y-3">
                     {openList.map(r => {
@@ -218,7 +247,7 @@ const RegistrationRequestsSection = () => {
 
                           {r.kind === 'voice' && (
                             <div className="bg-pink-50 dark:bg-pink-900/20 border border-pink-300 dark:border-pink-500/30 rounded-lg p-2 text-xs text-pink-800 dark:text-pink-200">
-                              تم اختيار الجنس <strong>أنثى</strong>، يرجى التأكد قبل الموافقة. استخدمي زر "تواصل مع الطالب" لطلب رسالة صوتية بصوتها.
+                              تم اختيار الجنس <strong>أنثى</strong>، يرجى التأكد قبل الموافقة. استخدم زر "تواصل مع الطالب" لطلب رسالة صوتية بصوتها.
                             </div>
                           )}
                           {r.kind === 'parent' && (
@@ -271,8 +300,11 @@ const RegistrationRequestsSection = () => {
               {tab === 'available' && (
                 <>
                   <p className="text-xs text-slate-500 dark:text-gray-400">
-                    طلباتك المفتوحة: <strong>{openCount}/{max}</strong>. أول من تستلم الطلب يصبح لها وحدها. التفاصيل تظهر بعد الاستلام.
+                    طلباتك المفتوحة: <strong>{openCount}/{max}</strong>. أول من يستلم الطلب يصبح له وحده. التفاصيل تظهر بعد الاستلام.
                   </p>
+                  {isMale && <p className="text-xs text-blue-600 dark:text-blue-300">بصفتك مشرفاً (ذكر) تظهر لك طلبات شعب الذكور فقط.</p>}
+                  {isFemale && <p className="text-xs text-pink-600 dark:text-pink-300">بصفتك مشرفة (أنثى) تظهر لك طلبات شعب الإناث والشعب المختلطة.</p>}
+                  {!isMale && !isFemale && <p className="text-xs text-red-600 dark:text-red-300">جنس حسابك غير محدد، لذلك لن تظهر لك أي طلبات. تواصل مع المدير.</p>}
                   {availList.length === 0 ? (
                     <p className="text-center text-slate-500 dark:text-gray-400 py-6"><FaInbox className="inline me-2" />لا توجد طلبات متاحة الآن.</p>
                   ) : (
