@@ -44,6 +44,7 @@ const RegistrationRequestsSection = ({ gender = '' }) => {
   const [tab, setTab] = useState('open'); // open | available | suspended
   const [search, setSearch] = useState('');
   const [busyId, setBusyId] = useState(null);
+  const [detailId, setDetailId] = useState(null); // الطلب المفتوح في النافذة المنبثقة
   const [rejectFor, setRejectFor] = useState(null);
   const [rejectReason, setRejectReason] = useState(REJECT_REASONS[0]);
   const [rejectCustom, setRejectCustom] = useState('');
@@ -127,7 +128,7 @@ const RegistrationRequestsSection = ({ gender = '' }) => {
     const ok = await confirm('الموافقة على الطلب', `سيتم إنشاء حساب للطالب "${r.name}" وإرسال الطلب للمدير لإبلاغه. متابعة؟`);
     if (!ok) return;
     const res = await act(r.id, 'decide', { decision: 'approve' });
-    if (res) toast.success(`✅ تمت الموافقة — الرقم التسلسلي: ${res.serialNumber}`);
+    if (res) { toast.success(`✅ تمت الموافقة — الرقم التسلسلي: ${res.serialNumber}`); setDetailId(null); }
   };
 
   const submitReject = async () => {
@@ -137,16 +138,20 @@ const RegistrationRequestsSection = ({ gender = '' }) => {
     const r = rejectFor;
     setRejectFor(null);
     const res = await act(r.id, 'decide', { decision: 'reject', reason });
-    if (res) toast.success('تم رفض الطلب وإرساله للمدير لإبلاغ الطالب');
+    if (res) { toast.success('تم رفض الطلب وإرساله للمدير لإبلاغ الطالب'); setDetailId(null); }
   };
 
   const handleNoReply = async (r) => {
     const ok = await confirm('لا يوجد رد من الطالب', 'سينتقل الطلب إلى قائمة "المعلّقة" لمدة 15 يوماً، وبعدها يُحذف تلقائياً إن لم تعيديه. ويمكنك استلام طلب جديد الآن. متابعة؟');
     if (!ok) return;
-    await act(r.id, 'noreply', {}, 'انتقل الطلب إلى المعلّقة');
+    const res = await act(r.id, 'noreply', {}, 'انتقل الطلب إلى المعلّقة');
+    if (res) setDetailId(null);
   };
 
-  const handleReadd = (r) => act(r.id, 'readd', {}, 'أُعيد الطلب إلى طلباتك المفتوحة');
+  const handleReadd = async (r) => {
+    const res = await act(r.id, 'readd', {}, 'أُعيد الطلب إلى طلباتك المفتوحة');
+    if (res) setDetailId(null);
+  };
 
   const q = search.trim();
   const match = (r) => !q || String(r.requestNumber).includes(q);
@@ -220,78 +225,17 @@ const RegistrationRequestsSection = ({ gender = '' }) => {
                 openList.length === 0 ? (
                   <p className="text-center text-slate-500 dark:text-gray-400 py-6"><FaInbox className="inline me-2" />{q ? 'لا يوجد طلب بهذا الرقم ضمن طلباتك.' : `لا توجد طلبات مفتوحة. ${isFemale ? 'استلمي' : 'استلم'} طلباً من "طلبات متاحة".`}</p>
                 ) : (
-                  <div className="space-y-3">
-                    {openList.map(r => {
-                      const left = timeLeftForNoReply(r);
-                      const needsContact = r.kind === 'voice' || r.kind === 'parent';
-                      const busy = busyId === r.id;
-                      return (
-                        <div key={r.id} className="p-4 rounded-xl bg-white dark:bg-black/30 border border-slate-200 dark:border-gray-700 space-y-3">
-                          <div className="flex flex-wrap justify-between gap-2">
-                            <div>
-                              <p className="font-bold text-slate-900 dark:text-white">{r.name}</p>
-                              <div className="text-xs text-slate-500 dark:text-gray-400 mt-1 flex flex-wrap gap-x-4 gap-y-1">
-                                <span>العمر: {r.age}</span>
-                                <span>الجنس: {r.gender}</span>
-                                <span dir="ltr">{r.phone}</span>
-                                <span>الشعبة: {r.className}</span>
-                              </div>
-                            </div>
-                            <div className="text-left">
-                              <p className="text-[11px] text-slate-500 dark:text-gray-400">رقم الطلب</p>
-                              <p className="font-mono font-bold text-indigo-600 dark:text-indigo-300 text-lg" dir="ltr">{r.requestNumber}</p>
-                            </div>
-                          </div>
-
-                          <p className="text-xs text-slate-600 dark:text-gray-300">{KIND_LABEL[r.kind]}</p>
-
-                          {r.kind === 'voice' && (
-                            <div className="bg-pink-50 dark:bg-pink-900/20 border border-pink-300 dark:border-pink-500/30 rounded-lg p-2 text-xs text-pink-800 dark:text-pink-200">
-                              تم اختيار الجنس <strong>أنثى</strong>، يرجى التأكد قبل الموافقة. استخدم زر "تواصل مع الطالب" لطلب رسالة صوتية بصوتها.
-                            </div>
-                          )}
-                          {r.kind === 'parent' && (
-                            <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-300 dark:border-purple-500/30 rounded-lg p-2 text-xs text-purple-800 dark:text-purple-200">
-                              طالب <strong>ذكر</strong> في شعبة <strong>مختلطة</strong> (العمر {r.age}). يلزم رسالة من والدته تتضمن حضورها حصصه وعدم سماع أي ذكر فوق 12 سنة لأصوات المشرفات.
-                            </div>
-                          )}
-
-                          {needsContact && (
-                            <div className="text-xs">
-                              {r.messageSentAt ? (
-                                <p className="text-slate-600 dark:text-gray-300">
-                                  أُرسلت رسالة التواصل: {new Date(r.messageSentAt).toLocaleString('ar-EG')} •{' '}
-                                  {left > 0
-                                    ? <span className="text-amber-600 dark:text-amber-300">زر "لا يوجد رد" يتفعّل بعد {fmtLeft(left)}</span>
-                                    : <span className="text-green-600 dark:text-green-300">زر "لا يوجد رد" متاح الآن</span>}
-                                </p>
-                              ) : (
-                                <p className="text-amber-600 dark:text-amber-300">لم تُرسَل رسالة التواصل بعد — مطلوبة قبل الموافقة.</p>
-                              )}
-                            </div>
-                          )}
-
-                          <div className="flex flex-wrap gap-2">
-                            {needsContact && (
-                              <button onClick={() => handleContact(r)} disabled={busy} className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-3 py-2 rounded-lg text-sm font-bold inline-flex items-center gap-2">
-                                <FaWhatsapp /> {r.kind === 'parent' ? 'تواصل مع والدة الطالب' : 'تواصل مع الطالب'}
-                              </button>
-                            )}
-                            <button onClick={() => handleApprove(r)} disabled={busy || (needsContact && !r.messageSentAt)} className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white px-3 py-2 rounded-lg text-sm font-bold inline-flex items-center gap-2">
-                              <FaCheckCircle /> موافقة
-                            </button>
-                            <button onClick={() => { setRejectFor(r); setRejectReason(REJECT_REASONS[0]); setRejectCustom(''); }} disabled={busy} className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-3 py-2 rounded-lg text-sm font-bold inline-flex items-center gap-2">
-                              <FaTimesCircle /> رفض
-                            </button>
-                            {needsContact && (
-                              <button onClick={() => handleNoReply(r)} disabled={busy || !(left <= 0)} className="bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white px-3 py-2 rounded-lg text-sm font-bold inline-flex items-center gap-2">
-                                <FaHourglassHalf /> لا يوجد رد من الطالب
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
+                  <div className="space-y-2">
+                    {openList.map(r => (
+                      <button
+                        key={r.id}
+                        onClick={() => setDetailId(r.id)}
+                        className="w-full text-right p-3 rounded-xl bg-white dark:bg-black/30 border border-slate-200 dark:border-gray-700 hover:border-teal-400 dark:hover:border-teal-500/60 flex items-center justify-between gap-3 transition"
+                      >
+                        <span className="font-bold text-slate-900 dark:text-white truncate">{r.name}</span>
+                        <span className="font-mono font-bold text-indigo-600 dark:text-indigo-300 flex-shrink-0" dir="ltr">#{r.requestNumber}</span>
+                      </button>
+                    ))}
                   </div>
                 )
               )}
@@ -331,23 +275,17 @@ const RegistrationRequestsSection = ({ gender = '' }) => {
                   <p className="text-center text-slate-500 dark:text-gray-400 py-6"><FaInbox className="inline me-2" />لا توجد طلبات معلّقة.</p>
                 ) : (
                   <div className="space-y-2">
-                    <p className="text-xs text-slate-500 dark:text-gray-400">الطلب المعلّق يبقى {data?.suspendedDays || 15} يوماً ثم يُحذف تلقائياً ويُرسل المدير إشعار الحذف للطالب. يمكنك إعادته قبل ذلك.</p>
-                    {suspList.map(r => {
-                      const daysLeft = Math.max(0, Math.ceil((r.suspendedAt + (data?.suspendedDays || 15) * 24 * HOUR - Date.now()) / (24 * HOUR)));
-                      return (
-                        <div key={r.id} className="p-3 rounded-xl bg-white dark:bg-black/30 border border-amber-300 dark:border-amber-500/30 flex flex-wrap justify-between items-center gap-2">
-                          <div>
-                            <p className="text-sm font-bold text-slate-900 dark:text-white">{r.name}</p>
-                            <p className="text-[11px] text-slate-500 dark:text-gray-400">
-                              رقم الطلب <span className="font-mono" dir="ltr">{r.requestNumber}</span> • {r.className} • <span className="text-red-500">يُحذف بعد {daysLeft} يوم</span>
-                            </p>
-                          </div>
-                          <button onClick={() => handleReadd(r)} disabled={busyId === r.id || openCount >= max} className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white px-3 py-2 rounded-lg text-sm font-bold inline-flex items-center gap-2">
-                            <FaRedoAlt /> إعادة إضافة لطلباتي
-                          </button>
-                        </div>
-                      );
-                    })}
+                    <p className="text-xs text-slate-500 dark:text-gray-400">الطلب المعلّق يبقى {data?.suspendedDays || 15} يوماً ثم يُحذف تلقائياً ويُرسل المدير إشعار الحذف للطالب. اضغط على الطلب لعرض تفاصيله أو إعادته.</p>
+                    {suspList.map(r => (
+                      <button
+                        key={r.id}
+                        onClick={() => setDetailId(r.id)}
+                        className="w-full text-right p-3 rounded-xl bg-white dark:bg-black/30 border border-amber-300 dark:border-amber-500/30 hover:border-amber-500 flex items-center justify-between gap-3 transition"
+                      >
+                        <span className="font-bold text-slate-900 dark:text-white truncate">{r.name}</span>
+                        <span className="font-mono font-bold text-indigo-600 dark:text-indigo-300 flex-shrink-0" dir="ltr">#{r.requestNumber}</span>
+                      </button>
+                    ))}
                   </div>
                 )
               )}
@@ -355,6 +293,94 @@ const RegistrationRequestsSection = ({ gender = '' }) => {
           )}
         </div>
       )}
+
+      {/* نافذة تفاصيل الطلب */}
+      {(() => {
+        const r = [...(data?.open || []), ...(data?.suspended || [])].find(x => x.id === detailId);
+        if (!r) return null;
+        const isSusp = r.status === 'suspended';
+        const left = timeLeftForNoReply(r);
+        const needsContact = r.kind === 'voice' || r.kind === 'parent';
+        const busy = busyId === r.id;
+        const daysLeft = Math.max(0, Math.ceil((r.suspendedAt + (data?.suspendedDays || 15) * 24 * HOUR - Date.now()) / (24 * HOUR)));
+        return (
+          <div className="fixed inset-0 bg-black/70 z-[70] flex items-center justify-center p-4" onClick={() => setDetailId(null)} dir="rtl">
+            <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-5 space-y-3 border border-teal-300 dark:border-teal-500/30" onClick={e => e.stopPropagation()}>
+              <div className="flex justify-between items-start gap-2">
+                <div className="min-w-0">
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">{r.name}</h3>
+                  <p className="text-xs text-slate-500 dark:text-gray-400 mt-0.5">رقم الطلب: <span className="font-mono font-bold text-indigo-600 dark:text-indigo-300" dir="ltr">{r.requestNumber}</span></p>
+                </div>
+                <button onClick={() => setDetailId(null)} className="text-slate-400 hover:text-slate-700 dark:hover:text-white text-xl">✕</button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="bg-slate-50 dark:bg-black/30 rounded-lg p-2"><p className="text-[11px] text-slate-500 dark:text-gray-400">العمر</p><p className="text-slate-900 dark:text-white font-bold">{r.age}</p></div>
+                <div className="bg-slate-50 dark:bg-black/30 rounded-lg p-2"><p className="text-[11px] text-slate-500 dark:text-gray-400">الجنس</p><p className="text-slate-900 dark:text-white font-bold">{r.gender}</p></div>
+                <div className="bg-slate-50 dark:bg-black/30 rounded-lg p-2"><p className="text-[11px] text-slate-500 dark:text-gray-400">رقم الهاتف</p><p className="text-slate-900 dark:text-white font-bold" dir="ltr">{r.phone}</p></div>
+                <div className="bg-slate-50 dark:bg-black/30 rounded-lg p-2"><p className="text-[11px] text-slate-500 dark:text-gray-400">الشعبة</p><p className="text-slate-900 dark:text-white font-bold">{r.className}</p></div>
+              </div>
+
+              <p className="text-xs text-slate-600 dark:text-gray-300">{KIND_LABEL[r.kind]}</p>
+
+              {r.kind === 'voice' && (
+                <div className="bg-pink-50 dark:bg-pink-900/20 border border-pink-300 dark:border-pink-500/30 rounded-lg p-2 text-xs text-pink-800 dark:text-pink-200">
+                  تم اختيار الجنس <strong>أنثى</strong>، يرجى التأكد قبل الموافقة. استخدم زر "تواصل مع الطالب" لطلب رسالة صوتية بصوتها.
+                </div>
+              )}
+              {r.kind === 'parent' && (
+                <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-300 dark:border-purple-500/30 rounded-lg p-2 text-xs text-purple-800 dark:text-purple-200">
+                  طالب <strong>ذكر</strong> في شعبة <strong>مختلطة</strong> (العمر {r.age}). يلزم رسالة من والدته تتضمن حضورها حصصه وعدم سماع أي ذكر فوق 12 سنة لأصوات المشرفات.
+                </div>
+              )}
+
+              {isSusp ? (
+                <>
+                  <p className="text-sm text-red-600 dark:text-red-300">هذا الطلب معلّق، ويُحذف بعد {daysLeft} يوم إن لم تُعِده.</p>
+                  <button onClick={() => handleReadd(r)} disabled={busy || openCount >= max} className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white px-3 py-2.5 rounded-lg text-sm font-bold inline-flex items-center justify-center gap-2">
+                    <FaRedoAlt /> إعادة إضافة لطلباتي
+                  </button>
+                </>
+              ) : (
+                <>
+                  {needsContact && (
+                    <div className="text-xs">
+                      {r.messageSentAt ? (
+                        <p className="text-slate-600 dark:text-gray-300">
+                          أُرسلت رسالة التواصل: {new Date(r.messageSentAt).toLocaleString('ar-EG')} •{' '}
+                          {left > 0
+                            ? <span className="text-amber-600 dark:text-amber-300">زر "لا يوجد رد" يتفعّل بعد {fmtLeft(left)}</span>
+                            : <span className="text-green-600 dark:text-green-300">زر "لا يوجد رد" متاح الآن</span>}
+                        </p>
+                      ) : (
+                        <p className="text-amber-600 dark:text-amber-300">لم تُرسَل رسالة التواصل بعد — مطلوبة قبل الموافقة.</p>
+                      )}
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {needsContact && (
+                      <button onClick={() => handleContact(r)} disabled={busy} className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-3 py-2 rounded-lg text-sm font-bold inline-flex items-center gap-2">
+                        <FaWhatsapp /> {r.kind === 'parent' ? 'تواصل مع والدة الطالب' : 'تواصل مع الطالب'}
+                      </button>
+                    )}
+                    <button onClick={() => handleApprove(r)} disabled={busy || (needsContact && !r.messageSentAt)} className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white px-3 py-2 rounded-lg text-sm font-bold inline-flex items-center gap-2">
+                      <FaCheckCircle /> موافقة
+                    </button>
+                    <button onClick={() => { setRejectFor(r); setRejectReason(REJECT_REASONS[0]); setRejectCustom(''); }} disabled={busy} className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-3 py-2 rounded-lg text-sm font-bold inline-flex items-center gap-2">
+                      <FaTimesCircle /> رفض
+                    </button>
+                    {needsContact && (
+                      <button onClick={() => handleNoReply(r)} disabled={busy || !(left <= 0)} className="bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white px-3 py-2 rounded-lg text-sm font-bold inline-flex items-center gap-2">
+                        <FaHourglassHalf /> لا يوجد رد من الطالب
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* نافذة سبب الرفض */}
       {rejectFor && (
