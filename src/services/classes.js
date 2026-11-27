@@ -1,8 +1,10 @@
 import { db } from '../firebase';
 import {
   collection, addDoc, doc, updateDoc, deleteDoc, getDoc, getDocs,
-  query, where, serverTimestamp, limit, writeBatch, setDoc
+  query, where, serverTimestamp, limit, writeBatch, setDoc, getCountFromServer
 } from 'firebase/firestore';
+import { createMessageRequest } from './messageRequests';
+import { logTeacherEvent } from './teacherHistory';
 import {
   CLASS_GENDER, CLASS_GENDER_LABELS, CLASS_VISIBILITY, SECTIONS_COLLECTION
 } from '../constants';
@@ -103,9 +105,10 @@ export const deleteSection = async (sectionId) => {
     const snap = await getDocs(query(collection(db, 'classes'), where('sectionId', '==', id)));
     snap.docs.forEach(d => classDocs.push(d));
   }
-  const counts = await getClassStudentCounts();
-  if (classDocs.some(d => (counts[d.id] || 0) > 0)) {
-    throw new Error('لا يمكن حذف قسم فيه شعب تحتوي على طلاب. انقل الطلاب أولاً.');
+  for (const d of classDocs) {
+    if ((await getClassStudentCount(d.id)) > 0) {
+      throw new Error('لا يمكن حذف قسم فيه شعب تحتوي على طلاب. انقل الطلاب أولاً.');
+    }
   }
 
   const refs = [
@@ -233,7 +236,7 @@ export const purgeClassesWithoutSection = async ({ cleanSections = false } = {})
   return orphans.length;
 };
 
-export const createClass = async ({ name, teacherId, gender, sectionId }) => {
+export const createClass = async ({ name, teacherId, gender, sectionId, createdBy = '', createdByName = '' }) => {
   if (!name || !name.trim()) throw new Error('اسم الشعبة مطلوب');
   if (!teacherId) throw new Error('معلم الشعبة مطلوب');
   if (!sectionId) throw new Error('يجب اختيار القسم');
@@ -248,6 +251,7 @@ export const createClass = async ({ name, teacherId, gender, sectionId }) => {
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   });
+  await logTeacherEvent({ teacherId, type: 'assigned', classId: ref.id, className: name.trim(), byId: createdBy, byName: createdByName, reason: '' });
   return ref.id;
 };
 
@@ -259,7 +263,39 @@ export const updateClassGender = async (classId, gender) => {
 };
 
 export const deleteClassById = async (classId) => {
+  let snap = null;
+  try { snap = await getDoc(doc(db, 'classes', classId)); } catch (e) { /* ignore */ }
   await deleteDoc(doc(db, 'classes', classId));
+  if (snap && snap.exists() && snap.data().teacherId) {
+    await logTeacherEvent({
+      teacherId: snap.data().teacherId, type: 'relieved',
+      classId, className: snap.data().name || '', reason: 'حذف الشعبة'
+    });
+  }
+};
+
+// عدد طلاب شعبة واحدة (استعلام عدّ رخيص — لا يقرأ ملفات الطلاب)
+export const getClassStudentCount = async (classId) => {
+  const snap = await getCountFromServer(query(
+    collection(db, 'profiles'),
+    where('classIds', 'array-contains', classId)
+  ));
+  return snap.data().count;
+};
+
+// البحث عن معلم بالرقم التسلسلي — يُستدعى فقط عند الضغط على الزر
+export const findTeacherBySerial = async (serial) => {
+  const clean = String(serial || '').trim();
+  if (!clean) return null;
+  const snap = await getDocs(query(
+    collection(db, 'profiles'),
+    where('role', '==', 'teacher'),
+    where('serialNumber', '==', clean),
+    limit(1)
+  ));
+  if (snap.empty) return null;
+  const d = snap.docs[0];
+  return { id: d.id, ...d.data() };
 };
 
 export const getClassStudentCounts = async () => {
@@ -314,16 +350,56 @@ export const getTeacherNameForViewer = (teacher, viewerGender) => {
   return getTeacherDisplayName(teacher);
 };
 
-export const changeClassTeacher = async (classId, teacherId) => {
+export const changeClassTeacher = async (classId, teacherId, { byId = '', byName = '', reason = '' } = {}) => {
   if (!teacherId) throw new Error('اختر المعلم');
-  const teacherSnap = await getDoc(doc(db, 'profiles', teacherId));
+  const [teacherSnap, classSnap] = await Promise.all([
+    getDoc(doc(db, 'profiles', teacherId)),
+    getDoc(doc(db, 'classes', classId))
+  ]);
   if (!teacherSnap.exists() || teacherSnap.data().role !== 'teacher') {
     throw new Error('المعلم غير موجود');
   }
-  await updateDoc(doc(db, 'classes', classId), {
-    teacherId,
-    updatedAt: serverTimestamp()
-  });
+  if (!classSnap.exists()) throw new Error('الشعبة غير موجودة');
+  const cls = classSnap.data();
+  const oldTeacherId = cls.teacherId || '';
+  if (oldTeacherId === teacherId) throw new Error('هذا المعلم هو معلم الشعبة بالفعل');
+
+  await updateDoc(doc(db, 'classes', classId), { teacherId, updatedAt: serverTimestamp() });
+
+  const cleanReason = (reason || '').trim();
+  const newT = teacherSnap.data();
+
+  // سجل المعلمين
+  await logTeacherEvent({ teacherId, type: 'assigned', classId, className: cls.name, byId, byName, reason: '' });
+  let oldT = null;
+  if (oldTeacherId) {
+    await logTeacherEvent({ teacherId: oldTeacherId, type: 'relieved', classId, className: cls.name, byId, byName, reason: cleanReason });
+    try {
+      const oldSnap = await getDoc(doc(db, 'profiles', oldTeacherId));
+      if (oldSnap.exists()) oldT = oldSnap.data();
+    } catch (e) { /* ignore */ }
+  }
+
+  // رسائل للمدير (يرسلها واتساب فقط)
+  try {
+    await createMessageRequest({
+      type: 'teacher_assignment', targetType: 'teacher', targetId: teacherId,
+      targetName: newT.name || newT.username || '', targetPhone: newT.phone || '', targetClass: cls.name || '',
+      requestedBy: byId, requestedByName: byName || 'مشرف',
+      payload: { className: cls.name || '' }
+    });
+    if (oldT) {
+      await createMessageRequest({
+        type: 'teacher_relief', targetType: 'teacher', targetId: oldTeacherId,
+        targetName: oldT.name || oldT.username || '', targetPhone: oldT.phone || '', targetClass: cls.name || '',
+        requestedBy: byId, requestedByName: byName || 'مشرف',
+        payload: { className: cls.name || '', reason: cleanReason }
+      });
+    }
+  } catch (e) {
+    console.warn('teacher change message requests failed:', e);
+  }
+  return { teacherName: newT.name || newT.username || '' };
 };
 
 export const getClassWarningStats = async (classId) => {

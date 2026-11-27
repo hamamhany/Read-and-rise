@@ -8,7 +8,7 @@ import {
   FaBan, FaChevronLeft, FaCopy, FaCheckCircle, FaRedoAlt, FaEye, FaLayerGroup,
   FaChevronDown, FaChevronUp, FaSyncAlt, FaDownload,
   FaBullhorn, FaPlus, FaSearch, FaUserGraduate, FaUserTie, FaTimes,
-  FaFolderOpen, FaSpinner, FaUpload, FaClock
+  FaFolderOpen, FaSpinner, FaUpload, FaClock, FaLink, FaUserClock
 } from 'react-icons/fa';
 import { db } from '../../firebase';
 import {
@@ -21,7 +21,7 @@ import { requestNotificationPermission, setupOnMessageListener } from '../../uti
 import { messaging } from '../../firebase';
 import {
   MESSAGE_REQUEST_TYPE_LABELS, MESSAGE_REQUEST_STATUS, MESSAGE_REQUEST_TYPES,
-  ANNOUNCEMENT_AUDIENCE, ANNOUNCEMENT_AUDIENCE_LABELS
+  ANNOUNCEMENT_AUDIENCE, ANNOUNCEMENT_AUDIENCE_LABELS, SEND_ONLY_REQUEST_TYPES
 } from '../../constants';
 import {
   updateMessageRequestStatus, deleteMessageRequest,
@@ -34,10 +34,12 @@ import {
   sendGeneralMessageToStudent, sendReportMessage, sendAbsenceWarningMessage,
   sendAutoFreezeMessage, sendAutoDeleteMessage, sendPasswordResetApprovalMessage,
   sendPasswordResetRejectionMessage, sendUnactivatedAccountReminderMessage,
-  sendUnactivatedAccountDeletedMessage
+  sendUnactivatedAccountDeletedMessage,
+  sendRegistrationApprovedMessage, sendRegistrationRejectedMessage, sendRegistrationDeletedMessage,
+  sendTeacherAssignmentMessage, sendTeacherReliefMessage
 } from '../../utils/whatsapp';
 import { deleteUserCompletely } from '../../services/accountDeletion';
-import { updateClassGender, deleteClassById, moveStudentToClass, purgeClassesWithoutSection, setStudentClasses } from '../../services/classes';
+import { updateClassGender, deleteClassById, moveStudentToClass, setStudentClasses } from '../../services/classes';
 import {
   approveAnnouncement, rejectAnnouncement,
   createTargetedAnnouncement, moderateAnnouncementContent
@@ -49,6 +51,8 @@ import SupervisorsManagerModal from './SupervisorsManagerModal';
 import StudentsManagerModal from './StudentsManagerModal';
 import BlacklistModal from './BlacklistModal';
 import SectionsManagerModal from './SectionsManagerModal';
+import RegistrationLinksModal from './RegistrationLinksModal';
+import TeachersWithoutClassesModal from './TeachersWithoutClassesModal';
 import CountUp from '../common/CountUp';
 import { useConfirm, usePrompt } from '../common/ConfirmContext';
 import { sanitizeInput, arabicToEnglishNumber } from '../../utils/helpers';
@@ -264,6 +268,8 @@ const SystemManagerPanel = ({ user, onLogout }) => {
   const [showStudentsModal, setShowStudentsModal] = useState(false);
   const [showBlacklistModal, setShowBlacklistModal] = useState(false);
   const [showSectionsModal, setShowSectionsModal] = useState(false);
+  const [showRegLinksModal, setShowRegLinksModal] = useState(false);
+  const [showIdleTeachersModal, setShowIdleTeachersModal] = useState(false);
 
   const [openRequestModal, setOpenRequestModal] = useState(null);
   const [processingAction, setProcessingAction] = useState(false);
@@ -284,10 +290,9 @@ const SystemManagerPanel = ({ user, onLogout }) => {
   useEffect(() => {
     (async () => {
       try {
-        await purgeClassesWithoutSection();
         const secsCount = await getCountFromServer(collection(db, 'sections'));
         setSectionsCount(secsCount.data().count);
-      } catch (e) { console.warn('purge classes failed:', e); }
+      } catch (e) { console.warn('sections count failed:', e); }
     })();
   }, []);
 
@@ -602,6 +607,11 @@ const SystemManagerPanel = ({ user, onLogout }) => {
         case 'password_reset_rejection': success = sendPasswordResetRejectionMessage(studentObj); break;
         case 'unactivated_account_reminder': success = sendUnactivatedAccountReminderMessage(studentObj); break;
         case 'unactivated_account_deleted': success = sendUnactivatedAccountDeletedMessage(studentObj); break;
+        case 'registration_approved': success = sendRegistrationApprovedMessage(request); break;
+        case 'registration_rejected': success = sendRegistrationRejectedMessage(request); break;
+        case 'registration_deleted': success = sendRegistrationDeletedMessage(request); break;
+        case 'teacher_assignment': success = sendTeacherAssignmentMessage(request); break;
+        case 'teacher_relief': success = sendTeacherReliefMessage(request); break;
         default:
           toast.error('نوع طلب غير معروف.');
           return;
@@ -949,6 +959,26 @@ const SystemManagerPanel = ({ user, onLogout }) => {
             </div>
           </button>
 
+          <button onClick={() => setShowRegLinksModal(true)} className="bg-violet-50 dark:bg-gradient-to-br dark:from-violet-900/40 dark:to-fuchsia-900/20 p-5 rounded-2xl border border-violet-200 dark:border-violet-500/30 hover:border-violet-400 dark:hover:border-violet-400/60 text-right shadow-lg transition-colors">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-600 flex items-center justify-center shadow-lg"><FaLink className="text-white text-xl" /></div>
+                <div><p className="text-slate-900 dark:text-white font-bold">إضافة طلاب بالتسجيل الفردي</p><p className="text-xs text-violet-600 dark:text-violet-300 mt-0.5">إنشاء وإدارة روابط التسجيل</p></div>
+              </div>
+              <FaChevronLeft className="text-violet-500 dark:text-violet-300" />
+            </div>
+          </button>
+
+          <button onClick={() => setShowIdleTeachersModal(true)} className="bg-emerald-50 dark:bg-gradient-to-br dark:from-emerald-900/40 dark:to-green-900/20 p-5 rounded-2xl border border-emerald-200 dark:border-emerald-500/30 hover:border-emerald-400 dark:hover:border-emerald-400/60 text-right shadow-lg transition-colors">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center shadow-lg"><FaUserClock className="text-white text-xl" /></div>
+                <div><p className="text-slate-900 dark:text-white font-bold">المعلمون بدون شعب</p><p className="text-xs text-emerald-600 dark:text-emerald-300 mt-0.5">التفاصيل وسجل التعديلات</p></div>
+              </div>
+              <FaChevronLeft className="text-emerald-500 dark:text-emerald-300" />
+            </div>
+          </button>
+
           <button onClick={() => setShowBlacklistModal(true)} className="bg-red-50 dark:bg-gradient-to-br dark:from-red-900/40 dark:to-rose-900/20 p-5 rounded-2xl border border-red-200 dark:border-red-500/30 hover:border-red-400 dark:hover:border-red-400/60 text-right shadow-lg transition-colors">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
@@ -1232,9 +1262,11 @@ const SystemManagerPanel = ({ user, onLogout }) => {
               <button onClick={() => handleMarkSent(openRequestModal)} disabled={processingAction} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-50">
                 <FaCheckCircle /> {processingAction ? 'جاري التنفيذ...' : 'تم الإرسال (تنفيذ وحذف الطلب)'}
               </button>
+              {!SEND_ONLY_REQUEST_TYPES.includes(openRequestModal.type) && (
               <button onClick={() => handleRejectRequest(openRequestModal.id)} disabled={processingAction} className="w-full bg-red-600 hover:bg-red-700 text-white py-2 rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-50">
                 <FaTimesCircle /> رفض
               </button>
+              )}
             </div>
           </div>
         </div>
@@ -1243,6 +1275,8 @@ const SystemManagerPanel = ({ user, onLogout }) => {
       <SupervisorsManagerModal isOpen={showSupervisorsModal} onClose={() => setShowSupervisorsModal(false)} user={user} onCountChange={setSupervisorsCount} />
       <StudentsManagerModal isOpen={showStudentsModal} onClose={() => setShowStudentsModal(false)} user={user} onCountChange={setStudentsCount} />
       <SectionsManagerModal isOpen={showSectionsModal} onClose={() => setShowSectionsModal(false)} user={user} onCountChange={setSectionsCount} mode="manager" />
+      <RegistrationLinksModal isOpen={showRegLinksModal} onClose={() => setShowRegLinksModal(false)} user={user} />
+      <TeachersWithoutClassesModal isOpen={showIdleTeachersModal} onClose={() => setShowIdleTeachersModal(false)} />
       <BlacklistModal isOpen={showBlacklistModal} onClose={() => setShowBlacklistModal(false)} onCountChange={setBlacklistCount} />
 
       {showNotificationsModal && (

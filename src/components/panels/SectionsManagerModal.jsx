@@ -1,18 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import {
   FaTimes, FaPlus, FaSpinner, FaLayerGroup, FaGraduationCap, FaUsers,
   FaTrashAlt, FaFolder, FaFolderOpen, FaEdit, FaChevronLeft, FaHome,
   FaChalkboardTeacher, FaVenusMars, FaExchangeAlt, FaArrowRight,
-  FaSearch, FaArrowLeft, FaTimesCircle
+  FaArrowLeft, FaTimesCircle, FaBroom
 } from 'react-icons/fa';
 import { db } from '../../firebase';
-import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
 import {
-  getSections, createSection, renameSection,
-  getDescendantSectionIds, getSectionPath,
+  collection, getDocs, query, where, doc, getDoc, getCountFromServer
+} from 'firebase/firestore';
+import {
+  createSection, renameSection, getSectionPath,
   moveClassToSection, createClass, deleteClassById,
-  getClassStudentCounts, purgeClassesWithoutSection,
+  getClassStudentCount, findTeacherBySerial, purgeClassesWithoutSection,
   getClassGenderLabel, getTeacherNameForViewer, changeClassTeacher, getClassWarningStats,
   deleteSectionMergingIntoParent, moveSectionContentToSection
 } from '../../services/classes';
@@ -21,9 +22,14 @@ import { sanitizeInput, arabicToEnglishNumber, getNextLessonFromTimes } from '..
 import { useConfirm, usePrompt } from '../common/ConfirmContext';
 
 /**
- * ✅ إدارة الأقسام
- * mode = 'manager'    → صلاحيات كاملة (كل شيء)
- * mode = 'supervisor' → إنشاء شعبة فقط + تنقل + استعراض (بدون حذف/نقل/إدارة أقسام)
+ * ✅ إدارة الأقسام — تحميل كسول (Lazy Loading)
+ *  - عند الفتح: الأقسام الرئيسية فقط.
+ *  - عند الدخول لقسم: أقسامه الفرعية وشعبه فقط (ويُخزَّن مؤقتاً لحين الإغلاق).
+ *  - لا تُقرأ ملفات الطلاب إلا عند فتح تفاصيل شعبة أو التحقق من حذفها.
+ *  - رقم المعلم يُتحقَّق منه من السيرفر فقط عند الضغط على الزر (إنشاء / تغيير).
+ *
+ * mode = 'manager'    → صلاحيات كاملة
+ * mode = 'supervisor' → إنشاء شعبة + تغيير معلم + تنقل + استعراض
  * mode = 'viewer'     → استعراض فقط
  */
 const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'manager' }) => {
@@ -31,83 +37,116 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
   const prompt = usePrompt();
 
   const isManager = mode === 'manager';
-  // ✅ المشرف يقدر ينشئ شعبة فقط
   const canCreateClass = mode === 'manager' || mode === 'supervisor';
-  // ✅ الحذف والنقل للمدير فقط
+  const canChangeTeacher = mode === 'manager' || mode === 'supervisor';
   const canDeleteClass = mode === 'manager';
   const canMoveClass = mode === 'manager';
 
-  const [sections, setSections] = useState([]);
-  const [classes, setClasses] = useState([]);
-  const [teachers, setTeachers] = useState([]);
-  const [studentCounts, setStudentCounts] = useState({});
+  // الأقسام الرئيسية
+  const [rootSections, setRootSections] = useState([]);
+  const [rootLoaded, setRootLoaded] = useState(false);
+  // كاش الأقسام المفتوحة: { [sectionId]: { sections: [], classes: [] } }
+  const [cache, setCache] = useState({});
+  // كاش المعلمين: { [teacherId]: {...} }
+  const [teacherCache, setTeacherCache] = useState({});
+  const teacherCacheRef = useRef({});
   const [loading, setLoading] = useState(false);
 
-  // null = الصفحة الرئيسية (الأقسام الرئيسية)
-  const [currentId, setCurrentId] = useState(null);
+  // مسار التنقل (مصفوفة أقسام). فارغ = الرئيسية
+  const [path, setPath] = useState([]);
+  const current = path.length ? path[path.length - 1] : null;
+  const currentId = current ? current.id : null;
 
   // نموذج إضافة شعبة
   const [showClassForm, setShowClassForm] = useState(false);
   const [className, setClassName] = useState('');
-  const [classTeacherId, setClassTeacherId] = useState('');
+  const [teacherSerial, setTeacherSerial] = useState('');
   const [classGender, setClassGender] = useState(CLASS_GENDER.MIXED);
   const [submitting, setSubmitting] = useState(false);
-  const [teacherSearch, setTeacherSearch] = useState('');
 
   // وضع النقل (مدير فقط)
   const [moveMode, setMoveMode] = useState(null);
 
-  // نافذة تفاصيل الشعبة
+  // تفاصيل الشعبة
   const [detailsClass, setDetailsClass] = useState(null);
   const [details, setDetails] = useState(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
-  const [newTeacherForClass, setNewTeacherForClass] = useState('');
-  const [changingTeacher, setChangingTeacher] = useState(false);
 
-  // المدير يرى الأسماء كاملة؛ المشرف يُطبَّق عليه حجب اسم المعلمة عن المشرف الذكر
+  // نافذة تغيير المعلم
+  const [changeFor, setChangeFor] = useState(null);
+  const [changeSerial, setChangeSerial] = useState('');
+  const [changeReason, setChangeReason] = useState('');
+  const [changing, setChanging] = useState(false);
+
   const viewerGender = isManager ? null : user?.gender;
   const teacherLabel = (t) => getTeacherNameForViewer(t, viewerGender);
 
-  useEffect(() => {
-    if (isOpen) {
-      setCurrentId(null);
-      setShowClassForm(false);
-      setMoveMode(null);
-      setTeacherSearch('');
-      loadData();
+  // ---------------- التحميل ----------------
+  const loadRoot = async () => {
+    const snap = await getDocs(query(collection(db, 'sections'), where('parentId', '==', null)));
+    let list = snap.docs.map(d => ({ id: d.id, parentId: null, ...d.data() }));
+    if (list.length === 0) {
+      // احتياط لأقسام قديمة بدون حقل parentId
+      const all = await getDocs(collection(db, 'sections'));
+      list = all.docs.map(d => ({ id: d.id, ...d.data() })).filter(s => !s.parentId);
     }
-    // eslint-disable-next-line
-  }, [isOpen]);
+    list.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
+    setRootSections(list);
+    setRootLoaded(true);
+  };
 
-  const loadData = async () => {
+  const fetchTeachers = async (classList) => {
+    const missing = [...new Set(classList.map(c => c.teacherId).filter(Boolean))]
+      .filter(id => !teacherCacheRef.current[id]);
+    if (missing.length === 0) return;
+    const fetched = await Promise.all(missing.map(async (id) => {
+      try {
+        const s = await getDoc(doc(db, 'profiles', id));
+        if (!s.exists()) return [id, { id, name: '', missing: true }];
+        const d = s.data();
+        return [id, {
+          id, name: d.name || '', nickname: d.nickname || '', gender: d.gender || '',
+          username: d.username || '', serialNumber: d.serialNumber || ''
+        }];
+      } catch (e) {
+        return [id, { id, name: '', missing: true }];
+      }
+    }));
+    const next = { ...teacherCacheRef.current };
+    fetched.forEach(([id, t]) => { next[id] = t; });
+    teacherCacheRef.current = next;
+    setTeacherCache(next);
+  };
+
+  const loadSection = async (sectionId, { force = false } = {}) => {
+    if (!force && cache[sectionId]) return;
+    const [subSnap, clsSnap] = await Promise.all([
+      getDocs(query(collection(db, 'sections'), where('parentId', '==', sectionId))),
+      getDocs(query(collection(db, 'classes'), where('sectionId', '==', sectionId)))
+    ]);
+    const sections = subSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
+    const classes = clsSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
+    await fetchTeachers(classes);
+    setCache(prev => ({ ...prev, [sectionId]: { sections, classes } }));
+  };
+
+  const refreshCount = async () => {
+    try {
+      const c = await getCountFromServer(collection(db, 'sections'));
+      if (onCountChange) onCountChange(c.data().count);
+    } catch (e) { /* ignore */ }
+  };
+
+  // إعادة تحميل العرض الحالي فقط (بعد أي تعديل)
+  const reloadView = async () => {
     setLoading(true);
     try {
-      // ✅ حذف فوري لأي شعبة قديمة بدون قسم (+ أقسام يتيمة للمدير فقط)
-      const removed = await purgeClassesWithoutSection({ cleanSections: isManager });
-      if (removed > 0) toast.success(`تم حذف ${removed} شعبة قديمة بدون قسم`);
-
-      const [secs, classesSnap, teachersSnap, counts] = await Promise.all([
-        getSections(),
-        getDocs(collection(db, 'classes')),
-        getDocs(query(collection(db, 'profiles'), where('role', '==', 'teacher'))),
-        getClassStudentCounts()
-      ]);
-      setSections(secs);
-      setClasses(classesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-      const teachersList = teachersSnap.docs.map(d => ({
-        id: d.id,
-        name: d.data().name || '',
-        nickname: d.data().nickname || '',
-        gender: d.data().gender || '',
-        username: d.data().username || '',
-        serialNumber: d.data().serialNumber || d.data().serial || ''
-      }));
-      setTeachers(teachersList);
-      setStudentCounts(counts);
-      if (onCountChange) onCountChange(secs.length);
-
-      // إذا القسم المفتوح انحذف نرجع للرئيسية
-      setCurrentId(prev => (prev && !secs.some(s => s.id === prev)) ? null : prev);
+      setCache({});
+      await loadRoot();
+      if (currentId) await loadSection(currentId, { force: true });
+      await refreshCount();
     } catch (e) {
       toast.error('فشل التحميل: ' + e.message);
     } finally {
@@ -115,34 +154,59 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
     }
   };
 
-  const current = sections.find(s => s.id === currentId) || null;
-  const subSections = sections.filter(s => (s.parentId || null) === currentId);
-  const currentClasses = currentId ? classes.filter(c => c.sectionId === currentId) : [];
+  useEffect(() => {
+    if (!isOpen) return;
+    setPath([]);
+    setShowClassForm(false);
+    setMoveMode(null);
+    setTeacherSerial('');
+    setCache({});
+    setRootLoaded(false);
+    teacherCacheRef.current = {};
+    setTeacherCache({});
+    setLoading(true);
+    loadRoot()
+      .catch(e => toast.error('فشل التحميل: ' + e.message))
+      .finally(() => setLoading(false));
+    // eslint-disable-next-line
+  }, [isOpen]);
 
-  // مسار التنقل (breadcrumb)
-  const breadcrumb = [];
-  {
-    let node = current;
-    let guard = 0;
-    while (node && guard < 30) {
-      breadcrumb.unshift(node);
-      const parentId = node.parentId;
-      node = parentId ? sections.find(s => s.id === parentId) : null;
-      guard++;
+  // ---------------- التنقل ----------------
+  const enterSection = async (sec) => {
+    setShowClassForm(false);
+    setPath(prev => [...prev, sec]);
+    if (!cache[sec.id]) {
+      setLoading(true);
+      try { await loadSection(sec.id); }
+      catch (e) { toast.error('فشل التحميل: ' + e.message); }
+      finally { setLoading(false); }
     }
-  }
-
-  // عدد الطلاب والشعب داخل قسم (يشمل الأقسام الفرعية)
-  const getSectionStats = (sectionId) => {
-    const ids = [sectionId, ...getDescendantSectionIds(sections, sectionId)];
-    const secClasses = classes.filter(c => ids.includes(c.sectionId));
-    const students = secClasses.reduce((sum, c) => sum + (studentCounts[c.id] || 0), 0);
-    return { subCount: ids.length - 1, classCount: secClasses.length, students };
   };
 
-  const getTeacherById = (id) => teachers.find(t => t.id === id);
+  const goToIndex = async (idx) => {
+    // idx = -1 → الرئيسية
+    const next = idx < 0 ? [] : path.slice(0, idx + 1);
+    setPath(next);
+    setShowClassForm(false);
+    const target = next.length ? next[next.length - 1] : null;
+    if (target && !cache[target.id]) {
+      setLoading(true);
+      try { await loadSection(target.id); }
+      catch (e) { toast.error('فشل التحميل: ' + e.message); }
+      finally { setLoading(false); }
+    }
+  };
 
-  // ---------- إضافة قسم (مدير فقط) ----------
+  const goUp = () => goToIndex(path.length - 2);
+
+  const view = currentId ? cache[currentId] : null;
+  const subSections = currentId ? (view?.sections || []) : rootSections;
+  const currentClasses = currentId ? (view?.classes || []) : [];
+  const viewReady = currentId ? !!view : rootLoaded;
+
+  const getTeacherById = (id) => teacherCache[id];
+
+  // ---------------- إضافة قسم (مدير) ----------------
   const handleAddSection = async () => {
     if (!isManager) return;
     const value = await prompt(
@@ -156,13 +220,13 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
     try {
       await createSection({ name: clean, createdBy: user?.id, parentId: currentId });
       toast.success('✅ تم إنشاء القسم');
-      await loadData();
+      await reloadView();
     } catch (err) {
       toast.error('فشل: ' + err.message);
     }
   };
 
-  // ---------- تعديل اسم القسم (مدير فقط) ----------
+  // ---------------- تعديل اسم القسم (مدير) ----------------
   const handleRename = async () => {
     if (!isManager || !current) return;
     const value = await prompt('تعديل اسم القسم', 'اكتب الاسم الجديد', current.name);
@@ -173,63 +237,73 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
     try {
       await renameSection(current.id, clean);
       toast.success('✅ تم تعديل الاسم');
-      await loadData();
+      setPath(prev => prev.map(s => s.id === current.id ? { ...s, name: clean } : s));
+      await reloadView();
     } catch (err) {
       toast.error('فشل: ' + err.message);
     }
   };
 
-  // ---------- حذف القسم الحالي (مدير فقط) ----------
+  // ---------------- حذف القسم الحالي (مدير) ----------------
   const handleDeleteCurrent = async () => {
     if (!isManager || !current) return;
-
-    const isRoot = !current.parentId;
-    if (isRoot) {
+    if (!current.parentId) {
       toast.error('لا يمكنك حذف قسم رئيسي يجب نقل الشعب إلى مكان اخر', { duration: 6000 });
       return;
     }
-
-    const stats = getSectionStats(current.id);
-    const parentName = sections.find(s => s.id === current.parentId)?.name || 'الأب';
-    const msg = (stats.subCount > 0 || stats.classCount > 0)
-      ? `سيتم نقل ${stats.classCount} شعبة و ${stats.subCount} قسم فرعي إلى القسم الأب "${parentName}"، ثم حذف القسم "${current.name}". متابعة؟`
+    const subCount = view?.sections?.length || 0;
+    const classCount = view?.classes?.length || 0;
+    const parentName = path.length > 1 ? path[path.length - 2].name : 'الأب';
+    const msg = (subCount > 0 || classCount > 0)
+      ? `سيتم نقل ${classCount} شعبة و ${subCount} قسم فرعي إلى القسم الأب "${parentName}"، ثم حذف القسم "${current.name}". متابعة؟`
       : `حذف القسم "${current.name}" نهائياً؟`;
     const ok = await confirm('حذف القسم', msg);
     if (!ok) return;
     try {
-      const parent = current.parentId;
       await deleteSectionMergingIntoParent(current.id);
       toast.success('✅ تم حذف القسم ونقل محتواه إلى القسم الأب');
-      setCurrentId(parent);
-      await loadData();
+      setPath(prev => prev.slice(0, -1));
+      setCache({});
+      setLoading(true);
+      await loadRoot();
+      const parent = path.length > 1 ? path[path.length - 2] : null;
+      if (parent) await loadSection(parent.id, { force: true });
+      await refreshCount();
+      setLoading(false);
     } catch (err) {
+      setLoading(false);
       toast.error('فشل: ' + err.message);
     }
   };
 
-  // ---------- إضافة شعبة داخل القسم الحالي ----------
+  // ---------------- إضافة شعبة ----------------
   const handleAddClass = async (e) => {
     e.preventDefault();
     if (!currentId) return;
     if (!className.trim()) return toast.error('اسم الشعبة مطلوب');
-    const typedSerial = arabicToEnglishNumber(teacherSearch).trim();
-    const matchedTeacher = typedSerial
-      ? teachers.find(t => String(t.serialNumber || '').trim() === typedSerial)
-      : null;
-    if (!matchedTeacher) return toast.error('أدخل الرقم التسلسلي الصحيح للمعلم');
+    const serial = arabicToEnglishNumber(teacherSerial).trim();
+    if (!serial) return toast.error('أدخل الرقم التسلسلي للمعلم');
     setSubmitting(true);
     try {
+      // التحقق من السيرفر فقط الآن (عند الضغط على إنشاء)
+      const teacher = await findTeacherBySerial(serial);
+      if (!teacher) {
+        toast.error('الرقم التسلسلي للمعلم غير صحيح');
+        return;
+      }
       await createClass({
         name: sanitizeInput(className),
-        teacherId: matchedTeacher.id,
+        teacherId: teacher.id,
         gender: classGender,
-        sectionId: currentId
+        sectionId: currentId,
+        createdBy: user?.id || '',
+        createdByName: user?.name || user?.username || ''
       });
-      toast.success('✅ تم إنشاء الشعبة');
+      toast.success(`✅ تم إنشاء الشعبة — المعلم: ${teacherLabel(teacher)}`);
       setClassName('');
-      setTeacherSearch('');
+      setTeacherSerial('');
       setShowClassForm(false);
-      await loadData();
+      await loadSection(currentId, { force: true });
     } catch (err) {
       toast.error('فشل: ' + err.message);
     } finally {
@@ -237,102 +311,82 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
     }
   };
 
-  // ---------- حذف شعبة (مدير فقط) ----------
+  // ---------------- حذف شعبة (مدير) ----------------
   const handleDeleteClass = async (cls) => {
     if (!canDeleteClass) return;
-    if ((studentCounts[cls.id] || 0) > 0) {
-      toast.error('لا يمكن حذف شعبة تحتوي على طلاب. أفرغها أولاً.');
-      return;
+    try {
+      const n = await getClassStudentCount(cls.id);
+      if (n > 0) {
+        toast.error('لا يمكن حذف شعبة تحتوي على طلاب. أفرغها أولاً.');
+        return;
+      }
+    } catch (e) {
+      return toast.error('فشل التحقق من عدد الطلاب: ' + e.message);
     }
     const ok = await confirm('حذف الشعبة', `حذف الشعبة "${cls.name}" نهائياً؟`);
     if (!ok) return;
     try {
       await deleteClassById(cls.id);
       toast.success('تم حذف الشعبة');
-      await loadData();
+      await loadSection(currentId, { force: true });
     } catch (err) {
       toast.error('فشل: ' + err.message);
     }
   };
 
-  // ---------- بدء وضع نقل شعبة (مدير فقط) ----------
+  // ---------------- النقل (مدير) ----------------
   const handleStartMoveClass = (cls) => {
     if (!canMoveClass) return;
     setMoveMode({ type: 'class', item: cls });
     setShowClassForm(false);
-    setCurrentId(null);
+    setPath([]);
   };
 
-  // ---------- بدء وضع نقل محتوى قسم (مدير فقط) ----------
   const handleStartMoveContent = (sec) => {
     if (!isManager) return;
-    const stats = getSectionStats(sec.id);
-    if (stats.subCount === 0 && stats.classCount === 0) {
-      toast.error('هذا القسم لا يحتوي على أي محتوى لنقله');
-      return;
-    }
     setMoveMode({ type: 'content', sectionId: sec.id, sectionName: sec.name });
     setShowClassForm(false);
-    setCurrentId(null);
+    setPath([]);
   };
 
   const cancelMove = () => setMoveMode(null);
 
-  const handleTransferTo = async (targetSectionId) => {
+  const handleTransferTo = async (targetSectionId, targetName = '') => {
     if (!moveMode) return;
-
-    if (moveMode.type === 'class') {
-      if (targetSectionId === moveMode.item.sectionId) {
-        toast.error('الشعبة موجودة في هذا القسم أصلاً');
-        return;
-      }
-      if (!targetSectionId) {
-        toast.error('لا يمكن نقل الشعبة إلى الصفحة الرئيسية. اختر قسماً.');
-        return;
-      }
-      try {
-        await moveClassToSection(moveMode.item.id, targetSectionId);
-        const targetName = sections.find(s => s.id === targetSectionId)?.name || '';
-        toast.success(`✅ تم نقل الشعبة إلى: ${targetName}`);
-        setMoveMode(null);
-        await loadData();
-      } catch (err) {
-        toast.error('فشل: ' + err.message);
-      }
+    if (!targetSectionId) {
+      toast.error('لا يمكن النقل إلى الصفحة الرئيسية. اختر قسماً.');
       return;
     }
-
-    if (moveMode.type === 'content') {
-      if (!targetSectionId) {
-        toast.error('لا يمكن نقل المحتوى إلى الصفحة الرئيسية. اختر قسماً.');
-        return;
-      }
-      if (targetSectionId === moveMode.sectionId) {
-        toast.error('لا يمكن النقل إلى نفس القسم');
-        return;
-      }
-      const descendants = getDescendantSectionIds(sections, moveMode.sectionId);
-      if (descendants.includes(targetSectionId)) {
-        toast.error('لا يمكن نقل المحتوى إلى قسم يقع داخل نفس القسم');
-        return;
-      }
-      try {
+    try {
+      if (moveMode.type === 'class') {
+        if (targetSectionId === moveMode.item.sectionId) {
+          return toast.error('الشعبة موجودة في هذا القسم أصلاً');
+        }
+        await moveClassToSection(moveMode.item.id, targetSectionId);
+        toast.success(`✅ تم نقل الشعبة إلى: ${targetName}`);
+      } else {
+        if (targetSectionId === moveMode.sectionId) {
+          return toast.error('لا يمكن النقل إلى نفس القسم');
+        }
+        if (path.some(s => s.id === moveMode.sectionId)) {
+          return toast.error('لا يمكن نقل المحتوى إلى قسم يقع داخل نفس القسم');
+        }
         await moveSectionContentToSection(moveMode.sectionId, targetSectionId);
-        const targetName = sections.find(s => s.id === targetSectionId)?.name || '';
         toast.success(`✅ تم نقل محتوى القسم إلى: ${targetName}`);
-        setMoveMode(null);
-        await loadData();
-      } catch (err) {
-        toast.error('فشل: ' + err.message);
       }
+      setMoveMode(null);
+      await reloadView();
+    } catch (err) {
+      toast.error('فشل: ' + err.message);
     }
   };
 
-  // ---------- نافذة تفاصيل الشعبة ----------
+  const handleTransferHere = () => handleTransferTo(currentId, current?.name || '');
+
+  // ---------------- تفاصيل الشعبة ----------------
   const openDetails = async (cls) => {
     setDetailsClass(cls);
     setDetails(null);
-    setNewTeacherForClass(cls.teacherId || '');
     setDetailsLoading(true);
     try {
       const [stats, teacherLessonsSnap] = await Promise.all([
@@ -343,7 +397,7 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
       setDetails({ ...stats, nextLesson: getNextLessonFromTimes(lessonTimes) });
     } catch (e) {
       toast.error('فشل تحميل تفاصيل الشعبة: ' + e.message);
-      setDetails({ studentsCount: studentCounts[cls.id] || 0, studentsWithWarnings: 0, totalWarnings: 0, nextLesson: null });
+      setDetails({ studentsCount: 0, studentsWithWarnings: 0, totalWarnings: 0, nextLesson: null });
     } finally {
       setDetailsLoading(false);
     }
@@ -351,42 +405,62 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
 
   const closeDetails = () => { setDetailsClass(null); setDetails(null); };
 
+  // ---------------- تغيير المعلم (مشرف + مدير) ----------------
+  const openChangeTeacher = (cls) => {
+    setChangeFor(cls);
+    setChangeSerial('');
+    setChangeReason('');
+  };
+
   const handleChangeTeacher = async () => {
-    if (!isManager || !detailsClass) return;
-    if (!newTeacherForClass || newTeacherForClass === detailsClass.teacherId) {
-      return toast.error('اختر معلماً مختلفاً');
-    }
-    const t = getTeacherById(newTeacherForClass);
-    const ok = await confirm('تغيير المعلم', `سيصبح معلم الشعبة \"${detailsClass.name}\": ${teacherLabel(t)}. متابعة؟`);
-    if (!ok) return;
-    setChangingTeacher(true);
+    if (!canChangeTeacher || !changeFor) return;
+    const serial = arabicToEnglishNumber(changeSerial).trim();
+    if (!serial) return toast.error('أدخل الرقم التسلسلي للمعلم الجديد');
+    setChanging(true);
     try {
-      await changeClassTeacher(detailsClass.id, newTeacherForClass);
-      toast.success('✅ تم تغيير المعلم');
-      const updated = { ...detailsClass, teacherId: newTeacherForClass };
-      await loadData();
-      await openDetails(updated);
+      const teacher = await findTeacherBySerial(serial);
+      if (!teacher) {
+        toast.error('الرقم التسلسلي للمعلم غير صحيح');
+        return;
+      }
+      if (teacher.id === changeFor.teacherId) {
+        toast.error('هذا المعلم هو معلم الشعبة بالفعل');
+        return;
+      }
+      const ok = await confirm(
+        'تغيير المعلم',
+        `سيصبح معلم الشعبة "${changeFor.name}": ${teacherLabel(teacher)} (#${teacher.serialNumber}). متابعة؟`
+      );
+      if (!ok) return;
+      await changeClassTeacher(changeFor.id, teacher.id, {
+        byId: user?.id || '',
+        byName: user?.name || user?.username || '',
+        reason: sanitizeInput(changeReason)
+      });
+      toast.success('✅ تم تغيير المعلم وإبلاغ المدير لإرسال الإشعارات');
+      setChangeFor(null);
+      closeDetails();
+      await loadSection(currentId, { force: true });
     } catch (err) {
       toast.error('فشل: ' + err.message);
     } finally {
-      setChangingTeacher(false);
+      setChanging(false);
     }
   };
 
-  const handleTransferHere = () => handleTransferTo(currentId);
-  const goUp = () => setCurrentId(current?.parentId || null);
-
-  // فلترة المعلمين حسب البحث
-  const filteredTeachers = teachers.filter(t => {
-    const q = arabicToEnglishNumber(teacherSearch).trim();
-    if (!q) return true;
-    return (
-      (t.serialNumber || '').includes(q) ||
-      (t.name || '').includes(q) ||
-      (t.nickname || '').includes(q) ||
-      (t.username || '').includes(q)
-    );
-  });
+  // ---------------- تنظيف يدوي (مدير) ----------------
+  const handleManualPurge = async () => {
+    if (!isManager) return;
+    const ok = await confirm('تنظيف الشعب اليتيمة', 'سيتم فحص كل الشعب والأقسام وحذف الشعب التي لا تتبع أي قسم (عملية تقرأ كل البيانات). متابعة؟');
+    if (!ok) return;
+    try {
+      const removed = await purgeClassesWithoutSection({ cleanSections: true });
+      toast.success(removed > 0 ? `تم حذف ${removed} شعبة يتيمة` : 'لا توجد شعب يتيمة');
+      await reloadView();
+    } catch (e) {
+      toast.error('فشل: ' + e.message);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -396,8 +470,7 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
     if (moveMode.type === 'class') return currentId === moveMode.item.sectionId;
     if (moveMode.type === 'content') {
       if (currentId === moveMode.sectionId) return true;
-      const desc = getDescendantSectionIds(sections, moveMode.sectionId);
-      if (desc.includes(currentId)) return true;
+      if (path.some(s => s.id === moveMode.sectionId)) return true;
       return false;
     }
     return true;
@@ -417,32 +490,34 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
               <h3 className="text-xl font-bold text-white">إدارة الأقسام</h3>
               <p className="text-xs text-gray-400">
                 {isManager
-                  ? 'أقسام داخل أقسام — مثل المجلدات'
+                  ? 'أقسام داخل أقسام — مثل المجلدات (يُحمَّل كل قسم عند فتحه فقط)'
                   : mode === 'supervisor'
-                    ? 'إضافة شعب داخل الأقسام — تنقّل ثم اضغط "إضافة شعبة"'
-                    : 'استعراض الأقسام'} • {sections.length} قسم
+                    ? 'تنقّل بين الأقسام — يُحمَّل كل قسم عند فتحه فقط'
+                    : 'استعراض الأقسام'}
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl flex-shrink-0"><FaTimes /></button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {isManager && (
+              <button onClick={handleManualPurge} title="تنظيف الشعب اليتيمة" className="text-gray-400 hover:text-amber-300 text-lg"><FaBroom /></button>
+            )}
+            <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl"><FaTimes /></button>
+          </div>
         </div>
 
-        {/* مسار التنقل — زر الرئيسية يظهر فقط لما تكون داخل قسم */}
+        {/* مسار التنقل */}
         <div className="px-5 py-3 border-b border-gray-700 flex flex-wrap items-center gap-1 text-sm">
           {current ? (
             <>
-              <button
-                onClick={() => setCurrentId(null)}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-gray-300 hover:bg-gray-800"
-              >
+              <button onClick={() => goToIndex(-1)} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-gray-300 hover:bg-gray-800">
                 <FaHome /> الرئيسية
               </button>
-              {breadcrumb.map((node, i) => (
+              {path.map((node, i) => (
                 <React.Fragment key={node.id}>
                   <FaChevronLeft className="text-gray-600 text-xs" />
                   <button
-                    onClick={() => setCurrentId(node.id)}
-                    className={`px-2 py-1 rounded-lg ${i === breadcrumb.length - 1 ? 'text-teal-300 font-bold' : 'text-gray-300 hover:bg-gray-800'}`}
+                    onClick={() => goToIndex(i)}
+                    className={`px-2 py-1 rounded-lg ${i === path.length - 1 ? 'text-teal-300 font-bold' : 'text-gray-300 hover:bg-gray-800'}`}
                   >
                     {node.name}
                   </button>
@@ -474,10 +549,7 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
               >
                 <FaArrowLeft /> نقل هنا
               </button>
-              <button
-                onClick={cancelMove}
-                className="text-xs bg-red-500/20 hover:bg-red-500/30 text-red-300 px-3 py-1.5 rounded-lg inline-flex items-center gap-1"
-              >
+              <button onClick={cancelMove} className="text-xs bg-red-500/20 hover:bg-red-500/30 text-red-300 px-3 py-1.5 rounded-lg inline-flex items-center gap-1">
                 <FaTimesCircle /> إلغاء النقل
               </button>
             </div>
@@ -488,50 +560,29 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
         {!moveMode && (
           <div className="px-5 py-3 border-b border-gray-700 flex flex-wrap gap-2">
             {current && (
-              <button
-                onClick={goUp}
-                className="text-xs bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg inline-flex items-center gap-1"
-              >
+              <button onClick={goUp} className="text-xs bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg inline-flex items-center gap-1">
                 <FaArrowRight /> رجوع
               </button>
             )}
-            {/* إضافة قسم — مدير فقط */}
             {isManager && (
-              <button
-                onClick={handleAddSection}
-                className="text-xs bg-teal-600 hover:bg-teal-700 text-white px-3 py-1.5 rounded-lg inline-flex items-center gap-1 font-bold"
-              >
+              <button onClick={handleAddSection} className="text-xs bg-teal-600 hover:bg-teal-700 text-white px-3 py-1.5 rounded-lg inline-flex items-center gap-1 font-bold">
                 <FaPlus /> {current ? 'إضافة قسم داخله' : 'إضافة قسم رئيسي'}
               </button>
             )}
-            {/* إضافة شعبة — مدير + مشرف (لكن لازم يكون داخل قسم) */}
             {current && canCreateClass && (
-              <button
-                onClick={() => setShowClassForm(v => !v)}
-                className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg inline-flex items-center gap-1 font-bold"
-              >
+              <button onClick={() => setShowClassForm(v => !v)} className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg inline-flex items-center gap-1 font-bold">
                 <FaGraduationCap /> {showClassForm ? 'إغلاق نموذج الشعبة' : 'إضافة شعبة'}
               </button>
             )}
-            {/* أدوات القسم — مدير فقط */}
             {current && isManager && (
               <>
-                <button
-                  onClick={handleRename}
-                  className="text-xs bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 px-3 py-1.5 rounded-lg inline-flex items-center gap-1"
-                >
+                <button onClick={handleRename} className="text-xs bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 px-3 py-1.5 rounded-lg inline-flex items-center gap-1">
                   <FaEdit /> تعديل الاسم
                 </button>
-                <button
-                  onClick={() => handleStartMoveContent(current)}
-                  className="text-xs bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 px-3 py-1.5 rounded-lg inline-flex items-center gap-1"
-                >
+                <button onClick={() => handleStartMoveContent(current)} className="text-xs bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 px-3 py-1.5 rounded-lg inline-flex items-center gap-1">
                   <FaExchangeAlt /> نقل محتوى هذا القسم
                 </button>
-                <button
-                  onClick={handleDeleteCurrent}
-                  className="text-xs bg-red-500/20 hover:bg-red-500/30 text-red-300 px-3 py-1.5 rounded-lg inline-flex items-center gap-1"
-                >
+                <button onClick={handleDeleteCurrent} className="text-xs bg-red-500/20 hover:bg-red-500/30 text-red-300 px-3 py-1.5 rounded-lg inline-flex items-center gap-1">
                   <FaTrashAlt /> حذف القسم
                 </button>
               </>
@@ -544,45 +595,31 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
           {showClassForm && current && canCreateClass && (
             <form onSubmit={handleAddClass} className="bg-gray-800/50 p-4 rounded-xl border border-indigo-500/20 space-y-3">
               <p className="text-xs text-gray-400">
-                إضافة شعبة داخل: <strong className="text-teal-300">{getSectionPath(sections, current.id)}</strong>
+                إضافة شعبة داخل: <strong className="text-teal-300">{path.map(p => p.name).join(' / ')}</strong>
               </p>
               <div>
                 <label className="block text-xs text-gray-400 mb-1">اسم الشعبة <span className="text-red-400">*</span></label>
                 <input
-                  type="text"
-                  value={className}
-                  onChange={e => setClassName(e.target.value)}
+                  type="text" value={className} onChange={e => setClassName(e.target.value)}
                   placeholder="مثال: علم التجويد المستوى الأول"
-                  className="w-full bg-gray-700 text-right p-2 rounded-lg text-white text-sm border border-gray-600"
-                  required
+                  className="w-full bg-gray-700 text-right p-2 rounded-lg text-white text-sm border border-gray-600" required
                 />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <label className="block text-xs text-gray-400 mb-1">الرقم التسلسلي للمعلم <span className="text-red-400">*</span></label>
                   <input
-                    type="text"
-                    inputMode="numeric"
-                    dir="ltr"
-                    value={teacherSearch}
-                    onChange={e => setTeacherSearch(arabicToEnglishNumber(e.target.value))}
+                    type="text" inputMode="numeric" dir="ltr"
+                    value={teacherSerial} onChange={e => setTeacherSerial(arabicToEnglishNumber(e.target.value))}
                     placeholder="اكتب الرقم التسلسلي للمعلم"
                     className="w-full bg-gray-700 text-center p-2 rounded-lg text-white text-sm border border-gray-600 font-mono tracking-widest"
                   />
-                  {(() => {
-                    const q = arabicToEnglishNumber(teacherSearch).trim();
-                    if (!q) return <p className="text-[11px] text-gray-500 mt-1">سيظهر اسم المعلم هنا للتأكد قبل الإنشاء</p>;
-                    const found = teachers.find(t => String(t.serialNumber || '').trim() === q);
-                    return found
-                      ? <p className="text-[12px] text-green-400 mt-1">✅ المعلم: {teacherLabel(found)} — #{found.serialNumber}</p>
-                      : <p className="text-[11px] text-red-400 mt-1">لا يوجد معلم بهذا الرقم التسلسلي</p>;
-                  })()}
+                  <p className="text-[11px] text-gray-500 mt-1">يتم التحقق من الرقم عند الضغط على "إنشاء الشعبة".</p>
                 </div>
                 <div>
                   <label className="block text-xs text-gray-400 mb-1">جنس الشعبة <span className="text-red-400">*</span></label>
                   <select
-                    value={classGender}
-                    onChange={e => setClassGender(e.target.value)}
+                    value={classGender} onChange={e => setClassGender(e.target.value)}
                     className="w-full bg-gray-700 text-right p-2 rounded-lg text-white text-sm border border-gray-600"
                   >
                     <option value={CLASS_GENDER.MALE}>ذكور فقط</option>
@@ -591,17 +628,13 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
                   </select>
                 </div>
               </div>
-              <button
-                type="submit"
-                disabled={submitting}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-bold"
-              >
-                {submitting ? 'جاري الإنشاء...' : 'إنشاء الشعبة'}
+              <button type="submit" disabled={submitting} className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-bold">
+                {submitting ? 'جاري التحقق والإنشاء...' : 'إنشاء الشعبة'}
               </button>
             </form>
           )}
 
-          {loading ? (
+          {(loading || !viewReady) ? (
             <div className="text-center py-8 text-gray-400">
               <FaSpinner className="animate-spin text-3xl mx-auto mb-2" />
               جاري التحميل...
@@ -613,47 +646,28 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
                 <div>
                   <p className="text-xs text-gray-500 mb-2">{current ? 'الأقسام الفرعية' : 'الأقسام الرئيسية'} ({subSections.length})</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {subSections.map(sec => {
-                      const stats = getSectionStats(sec.id);
-                      return (
-                        <div
-                          key={sec.id}
-                          className="p-3 bg-black/30 rounded-xl border border-gray-700 hover:border-teal-500/50 transition flex items-center gap-2"
-                        >
-                          <button
-                            onClick={() => { setCurrentId(sec.id); setShowClassForm(false); }}
-                            className="flex-1 text-right flex items-center gap-3 min-w-0"
-                          >
-                            <FaFolder className="text-amber-400 text-3xl flex-shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-white font-bold text-sm truncate">{sec.name}</p>
-                              <p className="text-[11px] text-gray-400 mt-1">
-                                {stats.subCount} قسم • {stats.classCount} شعبة • {stats.students} طالب
-                              </p>
-                            </div>
-                            <FaChevronLeft className="text-gray-500 flex-shrink-0" />
+                    {subSections.map(sec => (
+                      <div key={sec.id} className="p-3 bg-black/30 rounded-xl border border-gray-700 hover:border-teal-500/50 transition flex items-center gap-2">
+                        <button onClick={() => enterSection(sec)} className="flex-1 text-right flex items-center gap-3 min-w-0">
+                          <FaFolder className="text-amber-400 text-3xl flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-white font-bold text-sm truncate">{sec.name}</p>
+                            <p className="text-[11px] text-gray-500 mt-1">اضغط للفتح</p>
+                          </div>
+                          <FaChevronLeft className="text-gray-500 flex-shrink-0" />
+                        </button>
+                        {isManager && !moveMode && (
+                          <button onClick={() => handleStartMoveContent(sec)} className="text-xs bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 p-2 rounded-lg inline-flex items-center flex-shrink-0" title="نقل محتوى القسم">
+                            <FaExchangeAlt />
                           </button>
-                          {isManager && !moveMode && (
-                            <button
-                              onClick={() => handleStartMoveContent(sec)}
-                              className="text-xs bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 p-2 rounded-lg inline-flex items-center flex-shrink-0"
-                              title="نقل محتوى القسم"
-                            >
-                              <FaExchangeAlt />
-                            </button>
-                          )}
-                          {moveMode && (
-                            <button
-                              onClick={() => handleTransferTo(sec.id)}
-                              className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded-lg inline-flex items-center gap-1 flex-shrink-0 font-bold"
-                              title="نقل هنا"
-                            >
-                              <FaArrowLeft />
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
+                        )}
+                        {moveMode && (
+                          <button onClick={() => handleTransferTo(sec.id, sec.name)} className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded-lg inline-flex items-center gap-1 flex-shrink-0 font-bold" title="نقل هنا">
+                            <FaArrowLeft />
+                          </button>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
@@ -682,29 +696,27 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
                             </p>
                             <div className="flex flex-wrap gap-2 mt-1">
                               <span className="text-xs text-gray-400 flex items-center gap-1"><FaChalkboardTeacher /> {teacherName}</span>
-                              <span className="text-xs text-cyan-300 flex items-center gap-1"><FaUsers /> {studentCounts[cls.id] || 0} طالب</span>
                               <span className={`text-xs px-2 py-0.5 rounded border ${genderColor}`}>
                                 <FaVenusMars className="inline me-1" /> {getClassGenderLabel(cls.gender)}
                               </span>
                             </div>
                           </div>
-                          {/* ✅ أزرار النقل والحذف — تظهر فقط للمدير */}
-                          {!moveMode && (canMoveClass || canDeleteClass) && (
+                          {!moveMode && (canMoveClass || canDeleteClass || canChangeTeacher) && (
                             <div className="flex gap-2 flex-wrap" onClick={e => e.stopPropagation()}>
                               {canMoveClass && (
-                                <button
-                                  onClick={() => handleStartMoveClass(cls)}
-                                  className="text-xs bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 px-3 py-1.5 rounded-lg inline-flex items-center gap-1"
-                                >
+                                <button onClick={() => handleStartMoveClass(cls)} className="text-xs bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 px-3 py-1.5 rounded-lg inline-flex items-center gap-1">
                                   <FaExchangeAlt /> نقل
                                 </button>
                               )}
                               {canDeleteClass && (
-                                <button
-                                  onClick={() => handleDeleteClass(cls)}
-                                  className="text-xs bg-red-500/20 hover:bg-red-500/30 text-red-300 px-3 py-1.5 rounded-lg inline-flex items-center gap-1"
-                                >
+                                <button onClick={() => handleDeleteClass(cls)} className="text-xs bg-red-500/20 hover:bg-red-500/30 text-red-300 px-3 py-1.5 rounded-lg inline-flex items-center gap-1">
                                   <FaTrashAlt /> حذف
+                                </button>
+                              )}
+                              {/* أقصى اليسار: تغيير المعلم */}
+                              {canChangeTeacher && (
+                                <button onClick={() => openChangeTeacher(cls)} className="text-xs bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 px-3 py-1.5 rounded-lg inline-flex items-center gap-1 font-bold">
+                                  <FaChalkboardTeacher /> تغيير معلم
                                 </button>
                               )}
                             </div>
@@ -716,7 +728,6 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
                 </div>
               )}
 
-              {/* حالة فارغة */}
               {subSections.length === 0 && (!current || currentClasses.length === 0) && !showClassForm && !moveMode && (
                 <div className="text-center py-10 text-gray-400">
                   <FaFolderOpen className="text-5xl mx-auto mb-3 text-gray-600" />
@@ -732,20 +743,14 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
 
       {/* نافذة تفاصيل الشعبة */}
       {detailsClass && (
-        <div
-          className="fixed inset-0 bg-black/70 z-[80] flex items-center justify-center p-4"
-          onClick={(e) => { e.stopPropagation(); closeDetails(); }}
-          dir="rtl"
-        >
+        <div className="fixed inset-0 bg-black/70 z-[80] flex items-center justify-center p-4" onClick={(e) => { e.stopPropagation(); closeDetails(); }} dir="rtl">
           <div className="bg-gray-900 rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto border border-indigo-500/40 p-5" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-start mb-4 gap-2">
               <div className="min-w-0">
                 <h3 className="text-lg font-bold text-white flex items-center gap-2">
                   <FaGraduationCap className="text-indigo-300" /> {detailsClass.name}
                 </h3>
-                {detailsClass.sectionId && (
-                  <p className="text-xs text-gray-400 mt-1">{getSectionPath(sections, detailsClass.sectionId)}</p>
-                )}
+                {path.length > 0 && <p className="text-xs text-gray-400 mt-1">{path.map(p => p.name).join(' / ')}</p>}
               </div>
               <button onClick={closeDetails} className="text-gray-400 hover:text-white text-xl"><FaTimes /></button>
             </div>
@@ -784,33 +789,55 @@ const SectionsManagerModal = ({ isOpen, onClose, user, onCountChange, mode = 'ma
                   <span className="text-gray-400">مجموع الإنذارات داخل الشعبة</span>
                   <span className="text-red-300 font-bold">{details.totalWarnings}</span>
                 </div>
-
-                {isManager && (
-                  <div className="bg-black/30 p-3 rounded-lg border border-indigo-500/30 space-y-2 mt-3">
-                    <label className="block text-xs text-gray-400">تغيير معلم الشعبة</label>
-                    <select
-                      value={newTeacherForClass}
-                      onChange={e => setNewTeacherForClass(e.target.value)}
-                      className="w-full bg-gray-700 text-right p-2 rounded-lg text-white text-sm border border-gray-600"
-                    >
-                      <option value="">اختر المعلم</option>
-                      {teachers.map(t => (
-                        <option key={t.id} value={t.id}>
-                          {teacherLabel(t)}{t.serialNumber ? ` — #${t.serialNumber}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={handleChangeTeacher}
-                      disabled={changingTeacher || !newTeacherForClass || newTeacherForClass === detailsClass.teacherId}
-                      className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-bold"
-                    >
-                      {changingTeacher ? 'جاري التغيير...' : 'حفظ المعلم الجديد'}
-                    </button>
-                  </div>
+                {canChangeTeacher && (
+                  <button
+                    onClick={() => { const c = detailsClass; closeDetails(); openChangeTeacher(c); }}
+                    className="w-full mt-2 bg-emerald-600 hover:bg-emerald-700 text-white py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2"
+                  >
+                    <FaChalkboardTeacher /> تغيير معلم الشعبة
+                  </button>
                 )}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* نافذة تغيير المعلم */}
+      {changeFor && (
+        <div className="fixed inset-0 bg-black/70 z-[90] flex items-center justify-center p-4" onClick={(e) => { e.stopPropagation(); if (!changing) setChangeFor(null); }} dir="rtl">
+          <div className="bg-gray-900 rounded-2xl w-full max-w-md border border-emerald-500/40 p-5 space-y-3" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-start gap-2">
+              <div className="min-w-0">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2"><FaChalkboardTeacher className="text-emerald-300" /> تغيير معلم الشعبة</h3>
+                <p className="text-xs text-gray-400 mt-1">الشعبة: {changeFor.name} — المعلم الحالي: {teacherLabel(getTeacherById(changeFor.teacherId))}</p>
+              </div>
+              <button onClick={() => setChangeFor(null)} disabled={changing} className="text-gray-400 hover:text-white text-xl"><FaTimes /></button>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">الرقم التسلسلي للمعلم الجديد <span className="text-red-400">*</span></label>
+              <input
+                type="text" inputMode="numeric" dir="ltr" autoFocus
+                value={changeSerial} onChange={e => setChangeSerial(arabicToEnglishNumber(e.target.value))}
+                placeholder="مثال: 20260001"
+                className="w-full bg-gray-700 text-center p-2 rounded-lg text-white text-sm border border-gray-600 font-mono tracking-widest"
+              />
+              <p className="text-[11px] text-gray-500 mt-1">يتم التحقق من الرقم عند الضغط على "تغيير".</p>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">سبب إعفاء المعلم السابق (اختياري — يظهر في رسالته)</label>
+              <textarea
+                rows={2} maxLength={200} value={changeReason} onChange={e => setChangeReason(e.target.value)}
+                className="w-full bg-gray-700 text-right p-2 rounded-lg text-white text-sm border border-gray-600"
+              />
+            </div>
+            <button
+              onClick={handleChangeTeacher}
+              disabled={changing || !changeSerial.trim()}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-bold"
+            >
+              {changing ? 'جاري التحقق والتغيير...' : 'تغيير المعلم'}
+            </button>
           </div>
         </div>
       )}

@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import {
   FaTimes, FaSearch, FaTrashAlt, FaSpinner, FaUsers,
-  FaPhone, FaUser, FaChevronLeft, FaChevronRight, FaSnowflake, FaFire
+  FaPhone, FaUser, FaSnowflake, FaFire
 } from 'react-icons/fa';
 import { db } from '../../firebase';
 import {
-  collection, query, where, orderBy, limit, startAfter,
+  collection, query, where, limit,
   getDocs, getCountFromServer
 } from 'firebase/firestore';
 import { createMessageRequest } from '../../services/messageRequests';
@@ -14,7 +14,6 @@ import { MESSAGE_REQUEST_TYPES } from '../../constants';
 import { fetchClassNames } from '../../utils/helpers';
 import { useConfirm } from '../common/ConfirmContext';
 
-const PAGE_SIZE = 20;
 
 const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
   const confirm = useConfirm();
@@ -24,9 +23,6 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchMode, setSearchMode] = useState(false);
-  const [page, setPage] = useState(0);
-  const [pageDocs, setPageDocs] = useState([null]);
-  const [hasMore, setHasMore] = useState(true);
 
   const [showFreezeReasonModal, setShowFreezeReasonModal] = useState(false);
   const [freezeTarget, setFreezeTarget] = useState(null);
@@ -36,12 +32,9 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
   useEffect(() => {
     if (isOpen) {
       loadCount();
-      setPageDocs([null]);
-      setPage(0);
-      setHasMore(true);
+      setList([]);
       setSearchMode(false);
       setSearchTerm('');
-      loadPage(0);
     }
     // eslint-disable-next-line
   }, [isOpen]);
@@ -57,53 +50,18 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
     } catch (e) { console.warn(e); }
   };
 
-  const loadPage = async (pageIndex) => {
-    setLoading(true);
-    try {
-      const startAfterDoc = pageIndex > 0 ? pageDocs[pageIndex - 1] : null;
-      const q = startAfterDoc
-        ? query(
-            collection(db, 'profiles'),
-            where('role', '==', 'student'),
-            orderBy('createdAt', 'desc'),
-            startAfter(startAfterDoc),
-            limit(PAGE_SIZE)
-          )
-        : query(
-            collection(db, 'profiles'),
-            where('role', '==', 'student'),
-            orderBy('createdAt', 'desc'),
-            limit(PAGE_SIZE)
-          );
-      const snap = await getDocs(q);
-      const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setList(items);
-      setHasMore(items.length === PAGE_SIZE);
-      if (items.length > 0) {
-        const newPageDocs = [...pageDocs];
-        newPageDocs[pageIndex] = snap.docs[snap.docs.length - 1];
-        setPageDocs(newPageDocs);
-      }
-      setPage(pageIndex);
-      setSearchMode(false);
-    } catch (e) {
-      toast.error('فشل التحميل: ' + e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const doSearch = async () => {
     const term = searchTerm.trim();
     if (!term) {
-      setPageDocs([null]);
-      loadPage(0);
+      setList([]);
+      setSearchMode(false);
       return;
     }
     setIsSearching(true);
     try {
       const phoneDigits = term.replace(/[^\d]/g, '');
       const isPhone = phoneDigits.length >= 6 && phoneDigits === term;
+      const isSerial = phoneDigits.length >= 1 && phoneDigits === term;
 
       const promises = [
         getDocs(query(
@@ -120,6 +78,14 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
           limit(5)
         ))
       ];
+      if (isSerial) {
+        promises.push(getDocs(query(
+          collection(db, 'profiles'),
+          where('role', '==', 'student'),
+          where('serialNumber', '==', term.padStart(6, '0').length <= 6 ? term.padStart(6, '0') : term),
+          limit(5)
+        )));
+      }
       if (isPhone) {
         promises.push(getDocs(query(
           collection(db, 'profiles'),
@@ -132,9 +98,7 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
       const map = new Map();
       results.forEach(snap => snap.docs.forEach(d => map.set(d.id, { id: d.id, ...d.data() })));
       setList(Array.from(map.values()));
-      setHasMore(false);
       setSearchMode(true);
-      setPage(0);
     } catch (e) {
       toast.error('فشل البحث: ' + e.message);
     } finally {
@@ -144,9 +108,8 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
 
   const resetSearch = () => {
     setSearchTerm('');
-    setPageDocs([null]);
-    setHasMore(true);
-    loadPage(0);
+    setList([]);
+    setSearchMode(false);
   };
 
   // ✅ فك تجميد — إنشاء طلب فقط
@@ -283,7 +246,7 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
           <div className="flex gap-2 flex-wrap">
             <input
               type="text"
-              placeholder="ابحث بالاسم أو اسم المستخدم أو رقم الهاتف"
+              placeholder="ابحث بالاسم أو الرقم التسلسلي أو اسم المستخدم أو رقم الهاتف"
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') doSearch(); }}
@@ -305,7 +268,9 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
               جاري التحميل...
             </div>
           ) : list.length === 0 ? (
-            <p className="text-gray-400 text-center py-8">لا توجد نتائج.</p>
+            <p className="text-gray-400 text-center py-8">
+              {searchMode ? 'لا توجد نتائج مطابقة.' : '🔎 ابحث بالاسم أو الرقم التسلسلي أو اسم المستخدم أو رقم الهاتف لعرض الطالب.'}
+            </p>
           ) : (
             <div className="space-y-2">
               {list.map(s => (
@@ -347,25 +312,6 @@ const StudentsManagerModal = ({ isOpen, onClose, user, onCountChange }) => {
           )}
         </div>
 
-        {!searchMode && (
-          <div className="p-4 border-t border-gray-700 flex justify-between items-center gap-2">
-            <button
-              onClick={() => loadPage(page - 1)}
-              disabled={page === 0 || loading}
-              className="bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm inline-flex items-center gap-1"
-            >
-              <FaChevronRight /> السابق
-            </button>
-            <span className="text-gray-400 text-sm">صفحة {page + 1}</span>
-            <button
-              onClick={() => loadPage(page + 1)}
-              disabled={!hasMore || loading}
-              className="bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm inline-flex items-center gap-1"
-            >
-              التالي <FaChevronLeft />
-            </button>
-          </div>
-        )}
       </div>
 
       {showFreezeReasonModal && freezeTarget && (

@@ -23,7 +23,7 @@ import {
 import { createMessageRequest } from '../../services/messageRequests';
 import {
   validateStudentEligibility, filterClassesForSupervisor, getClassGenderLabel,
-  purgeClassesWithoutSection, getAllowedClassGenders
+  getAllowedClassGenders
 } from '../../services/classes';
 import {
   subscribeToPendingStudentChanges, approveStudentChanges, rejectStudentChanges
@@ -43,6 +43,7 @@ import SupportTicketsSection from './SupportTicketsSection';
 import SectionsManagerModal from './SectionsManagerModal';
 import StudentSerialManagerModal from './StudentSerialManagerModal';
 import TeachersManagerModal from './TeachersManagerModal';
+import RegistrationRequestsSection from './RegistrationRequestsSection';
 import { useConfirm, usePrompt } from '../common/ConfirmContext';
 
 const ClassTreePickerModal = ({ isOpen, onClose, sections, classes, selectedIds, onConfirm, allowedGenders }) => {
@@ -381,17 +382,24 @@ const SupervisorPanel = ({ user, onLogout }) => {
     return () => unsubscribe();
   }, []);
 
+  // ✅ تحميل كسول: الشعب والأقسام لا تُحمَّل إلا عند فتح نافذة تحتاجها (إضافة طالب / إعلان)
+  const [classesLoaded, setClassesLoaded] = useState(false);
   useEffect(() => {
-    purgeClassesWithoutSection().catch(e => console.warn('purge classes failed:', e));
-    const qClasses = query(collection(db, 'classes'));
-    const unsubClasses = onSnapshot(qClasses, (snapshot) => {
-      setClasses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(c => c.sectionId));
-    });
-    const unsubSections = onSnapshot(collection(db, 'sections'), (snapshot) => {
-      setSections(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar')));
-    });
-    return () => { unsubClasses(); unsubSections(); };
-  }, []);
+    if (classesLoaded) return;
+    if (!showAddStudentModal && !showAnnouncementModal) return;
+    (async () => {
+      try {
+        const [cs, ss] = await Promise.all([
+          getDocs(collection(db, 'classes')),
+          getDocs(collection(db, 'sections'))
+        ]);
+        setClasses(cs.docs.map(d => ({ id: d.id, ...d.data() })).filter(c => c.sectionId));
+        setSections(ss.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar')));
+        setClassesLoaded(true);
+      } catch (e) { console.warn('classes load failed:', e); }
+    })();
+    // eslint-disable-next-line
+  }, [showAddStudentModal, showAnnouncementModal, classesLoaded]);
 
   useEffect(() => {
     if (!user) return;
@@ -824,6 +832,8 @@ const SupervisorPanel = ({ user, onLogout }) => {
             </button>
           </div>
         </div>
+
+        <RegistrationRequestsSection />
 
         {permissions.reports && hasReportsForMe && <ReportsReviewSection user={user} />}
         <ReviewVotingSection user={user} />

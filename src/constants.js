@@ -55,8 +55,20 @@ export const MESSAGE_REQUEST_TYPES = {
   STUDENT_CLASS_TRANSFER: 'student_class_transfer',
   ANNOUNCEMENT_PUBLISH: 'announcement_publish',
   UNACTIVATED_ACCOUNT_REMINDER: 'unactivated_account_reminder',
-  UNACTIVATED_ACCOUNT_DELETED: 'unactivated_account_deleted'
+  UNACTIVATED_ACCOUNT_DELETED: 'unactivated_account_deleted',
+  // ✅ التسجيل الفردي + تكليف/إعفاء المعلمين
+  REGISTRATION_APPROVED: 'registration_approved',
+  REGISTRATION_REJECTED: 'registration_rejected',
+  REGISTRATION_DELETED: 'registration_deleted',
+  TEACHER_ASSIGNMENT: 'teacher_assignment',
+  TEACHER_RELIEF: 'teacher_relief'
 };
+
+// أنواع الطلبات التي يكون فيها دور المدير "إرسال الرسالة فقط" (بدون موافقة/رفض)
+export const SEND_ONLY_REQUEST_TYPES = [
+  'registration_approved', 'registration_rejected', 'registration_deleted',
+  'teacher_assignment', 'teacher_relief'
+];
 
 export const MESSAGE_REQUEST_TYPE_LABELS = {
   warning: 'إنذار',
@@ -82,7 +94,12 @@ export const MESSAGE_REQUEST_TYPE_LABELS = {
   student_class_transfer: 'نقل طالب لشعبة أخرى',
   announcement_publish: 'نشر إشعار عام',
   unactivated_account_reminder: 'تنبيه عدم تفعيل الحساب',
-  unactivated_account_deleted: 'حذف حساب غير مفعّل'
+  unactivated_account_deleted: 'حذف حساب غير مفعّل',
+  registration_approved: 'موافقة تسجيل فردي (إرسال رسالة)',
+  registration_rejected: 'رفض تسجيل فردي (إرسال رسالة)',
+  registration_deleted: 'حذف طلب تسجيل لعدم الرد (إرسال رسالة)',
+  teacher_assignment: 'تكليف معلم بصف (إرسال رسالة)',
+  teacher_relief: 'إعفاء معلم من صف (إرسال رسالة)'
 };
 
 export const REPORT_STATUS = { PENDING: 'pending', RESOLVED: 'resolved' };

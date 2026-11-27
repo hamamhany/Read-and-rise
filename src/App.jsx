@@ -17,6 +17,7 @@ import StudentPanel from './components/panels/StudentPanel';
 import SystemManagerPanel from './components/panels/SystemManagerPanel';
 import SupportButton from './components/common/SupportButton';
 import SupportPage from './pages/SupportPage';
+import RegisterPage from './pages/RegisterPage';
 import {
   ExamCreatePage, ExamEditPage, ExamTakePage, ExamResultsPage, ExamAnswersPage
 } from './pages/ExamPages';
@@ -44,6 +45,7 @@ const App = () => {
   const [loading, setLoading] = useState(true);
   const [pendingUserForComplete, setPendingUserForComplete] = useState(null);
   const location = useLocation();
+  const isPublicRegister = location.pathname === '/register';
 
   useDynamicBackground();
 
@@ -220,6 +222,9 @@ const App = () => {
 
   // ☀️ محتوى الشاشة (نفس المنطق السابق دون تغيير)
   const renderContent = () => {
+    // ✅ صفحة التسجيل العامة: مستقلة تماماً عن تسجيل الدخول
+    if (isPublicRegister) return <RegisterPage />;
+
     if (loading) {
       return (
         <div className="container-center min-h-screen">
@@ -296,7 +301,9 @@ const App = () => {
 
   // ☀️ زر الثيم يظهر دائماً (حتى قبل تسجيل الدخول)
   // ✨ مفتاح الشاشة: يعيد تشغيل حركة الدخول عند الانتقال بين (تحميل / دخول / لوحة / صفحة)
-  const screenKey = loading
+  const screenKey = isPublicRegister
+    ? 'register'
+    : loading
     ? 'loading'
     : pendingUserForComplete
       ? 'complete'
