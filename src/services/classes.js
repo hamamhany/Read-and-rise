@@ -466,16 +466,16 @@ export const findAffectedStudents = async (classId, newGender) => {
   if (!classDoc.exists()) throw new Error('الشعبة غير موجودة');
   const classData = classDoc.data();
 
+  // ✅ طلاب هذه الشعبة فقط (بدل قراءة كل الطلاب)
   const studentsSnap = await getDocs(query(
     collection(db, 'profiles'),
-    where('role', '==', 'student')
+    where('classIds', 'array-contains', classId)
   ));
 
   const affected = [];
   studentsSnap.docs.forEach(d => {
     const data = d.data();
-    const classIds = data.classIds || [];
-    if (!classIds.includes(classId)) return;
+    if (data.role !== 'student') return;
     const result = validateStudentEligibility(data, { ...classData, gender: newGender });
     if (!result.ok) {
       affected.push({ id: d.id, ...data, reason: result.reason });

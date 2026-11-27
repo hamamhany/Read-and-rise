@@ -11,7 +11,7 @@ import {
 import { db, secondaryAuth, messaging } from '../../firebase';
 import {
   collection, query, orderBy, onSnapshot, doc, updateDoc,
-  serverTimestamp, writeBatch, getDocs, where, setDoc, arrayUnion,
+  serverTimestamp, writeBatch, getDocs, where, setDoc, arrayUnion, limit,
   runTransaction, getDoc
 } from 'firebase/firestore';
 import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
@@ -363,7 +363,8 @@ const SupervisorPanel = ({ user, onLogout }) => {
   }, []);
 
   useEffect(() => {
-    const q = query(collection(db, 'announcements'), orderBy('createdAt', 'desc'));
+    // ✅ نقرأ فقط ما يُعرض (+ هامش للمحذوف/المجدول) بدل كل الإعلانات
+    const q = query(collection(db, 'announcements'), orderBy('createdAt', 'desc'), limit(displayCount + 10));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const now = new Date();
@@ -380,7 +381,7 @@ const SupervisorPanel = ({ user, onLogout }) => {
       setLoading(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, [displayCount]);
 
   // ✅ تحميل كسول: الشعب والأقسام لا تُحمَّل إلا عند فتح نافذة تحتاجها (إضافة طالب / إعلان)
   const [classesLoaded, setClassesLoaded] = useState(false);

@@ -1,5 +1,5 @@
 // src/components/panels/SystemManagerPanel.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import {
   FaGlobe, FaSignOutAlt, FaUserShield, FaExclamationTriangle, FaWhatsapp,
@@ -39,6 +39,7 @@ import {
   sendTeacherAssignmentMessage, sendTeacherReliefMessage
 } from '../../utils/whatsapp';
 import { deleteUserCompletely } from '../../services/accountDeletion';
+import { readGlobalNextLesson, writeGlobalNextLesson } from '../../services/nextLesson';
 import { updateClassGender, deleteClassById, moveStudentToClass, setStudentClasses } from '../../services/classes';
 import {
   approveAnnouncement, rejectAnnouncement,
@@ -94,6 +95,35 @@ const computeNextGlobalLesson = (allTimes) => {
     if (d && (!nearest || d < nearest)) nearest = d;
   }
   return nearest;
+};
+
+// أقرب موعد مع معرّف صاحبه (لحفظه في المستند العام)
+const computeNearestWithTeacher = (allTimes) => {
+  const now = new Date();
+  let best = null;
+  const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  for (const lt of allTimes) {
+    if (!lt.time) continue;
+    let d = null;
+    if (lt.type === 'once') {
+      const dd = new Date(lt.date);
+      if (!isNaN(dd.getTime())) { dd.setHours(lt.time.hours, lt.time.minutes, 0, 0); if (dd > now) d = dd; }
+    } else if (lt.type === 'recurring') {
+      const idx = days.indexOf(lt.day);
+      if (idx === -1) continue;
+      let diff = idx - now.getDay(); if (diff < 0) diff += 7;
+      const dd = new Date(now); dd.setDate(now.getDate() + diff); dd.setHours(lt.time.hours, lt.time.minutes, 0, 0);
+      if (dd <= now) dd.setDate(dd.getDate() + 7);
+      d = dd;
+    } else if (lt.type === 'monthly') {
+      const md = parseInt(lt.monthDay); if (!md) continue;
+      let dd = new Date(now.getFullYear(), now.getMonth(), md, lt.time.hours, lt.time.minutes, 0, 0);
+      if (dd <= now) dd = new Date(now.getFullYear(), now.getMonth() + 1, md, lt.time.hours, lt.time.minutes, 0, 0);
+      d = dd;
+    }
+    if (d && (!best || d < best.date)) best = { date: d, teacherId: lt.teacherId || '' };
+  }
+  return best;
 };
 
 const computeActiveLectures = (allTimes) => {
@@ -251,6 +281,8 @@ const SystemManagerPanel = ({ user, onLogout }) => {
   const [announcementsLoaded, setAnnouncementsLoaded] = useState(false);
 
   const [lessonTimesLoaded, setLessonTimesLoaded] = useState(false);
+  const [nextLessonLoaded, setNextLessonLoaded] = useState(false);
+  const refetchingNextRef = useRef(false);
   const [loadingLessonTimes, setLoadingLessonTimes] = useState(false);
 
   const [loading, setLoading] = useState(true);
@@ -392,15 +424,42 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     }
   };
 
+  // ✅ الحصة القادمة: قراءة مستند واحد. إن كان قديماً/غير موجود → إعادة بناء مرة واحدة ثم حفظه
+  const loadNextLesson = async () => {
+    if (refetchingNextRef.current) return;
+    refetchingNextRef.current = true;
+    try {
+      const stored = await readGlobalNextLesson();
+      if (stored && stored.at > Date.now()) {
+        setNextGlobalLesson(new Date(stored.at));
+      } else {
+        const snap = await getDocs(collection(db, 'teachers'));
+        const times = [];
+        snap.docs.forEach(d => (d.data().lessonTimes || []).forEach(t => times.push({ teacherId: d.id, ...t })));
+        const best = computeNearestWithTeacher(times);
+        if (best) {
+          setNextGlobalLesson(best.date);
+          await writeGlobalNextLesson(best.date.getTime(), best.teacherId);
+        } else {
+          setNextGlobalLesson(null);
+        }
+      }
+    } catch (e) {
+      console.warn('next lesson load failed:', e);
+    } finally {
+      setNextLessonLoaded(true);
+      refetchingNextRef.current = false;
+    }
+  };
+
   useEffect(() => {
-    loadLessonTimes();
+    loadNextLesson();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (allLessonTimes.length === 0) { setNextGlobalLesson(null); setActiveLecturesCount(0); return; }
+    if (allLessonTimes.length === 0) { setActiveLecturesCount(0); return; }
     const tick = () => {
-      setNextGlobalLesson(computeNextGlobalLesson(allLessonTimes));
       setActiveLecturesCount(computeActiveLectures(allLessonTimes));
     };
     tick();
@@ -412,7 +471,12 @@ const SystemManagerPanel = ({ user, onLogout }) => {
     if (!nextGlobalLesson) { setLiveCountdown({ d: 0, h: 0, m: 0, s: 0 }); return; }
     const tick = () => {
       const diff = nextGlobalLesson.getTime() - Date.now();
-      if (diff <= 0) { setLiveCountdown({ d: 0, h: 0, m: 0, s: 0 }); return; }
+      if (diff <= 0) {
+        setLiveCountdown({ d: 0, h: 0, m: 0, s: 0 });
+        // انتهى الموعد المحفوظ → نحدّثه مرة واحدة
+        setTimeout(() => { loadNextLesson(); }, 2000);
+        return;
+      }
       setLiveCountdown({
         d: Math.floor(diff / (1000 * 60 * 60 * 24)),
         h: Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
@@ -856,10 +920,8 @@ const SystemManagerPanel = ({ user, onLogout }) => {
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500 to-yellow-600 flex items-center justify-center shadow-lg"><FaHourglassHalf className="text-white text-xl" /></div>
               <div><p className="text-xs text-amber-600 dark:text-amber-300 uppercase tracking-widest font-semibold">الحصة القادمة</p></div>
             </div>
-            {!lessonTimesLoaded ? (
-              <button onClick={loadLessonTimes} disabled={loadingLessonTimes} className="text-sm text-amber-700 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-100 font-bold inline-flex items-center gap-2 disabled:opacity-50">
-                {loadingLessonTimes ? 'جاري التحميل...' : <><FaDownload /> تحميل</>}
-              </button>
+            {!nextLessonLoaded ? (
+              <p className="text-sm text-amber-700 dark:text-amber-300 font-bold">جاري التحميل...</p>
             ) : nextGlobalLesson ? (
               <p className="text-3xl font-black text-slate-900 dark:text-white tabular-nums" dir="ltr">
                 {liveCountdown.d > 0 && <span className="text-amber-600 dark:text-amber-200">{liveCountdown.d}d </span>}

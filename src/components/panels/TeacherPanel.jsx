@@ -42,6 +42,7 @@ import JitsiRoom, { enterFullscreen, exitFullscreen } from '../common/JitsiRoom'
 import {
   startLiveSession, endLiveSession, subscribeToLiveSessions
 } from '../../services/liveSessions';
+import { syncGlobalNextLesson } from '../../services/nextLesson';
 
 const TeacherPanel = ({ user, onLogout }) => {
   const confirm = useConfirm();
@@ -332,6 +333,8 @@ const TeacherPanel = ({ user, onLogout }) => {
       await updateDoc(doc(db, 'teachers', user.id), {
         lessonTimes: timesWithId, updatedAt: serverTimestamp()
       });
+      // ✅ يحدّث "الحصة القادمة" العامة إن كان موعدي أقرب (بدون انتظار)
+      syncGlobalNextLesson(user.id, timesWithId);
     } catch (err) { toast.error('فشل التحديث: ' + err.message); }
   };
 
@@ -603,6 +606,7 @@ const TeacherPanel = ({ user, onLogout }) => {
           return lt;
         });
         await updateDoc(teacherRef, { lessonTimes: updatedTimes });
+        syncGlobalNextLesson(user.id, updatedTimes);
       }
 
       const dayNames = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
